@@ -50,28 +50,80 @@ impl DeviceGenerator {
                     let scalar_ty = ty_gen.generate_type_ref(inner);
                     let size = *len as usize;
 
-                    quote! {
-                        #[doc = #reg_description]
-                        pub fn #name(&self, idx: usize) -> Option<#scalar_ty> {
-                            if idx >= #size {
-                                None
-                            } else {
-                                Some(unsafe { self.#unchecked_name(idx)})
+                    // Check if this vector register has a lock
+                    if let Some((_, lock_setter_name)) = find_lock_register(&desc.registers, reg) {
+                        let non_atomic_name = ident(IdentType::Method, format!("{}_non_atomic", &reg.name));
+                        let non_atomic_unchecked = ident(IdentType::Method, format!("{}_unchecked_non_atomic", &reg.name));
+
+                        quote! {
+                            #[doc = #reg_description]
+                            #[doc = "Atomically reads a single element using the lock mechanism."]
+                            pub fn #name(&self, idx: usize) -> Option<#scalar_ty> {
+                                if idx >= #size {
+                                    None
+                                } else {
+                                    Some(unsafe { self.#unchecked_name(idx)})
+                                }
+                            }
+
+                            #[doc = #reg_description]
+                            pub unsafe fn #unchecked_name(&self, idx: usize) -> #scalar_ty {
+                                self.#lock_setter_name(LockRequest::Lock);
+                                let ptr = self.0.add(#offset).cast::<#scalar_ty>();
+                                let val = ptr.add(idx).read_volatile();
+                                self.#lock_setter_name(LockRequest::Clear);
+                                val
+                            }
+
+                            #[doc = #reg_description]
+                            #[doc = "Iterator that atomically reads each element."]
+                            pub fn #iter_name(&self) -> impl DoubleEndedIterator<Item = #scalar_ty> + '_ {
+                                (0..#size).map(|i| unsafe {
+                                    self.#unchecked_name(i)
+                                })
+                            }
+
+                            #[doc = #reg_description]
+                            #[doc = "Non-atomic read without lock protection."]
+                            pub fn #non_atomic_name(&self, idx: usize) -> Option<#scalar_ty> {
+                                if idx >= #size {
+                                    None
+                                } else {
+                                    Some(unsafe { self.#non_atomic_unchecked(idx)})
+                                }
+                            }
+
+                            #[doc = #reg_description]
+                            pub unsafe fn #non_atomic_unchecked(&self, idx: usize) -> #scalar_ty {
+                                let ptr = self.0.add(#offset).cast::<#scalar_ty>();
+                                ptr.add(idx).read_volatile()
                             }
                         }
+                    } else {
+                        // Regular non-lockable vector register
+                        quote! {
+                            #[doc = #reg_description]
+                            pub fn #name(&self, idx: usize) -> Option<#scalar_ty> {
+                                if idx >= #size {
+                                    None
+                                } else {
+                                    Some(unsafe { self.#unchecked_name(idx)})
+                                }
+                            }
 
-                        #[doc = #reg_description]
-                        pub unsafe fn #unchecked_name(&self, idx: usize) -> #scalar_ty {
-                            let ptr = self.0.add(#offset).cast::<#scalar_ty>();
+                            #[doc = #reg_description]
+                            pub unsafe fn #unchecked_name(&self, idx: usize) -> #scalar_ty {
+                                let ptr = self.0.add(#offset).cast::<#scalar_ty>();
 
-                            ptr.add(idx).read_volatile()
-                        }
+                                ptr.add(idx).read_volatile()
+                            }
 
-                        #[doc = #reg_description]
-                        pub fn #iter_name(&self) -> impl DoubleEndedIterator<Item = #scalar_ty> + '_ {
-                            (0..#size).map(|i| unsafe {
-                                self.#unchecked_name(i)
-                            })
+                            #[doc = #reg_description]
+                            pub fn #iter_name(&self) -> impl DoubleEndedIterator<Item = #scalar_ty> + '_ {
+                                (0..#size).map(|i| unsafe {
+                                    self.#unchecked_name(i)
+                                })
+                            }
                         }
                     }
                 } else if reg.tags.iter().any(|tag| tag == "zero-width") {
@@ -88,11 +140,43 @@ impl DeviceGenerator {
                     }
                 } else {
                     let ty = ty_gen.generate_type_ref(&reg.reg_type);
-                    quote! {
-                        #[doc = #reg_description]
-                        pub fn #name(&self) -> #ty {
-                            unsafe {
-                                self.0.add(#offset).cast::<#ty>().read_volatile()
+
+                    // Check if this register has a lock
+                    if let Some((_, lock_setter_name)) = find_lock_register(&desc.registers, reg) {
+                        let non_atomic_name = ident(IdentType::Method, format!("{}_non_atomic", &reg.name));
+
+                        quote! {
+                            #[doc = #reg_description]
+                            #[doc = ""]
+                            #[doc = "This method performs an atomic read using the lock mechanism:"]
+                            #[doc = "1. Writes `Lock` to the lock register"]
+                            #[doc = "2. Reads the register value"]
+                            #[doc = "3. Writes `Clear` to the lock register"]
+                            pub fn #name(&self) -> #ty {
+                                unsafe {
+                                    self.#lock_setter_name(LockRequest::Lock);
+                                    let val = self.0.add(#offset).cast::<#ty>().read_volatile();
+                                    self.#lock_setter_name(LockRequest::Clear);
+                                    val
+                                }
+                            }
+
+                            #[doc = #reg_description]
+                            #[doc = ""]
+                            #[doc = "Non-atomic read without lock protection."]
+                            #[doc = "Use only when you need manual lock control or know atomicity is not required."]
+                            pub fn #non_atomic_name(&self) -> #ty {
+                                unsafe { self.0.add(#offset).cast::<#ty>().read_volatile() }
+                            }
+                        }
+                    } else {
+                        // Regular non-lockable register
+                        quote! {
+                            #[doc = #reg_description]
+                            pub fn #name(&self) -> #ty {
+                                unsafe {
+                                    self.0.add(#offset).cast::<#ty>().read_volatile()
+                                }
                             }
                         }
                     }
@@ -103,6 +187,10 @@ impl DeviceGenerator {
         let set_funcs = desc
             .registers
             .iter()
+            .filter(|reg| {
+                // Filter out lock registers - they're handled separately
+                !reg.tags.iter().any(|tag| tag == "is-lock")
+            })
             .map(|reg| {
                 let can_write = reg.access == RegisterAccess::WriteOnly
                     || reg.access == RegisterAccess::ReadWrite;
@@ -121,22 +209,67 @@ impl DeviceGenerator {
                     let scalar_ty = ty_gen.generate_type_ref(inner);
                     let size = *len as usize;
 
-                    quote! {
-                        #[doc = #reg_description]
-                        pub fn #name(&self, idx: usize, val: #scalar_ty) -> Option<()> {
-                            if idx >= #size {
-                                None
-                            } else {
-                                unsafe { self.#unchecked_name(idx, val) };
-                                Some(())
+                    // Check if this vector register has a lock
+                    if let Some((_, lock_setter_name)) = find_lock_register(&desc.registers, reg) {
+                        let non_atomic_name = ident(IdentType::Method, format!("set_{}_non_atomic", &reg.name));
+                        let non_atomic_unchecked = ident(IdentType::Method, format!("set_{}_unchecked_non_atomic", &reg.name));
+
+                        quote! {
+                            #[doc = #reg_description]
+                            #[doc = "Atomically writes a single element using the lock mechanism."]
+                            pub fn #name(&self, idx: usize, val: #scalar_ty) -> Option<()> {
+                                if idx >= #size {
+                                    None
+                                } else {
+                                    unsafe { self.#unchecked_name(idx, val) };
+                                    Some(())
+                                }
+                            }
+
+                            #[doc = #reg_description]
+                            pub unsafe fn #unchecked_name(&self, idx: usize, val: #scalar_ty) {
+                                self.#lock_setter_name(LockRequest::Lock);
+                                let ptr = self.0.add(#offset).cast::<#scalar_ty>();
+                                ptr.add(idx).write_volatile(val);
+                                self.#lock_setter_name(LockRequest::Commit);
+                            }
+
+                            #[doc = #reg_description]
+                            #[doc = "Non-atomic write without lock protection."]
+                            pub fn #non_atomic_name(&self, idx: usize, val: #scalar_ty) -> Option<()> {
+                                if idx >= #size {
+                                    None
+                                } else {
+                                    unsafe { self.#non_atomic_unchecked(idx, val) };
+                                    Some(())
+                                }
+                            }
+
+                            #[doc = #reg_description]
+                            pub unsafe fn #non_atomic_unchecked(&self, idx: usize, val: #scalar_ty) {
+                                let ptr = self.0.add(#offset).cast::<#scalar_ty>();
+                                ptr.add(idx).write_volatile(val);
                             }
                         }
+                    } else {
+                        // Regular non-lockable vector register
+                        quote! {
+                            #[doc = #reg_description]
+                            pub fn #name(&self, idx: usize, val: #scalar_ty) -> Option<()> {
+                                if idx >= #size {
+                                    None
+                                } else {
+                                    unsafe { self.#unchecked_name(idx, val) };
+                                    Some(())
+                                }
+                            }
 
-                        #[doc = #reg_description]
-                        pub unsafe fn #unchecked_name(&self, idx: usize, val: #scalar_ty) {
-                            let ptr = self.0.add(#offset).cast::<#scalar_ty>();
+                            #[doc = #reg_description]
+                            pub unsafe fn #unchecked_name(&self, idx: usize, val: #scalar_ty) {
+                                let ptr = self.0.add(#offset).cast::<#scalar_ty>();
 
-                            ptr.add(idx).write_volatile(val);
+                                ptr.add(idx).write_volatile(val);
+                            }
                         }
                     }
                 } else if reg.tags.iter().any(|tag| tag == "zero-width") {
@@ -151,12 +284,65 @@ impl DeviceGenerator {
                     }
                 } else {
                     let ty = ty_gen.generate_type_ref(&reg.reg_type);
-                    quote! {
-                        #[doc = #reg_description]
-                        pub fn #name(&self, val: #ty) {
-                            unsafe {
-                                self.0.add(#offset).cast::<#ty>().write_volatile(val)
+
+                    // Check if this register has a lock
+                    if let Some((_, lock_setter_name)) = find_lock_register(&desc.registers, reg) {
+                        let non_atomic_name = ident(IdentType::Method, format!("set_{}_non_atomic", &reg.name));
+
+                        quote! {
+                            #[doc = #reg_description]
+                            #[doc = ""]
+                            #[doc = "This method performs an atomic write using the lock mechanism:"]
+                            #[doc = "1. Writes `Lock` to the lock register"]
+                            #[doc = "2. Writes the value to the register (stored in shadow)"]
+                            #[doc = "3. Writes `Commit` to apply the shadow value"]
+                            pub fn #name(&self, val: #ty) {
+                                unsafe {
+                                    self.#lock_setter_name(LockRequest::Lock);
+                                    self.0.add(#offset).cast::<#ty>().write_volatile(val);
+                                    self.#lock_setter_name(LockRequest::Commit);
+                                }
                             }
+
+                            #[doc = #reg_description]
+                            #[doc = ""]
+                            #[doc = "Non-atomic write without lock protection."]
+                            #[doc = "Use only when you need manual lock control or know atomicity is not required."]
+                            pub fn #non_atomic_name(&self, val: #ty) {
+                                unsafe { self.0.add(#offset).cast::<#ty>().write_volatile(val) }
+                            }
+                        }
+                    } else {
+                        // Regular non-lockable register
+                        quote! {
+                            #[doc = #reg_description]
+                            pub fn #name(&self, val: #ty) {
+                                unsafe {
+                                    self.0.add(#offset).cast::<#ty>().write_volatile(val)
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // Generate setters for lock registers (write-only, so normally filtered out)
+        let lock_funcs = desc
+            .registers
+            .iter()
+            .filter(|reg| reg.tags.iter().any(|tag| tag == "is-lock"))
+            .map(|reg| {
+                let name = ident(IdentType::Method, format!("set_{}", &reg.name));
+                let offset = reg.address as usize;
+                let reg_description = &reg.description;
+
+                quote! {
+                    #[doc = #reg_description]
+                    pub fn #name(&self, val: LockRequest) {
+                        unsafe {
+                            self.0.add(#offset).cast::<u8>()
+                                .write_volatile(val as u8)
                         }
                     }
                 }
@@ -192,6 +378,8 @@ impl DeviceGenerator {
                 #(#get_funcs)*
 
                 #(#set_funcs)*
+
+                #(#lock_funcs)*
             }
         }
     }
@@ -201,6 +389,25 @@ impl Default for DeviceGenerator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Find the lock register for a given register if it exists.
+/// Returns the lock register and its setter method name.
+fn find_lock_register<'a>(
+    registers: &'a [RegisterDesc],
+    reg: &RegisterDesc,
+) -> Option<(&'a RegisterDesc, proc_macro2::Ident)> {
+    if !reg.tags.iter().any(|tag| tag == "has-lock") {
+        return None;
+    }
+
+    let lock_name = format!("{}_lock", reg.name);
+    let lock_reg = registers
+        .iter()
+        .find(|r| r.name == lock_name && r.tags.iter().any(|tag| tag == "is-lock"))?;
+
+    let lock_setter_name = ident(IdentType::Method, format!("set_{}", lock_name));
+    Some((lock_reg, lock_setter_name))
 }
 
 /// Generates a constant for the given register description if applicable.
