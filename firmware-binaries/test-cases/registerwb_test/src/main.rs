@@ -289,6 +289,56 @@ fn main() -> ! {
         hal::Either::Right(hal::Abc::B)
     );
 
+    // Test lock/commit/clear functionality on maybe_u96
+    {
+        let many_types = &mut INSTANCES.many_types;
+
+        // First, set a known initial value
+        let test_initial = hal::Maybe::Just(0xABCDEF0123456789FEDCBA98);
+        many_types.set_maybe_u96(test_initial);
+
+        // Test 1: Lock, write, confirm read returns old value, then commit
+        let initial_value = many_types.maybe_u96();
+        expect("lock_test.initial", test_initial, initial_value);
+
+        many_types.set_maybe_u96_lock(hal::LockRequest::Lock);
+        many_types.set_maybe_u96_non_atomic(hal::Maybe::Just(0x1234567890ABCDEF0FEDCBA9));
+        let value_while_locked = many_types.maybe_u96_non_atomic();
+        expect("lock_test.still_old", initial_value, value_while_locked);
+
+        many_types.set_maybe_u96_lock(hal::LockRequest::Commit);
+        let value_after_commit = many_types.maybe_u96();
+        expect(
+            "lock_test.after_commit",
+            hal::Maybe::Just(0x1234567890ABCDEF0FEDCBA9),
+            value_after_commit,
+        );
+
+        // Test 2: Lock, write, clear without committing
+        many_types.set_maybe_u96_lock(hal::LockRequest::Lock);
+        many_types.set_maybe_u96_non_atomic(hal::Maybe::Just(0xAAAAAAAAAAAAAAAAAAAAAAAA));
+        many_types.set_maybe_u96_lock(hal::LockRequest::Clear);
+        let value_after_clear = many_types.maybe_u96();
+        expect(
+            "lock_test.after_clear",
+            hal::Maybe::Just(0x1234567890ABCDEF0FEDCBA9),
+            value_after_clear,
+        );
+
+        // Write multiple values within a lock session. We should see the last
+        // write after commit.
+        many_types.set_maybe_u96_lock(hal::LockRequest::Lock);
+        many_types.set_maybe_u96_non_atomic(hal::Maybe::Just(0x1111111111111111111111111));
+        many_types.set_maybe_u96_non_atomic(hal::Maybe::Just(0x2222222222222222222222222));
+        many_types.set_maybe_u96_lock(hal::LockRequest::Commit);
+        let value_multiple_writes = many_types.maybe_u96();
+        expect(
+            "lock_test.multiple_writes",
+            hal::Maybe::Just(0x2222222222222222222222222),
+            value_multiple_writes,
+        );
+    }
+
     test_ok();
 }
 

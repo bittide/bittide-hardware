@@ -31,6 +31,7 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (..),
   DeviceConfig (..),
   RegisterConfig (..),
+  Lock (..),
 ) where
 
 import Clash.Explicit.Prelude
