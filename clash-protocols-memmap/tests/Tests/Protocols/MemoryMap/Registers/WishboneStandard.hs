@@ -22,7 +22,10 @@ import Protocols
 import Protocols.Hedgehog (defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Registers.WishboneStandard
-import Protocols.MemoryMap.Registers.WishboneStandard.Internal
+import Protocols.MemoryMap.Registers.WishboneStandard.Internal (
+  LockRequest (..),
+  maskWriteData,
+ )
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (..),
@@ -40,6 +43,22 @@ import qualified Prelude as P
 
 type Bytes n = BitVector (n * 8)
 
+-- | State for tracking locks on multi-word registers
+data LockInfo = LockInfo
+  { isLocked :: Bool
+  , shadowWrites :: Map.Map (BitVector AddressWidth) (BitVector 32)
+  -- ^ Shadow writes accumulated while locked, keyed by word address
+  }
+  deriving (Show)
+
+-- | Model state including both register values and lock state
+data ModelState = ModelState
+  { registers :: Map.Map (BitVector AddressWidth) (BitVector 32)
+  , lockState :: Map.Map (BitVector AddressWidth) LockInfo
+  -- ^ Lock state keyed by the base address of the locked register
+  }
+  deriving (Show)
+
 initFloat :: Float
 initFloat = 3.0
 
@@ -48,6 +67,9 @@ initDouble = 6.0
 
 initU32 :: Unsigned 32
 initU32 = 122222
+
+initBv64 :: BitVector 64
+initBv64 = 0x123456789abcdef0
 
 type AddressWidth = 4
 
@@ -71,23 +93,30 @@ myPaddedUnpackC =
     . maybeUnpackWordC regByteOrder
 
 {- | Initial state of 'deviceExample', represented as a map from address to bit
-size and value.
+size and value, plus lock state for multi-word registers.
 -}
-initState :: Map.Map (BitVector AddressWidth) (BitVector 32)
+initState :: ModelState
 initState =
-  Map.fromList @(BitVector AddressWidth)
-    -- TODO: zero-width registers
-    [ (0, myPaddedPackC initFloat !! nil)
-    , (1, myPaddedPackC initDouble !! nil)
-    , (2, myPaddedPackC initDouble !! succ nil)
-    , (3, myPaddedPackC initU32 !! nil)
-    , (4, myPaddedPackC initFloat !! nil)
-    , (5, myPaddedPackC initFloat !! nil)
-    , (6, myPaddedPackC initU32 !! nil)
-    , (7, myPaddedPackC initU32 !! nil)
-    , (8, myPaddedPackC initU32 !! nil)
-    , (9, myPaddedPackC False !! nil)
-    ]
+  ModelState
+    { registers =
+        Map.fromList @(BitVector AddressWidth)
+          -- TODO: zero-width registers
+          [ (0, myPaddedPackC initFloat !! nil)
+          , (1, myPaddedPackC initDouble !! nil)
+          , (2, myPaddedPackC initDouble !! succ nil)
+          , (3, myPaddedPackC initU32 !! nil)
+          , (4, myPaddedPackC initFloat !! nil)
+          , (5, myPaddedPackC initFloat !! nil)
+          , (6, myPaddedPackC initU32 !! nil)
+          , (7, myPaddedPackC initU32 !! nil)
+          , (8, myPaddedPackC initU32 !! nil)
+          , (9, myPaddedPackC False !! nil)
+          , (10, myPaddedPackC initBv64 !! nil)
+          , (11, myPaddedPackC initBv64 !! succ nil)
+          -- Note: address 12 will be the lock register for 'lockable'
+          ]
+    , lockState = Map.empty
+    }
  where
   nil = 0 :: Int
 
@@ -111,7 +140,17 @@ deviceExample ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
-  [float, double, u32, readOnly, writeOnly, prio, prioPreferCircuit, delayed, delayedError] <-
+  [ float
+    , double
+    , u32
+    , readOnly
+    , writeOnly
+    , prio
+    , prioPreferCircuit
+    , delayed
+    , delayedError
+    , lockable
+    ] <-
     deviceWb "example" -< (mm, wb)
 
   registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
@@ -165,6 +204,10 @@ deviceExample clk rst = circuit $ \(mm, wb) -> do
   let unexpectedDelayedValue = sticky (testBit <$> delayedActual <*> pure 0)
   registerWb_ clk rst (registerConfig "delayed_error"){access = ReadOnly} False
     -< (delayedError, Fwd (Just <$> unexpectedDelayedValue))
+
+  -- A lockable 64-bit register that spans 2 words, so it will automatically get a lock register
+  registerWb_ clk rst (registerConfig "lockable") initBv64
+    -< (lockable, Fwd noWrite)
 
   idC
  where
@@ -251,8 +294,8 @@ prop_wb =
   model ::
     WishboneMasterRequest AddressWidth (BitVector 32) ->
     WishboneS2M (BitVector 32) ->
-    Map.Map (BitVector AddressWidth) (BitVector 32) ->
-    Either String (Map.Map (BitVector AddressWidth) (BitVector 32))
+    ModelState ->
+    Either String ModelState
   model instr WishboneS2M{err = True} s =
     -- Errors should only happen when we use an unmapped address (in the future
     -- we may want to to test other errors too).
@@ -266,14 +309,34 @@ prop_wb =
 
       isWrite (Write{}) = True
       isWrite _ = False
+
+      isLockableRegisterLocked = case Map.lookup lockableAddress s.lockState of
+        Just lockInfo -> lockInfo.isLocked
+        Nothing -> False
      in
-      case Map.lookup errorAddress s of
+      case Map.lookup errorAddress s.registers of
         Nothing ->
-          -- Unmapped address, expect state to remain untouched
-          Right s
+          -- Unmapped address or lock register (which isn't in the registers map)
+          if errorAddress == lockableAddress + 2 && isRead instr
+            then Right s -- Lock register is write-only, reads error as expected
+            else
+              if errorAddress == lockableAddress + 2 && isWrite instr
+                then
+                  -- Writing to lock register - check if it's a Commit-when-unlocked error
+                  case instr of
+                    Write _ mask dat ->
+                      let maskedData = maskWriteData @4 @1 0 mask dat (dat :> Nil)
+                       in case maybeUnpackWordC regByteOrder maskedData of
+                            Just Commit | not isLockableRegisterLocked -> Right s -- Commit when unlocked, error expected
+                            _ -> Left $ "Unexpected error when writing to lock register: " <> show instr
+                    _ -> Right s
+                else Right s -- Unmapped address
         Just v
           | isRead instr && errorAddress == woAddress ->
               -- Expect an error when trying to read from the WriteOnly register
+              Right s
+          | isRead instr && errorAddress == lockableAddress + 2 ->
+              -- Expect an error when trying to read from the lock register (write-only)
               Right s
           | isWrite instr && errorAddress `elem` roAddresses ->
               -- Expect an error when trying to write to a ReadOnly register
@@ -285,40 +348,117 @@ prop_wb =
   model (Read a _) WishboneS2M{readData} s =
     -- XXX: Note that we IGNORE the byte enable mask when reading. The circuit
     --      does too.
-    case Map.lookup a s of
+    case Map.lookup a s.registers of
       Nothing -> Left $ "Read from unmapped address: " <> show a
       Just v
         | v /= 0 && a == delayedErrorAddress ->
             Left $ "delayed error! v: " <> show v <> ", readData: " <> show readData
         | v == readData && a == prioAddress ->
-            Right $ Map.insert prioAddress (head $ myPaddedPackC initU32) s
+            Right $ s{registers = Map.insert prioAddress (head $ myPaddedPackC initU32) s.registers}
         | readData == pack initU32 && a == prioPreferCircuitAddress ->
-            Right $ Map.insert prioPreferCircuitAddress (head $ myPaddedPackC initU32) s
+            Right
+              $ s
+                { registers = Map.insert prioPreferCircuitAddress (head $ myPaddedPackC initU32) s.registers
+                }
         | v == readData ->
             Right s
         | otherwise ->
             Left $ "a: " <> show a <> ", v: " <> show v <> ", readData: " <> show readData
   model (Write a m newDat) _ s
+    -- Handle lock register writes
+    | a == lockableAddress + 2 =
+        handleLockWrite a m newDat s
+    -- Handle writes to locked registers
+    | Just lockInfo <- Map.lookup lockableAddress s.lockState
+    , lockInfo.isLocked
+    , a `elem` [lockableAddress, lockableAddress + 1] =
+        -- Write goes to shadow register, but only if mask != 0
+        if m == 0
+          then Right s -- mask=0 on locked register is a no-op (hardware ACKs but doesn't update shadow)
+          else
+            let oldVal = Map.findWithDefault 0 a lockInfo.shadowWrites
+                newVal = update oldVal
+             in Right
+                  $ s
+                    { lockState =
+                        Map.adjust
+                          (\li -> li{shadowWrites = Map.insert a newVal li.shadowWrites})
+                          lockableAddress
+                          s.lockState
+                    }
+    -- Normal register writes
     | a == delayedAddress =
         let
           double :: BitVector 32 -> BitVector 32
           double = head . myPaddedPackC . (* (2 :: (Unsigned 32))) . myPaddedUnpackC . pure
          in
-          Right (Map.adjust (double . update) a s)
+          Right $ s{registers = Map.adjust (double . update) a s.registers}
     | a == prioAddress || a == prioPreferCircuitAddress =
         let
           inc :: BitVector 32 -> BitVector 32
           inc = head . myPaddedPackC . (+ (1 :: (Unsigned 32))) . myPaddedUnpackC . pure
          in
-          Right (Map.adjust (inc . update) a s)
+          Right $ s{registers = Map.adjust (inc . update) a s.registers}
     | otherwise =
-        Right (Map.adjust update a s)
+        Right $ s{registers = Map.adjust update a s.registers}
    where
     update :: BitVector 32 -> BitVector 32
     update oldDat = head $ maskWriteData @4 @1 0 m newDat (oldDat :> Nil)
 
+    handleLockWrite ::
+      BitVector AddressWidth ->
+      BitVector 4 ->
+      BitVector 32 ->
+      ModelState ->
+      Either String ModelState
+    handleLockWrite _addr mask dat state = do
+      -- Apply byte enables before unpacking, just like the hardware does
+      let maskedData = maskWriteData @4 @1 0 mask dat (dat :> Nil)
+      case maybeUnpackWordC regByteOrder maskedData of
+        Just Lock ->
+          -- Initialize shadow register with current register values (matching hardware's copy behavior)
+          let currentVal0 = Map.findWithDefault 0 lockableAddress state.registers
+              currentVal1 = Map.findWithDefault 0 (lockableAddress + 1) state.registers
+              shadowInit = Map.fromList [(lockableAddress, currentVal0), (lockableAddress + 1, currentVal1)]
+           in Right
+                $ state{lockState = Map.insert lockableAddress (LockInfo True shadowInit) state.lockState}
+        Just Commit ->
+          case Map.lookup lockableAddress state.lockState of
+            Nothing ->
+              -- Not locked - this should cause a bus error (handled in error path above)
+              -- But we shouldn't reach here since errors are handled before model updates
+              Left $ "Commit when not locked (should have been caught as error)"
+            Just lockInfo ->
+              let
+                -- Apply all shadow writes to the actual registers
+                -- Shadow register contains accumulated writes, or zeros if nothing was written
+                newRegs = Map.union lockInfo.shadowWrites state.registers
+               in
+                Right $ state{registers = newRegs, lockState = Map.delete lockableAddress state.lockState}
+        Just Clear ->
+          Right $ state{lockState = Map.delete lockableAddress state.lockState}
+        Nothing ->
+          -- This should never happen now that we generate valid requests and apply masks properly
+          Left $ "Invalid lock request after masking: " <> show maskedData
+
   genInputs :: Gen [WishboneMasterRequest AddressWidth (Bytes 4)]
-  genInputs = Gen.list (Range.linear 0 300) (genWishboneTransfer genAddr genMask genData)
+  genInputs = Gen.list (Range.linear 0 300) genWbRequest
+   where
+    genWbRequest = do
+      addr <- genAddr
+      mask <- genMask
+      if addr == lockRegisterAddress
+        then genLockWrite addr mask
+        else genWishboneTransfer (pure addr) (pure mask) genData
+
+    genLockWrite addr mask = do
+      -- Generate a valid LockRequest value (0, 1, or 2)
+      lockReq <- Gen.element [Lock, Commit, Clear]
+      -- Pack it as a 32-bit value using the register byte order
+      let lockData = myPaddedPackC lockReq !! nil
+      pure $ Write addr mask lockData
+     where
+      nil = 0 :: Int
 
   genMask :: Gen (BitVector 4)
   genMask = Gen.integral (Range.linear 0 maxBound)
@@ -329,7 +469,7 @@ prop_wb =
   genAddr :: Gen (BitVector AddressWidth)
   genAddr =
     -- We do plus one to test unmapped addresses
-    Gen.integral (Range.constant 0 (1 + P.maximum (Map.keys initState)))
+    Gen.integral (Range.constant 0 (1 + P.maximum (Map.keys initState.registers)))
 
   dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
   dut =
@@ -351,6 +491,8 @@ prop_wb =
     , regPrioPreferCircuit
     , regDelayed
     , regDelayedError
+    , regLockable
+    , regLockableLock -- The lock register for 'lockable'
     ] = example.registers
   woAddress = fromIntegral $ regWO.value.address `div` 4
   roAddress = fromIntegral $ regRO.value.address `div` 4
@@ -358,6 +500,8 @@ prop_wb =
   prioPreferCircuitAddress = fromIntegral $ regPrioPreferCircuit.value.address `div` 4
   delayedAddress = fromIntegral $ regDelayed.value.address `div` 4
   delayedErrorAddress = fromIntegral $ regDelayedError.value.address `div` 4
+  lockableAddress = fromIntegral $ regLockable.value.address `div` 4
+  lockRegisterAddress = fromIntegral $ regLockableLock.value.address `div` 4
 
 {- FOURMOLU_DISABLE -}
 case_maskWriteData :: Assertion
@@ -403,6 +547,8 @@ case_memoryMap = do
         , regPrioPreferCircuit
         , regDelayed
         , regDelayedError
+        , regLockable
+        , regLockableLock
         ] = example.registers
 
   regF.name.name @?= "f"
@@ -414,6 +560,8 @@ case_memoryMap = do
   regPrioPreferCircuit.name.name @?= "prio_prefer_circuit"
   regDelayed.name.name @?= "delayed"
   regDelayedError.name.name @?= "delayed_error"
+  regLockable.name.name @?= "lockable"
+  regLockableLock.name.name @?= "lockable_lock"
 
   regF.value.address @?= 0
   regD.value.address @?= 4
@@ -424,6 +572,11 @@ case_memoryMap = do
   regPrioPreferCircuit.value.address @?= 28
   regDelayed.value.address @?= 32
   regDelayedError.value.address @?= 36
+  regLockable.value.address @?= 40
+  regLockableLock.value.address @?= 48
+
+  "has-lock" `elem` regLockable.value.tags @?= True
+  "is-lock" `elem` regLockableLock.value.tags @?= True
 
 tests :: TestTree
 tests =
