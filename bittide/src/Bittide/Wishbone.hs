@@ -868,13 +868,13 @@ whoAmIC whoAmI = circuit $ \wb -> do
 {- | Constructs a @BitVector 32@ from a @String@, which must be exactly 4 characters
 long and consist only of printable ASCII characters.
 -}
-makeWhoAmID :: String -> BitVector 32
-makeWhoAmID str =
+makeWhoAmId :: String -> BitVector 32
+makeWhoAmId str =
   if L.length str == 4 && all (\c -> isAscii c && isPrint c) str
     then wordForm
     else
       error $
-        "whoAmID strings must be four characters long! Input '"
+        "whoAmId strings must be four characters long! Input '"
           <> str
           <> "' is "
           <> show (L.length str)
@@ -887,11 +887,11 @@ makeWhoAmID str =
   wordForm :: BitVector 32
   wordForm = pack $ reverse byteVec
 
-{- | Helper function for lifting @makeWhoAmID@ when Clash complains about unsynthesizable
+{- | Helper function for lifting @makeWhoAmId@ when Clash complains about unsynthesizable
 operations.
 -}
-makeWhoAmIDTH :: String -> Q Exp
-makeWhoAmIDTH = TH.Syntax.lift . makeWhoAmID
+makeWhoAmIdTh :: String -> Q Exp
+makeWhoAmIdTh = TH.Syntax.lift . makeWhoAmId
 
 -- | Simple type for wishbone requests supporting byte enables.
 data WishboneRequest addrW nBytes
