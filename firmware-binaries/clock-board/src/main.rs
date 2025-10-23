@@ -48,6 +48,7 @@ fn check_frequency(
     expected_freq: u32,
 ) -> Result<(), FrequencyCheckError> {
     uwriteln!(uart, "Starting domain diff counters...").unwrap();
+    timer.wait(Duration::from_millis(100));
     domain_diff_counters.set_enable(0, true);
     match domain_diff_counters.counters_active(0) {
         None => {
