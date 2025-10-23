@@ -21,6 +21,7 @@ members = [
   "test-cases/capture_ugn_test",
   "test-cases/clock-control-wb",
   "test-cases/dna_port_e2_test",
+  "test-cases/elastic_buffer_wb_test",
   "test-cases/wb_to_df_test",
   "test-cases/scatter_gather_test",
   "test-cases/switch_demo_pe_test",

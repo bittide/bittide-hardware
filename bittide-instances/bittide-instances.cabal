@@ -208,6 +208,7 @@ library
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
+    Bittide.Instances.Tests.ElasticBufferWb
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
@@ -288,6 +289,7 @@ test-suite unittests
   main-is: unittests.hs
   ghc-options: -threaded
   other-modules:
+    Df.ElasticBufferWb
     Df.WbToDf
     Tests.ClockControlWb
     Wishbone.Axi
