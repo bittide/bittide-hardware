@@ -52,13 +52,13 @@ case_xilinxElasticBufferMaxBound = do
       sampleN
         1024
         ( (\(_, under, _, _, _) -> under)
-            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) resetGen command wData)
+            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) command wData)
         )
     overflows =
       sampleN
         1024
         ( (\(_, _, over, _, _) -> over)
-            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) resetGen command wData)
+            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) command wData)
         )
 
   assertBool "elastic buffer should overflow" (or overflows)
@@ -76,13 +76,13 @@ case_xilinxElasticBufferMinBound = do
       sampleN
         2048
         ( (\(_, under, _, _, _) -> under)
-            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) resetGen command wData)
+            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) command wData)
         )
     overflows =
       sampleN
         2048
         ( (\(_, _, over, _, _) -> over)
-            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) resetGen command wData)
+            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) command wData)
         )
 
   assertBool "elastic buffer should underflow" (or underflows)
@@ -100,13 +100,13 @@ case_xilinxElasticBufferEq = do
       sampleN
         256
         ( (\(_, under, _, _, _) -> under)
-            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen command wData)
+            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) command wData)
         )
     overflows =
       sampleN
         256
         ( (\(_, _, over, _, _) -> over)
-            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen command wData)
+            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) command wData)
         )
 
   assertBool "elastic buffer should not underflow" (not $ or underflows)

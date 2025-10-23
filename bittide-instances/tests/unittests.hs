@@ -15,6 +15,7 @@ import Test.Tasty
 import Test.Tasty.HUnit (assertFailure, testCase)
 import "extra" Data.List.Extra (trim)
 
+import qualified Df.ElasticBufferWb as ElasticBufferWb
 import qualified Df.WbToDf as WbToDf
 import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.Axi as Axi
@@ -68,6 +69,7 @@ tests =
         , CaptureUgn.tests
         , ClockControlWb.tests
         , DnaPortE2.tests
+        , ElasticBufferWb.tests
         , ScatterGather.tests
         , SwitchDemoProcessingElement.tests
         , Time.tests
