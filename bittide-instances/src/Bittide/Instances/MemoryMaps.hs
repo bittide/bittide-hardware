@@ -23,6 +23,7 @@ import System.FilePath
 
 import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
+import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
@@ -38,6 +39,7 @@ $( do
     -------------------------------
     let memoryMaps =
           [ ("Ethernet", vexRiscvEthernetMM)
+          , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
           , ("Freeze", freezeMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWb", RegisterWb.memoryMap)

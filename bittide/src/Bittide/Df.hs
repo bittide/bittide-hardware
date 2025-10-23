@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Df (asciiDebugMux, wbToDf) where
+module Bittide.Df (asciiDebugMux, wbToDf, unsafeToDf, unsafeFromDf) where
 
 import Clash.Prelude
 import Protocols
@@ -195,3 +195,17 @@ wbToDf name = circuit $ \(mm, wb) -> do
       { MM.access = MM.WriteOnly
       , MM.description = "Commit register for " <> name
       }
+
+{- | Takes an input that features no back pressure mechanism and turn it into `Df`.
+This function is unsafe, because data can be lost when the input is @Just _@ and
+the receiving circuit tries to apply back pressure.
+-}
+unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)
+unsafeToDf = Circuit $ \(cSig, _) -> (pure (), cSig)
+
+{- | Deconstructs a `Df` into its channels represented as `CSignal`s.
+This function is unsafe, because it allows losing or duplicating data if
+the receiving circuit does not respect the `Df` protocol.
+-}
+unsafeFromDf :: Circuit (Df dom a, CSignal dom Ack) (CSignal dom (Maybe a))
+unsafeFromDf = Circuit $ \((dfFwd, dfBwd), _) -> ((dfBwd, pure ()), dfFwd)

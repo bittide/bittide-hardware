@@ -19,6 +19,7 @@ import Protocols
 import Protocols.Df hiding (catMaybes, pure, sample)
 import System.IO
 
+import Bittide.Df
 import Bittide.Wishbone
 
 import qualified Protocols.Df as Df
