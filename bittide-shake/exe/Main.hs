@@ -181,7 +181,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Switch.switchExampleReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freeze"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
-    , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBufferWb"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"

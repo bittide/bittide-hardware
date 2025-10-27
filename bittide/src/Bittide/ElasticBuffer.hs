@@ -26,7 +26,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
-import qualified Clash.Cores.Extra as CE
 import qualified Clash.Explicit.Prelude as E
 
 data EbCommand
@@ -131,87 +130,6 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
       E.noReset
       drainFlag
       (pure (Ack True))
-
-{-# OPAQUE resettableXilinxElasticBuffer #-}
-
-{- | Wrapper around 'xilinxElasticBuffer' that contains a state machine to fill the
-buffer half-full. When it is, it switches to pass-through mode, which it exports
-through its 'EbMode' output. If an underflow or overflow occurs, it switches back
-to fill/drain mode.
--}
-resettableXilinxElasticBuffer ::
-  forall n readDom writeDom a.
-  ( KnownDomain writeDom
-  , KnownDomain readDom
-  , NFDataX a
-  , KnownNat n
-  , 4 <= n
-  , n <= 17
-  ) =>
-  Clock readDom ->
-  Clock writeDom ->
-  -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'RelDataCount'
-  -- ones. Make sure to hold the reset at least 3 cycles in both clock domains.
-  Reset readDom ->
-  Signal writeDom a ->
-  ( Signal readDom (RelDataCount n)
-  , Signal readDom Underflow
-  , Signal readDom Overflow
-  , Signal readDom Stable
-  , Signal readDom a
-  )
-resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
-  (dataCount, underSticky, overSticky1, stable, readData)
- where
-  (dataCount, under, over, readData, commandAck) =
-    xilinxElasticBuffer @n clkRead clkWrite ebMode wdata
-
-  -- We make sure to "stickify" the signals in their original domain. The
-  -- synchronizer might lose samples depending on clock configurations.
-
-  underSticky = sticky clkRead fifoReset under
-  overSticky0 = sticky clkWrite fifoResetWrite over
-  overSticky1 = CE.safeDffSynchronizer clkWrite clkRead False overSticky0
-
-  -- Note that resetting the FIFO only affects the under/overflow signals, not
-  -- the data count. This means that we need to reset the FIFO only in case of
-  -- errors.
-  fifoReset = unsafeFromActiveLow stable
-  fifoResetWrite = unsafeFromActiveLow $ CE.safeDffSynchronizer clkRead clkWrite False stable
-
-  controllerReset = unsafeFromActiveHigh (unsafeToActiveHigh rstRead .||. underSticky .||. overSticky1)
-
-  (ebMode, stable) =
-    withClockResetEnable clkRead controllerReset enableGen
-      $ mealyB goControl InReset (commandAck, dataCount)
-
-  -- TODO: Moving the elastic buffers to their midpoints should happen in software
-  goControl ::
-    FillControlState ->
-    (Ack, RelDataCount n) ->
-    ( FillControlState
-    , (Maybe EbCommand, Stable)
-    )
-  goControl state0 (~(Ack ack), datacount) = (state1, (command, state1 == Stable))
-   where
-    command = case state0 of
-      Filling -> Just Fill
-      Draining -> Just Drain
-      _ -> Nothing
-
-    state1 =
-      case state0 of
-        InReset -> Filling
-        Filling | datacount > targetDataCount && ack -> Draining
-        Draining | datacount <= targetDataCount && ack -> Stable
-        _ -> state0
-
-data FillControlState
-  = InReset
-  | Filling
-  | Draining
-  | Stable
-  deriving (Eq, Show, Generic, NFDataX)
 
 {-# OPAQUE xilinxElasticBufferWb #-}
 
