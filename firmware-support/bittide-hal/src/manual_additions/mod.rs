@@ -7,6 +7,7 @@ pub mod dna;
 pub mod elastic_buffer;
 pub mod index;
 pub mod scatter_gather_pe;
+pub mod si539x_spi;
 pub mod soft_ugn_demo_gppe;
 pub mod switch_calendar;
 pub mod timer;

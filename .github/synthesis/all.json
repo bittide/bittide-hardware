@@ -20,6 +20,7 @@
   {"top": "dnaOverSerial",                 "stage": "test",  "cc_report": false},
   {"top": "fincFdecTests",                 "stage": "test",  "cc_report": false},
   {"top": "linkConfigurationTest",         "stage": "test",  "cc_report": false},
+  {"top": "si539xConfigTest",              "stage": "test",  "cc_report": false},
   {"top": "swCcTopologyTest",              "stage": "test",  "cc_report": true},
   {"top": "switchDemoTest",                "stage": "test",  "cc_report": true},
   {"top": "syncInSyncOut",                 "stage": "test",  "cc_report": false},
