@@ -1,6 +1,6 @@
 [
   {"top": "counterReducedPins",            "stage": "pnr",   "cc_report": false},
-  {"top": "elasticBuffer5",                "stage": "pnr",   "cc_report": false},
+  {"top": "elasticBufferWb",               "stage": "pnr",   "cc_report": false},
   {"top": "freeze",                        "stage": "pnr",   "cc_report": false},
   {"top": "gatherUnit1KReducedPins",       "stage": "pnr",   "cc_report": false},
   {"top": "safeDffSynchronizer",           "stage": "pnr",   "cc_report": false},
