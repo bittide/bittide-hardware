@@ -19,6 +19,33 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
 
     uwriteln!(uart, "Hello from management unit..").unwrap();
+
+    uwriteln!(uart, "Centering buffer occupancies").unwrap();
+    for (i, eb) in [
+        &INSTANCES.elastic_buffer,
+        &INSTANCES.elastic_buffer_1,
+        &INSTANCES.elastic_buffer_2,
+        &INSTANCES.elastic_buffer_3,
+        &INSTANCES.elastic_buffer_4,
+        &INSTANCES.elastic_buffer_5,
+        &INSTANCES.elastic_buffer_6,
+    ]
+    .iter()
+    .enumerate()
+    {
+        uwriteln!(
+            uart,
+            "Elastic buffer {}, current occupancy: {}",
+            i,
+            eb.data_count()
+        )
+        .unwrap();
+        eb.set_occupancy(0);
+        eb.set_stable(true);
+    }
+    uwriteln!(uart, "All elastic buffers centered").unwrap();
+
+    uwriteln!(uart, "Starting UGN captures").unwrap();
     let mut capture_ugns = [
         (INSTANCES.capture_ugn, false),
         (INSTANCES.capture_ugn_1, false),
