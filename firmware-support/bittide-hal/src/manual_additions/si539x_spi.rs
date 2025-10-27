@@ -4,11 +4,13 @@
 use crate::manual_additions::timer::Duration;
 use crate::shared::devices::Si539xSpi;
 use crate::shared::devices::Timer;
+use crate::shared::devices::Uart;
 use crate::shared::types::Maybe::{Just, Nothing};
 use crate::shared::types::RegisterOperation;
 use crate::shared::types::Tuple0;
 
 use ufmt::derive::uDebug;
+use ufmt::uwriteln;
 
 pub struct Config<const PRE_LEN: usize, const CFG_LEN: usize, const PST_LEN: usize> {
     pub preamble: [ConfigEntry; PRE_LEN],
@@ -59,28 +61,80 @@ impl Si539xSpi {
         &self,
         timer: &Timer,
         config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
+        uart: &mut Uart,
     ) -> Result<(), WriteError> {
+        let start = timer.now();
+        uwriteln!(
+            uart,
+            "{}: Setting 'spi_done' to false...",
+            timer.now() - start
+        )
+        .unwrap();
         self.set_spi_done(false);
+        uwriteln!(
+            uart,
+            "{}: Waiting for clock board to be ready for configuration...",
+            timer.now() - start
+        )
+        .unwrap();
         self.wait_for_ready();
 
+        uwriteln!(uart, "{}: Writing preamble...", timer.now() - start).unwrap();
         for entry in config.preamble {
             self.write(entry.into());
         }
+        uwriteln!(
+            uart,
+            "{}: Waiting for calibration of preamble...",
+            timer.now() - start
+        )
+        .unwrap();
         timer.wait(Duration::from_millis(300));
 
+        uwriteln!(uart, "{}: Writing config...", timer.now() - start).unwrap();
         for entry in config.config {
             match self.write_and_confirm(entry.into()) {
                 Ok(()) => continue,
-                Err(e) => return Err(e),
+                Err(WriteError::NotConfirmed { read_data }) => {
+                    uwriteln!(
+                        uart,
+                        "ERROR: At 0x{:02X}{:02X} wrote 0x{:02X}, but read back 0x{:02X}",
+                        entry.page,
+                        entry.address,
+                        entry.data,
+                        read_data,
+                    )
+                    .unwrap();
+                    return Err(WriteError::NotConfirmed { read_data });
+                }
             };
         }
 
+        uwriteln!(uart, "{}: Writing postamble...", timer.now() - start).unwrap();
         for entry in config.postamble {
             self.write(entry.into());
         }
 
+        uwriteln!(
+            uart,
+            "{}: Waiting for lock of clock...",
+            timer.now() - start
+        )
+        .unwrap();
         self.wait_for_lock();
+        uwriteln!(
+            uart,
+            "{}: Setting 'spi_done' to true...",
+            timer.now() - start
+        )
+        .unwrap();
         self.set_spi_done(true);
+        uwriteln!(
+            uart,
+            "{}: Finished writing configuration",
+            timer.now() - start
+        )
+        .unwrap();
         Ok(())
     }
 
