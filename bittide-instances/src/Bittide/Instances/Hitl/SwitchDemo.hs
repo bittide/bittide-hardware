@@ -23,10 +23,6 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (
-  Overflow,
-  Stable,
-  Underflow,
-  resettableXilinxElasticBuffer,
   sticky,
  )
 import Bittide.Hitl (
@@ -65,8 +61,6 @@ import Clash.Cores.UART.Extra
 import qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
-
-type FifoSize = 5 -- = 2^5 = 32
 
 {- | Reset logic:
 
@@ -110,8 +104,6 @@ switchDemoDut ::
   , "JTAG_OUT" ::: Signal Bittide JtagOut
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
   , "ALL_STABLE" ::: Signal Basic125 Bool
-  , "fifoOverflowsSticky" ::: Signal Basic125 Bool
-  , "fifoUnderflowsSticky" ::: Signal Basic125 Bool
   , "UART_TX" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
@@ -129,8 +121,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
     , jtagOut
     , transceiversFailedAfterUp
     , allStableFree
-    , fifoOverflowsStickyFree
-    , fifoUnderflowsStickyFree
     , uartTx
     , syncOut
     )
@@ -247,7 +237,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   txDatas = mux <$> txSamplingsDelayed <*> switchDataOut <*> repeat (pack <$> localCounter)
 
   txStarts :: Vec 7 (Signal Bittide Bool)
-  txStarts = repeat allStableSticky
+  txStarts = ebStables
 
   -- Step 4, deassert CC CPU reset, deassert Bittide domain reset:
   handshakeRstFree :: Reset Basic125
@@ -268,9 +258,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
 
   -- Step 6, wait for elastic buffer initialization
   --         (=> signal we're ready to receive data):
-  ebReset :: Reset Bittide
-  ebReset = unsafeFromActiveLow allStableSticky
-
   rxReadys :: Vec 7 (Signal GthRx Bool)
   rxReadys = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebStables
 
@@ -289,6 +276,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , calEntry
         , uartTx
         , syncOut
+        , ebStables
         )
     ) =
       withBittideByteOrder
@@ -306,7 +294,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , pure 0 -- link in
             , pure maxBound -- enable mask
             , linksSuitableForCc
-            , rxDatasEbs
+            , transceivers.rxDatas
             , syncIn
             )
           ,
@@ -319,6 +307,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , pure ()
             , pure ()
             , pure ()
+            , repeat $ pure ()
             )
           )
 
@@ -367,13 +356,41 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       (xpmCdcArraySingle bittideClk refClk peOutput)
       (xpmCdcArraySingle bittideClk refClk localCounter)
       (xpmCdcArraySingle bittideClk refClk calEntry)
-      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (0 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (1 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (2 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (3 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (4 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (5 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (6 :: Index LinkCount)))
+      ( xpmCdcArraySingle
+          (transceivers.rxClocks !! (0 :: Index LinkCount))
+          refClk
+          (transceivers.rxDatas !! (0 :: Index LinkCount))
+      )
+      ( xpmCdcArraySingle
+          (transceivers.rxClocks !! (1 :: Index LinkCount))
+          refClk
+          (transceivers.rxDatas !! (1 :: Index LinkCount))
+      )
+      ( xpmCdcArraySingle
+          (transceivers.rxClocks !! (2 :: Index LinkCount))
+          refClk
+          (transceivers.rxDatas !! (2 :: Index LinkCount))
+      )
+      ( xpmCdcArraySingle
+          (transceivers.rxClocks !! (3 :: Index LinkCount))
+          refClk
+          (transceivers.rxDatas !! (3 :: Index LinkCount))
+      )
+      ( xpmCdcArraySingle
+          (transceivers.rxClocks !! (4 :: Index LinkCount))
+          refClk
+          (transceivers.rxDatas !! (4 :: Index LinkCount))
+      )
+      ( xpmCdcArraySingle
+          (transceivers.rxClocks !! (5 :: Index LinkCount))
+          refClk
+          (transceivers.rxDatas !! (5 :: Index LinkCount))
+      )
+      ( xpmCdcArraySingle
+          (transceivers.rxClocks !! (6 :: Index LinkCount))
+          refClk
+          (transceivers.rxDatas !! (6 :: Index LinkCount))
+      )
       (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (0 :: Index LinkCount)))
       (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (1 :: Index LinkCount)))
       (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (2 :: Index LinkCount)))
@@ -391,39 +408,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         enableGen
         (SNat @Si539xHoldTime)
         callistoResult.maybeSpeedChange
-
-  rxFifos ::
-    Vec
-      LinkCount
-      ( Signal Bittide (RelDataCount FifoSize)
-      , Signal Bittide Underflow
-      , Signal Bittide Overflow
-      , Signal Bittide Stable
-      , Signal Bittide (Maybe (BitVector 64))
-      )
-  rxFifos = zipWith go transceivers.rxClocks transceivers.rxDatas
-   where
-    go rxClk rxData = resettableXilinxElasticBuffer bittideClk rxClk ebReset rxData
-
-  fifoUnderflowsTx :: Vec LinkCount (Signal Bittide Underflow)
-  fifoOverflowsTx :: Vec LinkCount (Signal Bittide Overflow)
-  rxDatasEbs :: Vec LinkCount (Signal Bittide (Maybe (BitVector 64)))
-  ebStables :: Vec 7 (Signal Bittide Stable)
-  (_, fifoUnderflowsTx, fifoOverflowsTx, ebStables, rxDatasEbs) = unzip5 rxFifos
-
-  fifoOverflows :: Signal Bittide Overflow
-  fifoOverflows = or <$> bundle fifoOverflowsTx
-
-  fifoUnderflows :: Signal Bittide Underflow
-  fifoUnderflows = or <$> bundle fifoUnderflowsTx
-
-  fifoOverflowsStickyFree :: Signal Basic125 Bool
-  fifoOverflowsStickyFree =
-    xpmCdcSingle bittideClk refClk $ sticky bittideClk bittideRst fifoOverflows
-
-  fifoUnderflowsStickyFree :: Signal Basic125 Bool
-  fifoUnderflowsStickyFree =
-    xpmCdcSingle bittideClk refClk $ sticky bittideClk bittideRst fifoUnderflows
 
 switchDemoTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
@@ -499,23 +483,15 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
     , jtagOut :: Signal Bittide JtagOut
     , transceiversFailedAfterUp :: Signal Basic125 Bool
     , allStable :: Signal Basic125 Bool
-    , fifoOverflows :: Signal Basic125 Bool
-    , fifoUnderflows :: Signal Basic125 Bool
     , uartTx :: Signal Basic125 Bit
     , syncOut :: Signal Basic125 Bit
     ) = switchDemoDut refClk testReset boardClk rxs rxns rxps miso jtagIn syncIn
 
-  fifoSuccess :: Signal Basic125 Bool
-  fifoSuccess = not <$> (fifoUnderflows .||. fifoOverflows)
-
-  doneSuccess :: Signal Basic125 Bool
-  doneSuccess = allStable .&&. fifoSuccess
-
   testDone :: Signal Basic125 Bool
-  testDone = doneSuccess .||. transceiversFailedAfterUp .||. fmap not fifoSuccess
+  testDone = allStable .||. transceiversFailedAfterUp
 
   testSuccess :: Signal Basic125 Bool
-  testSuccess = testDone .&&. fifoSuccess .&&. fmap not transceiversFailedAfterUp
+  testSuccess = testDone .&&. fmap not transceiversFailedAfterUp
 
   testIla :: Signal Basic125 ()
   testIla =
@@ -529,8 +505,6 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
           :> "dt_spiOut"
           :> "dt_transceiversFailedAfterUp"
           :> "dt_allStable"
-          :> "dt_fifoOverflows"
-          :> "dt_fifoUnderflows"
           :> Nil
       )
         { depth = D32768
@@ -543,8 +517,6 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
       (bundle spiOut)
       transceiversFailedAfterUp
       allStable
-      fifoOverflows
-      fifoUnderflows
 
   captureFlag :: Signal Basic125 Bool
   captureFlag =
