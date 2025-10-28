@@ -39,6 +39,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
 import Protocols.Wishbone
 
 -- internal imports
+import Bittide.Df hiding (wbToDf)
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
@@ -353,13 +354,6 @@ singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
     case divWithRemainder @(Regs a 8) @8 @7 of
       Dict ->
         f (master, unbundle slaves)
-
-{- | Takes an input that features no back pressure mechanism and turn it into `Df`.
-This function is unsafe, because data can be lost when the input is @Just _@ and
-the receiving circuit tries to apply back pressure.
--}
-unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)
-unsafeToDf = Circuit $ \(cSig, _) -> (pure (), cSig)
 
 -- | 'Df' version of 'uart'.
 uartDf ::

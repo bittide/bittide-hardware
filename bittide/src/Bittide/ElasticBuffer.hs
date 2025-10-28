@@ -5,12 +5,26 @@
 module Bittide.ElasticBuffer where
 
 import Bittide.ClockControl (RelDataCount, targetDataCount)
+import Bittide.Df
 import Bittide.Extra.Maybe (orNothing)
+import Clash.Class.BitPackC (BitPackC, ByteOrder, Bytes)
 import Clash.Cores.Xilinx.DcFifo
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
+import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
 import Clash.Prelude
 import GHC.Stack
-import Protocols (Ack (..))
+import Protocols (Ack (..), CSignal, Circuit (..), applyC)
+import Protocols.MemoryMap (Access (..), ConstBwd, MM)
+import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (..),
+  busActivityWrite,
+  deviceWb,
+  registerConfig,
+  registerWb,
+  registerWbDf,
+ )
+import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 import qualified Clash.Cores.Extra as CE
 import qualified Clash.Explicit.Prelude as E
@@ -20,7 +34,7 @@ data EbCommand
     Drain
   | -- | Enable write, disable read
     Fill
-  deriving (Generic, NFDataX, Eq, Show)
+  deriving (Generic, NFDataX, Eq, Show, BitPack, BitPackC, ShowX, ToFieldType)
 
 type Underflow = Bool
 type Overflow = Bool
@@ -56,23 +70,18 @@ xilinxElasticBuffer ::
   ) =>
   Clock readDom ->
   Clock writeDom ->
-  -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'RelDataCount'
-  -- ones. Make sure to hold the reset at least 3 cycles in both clock domains.
-  Reset readDom ->
   -- | Operating mode of the elastic buffer. Must remain stable until an acknowledgement
   -- is received.
   Signal readDom (Maybe EbCommand) ->
   Signal writeDom a ->
   ( Signal readDom (RelDataCount n)
-  , -- Indicates whether the FIFO under or overflowed. This signal is sticky: it
-    -- will only deassert upon reset.
-    Signal readDom Underflow
+  , Signal readDom Underflow
   , Signal writeDom Overflow
   , Signal readDom a
   , -- Acknowledgement for EbMode
     Signal readDom Ack
   )
-xilinxElasticBuffer clkRead clkWrite rstRead command wdata =
+xilinxElasticBuffer clkRead clkWrite command wdata =
   ( -- Note that this is chosen to work for 'RelDataCount' either being
     -- set to 'Signed' with 'targetDataCount' equals 0 or set to
     -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
@@ -82,16 +91,12 @@ xilinxElasticBuffer clkRead clkWrite rstRead command wdata =
       . bitCoerce
       . (+ (-1 - shiftR maxBound 1))
       <$> readCount
-  , isUnderflowSticky
-  , isOverflowSticky
+  , isUnderflow
+  , isOverflow
   , fifoData
   , commandAck
   )
  where
-  rstWrite = unsafeFromActiveHigh rstWriteBool
-  rstWriteBool =
-    CE.safeDffSynchronizer clkRead clkWrite False (unsafeToActiveHigh rstRead)
-
   FifoOut{readCount, isUnderflow, isOverflow, fifoData} =
     dcFifo
       (defConfig @n){dcOverflow = True, dcUnderflow = True}
@@ -101,11 +106,6 @@ xilinxElasticBuffer clkRead clkWrite rstRead command wdata =
       noResetRead
       writeData
       readEnable
-
-  -- We make sure to "stickify" the signals in their original domain. The
-  -- synchronizer might lose samples depending on clock configurations.
-  isUnderflowSticky = sticky clkRead rstRead isUnderflow
-  isOverflowSticky = sticky clkWrite rstWrite isOverflow
 
   -- We don't reset the Xilix FIFO: its reset documentation is self-contradictory
   -- and mentions situations where the FIFO can end up in an unrecoverable state.
@@ -161,18 +161,25 @@ resettableXilinxElasticBuffer ::
   , Signal readDom a
   )
 resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
-  (dataCount, under, over1, stable, readData)
+  (dataCount, underSticky, overSticky1, stable, readData)
  where
   (dataCount, under, over, readData, commandAck) =
-    xilinxElasticBuffer @n clkRead clkWrite fifoReset ebMode wdata
-  over1 = CE.safeDffSynchronizer clkWrite clkRead False over
+    xilinxElasticBuffer @n clkRead clkWrite ebMode wdata
+
+  -- We make sure to "stickify" the signals in their original domain. The
+  -- synchronizer might lose samples depending on clock configurations.
+
+  underSticky = sticky clkRead fifoReset under
+  overSticky0 = sticky clkWrite fifoResetWrite over
+  overSticky1 = CE.safeDffSynchronizer clkWrite clkRead False overSticky0
 
   -- Note that resetting the FIFO only affects the under/overflow signals, not
   -- the data count. This means that we need to reset the FIFO only in case of
   -- errors.
   fifoReset = unsafeFromActiveLow stable
+  fifoResetWrite = unsafeFromActiveLow $ CE.safeDffSynchronizer clkRead clkWrite False stable
 
-  controllerReset = unsafeFromActiveHigh (unsafeToActiveHigh rstRead .||. under .||. over1)
+  controllerReset = unsafeFromActiveHigh (unsafeToActiveHigh rstRead .||. underSticky .||. overSticky1)
 
   (ebMode, stable) =
     withClockResetEnable clkRead controllerReset enableGen
@@ -205,3 +212,107 @@ data FillControlState
   | Draining
   | Stable
   deriving (Eq, Show, Generic, NFDataX)
+
+{-# OPAQUE xilinxElasticBufferWb #-}
+
+{- | Wishbone wrapper around 'xilinxElasticBuffer' that exposes control and monitoring
+via memory-mapped registers using the clash-protocols-memmap infrastructure.
+
+This component allows software control of the elastic buffer's buffer occupancies and
+provides monitoring capabilities. The primary use case is to enable a CPU to perform
+buffer initialization during the system startup phase.
+
+The registers provided are:
+1. Command Register (Write-Only): Adding or removing singular frames from the buffer.
+2. Data Count Register (Read-Only): Current fill level of the buffer.
+3. Underflow Register (Read-Write): Sticky flag indicating if an underflow has occurred.
+   Flag can be cleared by writing false to this register.
+4. Overflow Register (Read-Write): Sticky flag indicating if an overflow has occurred.
+   Flag can be cleared by writing false to this register.
+5. Stable Register (Write-Only): Software can set this flag to indicate that the buffer
+   is stable.
+-}
+xilinxElasticBufferWb ::
+  forall n readDom writeDom addrW a.
+  ( HasCallStack
+  , KnownDomain readDom
+  , KnownDomain writeDom
+  , NFDataX a
+  , KnownNat n
+  , 4 <= n
+  , n <= 17
+  , KnownNat addrW
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Clock readDom ->
+  Reset readDom ->
+  SNat n ->
+  Clock writeDom ->
+  Signal writeDom a ->
+  Circuit
+    (ConstBwd MM, Wishbone readDom 'Standard addrW (Bytes 4))
+    ( CSignal readDom (RelDataCount n)
+    , CSignal readDom Underflow
+    , CSignal readDom Overflow
+    , CSignal readDom Stable
+    , CSignal readDom a
+    )
+xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
+  [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
+    deviceWb "ElasticBuffer" -< wb
+
+  -- Command register: Writing to this register adds or removes a single element
+  -- from the buffer occupancy
+  (_ebCommand, ebCommandDfActivity) <-
+    registerWbDf
+      clkRead
+      rstRead
+      (registerConfig "command"){access = WriteOnly}
+      Drain
+      -< (wbCommand, Fwd (pure Nothing))
+
+  ebCommandDf <- applyC (fmap busActivityWrite) id -< ebCommandDfActivity
+
+  let (dataCount, underflow, overflow0, readData, commandAck) =
+        xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
+
+  Fwd ebCommandSig <- unsafeFromDf -< (ebCommandDf, Fwd commandAck)
+
+  -- Synchronize overflow pulse from write domain to read domain
+  let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
+
+  (dataCountOut, _dataCountActivity) <-
+    registerWb
+      clkRead
+      rstRead
+      (registerConfig "data_count"){access = ReadOnly}
+      0
+      -< (wbDataCount, Fwd (Just <$> dataCount))
+
+  (underflowOut, _underflowActivity) <-
+    registerWb
+      clkRead
+      rstRead
+      (registerConfig "underflow"){access = ReadWrite}
+      False
+      -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
+
+  (overflowOut, _overflowActivity) <-
+    registerWb
+      clkRead
+      rstRead
+      (registerConfig "overflow"){access = ReadWrite}
+      False
+      -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
+
+  -- Stable register: Software can set this to indicate buffer is ready
+  (stableOut, _stableActivity) <-
+    registerWb
+      clkRead
+      rstRead
+      (registerConfig "stable"){access = WriteOnly}
+      False
+      -< (wbStable, Fwd (pure Nothing))
+
+  idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)

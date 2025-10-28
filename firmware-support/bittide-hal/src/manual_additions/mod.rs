@@ -4,6 +4,7 @@
 
 pub mod capture_ugn;
 pub mod dna;
+pub mod elastic_buffer;
 pub mod index;
 pub mod scatter_gather;
 pub mod switch_calendar;
