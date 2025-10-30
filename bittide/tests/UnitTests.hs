@@ -15,6 +15,7 @@ import qualified Tests.Axi4.Properties
 import qualified Tests.Calendar
 import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
+import qualified Tests.DelayWishboneC
 import qualified Tests.Df
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
@@ -37,6 +38,7 @@ tests =
     , Tests.Calendar.tests
     , Tests.ClockControl.Freeze.tests
     , Tests.ClockControl.Si539xSpi.tests
+    , Tests.DelayWishboneC.tests
     , Tests.Df.tests
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests

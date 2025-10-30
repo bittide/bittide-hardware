@@ -150,6 +150,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
+name = "delay_wishbone_c"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -20,6 +20,7 @@ members = [
   "test-cases/registerwb_test",
   "test-cases/capture_ugn_test",
   "test-cases/clock-control-wb",
+  "test-cases/delay_wishbone_c",
   "test-cases/dna_port_e2_test",
   "test-cases/elastic_buffer_wb_test",
   "test-cases/wb_to_df_test",
