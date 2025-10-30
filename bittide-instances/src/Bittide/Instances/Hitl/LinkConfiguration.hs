@@ -274,7 +274,7 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'linkConfigurationTest
-    , targetXdcs = ["linkConfigurationTest.xdc"]
+    , targetXdcs = ["transceiversUpTest.xdc"]
     , externalHdl = []
     , testCases =
         [ HitlTestCase

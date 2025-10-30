@@ -40,7 +40,7 @@ tests =
   HitlTestGroup
     { topEntity = 'swCcTopologyTest
     , targetXdcs =
-        [ "swCcTopologyTest.xdc"
+        [ "switchDemoTest.xdc"
         , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
