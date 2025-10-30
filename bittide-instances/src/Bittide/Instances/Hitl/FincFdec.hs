@@ -29,6 +29,7 @@ import Bittide.Hitl (
 import Bittide.Instances.Domains
 
 import Data.Maybe (isJust)
+import System.FilePath ((</>))
 
 import qualified Bittide.ClockControl.Si5395J as Si5395J
 
@@ -218,7 +219,11 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'fincFdecTests
-    , targetXdcs = ["fincFdecTests.xdc"]
+    , targetXdcs =
+        [ "fincFdecTests.xdc"
+        , "si539x" </> "fincfdec.xdc"
+        , "si539x" </> "spi.xdc"
+        ]
     , externalHdl = []
     , testCases = testCasesFromEnum @Test [HwTargetByIndex 7] ()
     , mDriverProc = Nothing

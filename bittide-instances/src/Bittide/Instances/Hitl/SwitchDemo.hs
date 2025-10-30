@@ -565,6 +565,8 @@ tests =
         , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
+        , "si539x" </> "fincfdec.xdc"
+        , "si539x" </> "spi.xdc"
         ]
     , externalHdl = []
     , testCases =

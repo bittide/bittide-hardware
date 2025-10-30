@@ -37,6 +37,7 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
+import System.FilePath ((</>))
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
@@ -274,7 +275,10 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'linkConfigurationTest
-    , targetXdcs = ["linkConfigurationTest.xdc"]
+    , targetXdcs =
+        [ "switchDemoTest.xdc"
+        , "si539x" </> "spi.xdc"
+        ]
     , externalHdl = []
     , testCases =
         [ HitlTestCase

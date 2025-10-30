@@ -22,6 +22,7 @@ import Data.Char
 import qualified Data.List as L
 import Data.Maybe
 import Data.Proxy
+import System.FilePath ((</>))
 
 dnaOverSerial ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
@@ -100,7 +101,10 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'dnaOverSerial
-    , targetXdcs = ["dnaOverSerial.xdc"]
+    , targetXdcs =
+        [ "dnaOverSerial.xdc"
+        , "uart" </> "pmod1.xdc"
+        ]
     , externalHdl = []
     , testCases =
         [ HitlTestCase
