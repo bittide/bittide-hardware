@@ -171,6 +171,7 @@ library
     Project.Handle
     Protocols.Df.Extra
     Protocols.Extra
+    Protocols.Wishbone.Extra
     System.Timeout.Extra
 
 test-suite unittests
