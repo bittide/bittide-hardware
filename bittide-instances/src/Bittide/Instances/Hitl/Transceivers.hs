@@ -33,6 +33,7 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
+import System.FilePath ((</>))
 
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.GTH as Gth
@@ -238,7 +239,10 @@ tests =
   HitlTestGroup
     { topEntity = 'transceiversUpTest
     , externalHdl = []
-    , targetXdcs = ["transceiversUpTest.xdc"]
+    , targetXdcs =
+        [ "switchDemoTest.xdc"
+        , "si539x" </> "spi.xdc"
+        ]
     , testCases = iters
     , mDriverProc = Nothing
     , mPostProc = Nothing
