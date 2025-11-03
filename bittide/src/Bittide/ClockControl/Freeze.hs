@@ -13,7 +13,8 @@ import Protocols
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
-  RegisterConfig (access, description),
+  Lock (NoLock),
+  RegisterConfig (access, description, lock),
   deviceWb,
   registerConfig,
   registerWb,
@@ -95,24 +96,28 @@ freeze clk rst =
       { access = ReadOnly
       , description =
           "Elastic buffer counters (at last freeze). Note that this is coming from domain difference counters, not actual elastic buffers."
+      , lock = NoLock
       }
 
   lastSyncPulseConfig =
     (registerConfig "cycles_since_sync_pulse")
       { access = ReadOnly
       , description = "Number of clock cycles since last synchronization pulse (at last freeze)"
+      , lock = NoLock
       }
 
   syncCounterConfig =
     (registerConfig "number_of_sync_pulses_seen")
       { access = ReadOnly
       , description = "Number of synchronization pulses seen (at last freeze)"
+      , lock = NoLock
       }
 
   localClockConfig =
     (registerConfig "local_clock_counter")
       { access = ReadOnly
       , description = "Clock counter of local clock domain (at last freeze)"
+      , lock = NoLock
       }
 
   freezeCounterConfig =

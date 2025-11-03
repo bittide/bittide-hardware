@@ -249,6 +249,24 @@ class
         -- Strip padding introduced by 'MultipleOf' size requirements
         msbResize val
 
+  -- | Returns 'True' if the type is atomic or a newtype wrapper around an atomic
+  -- type (single constructor with single field). An atomic type is a type that
+  -- can be read or written in a single bus access. Or rather, a type that
+  -- *will* be read or written in a single bus access in practice. Examples of
+  -- atomic types are 'BitVector', 'Unsigned', 'Signed', 'Float', 'Double', and
+  -- 'Bool'.
+  --
+  -- Note that atomic types may still get written in multiple bus accesses if the
+  -- bus width is smaller than the type's packed size.
+  isAtomicC :: Proxy a -> Bool
+  default isAtomicC ::
+    ( Generic a
+    , GIsAtomicC (Rep a)
+    ) =>
+    Proxy a ->
+    Bool
+  isAtomicC _ = gIsAtomicC (Proxy @(Rep a))
+
 {- | 'resize', but biased towards the most significant bit (MSB). That is, if
 the bit size of the source type is larger than the destination type, it will
 discard the least significant bits (LSBs) instead of the MSBs. If the bit size
@@ -286,6 +304,8 @@ instance (KnownNat n) => BitPackC (BitVector n) where
   packC# byteOrder = toEndianBV byteOrder . resize
   maybeUnpackC# byteOrder = checkFits . fromEndianBV byteOrder
 
+  isAtomicC _ = True
+
 instance (KnownNat n) => BitPackC (Unsigned n) where
   type ConstructorSizeC (Unsigned n) = 0
   type AlignmentBoundaryC (Unsigned n) = AlignmentBoundaryC (BitVector n)
@@ -294,6 +314,8 @@ instance (KnownNat n) => BitPackC (Unsigned n) where
   packC# byteOrder = packC# byteOrder . pack
   maybeUnpackC# byteOrder = fmap unpack . maybeUnpackC# byteOrder
 
+  isAtomicC _ = True
+
 instance (KnownNat n) => BitPackC (Signed n) where
   type ConstructorSizeC (Signed n) = 0
   type AlignmentBoundaryC (Signed n) = AlignmentBoundaryC (BitVector n)
@@ -301,6 +323,8 @@ instance (KnownNat n) => BitPackC (Signed n) where
 
   packC# byteOrder = unpack . toEndianBV byteOrder . pack . resize
   maybeUnpackC# byteOrder = checkFits . unpack . fromEndianBV byteOrder
+
+  isAtomicC _ = True
 
 {- | Checks whether the argument fits within the bounds of the result type. Only
 works when @BitSize (f a) <= @BitSize (f b)@.
@@ -333,6 +357,8 @@ instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
       then Nothing
       else Just (unpack val1)
 
+  isAtomicC _ = True
+
 instance BitPackC Float where
   type ConstructorSizeC Float = 0
   type AlignmentBoundaryC Float = 4
@@ -341,6 +367,8 @@ instance BitPackC Float where
   packC# byteOrder = toEndianBV byteOrder . pack
   maybeUnpackC# byteOrder = Just . unpack . toEndianBV byteOrder
 
+  isAtomicC _ = True
+
 instance BitPackC Double where
   type ConstructorSizeC Double = 0
   type AlignmentBoundaryC Double = 8
@@ -348,6 +376,8 @@ instance BitPackC Double where
 
   packC# byteOrder = toEndianBV byteOrder . pack
   maybeUnpackC# byteOrder = Just . unpack . toEndianBV byteOrder
+
+  isAtomicC _ = True
 
 instance BitPackC Bool where
   type ConstructorSizeC Bool = 0
@@ -359,6 +389,8 @@ instance BitPackC Bool where
     False -> 0
   maybeUnpackC# _byteOrder v = Just (testBit v 0)
 
+  isAtomicC _ = True
+
 instance BitPackC Bit where
   type ConstructorSizeC Bit = 0
   type AlignmentBoundaryC Bit = 1
@@ -366,6 +398,8 @@ instance BitPackC Bit where
 
   packC# _byteOrder = resize . pack
   maybeUnpackC# _byteOrder v = Just (boolToBit (testBit v 0))
+
+  isAtomicC _ = True
 
 instance BitPackC () where
   type ConstructorSizeC () = 0
@@ -375,6 +409,8 @@ instance BitPackC () where
   packC# _byteOrder _val = 0
   maybeUnpackC# _byteOrder _val = Just ()
 
+  isAtomicC _ = True
+
 instance (BitPackC a, KnownNat n) => BitPackC (Vec n a) where
   type ConstructorSizeC (Vec n a) = 0
   type AlignmentBoundaryC (Vec n a) = AlignmentBoundaryC a
@@ -382,6 +418,11 @@ instance (BitPackC a, KnownNat n) => BitPackC (Vec n a) where
 
   packC# byteOrder = pack . map (packC# byteOrder)
   maybeUnpackC# byteOrder = sequence . map (maybeUnpackC# byteOrder) . unpack
+
+  isAtomicC _ =
+    -- TODO: I guess a unary vector is atomic if its element is? I'm not sure how
+    --       Rust handles this.
+    False
 
 instance (BitPackC a) => BitPackC (Maybe a)
 instance (BitPackC a, BitPackC b) => BitPackC (Either a b)
@@ -395,7 +436,8 @@ instance BitPackC T where { \
   type AlignmentBoundaryC T = AlignmentBoundaryC (TT); \
   type ByteSizeC T = ByteSizeC (TT); \
   packC# byteOrder = packC# byteOrder . numConvert @_ @(TT); \
-  maybeUnpackC# byteOrder = fmap numConvert . maybeUnpackC# @(TT) byteOrder \
+  maybeUnpackC# byteOrder = fmap numConvert . maybeUnpackC# @(TT) byteOrder; \
+  isAtomicC _ = isAtomicC (Proxy @(TT)) \
 }
 
 THROUGH_INST (Word8, Unsigned 8)
@@ -541,3 +583,25 @@ instance GBitPackC boundary U1 where
 
   gPackFieldsC _byteOrder _start cc _u = (cc, 0)
   gUnpackFieldsC _byteOrder _start _selectedConstr _currentConstr _packed = Just U1
+
+-- | Generic class to determine if a type is atomic
+class GIsAtomicC f where
+  gIsAtomicC :: Proxy f -> Bool
+
+instance (GIsAtomicC a) => GIsAtomicC (M1 m d a) where
+  gIsAtomicC _ = gIsAtomicC (Proxy @a)
+
+instance (GIsAtomicC f, GIsAtomicC g) => GIsAtomicC (f :+: g) where
+  gIsAtomicC _ =
+    -- TODO: Pure sum types (i.e., not sum-of-product types) are atomic, but it is
+    --       not immediately clear to me how to implement that.
+    False
+
+instance (GIsAtomicC f, GIsAtomicC g) => GIsAtomicC (f :*: g) where
+  gIsAtomicC _ = False
+
+instance (BitPackC c) => GIsAtomicC (K1 i c) where
+  gIsAtomicC _ = isAtomicC (Proxy @c)
+
+instance GIsAtomicC U1 where
+  gIsAtomicC _ = True

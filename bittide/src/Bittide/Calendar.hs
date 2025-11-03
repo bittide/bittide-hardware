@@ -38,7 +38,8 @@ import Protocols
 import Protocols.MemoryMap
 import Protocols.MemoryMap.FieldType (FieldType, ToFieldType (..), Var)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
+  Lock (NoLock),
+  RegisterConfig (access, description, lock),
   busActivityWrite,
   deviceWb,
   registerConfig,
@@ -393,11 +394,13 @@ mkCalendarC
       (registerConfig "shadowEntry")
         { access = WriteOnly
         , description = "Stores the shadow entry before writing it to the shadow calendar."
+        , lock = NoLock
         }
     readEntryCfg =
       (registerConfig "shadowEntry")
         { access = ReadOnly
         , description = "Contains the shadow entry at the read address in the shadow calendar."
+        , lock = NoLock
         }
     writeAddrCfg =
       (registerConfig "writeAddr")
