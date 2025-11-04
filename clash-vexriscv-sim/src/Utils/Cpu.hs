@@ -15,6 +15,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.Wishbone
 import VexRiscv
 import VexRiscv.JtagTcpBridge as JTag
+import qualified VexRiscv.Reset as MinReset
 import VexRiscv.VecToTuple (vecToTuple)
 
 import Utils.Interconnect (interconnectTwo)
@@ -58,7 +59,9 @@ cpu dumpVcd jtagIn0 bootIMem bootDMem =
   , dS2M
   )
  where
-  (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` ndmReset) input jtagIn1
+  (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock cpuRst input jtagIn1
+
+  cpuRst = MinReset.toMinCycles hasClock $ unsafeOrReset hasReset ndmReset
 
   ndmReset =
     unsafeFromActiveHigh

@@ -10,6 +10,7 @@ import Prelude
 
 import qualified Tests.VexRiscv.ClockTicks
 import qualified Tests.VexRiscv.Random
+import qualified Tests.VexRiscv.Reset
 
 tests :: TestTree
 tests =
@@ -17,6 +18,7 @@ tests =
     "Tests"
     [ Tests.VexRiscv.ClockTicks.tests
     , Tests.VexRiscv.Random.tests
+    , Tests.VexRiscv.Reset.tests
     ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
