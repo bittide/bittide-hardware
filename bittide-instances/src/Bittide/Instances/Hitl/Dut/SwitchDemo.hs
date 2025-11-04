@@ -14,6 +14,7 @@ import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
+import Bittide.ElasticBuffer
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 import Bittide.Jtag (jtagChain)
@@ -53,6 +54,8 @@ type Baud = MaxBaudRate Basic125
 #else
 type Baud = 921_600
 #endif
+
+type FifoSize = 5 -- = 2^5 = 32
 
 baud :: SNat Baud
 baud = SNat
@@ -108,7 +111,7 @@ simpleManagementUnitC (SimpleManagementConfig peConfig dumpVcd) =
     idC -< (localCounter, nmuWbs)
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 26 (Vec 8 (Index 9))
+calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)
@@ -170,10 +173,11 @@ memoryMapCc, memoryMapMu :: MemoryMap
         , pure ()
         , pure ()
         , pure ()
+        , repeat $ pure ()
         )
       )
 
-muConfig :: SimpleManagementConfig 12
+muConfig :: SimpleManagementConfig 19
 muConfig =
   SimpleManagementConfig
     { peConfig =
@@ -220,7 +224,7 @@ circuitFnC ::
     , CSignal Bittide (BitVector 64)
     , CSignal Bittide (BitVector LinkCount)
     , CSignal Bittide (BitVector LinkCount)
-    , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
+    , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     , CSignal Bittide Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
@@ -232,9 +236,10 @@ circuitFnC ::
     , "CAL_ENTRY" ::: CSignal Bittide (Vec (LinkCount + 1) (Index (LinkCount + 2)))
     , "UART_TX" ::: CSignal Basic125 Bit
     , "SYNC_OUT" ::: CSignal Basic125 Bit
+    , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
     )
 circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs, syncIn) -> do
+  circuit $ \(ccMM, muMM, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     (muUartBytesBittide, _muUartStatus) <-
@@ -255,16 +260,28 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
         , dnaWb
         , muUartBus
         ]
-      , ugnData
+      , restWbs
       ) <-
       Vec.split -< muWbAll
 
-    ugnRxs <-
-      defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
+    (ugnWbs, ebWbs) <- Vec.split -< restWbs
+    (_relDatCount, _underflow, _overflow, ebStables, Fwd rxs1) <-
+      unzip5Vec
+        <| ( Vec.vecCircuits
+              $ xilinxElasticBufferWb
+                bitClk
+                bitRst
+                (SNat @FifoSize)
+              <$> rxClocks
+              <*> rxs0
+           )
+        -< ebWbs
 
-    rxLinks <- Vec.append -< ([Fwd peOut], ugnRxs)
+    rxs2 <- defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+
+    rxs3 <- Vec.append -< ([Fwd peOut], rxs2)
     (switchOut, calEntry) <-
-      defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxLinks, switchWb))
+      defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxs3, switchWb))
     ([Fwd peIn], txs) <- Vec.split -< switchOut
 
     (Fwd peOut, ps) <-
@@ -345,9 +362,20 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
          , calEntry
          , uartTx
          , syncOut
+         , ebStables
          )
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   defaultBittideClkRstEn = withClockResetEnable bitClk bitRst bitEna
   defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
   defaultRefClkRstEn = withClockResetEnable refClk refRst refEna
+
+uncurry5 ::
+  (a -> b -> c -> d -> e -> f) ->
+  (a, b, c, d, e) ->
+  f
+uncurry5 fn (a, b, c, d, e) = fn a b c d e
+
+unzip5Vec ::
+  Circuit (Vec n (a, b, c, d, e)) (Vec n a, Vec n b, Vec n c, Vec n d, Vec n e)
+unzip5Vec = applyC unzip5 (uncurry5 zip5)
