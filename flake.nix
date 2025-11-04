@@ -45,6 +45,7 @@
             pkgs.haskellPackages.fourmolu
             pkgs.dtc
             pkgs.gcc
+            pkgs.llvmPackages.clang-unwrapped
 
             (pkgs.haskell-language-server.override { supportedGhcVersions = [ "910" ]; })
             pkgs.haskell.compiler.ghc910
