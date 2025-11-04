@@ -10,6 +10,7 @@ import Clash.Explicit.Prelude hiding (delay)
 import Clash.Prelude
 import Clash.Sized.Vector.Extra (incrementWithBlacklist)
 
+import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Idle
@@ -22,9 +23,9 @@ import Bittide.Wishbone
 
 import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Clash.Cores.Xilinx.Ila (Depth (D4096))
+import qualified VexRiscv.Reset as MinReset
 
 import qualified Data.ByteString as BS
-import Data.String.Interpolate (i)
 import qualified Protocols.MemoryMap as MM (
   ConstBwd,
   MM,
@@ -187,7 +188,8 @@ rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt =
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
       CpuIn{timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
-    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
+    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock rv32Reset rvIn jtagIn
+    rv32Reset = MinReset.toMinCycles hasClock $ unsafeOrReset hasReset jtagReset
     jtagReset = unsafeFromActiveHigh (delay False (bitToBool . ndmreset <$> cpuOut))
 
 -- | Map a function over the address field of 'WishboneM2S'

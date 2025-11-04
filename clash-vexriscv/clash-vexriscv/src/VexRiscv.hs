@@ -31,6 +31,7 @@ import Protocols.Wishbone
 import VexRiscv.ClockTicks
 import VexRiscv.FFI
 import VexRiscv.Random
+import VexRiscv.Reset
 import VexRiscv.TH
 import VexRiscv.VecToTuple
 
@@ -86,7 +87,7 @@ vexRiscv ::
   ) =>
   DumpVcd ->
   Clock dom ->
-  Reset dom ->
+  MinCyclesReset dom 2 ->
   Signal dom CpuIn ->
   Signal dom JtagIn ->
   ( Signal dom CpuOut
@@ -165,7 +166,7 @@ vexRiscv dumpVcd clk rst cpuInput jtagInput =
         dumpVcd
         sourcePath
         clk
-        rst
+        (fromMinCycles rst)
         timerInterrupt
         externalInterrupt
         softwareInterrupt
