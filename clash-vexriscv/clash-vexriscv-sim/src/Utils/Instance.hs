@@ -9,6 +9,7 @@ module Utils.Instance where
 import Clash.Annotations.TH
 import Clash.Prelude
 import VexRiscv
+import qualified VexRiscv.Reset as MinReset
 
 circuit ::
   "CLK" ::: Clock System ->
@@ -20,7 +21,7 @@ circuit ::
         , "JTAG_OUT" ::: Signal System JtagOut
         )
 circuit clk rst input jtagIn =
-  vexRiscv NoDumpVcd clk rst input jtagIn
+  vexRiscv NoDumpVcd clk (MinReset.toMinCycles clk rst) input jtagIn
 
 {-# CLASH_OPAQUE circuit #-}
 makeTopEntity 'circuit

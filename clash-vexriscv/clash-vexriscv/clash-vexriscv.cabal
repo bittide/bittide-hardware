@@ -113,6 +113,7 @@ library
     VexRiscv.FFI
     VexRiscv.JtagTcpBridge
     VexRiscv.Random
+    VexRiscv.Reset
     VexRiscv.TH
     VexRiscv.VecToTuple
 
@@ -144,6 +145,7 @@ test-suite unittests
     Tests.Extra
     Tests.VexRiscv.ClockTicks
     Tests.VexRiscv.Random
+    Tests.VexRiscv.Reset
   build-depends:
     HUnit,
     base,

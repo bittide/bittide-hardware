@@ -13,37 +13,37 @@ on: [push]
 # That file determines which version gets used locally on developer machines.
 
 jobs:
-  nix-shell:
-    name: VexRiscv integration (Nix shell)
+  nix-flake:
+    name: VexRiscv integration (Nix flake)
     needs: [rust-build-programs]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v30
+        uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
       - name: Enter Nix shell
         run: |
-          nix-shell --run "echo 'Nix shell entered'"
+          nix develop --command echo 'Nix shell entered'
 
       - name: Update Cabal index info
         run: |
           cp .github/cabal.project cabal.project.local
-          nix-shell --run "cabal update"
-          nix-shell --run "cabal freeze"
+          nix develop --command cabal update
+          nix develop --command cabal freeze
 
       - name: Cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.cabal-nix/store
-          key: packages-cachebust-4-nix-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'shell.nix', 'nix/**/*.nix', 'nix/**/*.json') }}
-          restore-keys: packages-cachebust-4-nix
+          key: packages-cachebust-5-nix-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'flake.nix', 'flake.lock', 'nix/**/*.nix', 'nix/**/*.json') }}
+          restore-keys: packages-cachebust-5-nix
 
       - name: Download VexRiscv Integration Tests
         uses: actions/download-artifact@v4
@@ -54,19 +54,19 @@ jobs:
         run: |
           tar -x -f vexriscv-test-binaries.tar
 
-      - run: nix-shell --run "cabal build all"
-      - run: nix-shell --run "cabal run clash-vexriscv:unittests"
-      - run: nix-shell --run "cabal run clash-vexriscv-sim:unittests -- -j1 --jtag-debug"
-      - run: nix-shell --run "cabal run clash-vexriscv-sim:hdl-test"
+      - run: nix develop --command cabal build all
+      - run: nix develop --command cabal run clash-vexriscv:unittests
+      - run: nix develop --command cabal run clash-vexriscv-sim:unittests -- -j1 --jtag-debug
+      - run: nix develop --command cabal run clash-vexriscv-sim:hdl-test
 
   license-check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     container:
-      image: ubuntu:22.04
+      image: ubuntu:24.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: REUSE Compliance Check
-      uses: fsfe/reuse-action@v4
+      uses: fsfe/reuse-action@v6
 
   haskell-checks:
     name: Haskell checks
@@ -85,7 +85,7 @@ jobs:
           git config --global --add safe.directory '*'
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install fourmolu
         run: |
@@ -106,13 +106,13 @@ jobs:
 
   rust-checks:
     name: Rust checks
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     container:
-      image: ubuntu:22.04
+      image: ubuntu:24.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
@@ -139,13 +139,13 @@ jobs:
 
   rust-build-programs:
     name: Build Programs
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     container:
-      image: ubuntu:22.04
+      image: ubuntu:24.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
@@ -187,7 +187,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: clang-format check
         uses: jidicula/clang-format-action@v4.14.0
@@ -197,7 +197,7 @@ jobs:
 
   vex-riscv:
     name: VexRiscv integration
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: [rust-build-programs]
 
     strategy:
@@ -213,7 +213,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Update Cabal index info
         run: |
@@ -280,12 +280,12 @@ jobs:
         'rust-checks',
         'vex-riscv',
         'rust-build-programs',
-        'nix-shell'
+        'nix-flake'
       ]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check dependencies for failures
         run: |
