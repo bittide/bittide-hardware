@@ -13,12 +13,17 @@ fn main() {
     let hal_c_headers = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../firmware-support/bittide-hal-c/generated");
 
+    // Include directory for the Bittide HAL
+    let hal_c_include = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../firmware-support/bittide-hal-c/include");
+
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
         .compiler("clang")
         .include("src") // Add src directory for our custom stdint.h
         .include(hal_c_headers)
+        .include(hal_c_include) // Add HAL include directory
         .flag("--target=riscv32-unknown-none-elf") // RISC-V target
         .flag("-march=rv32imc")
         .flag("-mabi=ilp32")
