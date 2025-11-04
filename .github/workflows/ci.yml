@@ -131,7 +131,7 @@ jobs:
         run: ./scripts/diff-clash-vexriscv-subtree.py
 
   build:
-    name: Build dependencies
+    name: Build Haskell+Rust
     runs-on: [self-hosted, compute]
     defaults:
       run:
@@ -151,6 +151,7 @@ jobs:
 
       - run: cache clean
       - run: cache pull cabal --missing-ok --write-cache-found
+      - run: cache pull dist-newstyle --missing-ok
       - run: cache pull cargo --missing-ok
 
       - name: Update Cabal index info
@@ -170,6 +171,7 @@ jobs:
       - run: ./cargo.sh build --frozen
 
       - run: cache push cabal
+      - run: cache push dist-newstyle
       - run: cache push cargo
       - run: cache push build
 
