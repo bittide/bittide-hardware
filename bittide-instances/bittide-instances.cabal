@@ -341,6 +341,18 @@ executable clash
     clash-ghc,
     vivado-hs,
 
+executable vexriscv-sim
+  import: ghc2024, extra, sane-records
+  main-is: vexriscv_sim.hs
+  hs-source-dirs: bin
+  build-depends:
+    base,
+    bittide-instances,
+
+  ghc-options:
+    -Wall
+    -threaded
+
 executable samples-to
   import: ghc2024, extra, sane-records
   main-is: samples_to.hs
