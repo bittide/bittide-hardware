@@ -32,6 +32,7 @@ import Bittide.ClockControl.CallistoSw (
  )
 import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
+import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Jtag (jtagChain)
@@ -109,6 +110,7 @@ memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
         , pure ()
         , pure ()
         , pure ()
+        , repeat (pure ())
         )
       )
 
@@ -132,9 +134,11 @@ muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
 gppeLabel = fromIntegral (ord 'P') :> fromIntegral (ord 'E') :> Nil
 
 type NmuInternalBusses = 4 + PeInternalBusses
-type NmuExternalBusses = LinkCount * PeripheralsPerLink
+type NmuExternalBusses = (LinkCount * PeripheralsPerLink) + LinkCount
 type PeripheralsPerLink = 3 -- Scatter calendar, Gather calendar, UGN component.
 type NmuRemBusWidth = 30 - CLog 2 (NmuExternalBusses + NmuInternalBusses)
+
+type FifoSize = 5 -- = 2^5 = 32
 
 managementUnit ::
   forall dom.
@@ -245,7 +249,7 @@ softUgnDemoC ::
     , Jtag Bittide
     , CSignal Bittide (BitVector LinkCount)
     , CSignal Bittide (BitVector LinkCount)
-    , "RXS" ::: Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
+    , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     , CSignal Bittide Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
@@ -253,6 +257,7 @@ softUgnDemoC ::
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "UART_TX" ::: CSignal Basic125 Bit
     , "SYNC_OUT" ::: CSignal Basic125 Bit
+    , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
     )
 softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
@@ -261,13 +266,26 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
     -- Start management unit
     (Fwd lc, muWbAll, muUartBytesBittide) <-
       defaultBittideClkRstEn managementUnit -< (muMM, muJtag)
-    (ugnWbs, muSgWbs) <- Vec.split -< muWbAll
+    (ugnWbs, muWbs1) <- Vec.split -< muWbAll
+    (ebWbs, muSgWbs) <- Vec.split -< muWbs1
     -- Stop management unit
 
     -- Start internal links
-    Fwd rxs1 <- defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs0) -< ugnWbs
+    (_relDatCount, _underflow, _overflow, ebStables, Fwd rxs1) <-
+      unzip5Vec
+        <| ( Vec.vecCircuits
+              $ xilinxElasticBufferWb
+                bitClk
+                bitRst
+                (SNat @FifoSize)
+              <$> rxClocks
+              <*> rxs0
+           )
+        -< ebWbs
+
+    Fwd rxs2 <- defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
     (txs, gppeUartBytesBittide) <-
-      defaultBittideClkRstEn gppe rxs1 -< (gppeMm, muSgWbs, gppeJtag)
+      defaultBittideClkRstEn gppe rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop internal links
 
     -- Start UART multiplexing
@@ -345,9 +363,20 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
          , Fwd lc
          , uartTx
          , syncOut
+         , ebStables
          )
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   defaultBittideClkRstEn = withClockResetEnable bitClk bitRst bitEna
   defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
   defaultRefClkRstEn = withClockResetEnable refClk refRst refEna
+
+uncurry5 ::
+  (a -> b -> c -> d -> e -> f) ->
+  (a, b, c, d, e) ->
+  f
+uncurry5 fn (a, b, c, d, e) = fn a b c d e
+
+unzip5Vec ::
+  Circuit (Vec n (a, b, c, d, e)) (Vec n a, Vec n b, Vec n c, Vec n d, Vec n e)
+unzip5Vec = applyC unzip5 (uncurry5 zip5)
