@@ -12,6 +12,7 @@ use types::TypeGenerator;
 
 use crate::hal_set::{DeviceDescAnnotations, HalGenData, TypeDefAnnotations};
 
+pub mod c_header;
 pub mod device_instances;
 pub mod device_types;
 pub mod types;

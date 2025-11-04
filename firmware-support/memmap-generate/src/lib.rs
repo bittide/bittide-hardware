@@ -15,6 +15,7 @@ use std::io::Write;
 
 use parse::{MemoryMapTree, PathComp};
 
+pub use crate::generators::c_header::generate_c_header;
 pub use crate::generators::{generate_rust_wrappers, RustWrappers};
 pub use crate::parse::{parse, MemoryMapDesc};
 
