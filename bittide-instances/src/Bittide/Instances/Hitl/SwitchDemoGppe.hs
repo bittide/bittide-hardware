@@ -58,6 +58,7 @@ import Protocols
 import System.FilePath ((</>))
 import VexRiscv (JtagIn (..), JtagOut (..))
 
+import qualified Bittide.Instances.Hitl.Driver.SwitchDemoGppe as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
 
@@ -484,6 +485,6 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , mDriverProc = Just D.driver
     , mPostProc = Nothing
     }

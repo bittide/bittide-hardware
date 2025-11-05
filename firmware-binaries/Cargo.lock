@@ -885,6 +885,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "switch-demo2-gppe"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
+name = "switch-demo2-mu"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "switch_calendar_test"
 version = "0.1.0"
 dependencies = [

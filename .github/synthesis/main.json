@@ -1,8 +1,7 @@
 [
   {"top": "safeDffSynchronizer",   "stage": "hdl" , "cc_report": false},
 
-  {"top": "switchDemoGppeTest",    "stage": "pnr",  "cc_report": false},
-  {"top": "linkConfigurationTest", "stage": "test", "cc_report": false},
   {"top": "softUgnDemoTest",       "stage": "test", "cc_report": true},
+  {"top": "switchDemoGppeTest",    "stage": "test", "cc_report": true},
   {"top": "switchDemoTest",        "stage": "test", "cc_report": true}
 ]

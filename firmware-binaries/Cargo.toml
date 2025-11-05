@@ -35,8 +35,10 @@ members = [
   "hitl-tests/clock-board",
 
   "demos/clock-control",
-  "demos/switch-demo1-mu",
   "demos/soft-ugn-gppe",
   "demos/soft-ugn-mu",
+  "demos/switch-demo1-mu",
+  "demos/switch-demo2-mu",
+  "demos/switch-demo2-gppe",
 ]
 resolver = "2"
