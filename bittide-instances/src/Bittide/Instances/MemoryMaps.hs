@@ -23,6 +23,7 @@ import System.FilePath
 
 import qualified Bittide.Instances.Hitl.Dut.SoftUgnDemo as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
+import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Tests.DelayWishboneC as DelayWishboneC
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
@@ -47,6 +48,7 @@ $( do
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWb", RegisterWb.memoryMap)
           , ("ScatterGatherPe", ScatterGather.dutMM)
+          , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
