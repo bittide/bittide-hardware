@@ -33,7 +33,7 @@ enum FrequencyCheckError {
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 const CONFIG_200: Config<3, 584, 5> =
-    load_clock_config_csv!("../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-and-out1.csv");
+    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-and-out1.csv");
 
 /// System clock frequency in Hz (125 MHz).
 const SYS_FREQ: u32 = 125_000_000;
