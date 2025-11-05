@@ -14,4 +14,4 @@ riscv-rt = "0.11.0"
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
-cc = "1.0"
+cc = "1.2"

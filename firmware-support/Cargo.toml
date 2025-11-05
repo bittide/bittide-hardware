@@ -5,6 +5,7 @@
 [workspace]
 members = [
   "bittide-hal",
+  "bittide-hal-c",
   "bittide-macros",
   "bittide-sys",
   "gdb-trace",

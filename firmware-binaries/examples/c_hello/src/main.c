@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "stdint.h"
-#include "memmap.h"
+#include "vexriscv_memmap.h"
 
 // UART status bits
 #define UART_STATUS_TX_FULL  0x01  // Transmit buffer full
@@ -51,8 +51,8 @@ void c_main(void) {
     uart_puthex(test_val);
     uart_puts("\r\n");
 
-    // Set test status to success
-    *STATUS_REG = TEST_STATUS_SUCCESS;
+    // Set test status to success (StatusRegister device)
+    *STATUS_REGISTER_STATUS = 1; // 1 = Success
 
     // Echo loop
     uart_puts("Entering echo mode...\r\n");
