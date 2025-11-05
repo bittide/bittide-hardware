@@ -175,6 +175,7 @@ library
     Bittide.Instances.Hitl.Driver.ClockControl.Samples
     Bittide.Instances.Hitl.Driver.DnaOverSerial
     Bittide.Instances.Hitl.Driver.Si539xConfiguration
+    Bittide.Instances.Hitl.Driver.SoftUgnDemo
     Bittide.Instances.Hitl.Driver.SwCcTopologies
     Bittide.Instances.Hitl.Driver.SwitchDemo
     Bittide.Instances.Hitl.Driver.VexRiscv

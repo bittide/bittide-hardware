@@ -35,5 +35,7 @@ members = [
   "clock-control",
   "management-unit",
   "processing-element-test",
+  "soft-ugn-gppe",
+  "soft-ugn-mu",
 ]
 resolver = "2"
