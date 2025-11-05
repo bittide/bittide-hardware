@@ -182,6 +182,7 @@ library
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Dut.SoftUgnDemo
     Bittide.Instances.Hitl.Dut.SwitchDemo
+    Bittide.Instances.Hitl.Dut.SwitchDemoGppe
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.LinkConfiguration
