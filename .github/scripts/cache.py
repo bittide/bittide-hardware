@@ -4,8 +4,8 @@ Strict caching script, that uploads to a hardcoded S3 server. Users should set
 an environment variable 'S3_PASSWORD'.
 
 Usage:
-  cache push (cabal|cargo|build|clash|synth|build-post-synth) [--prefix=<prefix>] [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
-  cache pull (cabal|cargo|build|clash|synth|build-post-synth) [--prefix=<prefix>] [--missing-ok] [--overwrite-ok] [--write-cache-found]
+  cache push (cabal|dist-newstyle|cargo|build|clash|synth|build-post-synth) [--prefix=<prefix>] [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
+  cache pull (cabal|dist-newstyle|cargo|build|clash|synth|build-post-synth) [--prefix=<prefix>] [--missing-ok] [--overwrite-ok] [--write-cache-found]
   cache clean
   cache -h | --help
   cache --version
@@ -52,12 +52,15 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
-GLOBAL_CACHE_BUST = 11
+GLOBAL_CACHE_BUST = 12
 
-CARGO_CACHE_BUST = 2
+CARGO_CACHE_BUST = 3
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
 CARGO_KEY_PATTERNS = ("**/Cargo.lock", "**/Cargo.toml", "**/rust-toolchain.toml")
-CARGO_CACHE_INCLUDE_PATTERNS = ("~/.cargo",)
+CARGO_CACHE_INCLUDE_PATTERNS = (
+    "~/.cargo",
+    f"{PWD}/_build/cargo/",
+)
 CARGO_CACHE_EXCLUDE_PATTERNS = ()
 
 CABAL_CACHE_BUST = 2
@@ -68,6 +71,16 @@ CABAL_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/dist-newstyle/src",
 )
 CABAL_CACHE_EXCLUDE_PATTERNS = ()
+
+DIST_NEWSTYLE_CACHE_BUST = 1
+DIST_NEWSTYLE_KEY_PREFIX = f"dist-newstyle-g{GLOBAL_CACHE_BUST}-l{DIST_NEWSTYLE_CACHE_BUST}-"
+DIST_NEWSTYLE_KEY_PATTERNS = (*CABAL_KEY_PATTERNS, "**/*.cabal", "**/*.hs")
+DIST_NEWSTYLE_CACHE_INCLUDE_PATTERNS = (
+    f"{PWD}/dist-newstyle",
+    f"{PWD}/_build/memory_maps",
+    f"{PWD}/clash-vexriscv/clash-vexriscv/build_out_dir/",
+)
+DIST_NEWSTYLE_CACHE_EXCLUDE_PATTERNS = CABAL_CACHE_INCLUDE_PATTERNS
 
 BUILD_CACHE_BUST = 2
 BUILD_KEY_PREFIX = f"build-products-g{GLOBAL_CACHE_BUST}-l{BUILD_CACHE_BUST}-"
@@ -165,6 +178,10 @@ def get_cargo_key():
 
 def get_cabal_key():
     return CABAL_KEY_PREFIX + get_key_from_patterns(CABAL_KEY_PATTERNS)
+
+
+def get_dist_newstyle_key():
+    return DIST_NEWSTYLE_KEY_PREFIX + get_key_from_patterns(DIST_NEWSTYLE_KEY_PATTERNS)
 
 
 def get_build_key():
@@ -396,6 +413,10 @@ def main(opts):
         key = get_cabal_key()
         include_patterns = CABAL_CACHE_INCLUDE_PATTERNS
         exclude_patterns = CABAL_CACHE_EXCLUDE_PATTERNS
+    elif opts["dist-newstyle"]:
+        key = get_dist_newstyle_key()
+        include_patterns = DIST_NEWSTYLE_CACHE_INCLUDE_PATTERNS
+        exclude_patterns = DIST_NEWSTYLE_CACHE_EXCLUDE_PATTERNS
     elif opts["cargo"]:
         key = get_cargo_key()
         include_patterns = CARGO_CACHE_INCLUDE_PATTERNS

@@ -131,7 +131,7 @@ jobs:
         run: ./scripts/diff-clash-vexriscv-subtree.py
 
   build:
-    name: Build dependencies
+    name: Build Haskell+Rust
     runs-on: [self-hosted, compute]
     defaults:
       run:
@@ -151,6 +151,7 @@ jobs:
 
       - run: cache clean
       - run: cache pull cabal --missing-ok --write-cache-found
+      - run: cache pull dist-newstyle --missing-ok
       - run: cache pull cargo --missing-ok
 
       - name: Update Cabal index info
@@ -170,6 +171,7 @@ jobs:
       - run: ./cargo.sh build --frozen
 
       - run: cache push cabal
+      - run: cache push dist-newstyle
       - run: cache push cargo
       - run: cache push build
 
@@ -206,7 +208,7 @@ jobs:
           .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
-      - run: cache pull build
+      - run: cache pull build --overwrite-ok
 
       - name: Download HITL data
         run: |
@@ -336,7 +338,7 @@ jobs:
           .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
-      - run: cache pull build
+      - run: cache pull build --overwrite-ok
 
       - name: Run ${{ matrix.test_suite }} (with Vivado)
         if: ${{ matrix.with_vivado }}
@@ -367,7 +369,7 @@ jobs:
         uses: actions/checkout@v4
 
       - run: cache pull cargo
-      - run: cache pull build
+      - run: cache pull build --overwrite-ok
 
       - name: Rust formatting
         run: |
@@ -398,7 +400,7 @@ jobs:
 
       - run: cache pull cabal
       - run: cache pull cargo
-      - run: cache pull build
+      - run: cache pull build --overwrite-ok
 
       - name: Running Tests
         run: |
@@ -421,7 +423,7 @@ jobs:
         uses: actions/checkout@v4
 
       - run: cache pull cargo
-      - run: cache pull build
+      - run: cache pull build --overwrite-ok
 
       - name: Install `elf-limits`
         run: cargo install --locked --git https://github.com/cuddlefishie/elf-limits --rev 5b7bd41b0167ea6e506b5f856f0252362a54721a
@@ -522,7 +524,7 @@ jobs:
         run: |
           cache pull cabal
           cache pull cargo
-          cache pull build
+          cache pull build --overwrite-ok
 
       - name: HDL generation
         if: ${{ steps.check_hdl_gen_status.outputs.should_run == 'true'  }}
@@ -565,7 +567,7 @@ jobs:
         run: |
           cache pull cabal
           cache pull cargo
-          cache pull build
+          cache pull build --overwrite-ok
 
       - name: Synthesis
         if: ${{ steps.check_synthesis_status.outputs.should_run == 'true'  }}
@@ -691,7 +693,7 @@ jobs:
 
       - run: cache pull cabal
       - run: cache pull cargo
-      - run: cache pull build
+      - run: cache pull build --overwrite-ok
       - name: cache pull build-post-synth
         run: cache pull build-post-synth --prefix="${{ matrix.target.top }}"
 
