@@ -350,8 +350,8 @@ transceiverPrbsN ::
 transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
-      txClock = txClock
-    , txReset = unsafeFromActiveLow (head outputs).handshakeDoneTx
+      txClock
+    , txReset
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , handshakesDoneTx = map (.handshakeDoneTx) outputs
@@ -401,10 +401,17 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   txUsrClkRst = noReset @tx
   rxUsrClkRst = noReset @rx
 
+  -- We consider the TX domain out of reset if both the incoming (free) reset is
+  -- deasserted and the TX clock is stable. Note that this only works because we
+  -- do NOT reset the PLL ('txUsrClkRst').
+  txReset = resetSyncedToTx `orReset` txClkActiveRst
+  resetSyncedToTx = xpmResetSynchronizer Asserted clock txClock reset
+  txClkActiveRst = unsafeFromActiveLow (unpack <$> txClkActives)
+
   txOutClk = (head outputs).txOutClock
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
-  (_txClk1s, txClock, _txClkActives) = txClockNw
+  (_txClk1s, txClock, txClkActives) = txClockNw
 
   rxOutClks = map (.rxOutClock) outputs
   -- see [NOTE: duplicate tx/rx domain]
