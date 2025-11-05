@@ -30,6 +30,7 @@ import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfigurati
 import qualified Bittide.Instances.Hitl.SoftUgnDemo as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
+import qualified Bittide.Instances.Hitl.SwitchDemoGppe as SwitchDemoGppe
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
 import qualified Bittide.Instances.Hitl.TemperatureMonitor as TemperatureMonitor
 import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
@@ -49,6 +50,7 @@ hitlTests =
     <> [SoftUgnDemo.tests]
     <> [SwCcTopologies.tests]
     <> [SwitchDemo.tests]
+    <> [SwitchDemoGppe.tests]
     <> [SyncInSyncOut.tests]
     <> [TemperatureMonitor.tests]
     <> [Transceivers.tests]
