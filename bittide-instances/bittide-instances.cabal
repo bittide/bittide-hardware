@@ -192,6 +192,7 @@ library
     Bittide.Instances.Hitl.SoftUgnDemo
     Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SwitchDemo
+    Bittide.Instances.Hitl.SwitchDemoGppe
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
