@@ -35,7 +35,7 @@ members = [
   "hitl-tests/clock-board",
 
   "demos/clock-control",
-  "demos/management-unit",
+  "demos/switch-demo1-mu",
   "demos/soft-ugn-gppe",
   "demos/soft-ugn-mu",
 ]

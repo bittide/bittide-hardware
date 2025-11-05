@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: CC0-1.0
 
 [package]
-name = "management-unit"
+name = "switch-demo1-mu"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
