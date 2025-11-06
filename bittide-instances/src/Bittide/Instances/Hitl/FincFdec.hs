@@ -9,7 +9,6 @@ FINC and FDEC pins.
 module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
@@ -26,12 +25,13 @@ import Bittide.Hitl (
   hitlVio,
   testCasesFromEnum,
  )
+import Bittide.Instances.Common (commonSpiConfig)
 import Bittide.Instances.Domains
 
 import Data.Maybe (isJust)
 import System.FilePath ((</>))
 
-import qualified Bittide.ClockControl.Si5395J as Si5395J
+import qualified Clash.Cores.Xilinx.Extra as Gth
 
 data TestState = Busy | Fail | Success
 data Test
@@ -94,7 +94,7 @@ goFincFdecTests clk rst clkControlled testSelect miso =
   (_, spiBusy, spiState@(fmap (== Finished) -> siClkLocked), spiOut) =
     withClockResetEnable clk rst enableGen
       $ si539xSpi
-        Si5395J.testConfig6_200_on_0a_10ppb_and_1
+        commonSpiConfig
         (SNat @(Microseconds 1))
         (pure Nothing)
         miso
@@ -170,7 +170,7 @@ fincFdecTests ::
   -- Pins from internal oscillator:
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   -- Pins from clock board:
-  "USER_SMA_CLOCK" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "MISO" ::: Signal Basic200 Bit -> -- SPI
   ""
     ::: ( ""
@@ -192,7 +192,8 @@ fincFdecTests ::
 fincFdecTests diffClk controlledDiffClock spiIn =
   ((testDone, testSuccess), fIncDec, spiOut)
  where
-  clkControlled = ibufdsClock controlledDiffClock
+  (_, odivClk) = Gth.ibufds_gte3 controlledDiffClock
+  clkControlled = Gth.bufgGt d0 odivClk noReset
 
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
 
