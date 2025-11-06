@@ -246,19 +246,28 @@ driver testName targets = do
               $ \pico ->
                 waitForLine pico.stdoutHandle "[CC] All links stable"
 
-            -- From here the actual test should be done, but for now it's just going to be
-            -- waiting for the devices to print out over UART.
-
             liftIO $ mapConcurrently_ Gdb.continue muGdbs
             liftIO
               $ T.tryWithTimeoutOn
                 T.PrintActionTime
-                "Waiting for MU hello"
-                (5_000_000)
+                "Wait for elastic buffers to be centered"
+                60_000_000
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico.stdoutHandle "[MU] Hello!"
+                waitForLine pico.stdoutHandle "[MU] All elastic buffers centered"
+
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Waiting for captured UGNs"
+                (3 * 60_000_000)
+                goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[MU] All UGNs captured"
+            -- From here the actual test should be done, but for now it's just going to be
+            -- waiting for the devices to print out over UART.
 
             liftIO $ mapConcurrently_ Gdb.continue gppeGdbs
             liftIO
