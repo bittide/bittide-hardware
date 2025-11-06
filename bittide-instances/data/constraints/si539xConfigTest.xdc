@@ -1,16 +1,13 @@
 # SPDX-FileCopyrightText: 2025 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
-#
-# NOTE: This configuration is only valid for the leftmost FPGA in the demo rack.
 
 # SYSCLK_125
 set_property BOARD_PART_PIN sysclk_125_p [get_ports {CLK_125MHZ_p}]
 set_property BOARD_PART_PIN sysclk_125_n [get_ports {CLK_125MHZ_n}]
-
-# USER_SMA_CLOCK (only connected on the leftmost FPGA in the demo rack)
-set_property -dict {IOSTANDARD LVDS PACKAGE_PIN D23} [get_ports {USER_SMA_CLOCK_p}]
-set_property -dict {IOSTANDARD LVDS PACKAGE_PIN C23} [get_ports {USER_SMA_CLOCK_n}]
+# SMA_MGT_REFCLK
+set_property BOARD_PART_PIN sma_mgt_refclk_p [get_ports {SMA_MGT_REFCLK_C_p}]
+set_property BOARD_PART_PIN sma_mgt_refclk_n [get_ports {SMA_MGT_REFCLK_C_n}]
 
 # Vivado marks all clocks as related by default. Our external clocks are not
 # though, which means that we need to explicitly mark them as unrelated (or
@@ -18,4 +15,4 @@ set_property -dict {IOSTANDARD LVDS PACKAGE_PIN C23} [get_ports {USER_SMA_CLOCK_
 set_clock_groups \
     -asynchronous \
     -group [get_clocks -include_generated_clocks {CLK_125MHZ_p}] \
-    -group [get_clocks -include_generated_clocks {USER_SMA_CLOCK_p}]
+    -group [get_clocks -include_generated_clocks {SMA_MGT_REFCLK_C_p}]

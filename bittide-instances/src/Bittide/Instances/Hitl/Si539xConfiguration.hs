@@ -15,7 +15,6 @@ import GHC.Stack (HasCallStack)
 import System.FilePath ((</>))
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
 import Clash.Explicit.Reset.Extra (Asserted (..), xpmResetSynchronizer)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
@@ -42,6 +41,7 @@ import Clash.Cores.UART.Extra
 import Bittide.Instances.Domains
 
 import qualified Bittide.Instances.Hitl.Driver.Si539xConfiguration as D
+import qualified Clash.Cores.Xilinx.Extra as Gth
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -54,7 +54,7 @@ baud = SNat
 
 si539xConfigTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
-  "USER_SMA_CLOCK" ::: DiffClock Basic200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "JTAG" ::: Signal Basic125 JtagIn ->
   "MISO" ::: Signal Basic125 Bit ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
@@ -70,7 +70,9 @@ si539xConfigTest freeClkDiff skyClkDiff jtagIn miso _uartRx =
   testStart `hwSeqX` (jtagOut, uartTx, spiOut)
  where
   (freeClk, freeRst) = clockWizardDifferential freeClkDiff noReset
-  skyClk = ibufdsClock skyClkDiff
+  (_, odivClk) = Gth.ibufds_gte3 skyClkDiff
+  skyClk :: Clock Basic200
+  skyClk = Gth.bufgGt d0 odivClk noReset
 
   -- We don't need the VIO for this test, but our current HITL infrastructure always
   -- tries to generate a probes file, which it can't if there is no VIO.
