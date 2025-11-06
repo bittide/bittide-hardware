@@ -62,7 +62,7 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
     maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Debug
-      elfPath = elfDir </> fromMaybe "hello" maybeBinaryName
+      elfPath = elfDir </> fromMaybe "vexrscv-hello" maybeBinaryName
     pure
       peConfigRtl
         { initI =

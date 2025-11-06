@@ -114,7 +114,7 @@ driverFunc _name targets = do
           -- program the FPGA
           Gdb.withGdb $ \gdb -> do
             Gdb.setLogging gdb gdbOutLog
-            Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
+            Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "vexriscv-hello"
             Gdb.setTarget gdb gdbPort
             errorToException =<< Gdb.loadBinary gdb
 

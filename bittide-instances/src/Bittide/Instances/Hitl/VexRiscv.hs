@@ -154,7 +154,7 @@ vexRiscvTestC =
     maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> fromMaybe "hello" maybeBinaryName
+      elfPath = elfDir </> fromMaybe "vexriscv-hello" maybeBinaryName
     pure
       peConfigRtl
         { initI =
