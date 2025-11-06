@@ -3,16 +3,19 @@
 # SPDX-License-Identifier: CC0-1.0
 
 [package]
-name = "processing-element-test"
+name = "vexriscv-hello"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 riscv-rt = "0.11.0"
-heapless = { version = "0.7.16", default-features = false, features = ["ufmt-impl"] }
+bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 ufmt = "0.2.0"
+bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 
 [build-dependencies]
-memmap-generate = { path = "../../firmware-support/memmap-generate" }
+memmap-generate = { path = "../../../firmware-support/memmap-generate" }

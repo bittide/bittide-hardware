@@ -10,7 +10,7 @@ use memmap_generate::memory_x_from_memmap;
 
 fn memmap_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../")
+        .join("../../../")
         .join("_build")
         .join("memory_maps")
 }
