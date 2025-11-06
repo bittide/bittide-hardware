@@ -121,7 +121,8 @@ driverFunc _name targets = do
             -- break test
             do
               putStrLn "Testing whether breakpoints work"
-              Gdb.setBreakpoints gdb ["hello::test_success"]
+              -- the hyphen in the binary names becomes an underscore because reasons
+              Gdb.setBreakpoints gdb ["vexriscv_hello::test_success"]
               Gdb.continue gdb
               Gdb.echo gdb "breakpoint reached"
               Gdb.runCommand gdb "disable 1"
