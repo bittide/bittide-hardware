@@ -17,3 +17,4 @@ bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+cc = "1.0"
