@@ -294,28 +294,52 @@ mod tests {
         let json = r#"{
             "devices": {
                 "UART": {
+                    "description": "Wishbone accessible UART interface with configurable FIFO buffers.",
                     "name": "UART",
-                    "description": "Universal Asynchronous Receiver/Transmitter",
                     "registers": [
                         {
-                            "name": "data",
-                            "description": "Data register",
                             "access": "read_write",
                             "address": 0,
+                            "description": "",
+                            "name": "data",
+                            "reset": null,
                             "size": 1,
-                            "type": ["bitvector", 8],
                             "src_location": 0,
-                            "tags": []
+                            "tags": [],
+                            "type": {
+                                "args": [
+                                    {
+                                        "nat": 8
+                                    }
+                                ],
+                                "type_reference": {
+                                    "name_base": "BitVector",
+                                    "name_module": "Clash.Sized.Internal.BitVector",
+                                    "name_package": "clash-prelude-1.9.0-eadec655997035db08ec9d628cb7c4f74fdb8e3e4b6c17010f9d9312ce4b9c36"
+                                }
+                            }
                         },
                         {
-                            "name": "status",
-                            "description": "Status register",
                             "access": "read_only",
                             "address": 4,
+                            "description": "",
+                            "name": "status",
+                            "reset": null,
                             "size": 1,
-                            "type": ["bitvector", 8],
                             "src_location": 0,
-                            "tags": []
+                            "tags": [],
+                            "type": {
+                                "args": [
+                                    {
+                                        "nat": 8
+                                    }
+                                ],
+                                "type_reference": {
+                                    "name_base": "BitVector",
+                                    "name_module": "Clash.Sized.Internal.BitVector",
+                                    "name_package": "clash-prelude-1.9.0-eadec655997035db08ec9d628cb7c4f74fdb8e3e4b6c17010f9d9312ce4b9c36"
+                                }
+                            }
                         }
                     ],
                     "src_location": 0,
