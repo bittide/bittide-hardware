@@ -15,7 +15,7 @@ impl GatherUnit {
         let mut off = offset;
         for &val in src {
             unsafe {
-                self.set_gather_memory_unchecked(off, val.into());
+                self.set_gather_memory_unchecked(off, val);
             }
             off += 1;
         }
@@ -43,7 +43,7 @@ impl ScatterUnit {
         let mut off = offset;
         for val in dst {
             unsafe {
-                *val = self.scatter_memory_unchecked(off).into();
+                *val = self.scatter_memory_unchecked(off);
             }
             off += 1;
         }

@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
+use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
 use memmap_generate::input_language as mm_inp;
@@ -34,24 +35,9 @@ fn lint_disables_generated_code() -> &'static str {
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::empty_docs)]
 #![allow(clippy::unused_unit)]
+#![allow(clippy::useless_transmute)]
     "#
 }
-
-/*
-fn has_float(set: &BTreeSet<TypeName>, ty: &ParsedType) -> bool {
-    match ty {
-        ParsedType::Float | ParsedType::Double => true,
-        ParsedType::Vector(_, inner) => has_float(set, inner),
-        ParsedType::Maybe(inner) => has_float(set, inner),
-        ParsedType::Either(a, b) => has_float(set, a) || has_float(set, b),
-        ParsedType::Tuple(parsed_types) => parsed_types.iter().any(|t| has_float(set, t)),
-        ParsedType::Custom { name, args } => {
-            set.contains(&name) || args.iter().any(|t| has_float(set, t))
-        }
-        _ => false,
-    }
-}
-*/
 
 fn main() {
     let dir = memmap_dir();
@@ -71,7 +57,7 @@ fn main() {
         hal_names.push(name.clone());
     }
 
-    let (shared, deduped_hals) = match deduplicate(&ctx, &mut input_mapping, hals.iter()) {
+    let (shared, deduped_hals) = match deduplicate(&ctx, &input_mapping, hals.iter()) {
         Ok(result) => result,
         Err(err) => {
             println!("ERROR!! {:?}", err);
@@ -225,6 +211,7 @@ fn main() {
             .unwrap_or_else(|_| panic!("Create `src/hals/{}` directory", hal_path.display()));
         let mut hal_mod_file = File::create(hal_path.join("mod.rs")).unwrap();
         generated_files.push(hal_path.join("mod.rs"));
+        writeln!(hal_mod_file, "{}", lint_disables_generated_code()).unwrap();
 
         std::fs::create_dir_all(hal_path.join("devices")).unwrap();
         let mut mod_file = File::create(hal_path.join("devices").join("mod.rs")).unwrap();
@@ -390,7 +377,7 @@ fn generate_type_ref_imports(ctx: &IrCtx, refs: &TypeReferences) -> TokenStream 
 }
 
 fn read_memory_maps(
-    dir: &PathBuf,
+    dir: &Path,
 ) -> BTreeMap<String, memmap_generate::input_language::MemoryMapDesc> {
     let mut memory_maps = BTreeMap::new();
 

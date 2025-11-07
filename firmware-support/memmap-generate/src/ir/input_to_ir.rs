@@ -179,7 +179,7 @@ impl IrCtx {
                 let field_names = field_name_builder.finish();
                 self.add_and_patch_types(mapping, to_do_and_patch);
                 self.type_constructors.push(TypeConstructor {
-                    field_types: field_types,
+                    field_types,
                     field_names: Some(field_names),
                 })
             }
