@@ -278,7 +278,7 @@ driver testName targets = do
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico.stdoutHandle "[PE] Hello!"
+                waitForLine pico.stdoutHandle "[PE] Hello from C!"
 
             liftIO goDumpCcSamples
 

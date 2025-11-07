@@ -11,14 +11,19 @@ use riscv_rt::entry;
 
 const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
+// Declare the external C main function
+extern "C" {
+    fn c_main() -> !;
+}
+
 #[cfg_attr(not(test), entry)]
-#[allow(clippy::empty_loop)]
 fn main() -> ! {
     let uart = &mut INSTANCES.uart;
 
-    ufmt::uwriteln!(uart, "Hello!").unwrap();
+    ufmt::uwriteln!(uart, "Hello from Rust!").unwrap();
+    ufmt::uwriteln!(uart, "Calling C..").unwrap();
 
-    loop {}
+    unsafe { c_main() }
 }
 
 #[panic_handler]

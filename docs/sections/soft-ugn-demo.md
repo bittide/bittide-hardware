@@ -12,7 +12,8 @@ is able to read all of the information from each of the nodes in the system. Thi
 accomplished through the firmware on the GPPE.
 
 ## Architecture
-{{#drawio path="diagrams/softUgnDemo.drawio" page=0}}
+![Software UGN demo](../diagrams/softUgnDemo.png)
+<!-- {{#drawio path="diagrams/softUgnDemo.drawio" page=0}} -->
 
 ### Initialization sequence
 1. FPGA board reset
@@ -29,18 +30,17 @@ Components:
 - Clock control (CC)
 - SPI programmer for clock generator
 - Elastic buffers (one per incoming transceiver link)
-- UGN capture
+- Hardware UGN capture (for comparison)
 
 ### Node related
 Components:
 - Management unit (MU)
-- 1x general purpose processing element (GPPE)
-- N scatter and gather units, one of each per elastic buffer
+- 1x general purpose processing element (PE)
+- 7 scatter and gather units, one of each per elastic buffer
 
 ### Management unit
 Connected components:
-- RISC-V core
-- Time counter + stalling
+- Timer
 - UART (for debugging)
 - FPGA DNA register
 - CPU identifier register
@@ -56,9 +56,12 @@ To change the binary run on this CPU, one may either:
 
 ### General purpose processing element
 This component is labeled as "PE" in the diagram above. Connected components:
-- N scatter and gather units, one of each per elastic buffer
+- 7 scatter and gather units, one of each per elastic buffer
 - UART (for debugging)
 - CPU identifier register
+- Timer
+- TODO:
+  - FPGA DNA register
 
 ### Debugging related
 - UART arbiter
@@ -67,28 +70,29 @@ This component is labeled as "PE" in the diagram above. Connected components:
 - `SYNC_IN`/`SYNC_OUT`
 
 ## Running tests
-
 One may specifically run the software UGN demo test by making a
 `.github/synthesis/debug.json` with the following contents:
+
 ```json
 [
   {"top": "softUgnDemoTest",       "stage": "test", "cc_report": true}
 ]
 ```
-At time of writing, the actual "test" done by the system is simply a sanity check of the
-CPUs by waiting for them to output something over UART. To change this, adjust the code
-in the driver function (located in
-`bittide-instances/src/Bittide/Instances/Hitl/Driver/SoftUgnDemo.hs`) _after_ the
-`"Waiting for stable links"` action (ends on line 247 presently) and _before_ the line
-which does `liftIO goDumpCcSamples` (line 274 presently).
 
-Additionally, tests are configured to run the following binaries on the system's CPUs:
-- Clock control CPU: `clock-control` (`firmware-binaries/clock-control`)
-- Management unit: `soft-ugn-mu` (`firmware-binaries/soft-ugn-mu`)
-- General purpose processing element: `soft-ugn-gppe` (`firmware-binaries/soft-ugn-gppe`)
+At the time of writing, the clock control CPU stabilizes system. The driver running
+on the host (`bittide-instances/src/Bittide/Instances/Hitl/Driver/SoftUgnDemo.hs`)
+then releases the reset of the management unit CPU. In turn, this CPU will center
+the elastic buffers and print out the UGNs captured using the hardware UGN capture
+component over UART. Finally, the general purpose processing element has its
+reset deasserted. It simply prints "Hello from C!".
+
+Tests are configured to run the following binaries on the system's CPUs:
+- Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
+- Management unit: `soft-ugn-mu` (`firmware-binaries/demos/soft-ugn-mu`)
+- General purpose processing element: `soft-ugn-gppe` (`firmware-binaries/demos/soft-ugn-gppe`)
 
 One may change this by either:
 1. Changing the driver function so that it loads different binaries onto the CPUs. This
    may be accomplished by changing which binary name is used with each of the `initGdb`
-   function calls, which are on lines 203, 215, and 228 at time of writing.
+   function calls.
 2. Changing the source code for the binaries. The locations for them are listed above.

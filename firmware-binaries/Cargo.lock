@@ -851,6 +851,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "cc",
  "memmap-generate",
  "riscv-rt",
  "ufmt",
