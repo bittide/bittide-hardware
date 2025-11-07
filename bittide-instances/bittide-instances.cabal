@@ -218,6 +218,7 @@ library
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
+    Bittide.Instances.Tests.TimeWb
     Bittide.Instances.Tests.WbToDf
     Paths.Bittide.Instances
 

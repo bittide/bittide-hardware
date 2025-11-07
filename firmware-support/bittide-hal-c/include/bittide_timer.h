@@ -240,9 +240,20 @@ static inline uint64_t timer_get_counter(const Timer* timer) {
 
 /// Get current time as an Instant
 static inline Instant timer_now(const Timer* timer) {
-    uint64_t cycles = timer_get_counter(timer);
-    uint64_t frequency = timer_frequency(timer);
-    return instant_from_cycles(cycles, frequency);
+    // Issue TIME_CMD_CAPTURE to capture the current counter value
+    *timer->command = TIME_CMD_CAPTURE;
+
+    // Read the captured value from scratchpad and convert to microseconds
+    uint64_t counter = *timer->scratchpad;
+    uint64_t freq = *timer->frequency;
+
+    // Convert to microseconds: (counter * 1_000_000) / freq
+    // To avoid overflow, we use: counter / (freq / 1_000_000)
+    uint64_t micros = counter / (freq / 1000000ULL);
+
+    Instant result;
+    result.micros = micros;
+    return result;
 }
 
 /// Wait for a duration (non-stalling)

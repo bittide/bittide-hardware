@@ -30,6 +30,7 @@ import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
+import qualified Bittide.Instances.Tests.TimeWb as TimeWb
 import qualified Bittide.Instances.Tests.WbToDf as WbToDf
 import qualified Data.ByteString.Lazy as BS
 import qualified Protocols.MemoryMap.Json as Json
@@ -53,6 +54,7 @@ $( do
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
           , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
+          , ("TimeWb", TimeWb.timeWbMm)
           , ("WbToDfTest", WbToDf.dutMM)
           , ("VexRiscv", vexRiscvTestMM)
           , ("SoftUgnDemoCc", SoftUgnDemo.memoryMapCc)
