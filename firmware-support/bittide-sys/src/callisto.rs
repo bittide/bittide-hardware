@@ -71,13 +71,7 @@ impl Callisto {
         // Sum the data counts for all active links
         let measured_sum: i32 = eb_counters_iter
             .enumerate()
-            .map(|(i, v)| {
-                if test_bit(link_mask_rev.into(), i) {
-                    v
-                } else {
-                    0
-                }
-            })
+            .map(|(i, v)| if test_bit(link_mask_rev, i) { v } else { 0 })
             .sum();
 
         let c_des = self.config.gain * (measured_sum as f32) + self.steady_state_target;

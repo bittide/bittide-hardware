@@ -66,9 +66,7 @@ impl TryFrom<Value> for TypeArg {
     type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
-        let obj = value
-            .as_object()
-            .ok_or_else(|| "TypeArg must be a JSON object")?;
+        let obj = value.as_object().ok_or("TypeArg must be a JSON object")?;
 
         let Some(kind) = obj.get("kind") else {
             return Err("TypeArg must have a \"kind\"".to_string());
@@ -112,7 +110,7 @@ impl TryFrom<Value> for TypeDefinition {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         let obj = value
             .as_object()
-            .ok_or_else(|| "TypeDefinition must be a JSON object")?;
+            .ok_or("TypeDefinition must be a JSON object")?;
 
         if let Some(cons) = obj.get("datatype") {
             let cons = cons.as_array().unwrap();
@@ -264,9 +262,7 @@ impl TryFrom<Value> for TypeRef {
     type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
-        let obj = value
-            .as_object()
-            .ok_or_else(|| "TypeRef must be a JSON object")?;
+        let obj = value.as_object().ok_or("TypeRef must be a JSON object")?;
 
         if let Some(reference) = obj.get("type_reference") {
             let name = TypeName::try_from(reference.clone())?;
@@ -325,27 +321,25 @@ impl TryFrom<Value> for TypeName {
     type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
-        let obj = value
-            .as_object()
-            .ok_or_else(|| "TypeName must be a JSON object")?;
+        let obj = value.as_object().ok_or("TypeName must be a JSON object")?;
 
         let base = obj
             .get("name_base")
-            .ok_or_else(|| "TypeName must have field \"name_base\"")?
+            .ok_or("TypeName must have field \"name_base\"")?
             .as_str()
             .unwrap()
             .to_string();
 
         let module = obj
             .get("name_module")
-            .ok_or_else(|| "TypeName must have field \"name_module\"")?
+            .ok_or("TypeName must have field \"name_module\"")?
             .as_str()
             .unwrap()
             .to_string();
 
         let package = obj
             .get("name_package")
-            .ok_or_else(|| "TypeName must have field \"name_package\"")?
+            .ok_or("TypeName must have field \"name_package\"")?
             .as_str()
             .unwrap()
             .to_string();

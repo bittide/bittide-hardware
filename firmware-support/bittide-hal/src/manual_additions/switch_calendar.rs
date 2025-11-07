@@ -59,7 +59,7 @@ impl SwitchCalendar {
         );
         for (n, entry) in entries.iter().enumerate() {
             let n1 = n as u8;
-            self.set_shadow_entry(entry.clone());
+            self.set_shadow_entry(*entry);
             self.set_write_addr(n1);
         }
         self.set_shadow_depth_index((entries.len() - 1) as u8);

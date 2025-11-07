@@ -96,8 +96,8 @@ pub fn generate_type_desc<'ir>(
     (&type_name.base, variants, refs)
 }
 
-pub fn generate_device_instances<'ir>(
-    ctx: &'ir IrCtx,
+pub fn generate_device_instances(
+    ctx: &IrCtx,
     shared: &HalShared,
     hal_name: &str,
     tree_elems: impl Iterator<Item = Handle<TreeElem>>,
@@ -192,8 +192,8 @@ fn path_name(path: &[PathComp]) -> Option<&str> {
     }
 }
 
-fn generate_type_definition<'ir>(
-    ctx: &'ir IrCtx,
+fn generate_type_definition(
+    ctx: &IrCtx,
     varis: &MonomorphVariants,
     var_handle: Handle<MonomorphVariant>,
     anns: &Annotations,
@@ -210,7 +210,7 @@ fn generate_type_definition<'ir>(
             .handles()
             .zip(&variant.argument_mono_values)
             .filter_map(|(handle, val)| {
-                if let None = val {
+                if val.is_none() {
                     let name = ident(IdentType::TypeVariable, &ctx.identifiers[handle]);
                     if ctx.type_param_nats.contains(&handle) {
                         Some(quote! { const #name: u128 })
@@ -489,8 +489,8 @@ fn generate_const(
     }
 }
 
-fn generate_reg_get_method<'ir>(
-    ctx: &'ir IrCtx,
+fn generate_reg_get_method(
+    ctx: &IrCtx,
     varis: &MonomorphVariants,
     refs: &mut TypeReferences,
     reg: Handle<RegisterDescription>,
@@ -569,8 +569,8 @@ fn generate_reg_get_method<'ir>(
     }
 }
 
-fn generate_reg_set_method<'ir>(
-    ctx: &'ir IrCtx,
+fn generate_reg_set_method(
+    ctx: &IrCtx,
     varis: &MonomorphVariants,
     refs: &mut TypeReferences,
     reg: Handle<RegisterDescription>,
@@ -648,8 +648,8 @@ pub struct TypeReferences {
     pub references: BTreeSet<Handle<TypeName>>,
 }
 
-pub fn generate_type_ref<'ir>(
-    ctx: &'ir IrCtx,
+pub fn generate_type_ref(
+    ctx: &IrCtx,
     varis: &MonomorphVariants,
     variant: Option<&MonomorphVariant>,
     refs: &mut TypeReferences,
@@ -813,13 +813,10 @@ fn po2_type(n: u64) -> u64 {
 fn mono_variant_name(ctx: &IrCtx, var: &MonomorphVariant) -> (Ident, bool) {
     let desc = &ctx.type_descs[var.original_type_desc];
     let ty_name = &ctx.type_names[desc.name];
-    let args = var.argument_mono_values.iter().map(|arg| {
-        if let Some(val) = arg {
-            Some(type_to_ident(ctx, *val))
-        } else {
-            None
-        }
-    });
+    let args = var
+        .argument_mono_values
+        .iter()
+        .map(|arg| arg.map(|val| type_to_ident(ctx, val)));
 
     let has_mono_args = args.clone().any(|arg| arg.is_some());
 

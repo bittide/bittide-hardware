@@ -14,7 +14,7 @@ pub struct Handle<T>(usize, PhantomData<*mut T>);
 
 impl<T> Clone for Handle<T> {
     fn clone(&self) -> Self {
-        Self(self.0, self.1)
+        *self
     }
 }
 
@@ -36,7 +36,7 @@ impl<T> Eq for Handle<T> {}
 
 impl<T> PartialOrd for Handle<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
@@ -74,10 +74,7 @@ pub struct HandleRange<T> {
 
 impl<T> Clone for HandleRange<T> {
     fn clone(&self) -> Self {
-        Self {
-            start: self.start,
-            len: self.len,
-        }
+        *self
     }
 }
 
@@ -91,9 +88,7 @@ impl<T> HandleRange<T> {
         }
     }
 
-    pub fn handles(
-        self,
-    ) -> impl Iterator<Item = Handle<T>> + DoubleEndedIterator + ExactSizeIterator {
+    pub fn handles(self) -> impl DoubleEndedIterator<Item = Handle<T>> + ExactSizeIterator {
         (self.start.0..(self.start.0 + self.len)).map(|idx| Handle(idx, PhantomData))
     }
 
@@ -158,6 +153,10 @@ impl<T> Storage<T> {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn range_counter(&self) -> StorageRangeCounter<T> {
         let start = self.len();
         StorageRangeCounter(start, PhantomData)
@@ -199,18 +198,15 @@ impl<T> Storage<T> {
         self.0.get_mut(idx.0)
     }
 
-    pub fn into_iter(
-        self,
-    ) -> impl Iterator<Item = (Handle<T>, T)> + DoubleEndedIterator + ExactSizeIterator {
+    #[allow(clippy::should_implement_trait)]
+    pub fn into_iter(self) -> impl DoubleEndedIterator<Item = (Handle<T>, T)> + ExactSizeIterator {
         self.0
             .into_iter()
             .enumerate()
             .map(|(idx, val)| (Handle(idx, PhantomData), val))
     }
 
-    pub fn iter(
-        &self,
-    ) -> impl Iterator<Item = (Handle<T>, &T)> + DoubleEndedIterator + ExactSizeIterator {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (Handle<T>, &T)> + ExactSizeIterator {
         self.0
             .iter()
             .enumerate()
@@ -219,20 +215,18 @@ impl<T> Storage<T> {
 
     pub fn iter_mut(
         &mut self,
-    ) -> impl Iterator<Item = (Handle<T>, &mut T)> + DoubleEndedIterator + ExactSizeIterator {
+    ) -> impl DoubleEndedIterator<Item = (Handle<T>, &mut T)> + ExactSizeIterator {
         self.0
             .iter_mut()
             .enumerate()
             .map(|(idx, val)| (Handle(idx, PhantomData), val))
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &T> + DoubleEndedIterator + ExactSizeIterator {
+    pub fn values(&self) -> impl DoubleEndedIterator<Item = &T> + ExactSizeIterator {
         self.0.iter()
     }
 
-    pub fn values_mut(
-        &mut self,
-    ) -> impl Iterator<Item = &mut T> + DoubleEndedIterator + ExactSizeIterator {
+    pub fn values_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut T> + ExactSizeIterator {
         self.0.iter_mut()
     }
 

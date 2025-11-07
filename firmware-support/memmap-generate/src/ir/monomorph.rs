@@ -65,6 +65,7 @@ pub struct MonomorphVariant {
 pub struct Monomorpher<'ir> {
     ctx: &'ir IrCtx,
     mapping: &'ir IrInputMapping<'ir>,
+    #[allow(clippy::type_complexity)]
     variants_by_args: BTreeMap<
         (
             Handle<TypeName>,
@@ -93,7 +94,7 @@ impl<'ir> Monomorpher<'ir> {
         &mut self,
         variants: &mut MonomorphVariants,
         pass: &mut impl MonomorphPass,
-        handles: impl Iterator<Item = Handle<TypeRef>> + DoubleEndedIterator,
+        handles: impl DoubleEndedIterator<Item = Handle<TypeRef>>,
     ) {
         // Arguments to types are stored after that type-with-arguments.
         // If we flip the iterator we will process arguments first, reducing
@@ -229,15 +230,8 @@ impl<'ir> Monomorpher<'ir> {
                     .handles()
                     .zip(arg_state.into_iter().zip(arg_result_buf));
 
-                let variant = self.instantiate_type(
-                    varis,
-                    handle,
-                    *name,
-                    desc_handle,
-                    desc,
-                    type_desc_mode,
-                    subs,
-                );
+                let variant =
+                    self.instantiate_type(varis, handle, *name, desc_handle, type_desc_mode, subs);
                 MonomorphTypeRefResult::MonomorphVariant(variant)
             }
             TypeRef::BitVector(arg_handle)
@@ -247,25 +241,25 @@ impl<'ir> Monomorpher<'ir> {
                 // shouldn't be needed to visit the args, they can only be
                 // hardcoded numbers or variables
                 self.number_primitives.insert(handle, *arg_handle);
-                MonomorphTypeRefResult::RawArg(&self.mapping.type_refs[&handle])
+                MonomorphTypeRefResult::RawArg(self.mapping.type_refs[&handle])
             }
             TypeRef::Vector(_num, type_handle) => {
                 self.monomorph_type_ref(varis, pass, type_desc_mode, *type_handle);
                 self.vectors.push(handle);
-                MonomorphTypeRefResult::RawArg(&self.mapping.type_refs[&handle])
+                MonomorphTypeRefResult::RawArg(self.mapping.type_refs[&handle])
             }
             TypeRef::Tuple(handle_range) => {
                 for handle in handle_range.handles() {
                     self.monomorph_type_ref(varis, pass, type_desc_mode, handle);
                 }
                 self.tuples.push(handle);
-                MonomorphTypeRefResult::RawArg(&self.mapping.type_refs[&handle])
+                MonomorphTypeRefResult::RawArg(self.mapping.type_refs[&handle])
             }
             TypeRef::Variable(_)
             | TypeRef::Bool
             | TypeRef::Float
             | TypeRef::Double
-            | TypeRef::Nat(_) => MonomorphTypeRefResult::RawArg(&self.mapping.type_refs[&handle]),
+            | TypeRef::Nat(_) => MonomorphTypeRefResult::RawArg(self.mapping.type_refs[&handle]),
         }
     }
 
@@ -287,7 +281,6 @@ impl<'ir> Monomorpher<'ir> {
         type_handle: Handle<TypeRef>,
         type_name: Handle<TypeName>,
         desc_handle: Handle<TypeDescription>,
-        desc: &TypeDescription,
         type_desc_mode: &mut TypeDescMonomorphMode,
         variable_subs: impl Iterator<
             Item = (
@@ -296,6 +289,7 @@ impl<'ir> Monomorpher<'ir> {
             ),
         >,
     ) -> Handle<MonomorphVariant> {
+        let desc = &self.ctx.type_descs[desc_handle];
         let with_names = desc.param_names.handles().zip(variable_subs);
 
         let mut memo_args = SmallVec::new();

@@ -44,41 +44,38 @@ impl SampleStore {
         let local_clock: u64 = freeze.local_clock_counter();
         let local_clock_msbs = (local_clock >> 32) as u32;
         let local_clock_lsbs = (local_clock & 0xFFFFFFFF) as u32;
-        self.memory.set_data(start_index, local_clock_lsbs.into());
-        self.memory
-            .set_data(start_index + 1, local_clock_msbs.into());
+        self.memory.set_data(start_index, local_clock_lsbs);
+        self.memory.set_data(start_index + 1, local_clock_msbs);
 
         // Store number of sync pulses seen
         let number_of_sync_pulses_seen = freeze.number_of_sync_pulses_seen();
         self.memory
-            .set_data(start_index + 2, number_of_sync_pulses_seen.into());
+            .set_data(start_index + 2, number_of_sync_pulses_seen);
 
         // Store cycles since last sync pulse
         let cycles_since_sync_pulse = freeze.cycles_since_sync_pulse();
         self.memory
-            .set_data(start_index + 3, cycles_since_sync_pulse.into());
+            .set_data(start_index + 3, cycles_since_sync_pulse);
 
         // Store stability information
         self.memory.set_data(
             start_index + 4,
-            (stability.stable as u32 | ((stability.settled as u32) << 8)).into(),
+            stability.stable as u32 | ((stability.settled as u32) << 8),
         );
 
         // Store net speed change
         self.memory
-            .set_data(start_index + 5, (net_speed_change as u32).into());
+            .set_data(start_index + 5, net_speed_change as u32);
 
         // Store the EB counters
         for (i, eb_counter) in freeze.eb_counters_volatile_iter().enumerate() {
-            self.memory
-                .set_data(start_index + 6 + i, (eb_counter as u32).into());
+            self.memory.set_data(start_index + 6 + i, eb_counter as u32);
         }
 
         // Bump number of samples stored, but only if we're running "for real"
         // and the data actually fits in memory.
         if bump_counter && self.memory.data(start_index + WORDS_PER_SAMPLE).is_some() {
-            self.memory
-                .set_data(0, ((n_samples_stored + 1) as u32).into());
+            self.memory.set_data(0, (n_samples_stored + 1) as u32);
         }
     }
 
