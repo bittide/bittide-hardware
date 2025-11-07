@@ -17,9 +17,15 @@ fn main() {
     let hal_c_include = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../firmware-support/bittide-hal-c/include");
 
+    // Source directory for the Bittide HAL
+    let hal_c_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../firmware-support/bittide-hal-c/src");
+
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
+        .file(hal_c_src.join("bittide_uart.c"))
+        .file(hal_c_src.join("bittide_timer.c"))
         .compiler("clang")
         .include("src") // Add src directory for our custom stdint.h
         .include(hal_c_headers)
@@ -35,4 +41,12 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/main.c");
     println!("cargo:rerun-if-changed=src/stdint.h");
+    println!(
+        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_uart.h"
+    );
+    println!(
+        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_timer.h"
+    );
+    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_uart.c");
+    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_timer.c");
 }

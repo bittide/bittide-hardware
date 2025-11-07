@@ -7,33 +7,21 @@ module Bittide.Instances.Tests.TimeWb where
 import Clash.Prelude
 
 import Bittide.DoubleBufferedRam hiding (registerWb)
-import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 import Project.FilePath
 
 import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
-import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM)
+import Protocols.MemoryMap (ConstBwd, MM)
 import qualified Protocols.MemoryMap as MM
 import Protocols.MemoryMap.FieldType
-import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
-  deviceWb,
-  registerConfig,
-  registerWb,
- )
-import Protocols.Wishbone
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (NoDumpVcd))
-
-import Bittide.Instances.Domains (Basic50)
-import Data.Maybe (catMaybes)
 
 data TestStatus = Running | Success | Fail
   deriving (Show, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType)

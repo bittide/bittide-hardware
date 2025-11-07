@@ -50,7 +50,7 @@ int c_main(void) {
     uart_putdec(&uart, start_micros);
     uart_puts(&uart, " us\r\n");
 
-    uint64_t counter = timer_get_counter(&timer);
+    uint64_t counter = timer_now_cycles(&timer);
     uart_puts(&uart, "        Raw counter = ");
     uart_putdec(&uart, counter);
     uart_puts(&uart, " cycles\r\n");
