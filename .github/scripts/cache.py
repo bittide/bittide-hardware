@@ -85,12 +85,12 @@ BUILD_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/_build/",
     f"{PWD}/clash-vexriscv/clash-vexriscv/build_out_dir/",
     f"{PWD}/dist-newstyle/",
-    f"{PWD}/firmware-support/bittide-hal/src/shared/",
+    f"{PWD}/firmware-support/bittide-hal/src/shared_devices/",
+    f"{PWD}/firmware-support/bittide-hal/src/types/",
     f"{PWD}/firmware-support/bittide-hal/src/hals/",
     f"{PWD}/firmware-support/bittide-hal-c/generated/",
 )
 BUILD_CACHE_EXCLUDE_PATTERNS = (
-    f"{PWD}/firmware-support/bittide-hal/src/shared/mod.rs",
     f"{PWD}/dist-newstyle/src",
 )
 
