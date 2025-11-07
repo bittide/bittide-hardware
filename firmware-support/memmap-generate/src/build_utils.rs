@@ -27,12 +27,26 @@ fn setup_riscv_linker(out_dir: &str) {
 pub fn memmap_dir() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    gix::ThreadSafeRepository::discover(&manifest_dir)
-        .expect("Failed to find `.git`.")
-        .work_dir()
-        .expect("Failed to find repository working directory")
-        .join("_build")
-        .join("memory_maps")
+    // Try to find git root from the manifest directory
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(&manifest_dir)
+        .output()
+        .expect("Failed to execute git command - make sure git is installed and this is a git repository");
+
+    if !output.status.success() {
+        panic!(
+            "Failed to find git root: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let git_root = String::from_utf8(output.stdout)
+        .expect("Git output is not valid UTF-8")
+        .trim()
+        .to_string();
+
+    PathBuf::from(git_root).join("_build").join("memory_maps")
 }
 
 /// Generates a memory.x file from a JSON memory map file and set up the linker
