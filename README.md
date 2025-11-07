@@ -48,6 +48,33 @@ TODO: Add overview of components
 # Development
 We follow a standard GitHub development flow. Our development branch is called `main`. Free free to open a PR. If you're not sure what to do, open a [discussion](https://github.com/bittide/bittide-hardware/discussions) thread.
 
+## Building
+If you haven't built the project before, run:
+
+```
+cabal update
+```
+
+After that, to build all Haskell files run:
+
+```
+cabal build all
+```
+
+The first time you run this, it will take a while.
+
+To build all Rust files, run:
+
+```bash
+# Debug build:
+./cargo.sh build
+
+# Release build:
+./cargo.sh build --release
+```
+
+You **must** build Haskell files before building the Rust. Building the Haskell files will generate memory map information that is needed by the Rust build system to generate Rust/C peripheral access code.
+
 ## Tips & Tricks
 
   * The full (expensive) test suite only runs nightly on `main`. If you want to run the full test suite on a PR, add `[force_expensive_checks]` to your commit message.
