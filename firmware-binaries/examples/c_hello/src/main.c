@@ -8,6 +8,9 @@
 
 // Main C function demonstrating the Bittide HAL
 int c_main(void) {
+     // Initialize UART
+    Uart uart = uart_init(UART_DATA, UART_STATUS);
+
     // Initialize timer with memory-mapped registers
     Timer timer = timer_init(
         TIMER_COMMAND,
@@ -16,28 +19,28 @@ int c_main(void) {
         TIMER_CMP_RESULT
     );
 
-    uart_puts(UART_DATA, UART_STATUS, "Hello from C with Bittide HAL!\r\n");
-    uart_puts(UART_DATA, UART_STATUS, "Running on RISC-V\r\n\r\n");
+    uart_puts(&uart, "Hello from C with Bittide HAL!\n");
+    uart_puts(&uart, "Running on RISC-V\n\n");
 
     // Display timer frequency
     uint64_t freq = timer_frequency(&timer);
-    uart_puts(UART_DATA, UART_STATUS, "Timer frequency: ");
-    uart_putdec(UART_DATA, UART_STATUS, freq);
-    uart_puts(UART_DATA, UART_STATUS, " Hz\r\n");
+    uart_puts(&uart, "Timer frequency: ");
+    uart_putdec(&uart, freq);
+    uart_puts(&uart, " Hz\n");
 
     // Get current time
     Instant now = timer_now(&timer);
-    uart_puts(UART_DATA, UART_STATUS, "Current time: ");
-    uart_putdec(UART_DATA, UART_STATUS, instant_micros(&now));
-    uart_puts(UART_DATA, UART_STATUS, " us\r\n\r\n");
+    uart_puts(&uart, "Current time: ");
+    uart_putdec(&uart, instant_micros(&now));
+    uart_puts(&uart, " us\n\n");
 
     // Simple timer wait demonstration
-    uart_puts(UART_DATA, UART_STATUS, "Waiting 1ms...\r\n");
+    uart_puts(&uart, "Waiting 1ms...\n");
     Duration wait_time = duration_from_millis(1);
     timer_wait(&timer, wait_time);
-    uart_puts(UART_DATA, UART_STATUS, "Done!\r\n\r\n");
+    uart_puts(&uart, "Done!\n\n");
 
-    uart_puts(UART_DATA, UART_STATUS, "Program finished successfully!\r\n");
+    uart_puts(&uart, "Program finished successfully!\n");
 
     // Infinite loop to keep program running
     while (1) {
