@@ -178,10 +178,12 @@ library
     Bittide.Instances.Hitl.Driver.SoftUgnDemo
     Bittide.Instances.Hitl.Driver.SwCcTopologies
     Bittide.Instances.Hitl.Driver.SwitchDemo
+    Bittide.Instances.Hitl.Driver.SwitchDemoGppe
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Dut.SoftUgnDemo
     Bittide.Instances.Hitl.Dut.SwitchDemo
+    Bittide.Instances.Hitl.Dut.SwitchDemoGppe
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.LinkConfiguration
@@ -192,6 +194,7 @@ library
     Bittide.Instances.Hitl.SoftUgnDemo
     Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SwitchDemo
+    Bittide.Instances.Hitl.SwitchDemoGppe
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
