@@ -12,6 +12,21 @@ currently target Vivado FPGAs paired with SkyWorks clock adjustment boards.
 # Getting started
 This project uses a bunch of different languages and tool(chain)s. Nix is used
 to manage this. To get a development shell [install nix](https://nixos.org/download.html).
+If this is your first time setting up Nix or when you haven't enabled Nix Flakes
+yet, you need to add the following to `.config/nix/nix.conf`:
+
+```
+experimental-features = nix-command flakes
+```
+
+If this is your first time using Nix, you can do it programmatically by executing:
+
+```bash
+mkdir -p ~/.config/nix
+echo "" >> ~/.config/nix/nix.conf
+echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+```
+
 Optionally, you can install `cachix` to use caches built by our CI infrastructure:
 
 ```
@@ -19,7 +34,8 @@ nix profile install nixpkgs#cachix
 cachix use bittide-hardware
 ```
 
-Run the following command in the root of this repository to get a development shell:
+Run the following command in the root of this repository to get a development shell.
+You will need about 20 GB of free disk space.
 
 ```
 nix develop
