@@ -18,8 +18,9 @@ import Project.FilePath
 
 -- Other
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Data.Char
+import Data.List (isInfixOf)
 import Data.Maybe
 import Protocols
 import Protocols.Idle
@@ -114,6 +115,57 @@ testResultsParser = do
 
 parseTestResults :: String -> Either ParseError [TestResult]
 parseTestResults = parse testResultsParser ""
+
+{- | Run the timing module test with C HAL and inspect its uart output.
+This test validates that the C HAL for the timer peripheral works correctly.
+-}
+case_time_c_test :: Assertion
+case_time_c_test = do
+  when (not $ "=== All tests PASSED! ===" `isInfixOf` simResultC)
+    $ assertFailure
+    $ "C timer test did not report all tests PASSED\n"
+    <> simResultC
+  when (not $ "C Timer HAL test completed successfully!" `isInfixOf` simResultC)
+    $ assertFailure
+    $ "C timer test did not complete successfully\n"
+    <> simResultC
+  when ("*** TEST FAILED:" `isInfixOf` simResultC)
+    $ assertFailure
+    $ "C timer test reported a failure\n"
+    <> simResultC
+ where
+  simResultC = chr . fromIntegral <$> catMaybes uartStreamC
+  uartStreamC = sampleC def{timeoutAfter = 300_000} dutC
+
+{- | A simple instance containing just VexRisc and UART as peripheral.
+Runs the `c_timer_wb` binary from `firmware-binaries/test-cases`.
+-}
+dutC :: Circuit () (Df Basic50 (BitVector 8))
+dutC = withBittideByteOrder
+  $ withClockResetEnable clockGen (resetGenN d2) enableGen
+  $ circuit
+  $ \_unit -> do
+    (uartRx, jtag) <- idleSource
+    [uartBus, (mmTime, timeBus)] <-
+      processingElement NoDumpVcd peConfigC -< (mm, jtag)
+    mm <- ignoreMM
+    (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
+    _localCounter <- timeWb -< (mmTime, timeBus)
+    idC -< uartTx
+ where
+  peConfigC = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "c_timer_wb"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0 -- No timeouts on the instruction bus
+        , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = False
+        }
+{-# OPAQUE dutC #-}
 
 tests :: TestTree
 tests = $(testGroupGenerator)

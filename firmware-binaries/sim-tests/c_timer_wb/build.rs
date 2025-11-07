@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 fn main() {
     // Generate memory.x linker script
-    standard_memmap_build("VexRiscv.json", "DataMemory", "InstructionMemory");
+    standard_memmap_build("TimeWb.json", "DataMemory", "InstructionMemory");
 
     // Use C headers from auto-generated bittide-hal-c
     let hal_c_headers = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

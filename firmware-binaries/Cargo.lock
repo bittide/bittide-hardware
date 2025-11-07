@@ -92,6 +92,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "c_timer_wb"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "cc",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "capture_ugn_test"
 version = "0.1.0"
 dependencies = [

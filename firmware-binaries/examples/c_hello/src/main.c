@@ -2,63 +2,48 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "stdint.h"
 #include "vexriscv_memmap.h"
+#include "bittide_timer.h"
+#include "bittide_uart.h"
 
-// UART status bits
-#define UART_STATUS_TX_FULL  0x01  // Transmit buffer full
-#define UART_STATUS_RX_EMPTY 0x02  // Receive buffer empty
+// Main C function demonstrating the Bittide HAL
+int c_main(void) {
+     // Initialize UART
+    Uart uart = uart_init(UART_DATA, UART_STATUS);
 
-// Simple UART functions
-static void uart_putc(char c) {
-    // Wait until transmit buffer is not full
-    while (*UART_STATUS & UART_STATUS_TX_FULL) {
-        // Busy wait
-    }
-    *UART_DATA = c;
-}
+    // Initialize timer with memory-mapped registers
+    Timer timer = timer_init(
+        TIMER_COMMAND,
+        TIMER_SCRATCHPAD,
+        TIMER_FREQUENCY,
+        TIMER_CMP_RESULT
+    );
 
-static void uart_puts(const char* s) {
-    while (*s) {
-        uart_putc(*s++);
-    }
-}
+    uart_puts(&uart, "Hello from C with Bittide HAL!\n");
+    uart_puts(&uart, "Running on RISC-V\n\n");
 
-static char uart_getc(void) {
-    // Wait until receive buffer is not empty
-    while (*UART_STATUS & UART_STATUS_RX_EMPTY) {
-        // Busy wait
-    }
-    return *UART_DATA;
-}
+    // Display timer frequency
+    uint64_t freq = timer_frequency(&timer);
+    uart_puts(&uart, "Timer frequency: ");
+    uart_putdec(&uart, freq);
+    uart_puts(&uart, " Hz\n");
 
-static void uart_puthex(uint32_t val) {
-    const char hex[] = "0123456789abcdef";
-    uart_puts("0x");
-    for (int i = 28; i >= 0; i -= 4) {
-        uart_putc(hex[(val >> i) & 0xf]);
-    }
-}
+    // Get current time
+    Instant now = timer_now(&timer);
+    uart_puts(&uart, "Current time: ");
+    uart_putdec(&uart, instant_micros(&now));
+    uart_puts(&uart, " us\n\n");
 
-// Main C function
-void c_main(void) {
-    uart_puts("Hello from C!\r\n");
-    uart_puts("Running on RISC-V\r\n");
+    // Simple timer wait demonstration
+    uart_puts(&uart, "Waiting 1ms...\n");
+    Duration wait_time = duration_from_millis(1);
+    timer_wait(&timer, wait_time);
+    uart_puts(&uart, "Done!\n\n");
 
-    // Example: print a value
-    uint32_t test_val = 0xDEADBEEF;
-    uart_puts("Test value: ");
-    uart_puthex(test_val);
-    uart_puts("\r\n");
+    uart_puts(&uart, "Program finished successfully!\n");
 
-    // Set test status to success (StatusRegister device)
-    *STATUS_REGISTER_STATUS = 1; // 1 = Success
-
-    // Echo loop
-    uart_puts("Entering echo mode...\r\n");
+    // Infinite loop to keep program running
     while (1) {
-        // Properly wait for data and echo it back
-        char c = uart_getc();
-        uart_putc(c);
+        // Could add echo mode here if desired
     }
 }
