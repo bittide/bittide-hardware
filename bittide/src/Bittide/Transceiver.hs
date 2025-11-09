@@ -731,7 +731,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       opts.resetManagerConfig
       clock
       reset
-      (withLockTxFree $ unsafeToActiveLow args.txUserReset)
+      (unsafeToActiveLow (xpmResetSynchronizer Asserted txClock clock args.txUserReset))
       (withLockTxFree (pure True))
       (withLockRxFree (pure True))
       (withLockRxFree (prbsOk .||. rxUserData))
