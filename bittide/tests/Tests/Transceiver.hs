@@ -102,10 +102,10 @@ gthCoreMock
   _rxSerialP
   freeClk
   rstAll
-  _rstTxPllAndDatapath -- TODO: Use
-  _rstTxDatapath -- TODO: Use
+  rstTxPllAndDatapath
+  rstTxDatapath
   rstRxPllAndDatapath
-  _rstRxDatapath -- TODO: Use
+  rstRxDatapath
   txWord
   _txCtrl
   _refClk
@@ -136,8 +136,8 @@ gthCoreMock
         $ WordAlign.aligner WordAlign.dealignLsbFirst (pure False) (pure offset)
         $ Gth.unSimOnly rx
 
-    registerRx = register rxClk rxRstRx enableGen
-    registerTx = register txClk txRstAll enableGen
+    registerRx = register rxClk rxRst enableGen
+    registerTx = register txClk txRst enableGen
 
     rxResetCounter = registerRx nRxResetCycles (predSatZeroNatural <$> rxResetCounter)
     txDoneCounter = registerTx (nTxResetCycles + nTxDoneCycles) (predSatZeroNatural <$> txDoneCounter)
@@ -151,14 +151,21 @@ gthCoreMock
     txClk = tx2Clk
     rxClk = rx2Clk
 
-    txRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstAll))
     rxRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstAll))
-    rxRstRx =
-      unsafeOrReset
-        rxRstAll
-        ( unsafeFromActiveHigh
-            (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRxPllAndDatapath))
-        )
+    rxRstRxPllAndDatapath =
+      unsafeFromActiveHigh
+        (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRxPllAndDatapath))
+    rxRstRxDatapath =
+      unsafeFromActiveHigh (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRxDatapath))
+    rxRst = rxRstAll `unsafeOrReset` rxRstRxPllAndDatapath `unsafeOrReset` rxRstRxDatapath
+
+    txRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstAll))
+    txRstTxPllAndDatapath =
+      unsafeFromActiveHigh
+        (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstTxPllAndDatapath))
+    txRstTxDatapath =
+      unsafeFromActiveHigh (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstTxDatapath))
+    txRst = txRstAll `unsafeOrReset` txRstTxPllAndDatapath `unsafeOrReset` txRstTxDatapath
 
     predSatZeroNatural :: Natural -> Natural
     predSatZeroNatural 0 = 0
