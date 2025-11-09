@@ -31,6 +31,7 @@ env:
   S3_PASSWORD: ${{ secrets.S3_PASSWORD }}
   SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
   CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+  CARGO_INCREMENTAL: 0
 
   # Suppress warnings related to locals
   LC_ALL: C
