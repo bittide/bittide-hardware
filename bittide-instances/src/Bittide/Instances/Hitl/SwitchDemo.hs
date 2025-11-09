@@ -155,10 +155,10 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       captureFlag
       spiDone
       spiErr
-      (bundle transceivers.handshakesDoneFree)
-      (bundle $ xpmCdcArraySingle bittideClk refClk <$> txStarts)
+      (pack . reverse <$> bundle transceivers.handshakesDoneFree)
+      (pack . reverse <$> bundle (xpmCdcArraySingle bittideClk refClk <$> txStarts))
       (xpmCdcSingle bittideClk refClk allStable)
-      (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebStables)
+      (pack . reverse <$> bundle (xpmCdcArraySingle bittideClk refClk <$> ebStables))
       transceiversFailedAfterUp
 
   captureFlag =
