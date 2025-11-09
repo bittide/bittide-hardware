@@ -151,7 +151,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         { depth = D32768
         }
       refClk
-      (unsafeToActiveLow handshakeRstFree)
+      spiDone
       captureFlag
       spiDone
       spiErr
@@ -166,7 +166,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       refClk
       spiRst
       enableGen
-      (SNat @(PeriodToCycles Basic125 (Milliseconds 2)))
+      (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
   -- Step 1, wait for SPI:
   (_, _, spiState, spiOut) =
@@ -208,6 +208,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , rxSims
         , rxNs
         , rxPs
+        , channelResets = repeat noReset
         , txDatas
         , txStarts
         , rxReadys
