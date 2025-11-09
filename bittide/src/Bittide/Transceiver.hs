@@ -167,10 +167,7 @@ data Outputs n tx rx txS free = Outputs
   { txClock :: Clock tx
   -- ^ Single transmit clock, shared by all links
   , txReset :: Reset tx
-  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable. In
-  -- the current implementation, this also means the first link has completed a
-  -- (low level) handshake. In the future we want to decouple this: the TX clock
-  -- should be able to come up independently of any link.
+  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable.
   , txReadys :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txReady'
   , txSamplings :: Vec n (Signal tx Bool)
@@ -350,8 +347,8 @@ transceiverPrbsN ::
 transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
-      txClock = txClock
-    , txReset = unsafeFromActiveLow (head outputs).handshakeDoneTx
+      txClock
+    , txReset
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , handshakesDoneTx = map (.handshakeDoneTx) outputs
@@ -402,6 +399,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxUsrClkRst = noReset @rx
 
   txOutClk = (head outputs).txOutClock
+  txReset = (head outputs).txReset
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
   (_txClk1s, txClock, _txClkActives) = txClockNw
@@ -703,7 +701,13 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
       <*> pure args.transceiverIndex
 
+  -- We never reset *just* the data path of the RX side. Instead, we use the "super"
+  -- reset that resets both the PLL and data path.
   rst_rx_datapath = noReset
+
+  -- We reset the TX PLL exactly once: when the overall reset is (de)asserted. In all
+  -- other cases, we just reset the data path. This makes sure there is no dependency
+  -- between links.
   rst_tx_pll_and_datapath = noReset
 
   (rst_all, rst_tx_datapath, rst_rx_pll_and_datapath, stats) =
