@@ -20,6 +20,5 @@ pub mod shared_devices;
 #[rustfmt::skip]
 pub mod types;
 
-pub mod primitives;
 
 pub mod manual_additions;

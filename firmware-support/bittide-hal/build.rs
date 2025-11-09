@@ -103,6 +103,8 @@ fn main() {
 
     monomorpher.monomorph_type_descs(&mut varis, &mut pass);
 
+    // add annotations (derives etc)
+    //
     let mut annotations = backend_rust::Annotations::default();
     annotate_types(&ctx, &varis, &mut annotations, DebugType::UDebug);
 
@@ -155,7 +157,6 @@ fn main() {
             generated_files.push(file_path);
 
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-            writeln!(file, "use crate::primitives::*;").unwrap();
             writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
             writeln!(file, "{}", code).unwrap();
         }
@@ -184,7 +185,6 @@ fn main() {
             let file_path = shared_devices_path.join(format!("{}.rs", file_name));
             let mut file = File::create(&file_path).unwrap();
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-            writeln!(file, "use crate::primitives::*;").unwrap();
             writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
             write!(file, "{}", code).unwrap();
             generated_files.push(file_path);
@@ -240,7 +240,6 @@ fn main() {
             let mut file = File::create(&file_path).unwrap();
 
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-            writeln!(file, "use crate::primitives::*;").unwrap();
             writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
             write!(file, "{}", code).unwrap();
             generated_files.push(file_path);
