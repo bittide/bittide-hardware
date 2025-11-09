@@ -201,9 +201,6 @@ data Outputs n tx rx txS free = Outputs
 data Output tx rx tx1 rx1 txS free = Output
   { txOutClock :: Clock tx1
   -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
-  , txReset :: Reset tx
-  -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
-  -- is deasserted.
   , txReady :: Signal tx Bool
   -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
@@ -399,7 +396,17 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxUsrClkRst = noReset @rx
 
   txOutClk = (head outputs).txOutClock
-  txReset = (head outputs).txReset
+
+  -- XXX: Usually, we'd just use 'txClkActives' here, but we're in a bit of a
+  --      predicament: we can't pass a (synchronous) reset to 'xilinxGthUserClockNetworkTx'
+  --      because we need a stable clock to do so. To get a stable clock, we need
+  --      'xilinxGthUserClockNetworkTx' to work.
+  txReset = xpmResetSynchronizer Asserted clock txClock reset
+
+  -- Note that 'txClkActives' synchronously asserts according to the Xilinx docs
+  -- so we don't need to do synchronization / glitch filtering here.
+  -- txClkActivesAsReset = unsafeFromActiveLow $ bitCoerce <$> txClkActives
+
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
   (_txClk1s, txClock, _txClkActives) = txClockNw
@@ -562,7 +569,6 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       , txN = txN
       , txP = txP
       , txOutClock
-      , txReset
       , rxOutClock
       , rxReset
       , linkUp
