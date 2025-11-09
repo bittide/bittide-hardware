@@ -1,3 +1,4 @@
 [
-  {"top": "switchDemoTest",        "stage": "test", "cc_report": true}
+  {"top": "switchDemoTest",        "stage": "test", "cc_report": true},
+  {"top": "transceiversUpTest",            "stage": "test",  "cc_report": false}
 ]
