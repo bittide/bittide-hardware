@@ -2,6 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+//! Monomorphization pass for memory maps.
+//!
+//! Not all languages targetting for HAL generation support all type
+//! level features that Clash supports, namely generics and type-level naturals.
+//! Monomorphization can special case type arguments based on use-sites into
+//! concrete types with type-arguments substituted in-place.
+
 use std::collections::BTreeMap;
 
 use smallvec::SmallVec;
@@ -15,6 +22,7 @@ use crate::{
     storage::{Handle, Storage},
 };
 
+/// Whether a type level argument should be monomorphized or not.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
 pub enum ArgMonomorphState {
     Monomorph,
@@ -22,15 +30,19 @@ pub enum ArgMonomorphState {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
-pub enum MonomorphTypeRefResult<'ir> {
+enum MonomorphTypeRefResult<'ir> {
     MonomorphVariant(Handle<MonomorphVariant>),
     RawArg(&'ir input::TypeRef),
 }
 
+/// A pass describing what elements should be monomorphized or not.
 pub trait MonomorphPass {
     fn custom_type(&mut self, ctx: &IrCtx, desc: &TypeDescription, args: &mut [ArgMonomorphState]);
 }
 
+/// Storages for variant information.
+///
+/// Tracks monomorph variants externally to the [IrCtx].
 #[derive(Default, Debug)]
 pub struct MonomorphVariants {
     pub variants: Storage<MonomorphVariant>,
@@ -38,12 +50,6 @@ pub struct MonomorphVariants {
     pub variants_by_type: BTreeMap<Handle<TypeName>, Vec<Handle<MonomorphVariant>>>,
 
     pub type_refs: BTreeMap<Handle<TypeRef>, Handle<MonomorphVariant>>,
-}
-
-#[derive(Debug)]
-// To be used in combination with TypeRef::Custom
-pub struct MonomorphRef {
-    pub variant: Handle<MonomorphVariant>,
 }
 
 enum TypeDescMonomorphMode<'a> {
@@ -62,6 +68,7 @@ pub struct MonomorphVariant {
     pub argument_mono_values: SmallVec<[Option<Handle<TypeRef>>; 2]>,
 }
 
+/// Monomorpher that keeps track of which arguments have been encountered yet.
 pub struct Monomorpher<'ir> {
     ctx: &'ir IrCtx,
     mapping: &'ir IrInputMapping<'ir>,
@@ -90,6 +97,10 @@ impl<'ir> Monomorpher<'ir> {
         }
     }
 
+    /// Add top level type references.
+    ///
+    /// Top-level type references do not reference variables and are the root
+    /// for the discovery of all use-sites.
     pub fn monomorph_toplevel_type_refs(
         &mut self,
         variants: &mut MonomorphVariants,
@@ -104,6 +115,11 @@ impl<'ir> Monomorpher<'ir> {
         }
     }
 
+    /// Monomorph type descriptions
+    ///
+    /// Aside from top-level type references, type descriptions
+    /// might also need to be monomorphized, as they can reference
+    /// other types that might need to be monomorphized.
     pub fn monomorph_type_descs(
         &mut self,
         varis: &mut MonomorphVariants,
@@ -188,7 +204,7 @@ impl<'ir> Monomorpher<'ir> {
                 }
             }
             super::types::TypeDefinition::Builtin(_builtin_type) => {}
-            super::types::TypeDefinition::Alias(handle) => {
+            super::types::TypeDefinition::Synonym(handle) => {
                 self.monomorph_type_ref(varis, pass, type_desc_mode, *handle);
             }
         }
@@ -365,9 +381,11 @@ impl<'ir> Monomorpher<'ir> {
     }
 }
 
+/// Example monomorphization passes
 pub mod passes {
     use crate::ir::monomorph::MonomorphPass;
 
+    /// Monomorphize only type-level naturals, leaving type arguments as they are.
     pub struct OnlyNats;
 
     impl MonomorphPass for OnlyNats {
@@ -387,6 +405,7 @@ pub mod passes {
         }
     }
 
+    /// Monomorphize type-level naturals and type arguments.
     pub struct All;
 
     impl MonomorphPass for All {
@@ -402,10 +421,10 @@ pub mod passes {
         }
     }
 
-    // why even use this?? anyway..
-    pub struct None;
+    /// Don't monomorphize anything.
+    pub struct Nothing;
 
-    impl MonomorphPass for None {
+    impl MonomorphPass for Nothing {
         fn custom_type(
             &mut self,
             _ctx: &crate::ir::types::IrCtx,

@@ -54,6 +54,7 @@ pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
     Ident::new(&s, Span::call_site())
 }
 
+/// User provided annotations. Will be considered during code generation.
 #[derive(Default)]
 pub struct Annotations {
     pub type_annotation: HashMap<Handle<MonomorphVariant>, TokenStream>,
@@ -61,6 +62,9 @@ pub struct Annotations {
     pub type_tags: HashMap<Handle<MonomorphVariant>, Vec<String>>,
 }
 
+/// Generate code for a type description, taking into account monomorp variants.
+///
+/// Returns the base-name of the type, the code and any types referenced by the code.
 pub fn generate_type_desc<'ir>(
     ctx: &'ir IrCtx,
     varis: &MonomorphVariants,
@@ -96,6 +100,7 @@ pub fn generate_type_desc<'ir>(
     (&type_name.base, variants, refs)
 }
 
+/// Generate code for device instances in a HAL.
 pub fn generate_device_instances(
     ctx: &IrCtx,
     shared: &HalShared,
@@ -360,7 +365,7 @@ fn generate_type_definition(
         TypeDefinition::Builtin(_builtin_type) => {
             quote! { compile_error!("TODO"); }
         }
-        TypeDefinition::Alias(handle) => {
+        TypeDefinition::Synonym(handle) => {
             let ty = generate_type_ref(ctx, varis, Some(variant), refs, *handle);
 
             quote! { #attrs pub type #ty_name #args = #ty; }
@@ -402,10 +407,15 @@ fn generate_repr(ctx: &IrCtx, desc: &TypeDescription) -> TokenStream {
             quote! { #[repr(transparent)] }
         }
         TypeDefinition::Builtin(_builtin_type) => quote! {},
-        TypeDefinition::Alias(_handle) => quote! {},
+        TypeDefinition::Synonym(_handle) => quote! {},
     }
 }
 
+/// Generate code for a device description
+///
+/// Takes into account monomorphization.
+///
+/// Returns the name of the device, generated code and any types referenced in the code.
 pub fn generate_device_desc<'ir>(
     ctx: &'ir IrCtx,
     varis: &MonomorphVariants,
@@ -644,11 +654,12 @@ fn generate_reg_set_method(
     }
 }
 
+/// Types referenced during code generation.
 pub struct TypeReferences {
     pub references: BTreeSet<Handle<TypeName>>,
 }
 
-pub fn generate_type_ref(
+fn generate_type_ref(
     ctx: &IrCtx,
     varis: &MonomorphVariants,
     variant: Option<&MonomorphVariant>,

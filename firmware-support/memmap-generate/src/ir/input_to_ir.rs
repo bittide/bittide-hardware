@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+//! Parse the input memory maps into the intermediate representation
+
 use crate::{
     input_language::{self as input, InterconnectComponent, MemoryMapTree, SourceLocation},
     ir::types::{
@@ -13,6 +15,10 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
+/// Mapping from handles back to the structures in the input language.
+///
+/// This can be useful when dealing with handles alone is inconvenient, like
+/// for performing structural equality for example.
 #[derive(Default)]
 pub struct IrInputMapping<'input> {
     pub type_refs: BTreeMap<Handle<TypeRef>, &'input input::TypeRef>,
@@ -24,6 +30,9 @@ pub struct IrInputMapping<'input> {
 }
 
 impl IrCtx {
+    /// Translate a memory map in the input format into the IR.
+    ///
+    /// Creates mappings ([IrInputMapping]) and outputs handles for the memory map.
     pub fn add_memory_map_desc<'input>(
         &mut self,
         mapping: &mut IrInputMapping<'input>,
@@ -116,7 +125,7 @@ impl IrCtx {
             }
             input::TypeDefinition::Synonym(type_ref) => {
                 let type_handle = self.add_toplevel_type_ref(mapping, type_ref);
-                TypeDefinition::Alias(type_handle)
+                TypeDefinition::Synonym(type_handle)
             }
         };
 

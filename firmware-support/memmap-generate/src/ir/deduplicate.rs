@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+//! Deduplicate device definition across multiple memory maps.
+
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
@@ -14,6 +16,7 @@ use crate::{
     storage::{Handle, HandleRange},
 };
 
+/// Handles for types and devices that are shared across a set of memory maps.
 #[derive(Debug)]
 pub struct HalShared {
     pub deduped_types: Vec<Handle<TypeDescription>>,
@@ -23,6 +26,9 @@ pub struct HalShared {
     pub device_mappings: HashMap<Handle<DeviceDescription>, Handle<DeviceDescription>>,
 }
 
+/// Handles for a HAL/memory map that are not shared across other memory maps.
+///
+/// Elements that are listed here are considered "unique" across all memory maps.
 #[derive(Debug)]
 pub struct DedupelicatedHal {
     pub tree: Handle<TreeElem>,
@@ -41,6 +47,7 @@ pub enum DeduplicationError {
     },
 }
 
+/// Deduplicate a data across multiple memory maps.
 pub fn deduplicate<'ctx, 'hals>(
     ctx: &'ctx IrCtx,
     mapping: &IrInputMapping<'ctx>,
@@ -175,6 +182,7 @@ pub fn deduplicate<'ctx, 'hals>(
     Ok((shared, dedups))
 }
 
+/// Deduplicate type names across the whole [IrCtx]
 pub fn deduplicate_type_names<'ctx>(ctx: &'ctx mut IrCtx, shared: &HalShared) {
     let mut type_name_indices = BTreeMap::<&'ctx TypeName, Handle<TypeName>>::new();
 
