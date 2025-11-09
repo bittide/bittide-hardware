@@ -208,7 +208,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , rxSims
         , rxNs
         , rxPs
-        , txResets = unsafeFromActiveHigh (pure True) :> repeat noReset
+        , txResets = noReset :> unsafeFromActiveHigh (pure True) :> repeat noReset
         , txDatas
         , txStarts
         , rxReadys
