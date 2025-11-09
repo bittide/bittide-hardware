@@ -50,6 +50,9 @@ fn main() {
 
     let mut hals = vec![];
     let mut hal_names = vec![];
+
+    // create IR and deduplicate.
+
     let mut input_mapping = IrInputMapping::default();
     for (name, memmap) in memory_maps.iter() {
         let hal_handles = ctx.add_memory_map_desc(&mut input_mapping, memmap);
@@ -66,6 +69,8 @@ fn main() {
     };
 
     deduplicate_type_names(&mut ctx, &shared);
+
+    // monomorph
 
     let mut monomorpher = Monomorpher::new(&ctx, &input_mapping);
     let mut varis = MonomorphVariants::default();

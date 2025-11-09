@@ -1,12 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
+
+//! Intermediate Representation for memory maps
+//!
+//! Contains the "context" (all storages) and associated types.
+
 use std::collections::HashSet;
 
 use crate::storage::{Handle, HandleRange, Storage};
 
 pub use crate::input_language::{BuiltinType, RegisterAccess, SourceLocation, TypeName};
 
+/// IR context - flat storages for all types needed to represent a memory map.
 #[derive(Default)]
 pub struct IrCtx {
     pub locations: Storage<SourceLocation>,
@@ -14,6 +20,7 @@ pub struct IrCtx {
     pub tags: Storage<Tag>,
 
     pub tree_elems: Storage<TreeElem>,
+    /// Type of tree elements, elements are synchronized to [IrCtx::tree_elems].
     pub tree_elem_types: Storage<TreeElemType>,
     pub interconnect_rel_addrs: Storage<RelativeAddr>,
 
@@ -40,6 +47,7 @@ impl IrCtx {
     }
 }
 
+/// Handles to refer to elements from one memory map / HAL
 #[derive(Debug, Clone, Copy)]
 pub struct HalHandles {
     pub tree: Handle<TreeElem>,
@@ -53,6 +61,7 @@ pub struct HalHandles {
 pub type Identifier = String;
 pub type Tag = String;
 
+/// Reference to a type, already special casing primitives.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum TypeRef {
     BitVector(Handle<TypeRef>),
@@ -91,7 +100,7 @@ pub enum TypeDefinition {
         constructor: Handle<TypeConstructor>,
     },
     Builtin(BuiltinType),
-    Alias(Handle<TypeRef>),
+    Synonym(Handle<TypeRef>),
 }
 
 #[derive(Debug)]
