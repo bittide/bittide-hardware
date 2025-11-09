@@ -208,6 +208,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , rxSims
         , rxNs
         , rxPs
+        , txResets = repeat noReset
         , txDatas
         , txStarts
         , rxReadys

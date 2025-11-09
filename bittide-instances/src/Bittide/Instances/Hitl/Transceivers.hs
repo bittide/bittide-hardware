@@ -172,6 +172,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs miso =
         , rxSims = rxs
         , rxNs
         , rxPs
+        , txResets = repeat noReset
         , txDatas = repeat txCounter
         , txStarts = repeat txStart
         , rxReadys = repeat (pure True)

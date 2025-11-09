@@ -238,6 +238,7 @@ dut
           , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
           , rxN = error "A: rxN not used in simulation"
           , rxP = error "A: rxP not used in simulation"
+          , txUserReset = noReset
           , txData = inputA.dat
           , txStart = inputA.txStart
           , rxReady = inputA.rxReady
@@ -263,6 +264,7 @@ dut
           , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
           , rxN = error "B: rxN not used in simulation"
           , rxP = error "B: rxP not used in simulation"
+          , txUserReset = noReset
           , txData = inputB.dat
           , txStart = inputB.txStart
           , rxReady = inputB.rxReady

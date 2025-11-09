@@ -178,6 +178,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs miso =
         , rxSims = rxs
         , rxNs
         , rxPs
+        , txResets = repeat noReset
         , txDatas = repeat myIndexTx
         , rxReadys = repeat $ pure True
         , txStarts = repeat $ pure True

@@ -259,6 +259,10 @@ data Input tx rx tx1 rx1 ref free rxS = Input
   -- ^ Simulation only construct. Data for the receive side. Used for testing.
   , rxN :: Gth.Wire rxS
   , rxP :: Gth.Wire rxS
+  , txUserReset :: Reset tx
+  -- ^ Reset from user logic. The transceiver will not attempt to establish a link
+  -- while this reset is asserted. If this is asserted while a link is established,
+  -- the link will be torn down.
   , txData :: Signal tx (BitVector 64)
   -- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
   -- 'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
@@ -291,6 +295,10 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.rxP'
   , rxSims :: Gth.SimWires rx n
   -- ^ See 'Input.rxSim'
+  , txResets :: Vec n (Reset tx)
+  -- ^ Resets for each individual link. Note that this is different from the
+  -- 'txReset' in 'Outputs', which just indicates whether the 'txClock' is
+  -- stable and is not dependent on individual links.
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
   , txStarts :: Vec n (Signal tx Bool)
@@ -383,6 +391,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       <*> simOnlyHdlWorkaround (map SimOnly (Gth.unSimOnly inputs.rxSims))
       <*> unbundle (unpack <$> inputs.rxNs)
       <*> unbundle (unpack <$> inputs.rxPs)
+      <*> inputs.txResets
       <*> inputs.txDatas
       <*> inputs.txStarts
       <*> inputs.rxReadys
@@ -416,7 +425,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
-  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxSim rxN rxP txData txStart rxReady (clockRx1, clockRx2, rxActive) =
+  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxSim rxN rxP txUserReset txData txStart rxReady (clockRx1, clockRx2, rxActive) =
     transceiverPrbs
       opts
       Input
@@ -425,6 +434,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
         , rxSim
         , rxN
         , rxP
+        , txUserReset
         , txData
         , txStart
         , rxReady
@@ -721,13 +731,15 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       opts.resetManagerConfig
       clock
       reset
+      (withLockTxFree $ unsafeToActiveLow args.txUserReset)
       (withLockTxFree (pure True))
       (withLockRxFree (pure True))
       (withLockRxFree (prbsOk .||. rxUserData))
 
   txReset =
     xpmResetSynchronizer Asserted txClock txClock
-      $ unsafeFromActiveLow (bitCoerce <$> args.txActive)
+      $ args.txUserReset
+      `orReset` unsafeFromActiveLow (bitCoerce <$> args.txActive)
       `orReset` unsafeFromActiveLow (bitCoerce <$> reset_tx_done)
       `orReset` xpmResetSynchronizer Asserted clock txClock reset
 

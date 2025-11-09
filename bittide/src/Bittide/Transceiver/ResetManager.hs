@@ -107,6 +107,7 @@ resetManager ::
   Config ->
   Clock dom ->
   Reset dom ->
+  "user_tx_active" ::: Signal dom Bool ->
   "tx_init_done" ::: Signal dom Bool ->
   "rx_init_done" ::: Signal dom Bool ->
   "rx_data_good" ::: Signal dom Bool ->
@@ -115,7 +116,7 @@ resetManager ::
   , "reset_rx_datapath_and_pll" ::: Reset dom
   , "stats" ::: Signal dom Statistics
   )
-resetManager config clk rst tx_init_done rx_init_done rx_data_good =
+resetManager config clk rst user_tx_active tx_init_done rx_init_done rx_data_good =
   ( unsafeFromActiveHigh reset_all_out_sig
   , unsafeFromActiveHigh reset_tx_datapath_sig
   , unsafeFromActiveHigh reset_rx_datapath_and_pll_sig
@@ -130,7 +131,8 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
       update
       extractOutput
       (initState, initStats)
-      ( tx_init_done
+      ( user_tx_active
+      , tx_init_done
       , rx_init_done
       , rx_data_good
       )
@@ -147,8 +149,12 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
   initState :: State dom
   initState = InReset
 
-  update :: (State dom, Statistics) -> (Bool, Bool, Bool) -> (State dom, Statistics)
-  update st (tx_done, rx_done, rx_good) =
+  update :: (State dom, Statistics) -> (Bool, Bool, Bool, Bool) -> (State dom, Statistics)
+  -- Note that an inactive 'user_tx_active' will shortcut any state to 'StartTx'. This
+  -- allows external control of the reset manager, without pulling the whole domain
+  -- down, affecting other links.
+  update _ (False, _, _, _) = (StartTx, initStats)
+  update st (_user_tx_active, tx_done, rx_done, rx_good) =
     case st of
       (InReset, stats) -> (StartTx, stats)
       -- Reset everything:
