@@ -743,6 +743,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       `orReset` unsafeFromActiveLow (bitCoerce <$> reset_tx_done)
       `orReset` xpmResetSynchronizer Asserted clock txClock reset
 
-  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
   withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
+
+  -- XXX: We can assume that whenever 'clock' is running, 'txClock' is running
+  --      too. Hence, the only relevant 'withLock' signals are the ones involving
+  --      RX as a source domain. We should simplify this module to reflect this.
+  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
