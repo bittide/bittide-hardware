@@ -114,7 +114,7 @@ impl IrCtx {
             input::TypeDefinition::Builtin(builtin_type) => {
                 TypeDefinition::Builtin(builtin_type.clone())
             }
-            input::TypeDefinition::Alias(type_ref) => {
+            input::TypeDefinition::Synonym(type_ref) => {
                 let type_handle = self.add_toplevel_type_ref(mapping, type_ref);
                 TypeDefinition::Alias(type_handle)
             }
@@ -133,7 +133,7 @@ impl IrCtx {
             input::TypeDefinition::Builtin(_) => {
                 self.type_primitives.insert(handle);
             }
-            input::TypeDefinition::Alias(_) => {
+            input::TypeDefinition::Synonym(_) => {
                 self.type_aliases.insert(handle);
             }
             _ if ty_desc.name.module == "GHC.Tuple" => {

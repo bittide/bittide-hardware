@@ -31,8 +31,8 @@ data SomeAdt
   | ConB (Unsigned 40)
   | ConC (BitVector 16) (BitVector 20)
   | ConD (Vec 3 (BitVector 8))
-  deriving (Generic, NFDataX, ShowX, Show,  BitPackC, BitPack, Eq, NFData)
-deriveTypeDesc ''SomeAdt
+  deriving (Generic, NFDataX, ShowX, Show, BitPackC, BitPack, Eq, NFData)
+deriveTypeDescription ''SomeAdt
 
 testValue :: Vec 4 SomeAdt
 testValue =

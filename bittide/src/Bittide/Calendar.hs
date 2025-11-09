@@ -72,7 +72,7 @@ data ValidEntry a repetitionBits = ValidEntry
   }
   deriving (BitPack, Eq, Generic, NFDataX, Show, ShowX, BitPackC, Lift)
 
-deriveTypeDesc ''ValidEntry
+deriveTypeDescription ''ValidEntry
 
 {- | 'Vec' of 'ValidEntry's to be used by a 'calendar'. The duration of the 'Calendar' in
 clockCycles is equal to the @size@ of the 'Calendar' plus the 'sum' of all 'veRepeat's

@@ -101,7 +101,7 @@ pub enum TypeDefinition {
     DataType(Vec<NamedConstructor>),
     Newtype(NamedConstructor),
     Builtin(BuiltinType),
-    Alias(TypeRef),
+    Synonym(TypeRef),
 }
 
 impl TryFrom<Value> for TypeDefinition {
@@ -134,15 +134,15 @@ impl TryFrom<Value> for TypeDefinition {
                 return Err("TypeDefinition::Builtin must have exactly one field".into());
             }
             Ok(TypeDefinition::Builtin(b))
-        } else if let Some(val) = obj.get("type_alias") {
+        } else if let Some(val) = obj.get("type_synonym") {
             let ty = TypeRef::try_from(val.clone())?;
             if obj.len() != 1 {
-                return Err("TypeDefinition::Alias must have exactly one field".into());
+                return Err("TypeDefinition::Synonym must have exactly one field".into());
             }
-            Ok(TypeDefinition::Alias(ty))
+            Ok(TypeDefinition::Synonym(ty))
         } else {
             Err(
-                "Only \"datatype\", \"newtype\", \"builtin\" and \"type_alias\" are supported"
+                "Only \"datatype\", \"newtype\", \"builtin\" and \"type_synonym\" are supported"
                     .into(),
             )
         }

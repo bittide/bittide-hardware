@@ -1,8 +1,12 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE UndecidableInstances #-}
+-- Due to TemplateHaskell stage restriction, this module
+-- contains numerous instances of 'WithTypeDescription' that would otherwise
+-- live "next to" the actual type-class definition.
+-- Because of this, GHC produces orphan warnings, as this module neither
+-- contains the type class definition or the defintion of the primitive types we're
+-- creating the instances for.
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Generate a description of a type for use in a memory map.
@@ -76,75 +80,75 @@ instance WithTypeDescription Double where
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Double []
 
-alias :: TH.Name -> TypeRef -> TypeDescription
-alias name aliasTy =
+synonym :: TH.Name -> TypeRef -> TypeDescription
+synonym name aliasTy =
   TypeDescription
     { name = name
     , args = []
-    , definition = Alias aliasTy
+    , definition = Synonym aliasTy
     }
 
 instance WithTypeDescription Word8 where
-  typeDescription Proxy = alias ''Word8 (TypeInst ''Unsigned [TypeNat 8])
+  typeDescription Proxy = synonym ''Word8 (TypeInst ''Unsigned [TypeNat 8])
   dependsOn Proxy = [(''Unsigned, WithSomeTypeDescription (Proxy @(Unsigned 8)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Word8 []
 
 instance WithTypeDescription Word16 where
-  typeDescription Proxy = alias ''Word16 (TypeInst ''Unsigned [TypeNat 16])
+  typeDescription Proxy = synonym ''Word16 (TypeInst ''Unsigned [TypeNat 16])
   dependsOn Proxy = [(''Unsigned, WithSomeTypeDescription (Proxy @(Unsigned 16)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Word16 []
 
 instance WithTypeDescription Word32 where
-  typeDescription Proxy = alias ''Word32 (TypeInst ''Unsigned [TypeNat 32])
+  typeDescription Proxy = synonym ''Word32 (TypeInst ''Unsigned [TypeNat 32])
   dependsOn Proxy = [(''Unsigned, WithSomeTypeDescription (Proxy @(Unsigned 32)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Word32 []
 
 instance WithTypeDescription Word64 where
-  typeDescription Proxy = alias ''Word64 (TypeInst ''Unsigned [TypeNat 64])
+  typeDescription Proxy = synonym ''Word64 (TypeInst ''Unsigned [TypeNat 64])
   dependsOn Proxy = [(''Unsigned, WithSomeTypeDescription (Proxy @(Unsigned 64)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Word64 []
 
 instance WithTypeDescription Int8 where
-  typeDescription Proxy = alias ''Int8 (TypeInst ''Signed [TypeNat 8])
+  typeDescription Proxy = synonym ''Int8 (TypeInst ''Signed [TypeNat 8])
   dependsOn Proxy = [(''Signed, WithSomeTypeDescription (Proxy @(Signed 8)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Int8 []
 
 instance WithTypeDescription Int16 where
-  typeDescription Proxy = alias ''Int16 (TypeInst ''Signed [TypeNat 16])
+  typeDescription Proxy = synonym ''Int16 (TypeInst ''Signed [TypeNat 16])
   dependsOn Proxy = [(''Signed, WithSomeTypeDescription (Proxy @(Signed 16)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Int16 []
 
 instance WithTypeDescription Int32 where
-  typeDescription Proxy = alias ''Int32 (TypeInst ''Signed [TypeNat 32])
+  typeDescription Proxy = synonym ''Int32 (TypeInst ''Signed [TypeNat 32])
   dependsOn Proxy = [(''Signed, WithSomeTypeDescription (Proxy @(Signed 32)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Int32 []
 
 instance WithTypeDescription Int64 where
-  typeDescription Proxy = alias ''Int64 (TypeInst ''Signed [TypeNat 64])
+  typeDescription Proxy = synonym ''Int64 (TypeInst ''Signed [TypeNat 64])
   dependsOn Proxy = [(''Signed, WithSomeTypeDescription (Proxy @(Signed 64)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Int64 []
 
 instance WithTypeDescription Int where
-  typeDescription Proxy = alias ''Int (TypeInst ''Signed [TypeNat 32])
+  typeDescription Proxy = synonym ''Int (TypeInst ''Signed [TypeNat 32])
   dependsOn Proxy = [(''Signed, WithSomeTypeDescription (Proxy @(Signed 32)))]
   argTypes Proxy = []
   asTypeRef Proxy = TypeInst ''Int []
 
-deriveTypeDesc ''Maybe
-deriveTypeDesc ''Either
+deriveTypeDescription ''Maybe
+deriveTypeDescription ''Either
 
-deriveTypeDesc ''()
-deriveTypeDesc ''(,)
-deriveTypeDesc ''(,,)
-deriveTypeDesc ''(,,,)
-deriveTypeDesc ''(,,,,)
-deriveTypeDesc ''(,,,,,)
-deriveTypeDesc ''(,,,,,,)
+deriveTypeDescription ''()
+deriveTypeDescription ''(,)
+deriveTypeDescription ''(,,)
+deriveTypeDescription ''(,,,)
+deriveTypeDescription ''(,,,,)
+deriveTypeDescription ''(,,,,,)
+deriveTypeDescription ''(,,,,,,)

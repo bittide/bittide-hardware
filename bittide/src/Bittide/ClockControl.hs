@@ -52,7 +52,7 @@ data SpeedChange
   | SpeedUp
   deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX, BitPackC)
 
-deriveTypeDesc ''SpeedChange
+deriveTypeDescription ''SpeedChange
 
 {- | Converts speed changes into a normalized scalar, which reflects
 their effect on clock control.

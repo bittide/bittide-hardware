@@ -34,7 +34,7 @@ data EbCommand
   | -- | Enable write, disable read
     Fill
   deriving (Generic, NFDataX, Eq, Show, BitPack, BitPackC, ShowX)
-deriveTypeDesc ''EbCommand
+deriveTypeDescription ''EbCommand
 
 type Underflow = Bool
 type Overflow = Bool
