@@ -505,7 +505,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
               :> "ila_probe_prbsOk"
               :> "ila_probe_prbsOkDelayed"
               :> "ila_probe_rst_all"
-              :> "ila_probe_rst_rx"
+              :> "ila_probe_rst_rx_pll_and_datapath"
               :> "ila_probe_rxReset"
               :> "ila_probe_txReset"
               :> "ila_probe_metaTx"
@@ -544,7 +544,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (xpmCdcSingle rxClock clock prbsOk)
         (xpmCdcSingle rxClock clock prbsOkDelayed)
         (unsafeToActiveHigh rst_all)
-        (unsafeToActiveHigh rst_rx)
+        (unsafeToActiveHigh rst_rx_pll_and_datapath)
         (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
         (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
         (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
@@ -604,7 +604,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (delayReset Asserted clock rst_tx_pll_and_datapath)
         (delayReset Asserted clock rst_tx_datapath)
         -- \* filter glitches *
-        (delayReset Asserted clock rst_rx)
+        (delayReset Asserted clock rst_rx_pll_and_datapath)
+        (delayReset Asserted clock rst_rx_datapath)
         -- \* filter glitches *
         -- gtwiz_reset_rx_datapath_in
         gtwiz_userdata_tx_in
@@ -702,9 +703,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
       <*> pure args.transceiverIndex
 
+  rst_rx_datapath = noReset
   rst_tx_pll_and_datapath = noReset
 
-  (rst_all, rst_tx_datapath, rst_rx, stats) =
+  (rst_all, rst_tx_datapath, rst_rx_pll_and_datapath, stats) =
     ResetManager.resetManager
       opts.resetManagerConfig
       clock

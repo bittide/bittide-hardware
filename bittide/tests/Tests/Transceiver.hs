@@ -104,7 +104,8 @@ gthCoreMock
   rstAll
   _rstTxPllAndDatapath -- TODO: Use
   _rstTxDatapath -- TODO: Use
-  rstRx
+  rstRxPllAndDatapath
+  _rstRxDatapath -- TODO: Use
   txWord
   _txCtrl
   _refClk
@@ -155,7 +156,9 @@ gthCoreMock
     rxRstRx =
       unsafeOrReset
         rxRstAll
-        (unsafeFromActiveHigh (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRx)))
+        ( unsafeFromActiveHigh
+            (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRxPllAndDatapath))
+        )
 
     predSatZeroNatural :: Natural -> Natural
     predSatZeroNatural 0 = 0

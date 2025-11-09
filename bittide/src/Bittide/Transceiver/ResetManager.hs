@@ -81,7 +81,7 @@ data State dom
     InReset
   | -- | Reset everything except TX PLLs - transmit and receive side
     StartTx
-  | -- | Reset just the receive side
+  | -- | Reset just the receive side (PLLs and datapath)
     StartRx
   | -- | Wait for the transmit side to report it is done. After /n/ milliseconds
     -- (see type) it times out, moving to 'StartTx'.
@@ -112,17 +112,17 @@ resetManager ::
   "rx_data_good" ::: Signal dom Bool ->
   ( "reset_all_out" ::: Reset dom
   , "reset_tx_datapath" ::: Reset dom
-  , "reset_rx" ::: Reset dom
+  , "reset_rx_datapath_and_pll" ::: Reset dom
   , "stats" ::: Signal dom Statistics
   )
 resetManager config clk rst tx_init_done rx_init_done rx_data_good =
   ( unsafeFromActiveHigh reset_all_out_sig
   , unsafeFromActiveHigh reset_tx_datapath_sig
-  , unsafeFromActiveHigh reset_rx_sig
+  , unsafeFromActiveHigh reset_rx_datapath_and_pll_sig
   , statistics
   )
  where
-  (reset_all_out_sig, reset_tx_datapath_sig, reset_rx_sig, statistics) =
+  (reset_all_out_sig, reset_tx_datapath_sig, reset_rx_datapath_and_pll_sig, statistics) =
     mooreB
       clk
       rst
@@ -180,6 +180,6 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
   extractOutput (st, stats) =
     ( st == InReset
     , st == StartTx
-    , st == StartRx
+    , st == StartRx || st == StartTx
     , stats
     )

@@ -66,6 +66,7 @@ type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS =
   "gtwiz_reset_all_in" ::: Reset freerun ->
   "gtwiz_reset_tx_pll_and_datapath_in" ::: Reset freerun ->
   "gtwiz_reset_tx_datapath_in" ::: Reset freerun ->
+  "gtwiz_reset_rx_pll_and_datapath_in" ::: Reset freerun ->
   "gtwiz_reset_rx_datapath_in" ::: Reset freerun ->
   "gtwiz_userdata_tx_in" ::: Signal txUser2 (BitVector TX_DATA_WIDTH) ->
   "txctrl2_in" ::: Signal txUser2 (BitVector (DivRU TX_DATA_WIDTH 8)) ->
@@ -103,6 +104,7 @@ gthCore
   !_gtwiz_reset_all_in
   !_gtwiz_reset_tx_pll_and_datapath_in
   !_gtwiz_reset_tx_datapath_in
+  !_gtwiz_reset_rx_pll_and_datapath_in
   !_gtwiz_reset_rx_datapath_in
   !gtwiz_userdata_tx_in
   !_txctrl2_in
