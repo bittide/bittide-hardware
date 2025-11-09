@@ -552,8 +552,6 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         txLastFree
         (pure True :: Signal free Bool) -- capture
         txLastFree -- trigger
-  tx_active = args.txActive
-
   result =
     Output
       { txSampling = txUserData
@@ -603,6 +601,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         args.rxP
         clock -- gtwiz_reset_clk_freerun_in
         (delayReset Asserted clock rst_all)
+        (delayReset Asserted clock rst_tx_pll_and_datapath)
+        (delayReset Asserted clock rst_tx_datapath)
         -- \* filter glitches *
         (delayReset Asserted clock rst_rx)
         -- \* filter glitches *
@@ -702,7 +702,9 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
       <*> pure args.transceiverIndex
 
-  (rst_all, rst_rx, stats) =
+  rst_tx_pll_and_datapath = noReset
+
+  (rst_all, rst_tx_datapath, rst_rx, stats) =
     ResetManager.resetManager
       opts.resetManagerConfig
       clock
@@ -713,7 +715,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   txReset =
     xpmResetSynchronizer Asserted txClock txClock
-      $ unsafeFromActiveLow (bitCoerce <$> tx_active)
+      $ unsafeFromActiveLow (bitCoerce <$> args.txActive)
       `orReset` unsafeFromActiveLow (bitCoerce <$> reset_tx_done)
       `orReset` xpmResetSynchronizer Asserted clock txClock reset
 

@@ -77,8 +77,9 @@ times if we don't see sensible data coming in. See the individual constructors
 and 'resetManager' for more information.
 -}
 data State dom
-  = InReset
-  | -- | Reset everything - transmit and receive side
+  = -- | Reset everything, including TX PLLs - transmit and receive side
+    InReset
+  | -- | Reset everything except TX PLLs - transmit and receive side
     StartTx
   | -- | Reset just the receive side
     StartRx
@@ -110,16 +111,18 @@ resetManager ::
   "rx_init_done" ::: Signal dom Bool ->
   "rx_data_good" ::: Signal dom Bool ->
   ( "reset_all_out" ::: Reset dom
+  , "reset_tx_datapath" ::: Reset dom
   , "reset_rx" ::: Reset dom
   , "stats" ::: Signal dom Statistics
   )
 resetManager config clk rst tx_init_done rx_init_done rx_data_good =
   ( unsafeFromActiveHigh reset_all_out_sig
+  , unsafeFromActiveHigh reset_tx_datapath_sig
   , unsafeFromActiveHigh reset_rx_sig
   , statistics
   )
  where
-  (reset_all_out_sig, reset_rx_sig, statistics) =
+  (reset_all_out_sig, reset_tx_datapath_sig, reset_rx_sig, statistics) =
     mooreB
       clk
       rst
@@ -175,7 +178,8 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
         | otherwise -> (StartTx, stats{failAfterUps = satSucc SatBound failAfterUps})
 
   extractOutput (st, stats) =
-    ( st == StartTx
+    ( st == InReset
+    , st == StartTx
     , st == StartRx
     , stats
     )

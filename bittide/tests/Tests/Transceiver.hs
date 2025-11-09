@@ -102,6 +102,8 @@ gthCoreMock
   _rxSerialP
   freeClk
   rstAll
+  _rstTxPllAndDatapath -- TODO: Use
+  _rstTxDatapath -- TODO: Use
   rstRx
   txWord
   _txCtrl
