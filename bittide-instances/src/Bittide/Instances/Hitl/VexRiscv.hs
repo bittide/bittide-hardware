@@ -57,7 +57,7 @@ import qualified Protocols.MemoryMap as MM
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, Show)
-deriveTypeDesc ''TestStatus
+deriveTypeDescription ''TestStatus
 
 type TestDone = Bool
 type TestSuccess = Bool

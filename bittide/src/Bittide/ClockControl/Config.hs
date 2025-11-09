@@ -35,7 +35,7 @@ data CallistoConfig = CallistoConfig
   deriving (Eq, Ord, Show, Generic)
   deriving (BitPack, BitPackC, NFDataX)
   deriving (FromJSON, ToJSON)
-deriveTypeDesc ''CallistoConfig
+deriveTypeDescription ''CallistoConfig
 
 {- | Collection of all clock control configuration parameters. This is typically
 instantiated as either @CcConf Topology@ or @CcConf LinkMaskTopology@. The
@@ -51,7 +51,8 @@ data CcConf a = CcConf
   deriving (Eq, Ord, Show, Generic, Functor)
   deriving (BitPack, BitPackC, NFDataX)
   deriving (FromJSON, ToJSON)
-deriveTypeDesc ''CcConf
+
+deriveTypeDescription ''CcConf
 
 defCcConf :: Int -> CcConf Topology
 defCcConf nLinks =

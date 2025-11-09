@@ -394,7 +394,7 @@ impl TypeGenerator {
                 }
             }
             TypeDefinition::Builtin(_builtin_type) => quote! {},
-            TypeDefinition::Alias(type_ref) => {
+            TypeDefinition::Synonym(type_ref) => {
                 let parsed_type = Self::parse_type_ref(type_ref);
                 let ty = self.generate_parsed_type_ref(&parsed_type);
                 quote! {
@@ -431,7 +431,7 @@ impl TypeGenerator {
                 quote! { #[repr(transparent)] }
             }
             TypeDefinition::Builtin(_builtin_type) => quote! {},
-            TypeDefinition::Alias(_type_ref) => quote! {},
+            TypeDefinition::Synonym(_type_ref) => quote! {},
         }
     }
 }

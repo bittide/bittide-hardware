@@ -57,7 +57,8 @@ data RegisterOperation = RegisterOperation
   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this 'Page' and 'Address'.
   }
   deriving (Show, Generic, NFDataX, BitPack, BitPackC)
-deriveTypeDesc ''RegisterOperation
+
+deriveTypeDescription ''RegisterOperation
 
 {- | Contains the configuration for an Si539x chip, explicitly differentiates between
 the configuration preamble, configuration and configuration postamble.

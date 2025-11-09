@@ -60,7 +60,7 @@ data FakeType a b
   = FakeA a
   | FakeB b
   deriving (Generic, BitPackC)
-deriveTypeDesc ''FakeType
+deriveTypeDescription ''FakeType
 
 magicUart ::
   (HasCallStack, HiddenClockResetEnable dom, KnownNat addrWidth) =>

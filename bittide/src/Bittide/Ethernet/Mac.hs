@@ -38,7 +38,7 @@ data EthMacStatus = EthMacStatus
   , rxFifoGoodFrame :: "rxFifoGoodFrame" ::: Bool
   }
   deriving (Generic, NFDataX, BitPack, BitPackC)
-deriveTypeDesc ''EthMacStatus
+deriveTypeDescription ''EthMacStatus
 
 {- | Wishbone peripheral that keeps track of the status flags of the Ethernet MAC.
 Every cycle that a flag is set, will be counted with a counter. The width of the counters

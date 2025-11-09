@@ -25,7 +25,7 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 data TestStatus = Running | Success | Fail
   deriving (Show, Eq, Generic, NFDataX, BitPack, BitPackC)
-deriveTypeDesc ''TestStatus
+deriveTypeDescription ''TestStatus
 
 whoAmID :: BitVector 32
 whoAmID = $(makeWhoAmIdTh "time")
