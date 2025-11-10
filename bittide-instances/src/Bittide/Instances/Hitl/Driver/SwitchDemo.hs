@@ -531,6 +531,16 @@ driver testName targets = do
           liftIO
             $ T.tryWithTimeoutOn
               T.PrintActionTime
+              "Wait for calendar to be written"
+              60_000_000
+              goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico.stdoutHandle "[MU] Crossbar calendar written"
+
+          liftIO
+            $ T.tryWithTimeoutOn
+              T.PrintActionTime
               "Waiting for captured UGNs"
               (3 * 60_000_000)
               goDumpCcSamples

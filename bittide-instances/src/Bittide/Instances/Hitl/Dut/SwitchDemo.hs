@@ -124,18 +124,18 @@ calendarConfig =
 
     -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
     -- than that we cycle through the other nodes.
-    (      ValidEntry (2 :> repeat 1) nRepetitions
-        :> ValidEntry (3 :> repeat 1) nRepetitions
-        :> ValidEntry (4 :> repeat 1) nRepetitions
-        :> ValidEntry (5 :> repeat 1) nRepetitions
-        :> ValidEntry (6 :> repeat 1) nRepetitions
-        :> ValidEntry (7 :> repeat 1) nRepetitions
-        :> ValidEntry (8 :> repeat 1) nRepetitions
+    (      ValidEntry (repeat 0) nRepetitions
+        :> ValidEntry (repeat 0) nRepetitions
+        :> ValidEntry (repeat 0) nRepetitions
+        :> ValidEntry (repeat 0) nRepetitions
+        :> ValidEntry (repeat 0) nRepetitions
+        :> ValidEntry (repeat 0) nRepetitions
+        :> ValidEntry (repeat 0) nRepetitions
         :> Nil
     )
 
     -- Don't care about inactive calendar:
-    (ValidEntry (repeat 0) 0 :> Nil)
+    (ValidEntry (repeat 0) nRepetitions :> Nil)
   where
   -- We want enough time to read _number of FPGAs_ triplets
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
