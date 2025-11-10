@@ -153,7 +153,7 @@ resetManager config clk rst user_tx_active tx_init_done rx_init_done rx_data_goo
   -- Note that an inactive 'user_tx_active' will shortcut any state to 'StartTx'. This
   -- allows external control of the reset manager, without pulling the whole domain
   -- down, affecting other links.
-  update _ (False, _, _, _) = (StartTx, initStats)
+  update _ (False, _, _, _) = (TxWait (0, 0), initStats)
   update st (_user_tx_active, tx_done, rx_done, rx_good) =
     case st of
       (InReset, stats) -> (StartTx, stats)
