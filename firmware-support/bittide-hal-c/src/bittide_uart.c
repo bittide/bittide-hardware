@@ -56,6 +56,17 @@ void uart_puthex64(const Uart* uart, uint64_t val) {
     }
 }
 
+void uart_putdna(const Uart* uart, const dna_t val) {
+    const char hex[] = "0123456789abcdef";
+    // DNA is 96 bits stored as 3x32-bit words
+    // Print from most significant to least significant word
+    for (int word = 2; word >= 0; word--) {
+        for (int i = 28; i >= 0; i -= 4) {
+            uart_putc(uart, hex[(val[word] >> i) & 0xf]);
+        }
+    }
+}
+
 void uart_putdec(const Uart* uart, uint64_t val) {
     char buf[21]; // max 20 digits for uint64_t + null
     int i = 20;
