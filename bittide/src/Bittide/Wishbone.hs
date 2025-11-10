@@ -759,7 +759,7 @@ andAck extraAck = Circuit go
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit
-value, stored in big-endian format.
+value.
 -}
 readDnaPortE2Wb ::
   forall dom addrW nBytes.
@@ -784,6 +784,32 @@ readDnaPortE2Wb simDna = circuit $ \wb -> do
   idC -< Fwd (fromMaybe 0 <$> maybeDna)
  where
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
+  config = (registerConfig "maybe_dna"){access=MM.ReadOnly}
+
+{- | A Wishbone worker circuit that exposes the DNA value from an external DnaPortE2.
+Only one DnaPortE2 can be instantiated in a design, so this component takes in the
+DNA value from a DnaPortE2. It exposes the DNA value as a 'CSignal' and adds a
+Wishbone register to read it out.
+-}
+readDnaPortE2WbWorker ::
+  forall dom addrW nBytes.
+  ( HiddenClockResetEnable dom
+  , HasCallStack
+  , KnownNat addrW
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | DNA value
+  Signal dom (Maybe (BitVector 96)) ->
+  Circuit
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    ()
+readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
+  [maybeDnaWb] <- MM.deviceWb "Dna" -< wb
+  registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
+ where
   config = (registerConfig "maybe_dna"){access=MM.ReadOnly}
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
