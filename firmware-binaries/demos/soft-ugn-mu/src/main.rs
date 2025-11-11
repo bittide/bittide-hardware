@@ -35,6 +35,7 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
         &INSTANCES.scatter_calendar_4,
         &INSTANCES.scatter_calendar_5,
         &INSTANCES.scatter_calendar_6,
+        &INSTANCES.scatter_calendar_7,
     ];
 
     for (i, calendar) in scatter_calendars.iter().enumerate() {
@@ -59,6 +60,7 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
         &INSTANCES.gather_calendar_4,
         &INSTANCES.gather_calendar_5,
         &INSTANCES.gather_calendar_6,
+        &INSTANCES.gather_calendar_7,
     ];
 
     for (i, calendar) in gather_calendars.iter().enumerate() {

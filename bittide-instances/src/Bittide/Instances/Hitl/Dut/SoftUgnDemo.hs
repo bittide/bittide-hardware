@@ -145,7 +145,7 @@ muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
 gppeLabel = fromIntegral (ord 'P') :> fromIntegral (ord 'E') :> Nil
 
 type NmuInternalBusses = 4 + PeInternalBusses
-type NmuExternalBusses = (LinkCount * PeripheralsPerLink) + LinkCount
+type NmuExternalBusses = (LinkCount * PeripheralsPerLink) + LinkCount + 2
 type PeripheralsPerLink = 3 -- Scatter calendar, Gather calendar, UGN component.
 type NmuRemBusWidth = 30 - CLog 2 (NmuExternalBusses + NmuInternalBusses)
 
@@ -198,7 +198,7 @@ gppe ::
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
     ( ConstBwd MM
-    , Vec (2 * LinkCount) (ConstBwd MM, Wishbone dom 'Standard NmuRemBusWidth (Bytes 4))
+    , Vec (2 * (LinkCount + 1)) (ConstBwd MM, Wishbone dom 'Standard NmuRemBusWidth (Bytes 4))
     , Jtag dom
     )
     ( Vec LinkCount (CSignal dom (BitVector 64))
@@ -219,10 +219,11 @@ gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Scatter Gather units
   (wbScatCals, wbGathCal) <- Vec.split -< nmuWbMmsDelayed
   idleSink
-    <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) linksIn)
+    <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) (loopback :> linksIn))
     <| Vec.zip
     -< (wbScats, wbScatCals)
-  linksOut <- repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (wbGus, wbGathCal)
+  ([Fwd loopback], linksOut) <-
+    Vec.split <| repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (wbGus, wbGathCal)
 
   -- Peripherals
   _cnt <- timeWb -< wbTime

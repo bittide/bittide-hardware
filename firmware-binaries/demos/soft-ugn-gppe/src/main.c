@@ -16,7 +16,7 @@
 #define NUM_PERIODS 5000
 
 // Maximum number of nodes including myself (degree of the network)
-#define MAXDEG 8
+#define MAXDEG 9
 
 // Protocol timing parameter
 #define METACYCLE_CLOCKS 2000
