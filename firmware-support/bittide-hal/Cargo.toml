@@ -10,15 +10,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ufmt = "0.2.0"
-smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03", default-features = false, features = [
-  "log",
-  "medium-ethernet",
-  "proto-ipv4",
-  "socket-tcp",
-] }
-log = "0.4.21"
+const_panic = "0.2.15"
 bittide-macros = { path = "../bittide-macros" }
+log = "0.4.21"
+ufmt = "0.2.0"
+
+[dependencies.smoltcp]
+git = "https://github.com/smoltcp-rs/smoltcp.git"
+rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03"
+default-features = false
+features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"]
+
+[dependencies.subst_macros]
+git = "https://github.com/QBayLogic/subst_macros.git"
+rev = "1273588cd7b854b8b6294cf54c7e238f77778ac4"
 
 [build-dependencies]
 memmap-generate = { path = "../memmap-generate" }
