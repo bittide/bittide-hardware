@@ -60,26 +60,6 @@ bool find_min_send_event(const FixedIntPriorityQueue* pq, uint32_t* found_index)
   return false;
 }
 
-uint64_t pq_extract_min_send_first(FixedIntPriorityQueue* pq) {
-  uint32_t min_send_index;
-  uint32_t min_all_index;
-  uint32_t extract_index;
-  uint64_t item_out;
-  bool has_send_event = find_min_send_event(pq, &min_send_index);
-  if (has_send_event) {
-    min_all_index = find_min_index(pq);
-    extract_index = min_send_index;
-    if (min_all_index < min_send_index - MAX_SEND_PRIORITY_OVERRIDE) {
-      extract_index = min_all_index;
-    }
-    item_out = pq->items[extract_index];
-    // Replace the extracted item with the last item in the array
-    pq->items[extract_index] = pq->items[pq->size - 1];
-    pq->size--;  // Decrement size
-    return item_out;
-  }
-  return pq_extract_min(pq);
-}
 
 // ============================================================================
 // Event Processing Functions
@@ -158,7 +138,7 @@ static bool process_metacycle(
         }
 
         // Otherwise, extract and process this event in the current metacycle
-        *current_event = pq_extract_min_send_first(event_queue);
+        *current_event = pq_extract_min(event_queue);
         CompareResult cmp_result = get_compare_result(timer);
         on_time = cmp_result == COMPARE_LESS;
 
@@ -225,7 +205,7 @@ int c_main(void) {
         uart_puts(&peripherals.uart, MSG_QUEUE_EMPTY);
         return 0;
     }
-    uint64_t current_event = pq_extract_min_send_first(&event_queue);
+    uint64_t current_event = pq_extract_min(&event_queue);
 
     PRINT_EVENT_LOOP_START(&peripherals, &event_queue);
 
@@ -277,7 +257,7 @@ int c_main(void) {
         if (pq_is_empty(&event_queue)) {
             break;
         }
-        current_event = pq_extract_min_send_first(&event_queue);
+        current_event = pq_extract_min(&event_queue);
     }
 
     uart_puts(&peripherals.uart, "========================================\n");
