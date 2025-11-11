@@ -12,8 +12,7 @@ is able to read all of the information from each of the nodes in the system. Thi
 accomplished through the firmware on the GPPE.
 
 ## Architecture
-![Software UGN demo](../diagrams/softUgnDemo.png)
-<!-- {{#drawio path="diagrams/softUgnDemo.drawio" page=0}} -->
+{{#drawio path="diagrams/softUgnDemo.drawio" page=0}}
 
 ### Initialization sequence
 1. FPGA board reset

@@ -18,6 +18,13 @@ typedef unsigned int uint32_t;
 typedef signed long long int64_t;
 typedef unsigned long long uint64_t;
 
+/* DNA integer type (BitVector 96) stored as 3x32-bit words in little-endian order
+ * Index 0: bits [31:0]   (least significant)
+ * Index 1: bits [63:32]
+ * Index 2: bits [95:64]  (most significant)
+ */
+typedef uint32_t dna_t[3];
+
 /* Pointer-sized integer types */
 typedef int32_t intptr_t;
 typedef uint32_t uintptr_t;

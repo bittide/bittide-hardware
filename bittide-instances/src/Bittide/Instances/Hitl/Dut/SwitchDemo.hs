@@ -29,7 +29,7 @@ import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState, switchDemoPeWb)
 import Bittide.Wishbone (
   makeWhoAmIdTh,
-  readDnaPortE2Wb,
+  readDnaPortE2WbWorker,
   timeWb,
   uartBytes,
   uartDf,
@@ -39,8 +39,9 @@ import Bittide.Wishbone (
 
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
-import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
+import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Char (ord)
+import Data.Maybe (fromMaybe)
 import Protocols
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
@@ -284,11 +285,14 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
       defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxs3, switchWb))
     ([Fwd peIn], txs) <- Vec.split -< switchOut
 
+    -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
+    --      use it until the DNA is actually read out.
     (Fwd peOut, ps) <-
       defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
-        -< (peWbMM, (Fwd lc, peWb, dna, Fwd peIn))
+        -< (peWbMM, (Fwd lc, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
 
-    dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< dnaWb
+    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+    defaultBittideClkRstEn (readDnaPortE2WbWorker maybeDna) -< dnaWb
 
     defaultBittideClkRstEn (whoAmIC muWhoAmId) -< muWhoAmIWb
 

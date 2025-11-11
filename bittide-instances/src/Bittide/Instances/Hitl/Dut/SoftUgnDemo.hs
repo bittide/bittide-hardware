@@ -49,7 +49,7 @@ import Bittide.ScatterGather
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Wishbone (
   makeWhoAmIdTh,
-  readDnaPortE2Wb,
+  readDnaPortE2WbWorker,
   timeWb,
   uartBytes,
   uartDf,
@@ -59,7 +59,7 @@ import Bittide.Wishbone (
 
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
-import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
+import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Char (ord)
 import Protocols
 import Protocols.Idle
@@ -158,6 +158,8 @@ managementUnit ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
+  -- | DNA value
+  Signal dom (Maybe (BitVector 96)) ->
   Circuit
     (MM.ConstBwd MM.MM, Jtag dom)
     ( CSignal dom (Unsigned 64)
@@ -168,7 +170,7 @@ managementUnit ::
         )
     , Df dom (BitVector 8)
     )
-managementUnit =
+managementUnit maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     wbs0 <- processingElement NoDumpVcd peConfig -< (mm, jtag)
@@ -178,7 +180,7 @@ managementUnit =
     cnt <- timeWb -< wbTime
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
-    _dna <- readDnaPortE2Wb simDna2 -< dnaWb
+    readDnaPortE2WbWorker maybeDna -< dnaWb
     whoAmIC muWhoAmID -< whoAmIWb
 
     -- Output
@@ -195,6 +197,8 @@ managementUnit =
 
 gppe ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
+  -- | DNA value
+  Signal dom (Maybe (BitVector 96)) ->
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
     ( ConstBwd MM
@@ -204,11 +208,11 @@ gppe ::
     ( Vec LinkCount (CSignal dom (BitVector 64))
     , Df dom (BitVector 8)
     )
-gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
+gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Core and interconnect
   (wbScats, wbs0) <- Vec.split <| processingElement NoDumpVcd peConfig -< (mm, jtag)
   (wbGus, wbs1) <- Vec.split -< wbs0
-  [wbTime, uartWb, whoAmIWB] <- idC -< wbs1
+  [wbTime, uartWb, whoAmIWB, dnaWb] <- idC -< wbs1
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
@@ -228,6 +232,7 @@ gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   _cnt <- timeWb -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
   whoAmIC gppeWhoAmID -< whoAmIWB
+  readDnaPortE2WbWorker maybeDna -< dnaWb
 
   -- Output
   idC -< (linksOut, uart)
@@ -275,9 +280,11 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
   circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
+    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+
     -- Start management unit
     (Fwd lc, muWbAll, muUartBytesBittide) <-
-      defaultBittideClkRstEn managementUnit -< (muMM, muJtag)
+      defaultBittideClkRstEn managementUnit maybeDna -< (muMM, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muSgWbs) <- Vec.split -< muWbs1
     -- Stop management unit
@@ -297,7 +304,7 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
 
     Fwd rxs2 <- defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
     (txs, gppeUartBytesBittide) <-
-      defaultBittideClkRstEn gppe rxs2 -< (gppeMm, muSgWbs, gppeJtag)
+      defaultBittideClkRstEn gppe maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop internal links
 
     -- Start UART multiplexing
