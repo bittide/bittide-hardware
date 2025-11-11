@@ -30,6 +30,7 @@ members = [
   "sim-tests/time_self_test",
   "sim-tests/watchdog_test",
   "sim-tests/c_timer_wb",
+  "sim-tests/c_scatter_gather_test",
 
   "hitl-tests/vexriscv-hello",
   "hitl-tests/clock-board",

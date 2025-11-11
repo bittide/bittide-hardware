@@ -98,11 +98,11 @@ int c_main(void) {
     }
 
     // Test 5: Timer wait functionality
-    uart_puts(&uart, "Test 5: Timer wait (1ms x 3)\r\n");
-    for (int i = 0; i < 3; i++) {
+    uart_puts(&uart, "Test 5: Timer wait (100us x 2)\r\n");
+    for (int i = 0; i < 2; i++) {
         Instant before = timer_now(&timer);
 
-        Duration wait_time = duration_from_millis(1);
+        Duration wait_time = duration_from_micros(100);
         timer_wait(&timer, wait_time);
 
         Instant after = timer_now(&timer);
@@ -116,21 +116,21 @@ int c_main(void) {
         uart_putdec(&uart, elapsed_us);
         uart_puts(&uart, " us\r\n");
 
-        // Verify elapsed time is at least 1ms (allow some tolerance)
-        if (elapsed_us < 900) {
+        // Verify elapsed time is at least 100us (with some margin)
+        if (elapsed_us < 100) {
             test_fail(&uart, "timer_wait returned too early");
         }
-        if (elapsed_us > 2000) {
+        if (elapsed_us > 150) {
             test_fail(&uart, "timer_wait took too long");
         }
     }
 
     // Test 6: wait_until functionality
-    uart_puts(&uart, "Test 6: wait_until (500us)\r\n");
+    uart_puts(&uart, "Test 6: wait_until (200us)\r\n");
 
     // Get time and compute target BEFORE printing to avoid timing issues
     Instant before_wait_until = timer_now(&timer);
-    Instant target = instant_add(before_wait_until, duration_from_micros(500));
+    Instant target = instant_add(before_wait_until, duration_from_micros(200));
 
     // Now we can print
     uint64_t before_us = instant_micros(&before_wait_until);
@@ -158,11 +158,11 @@ int c_main(void) {
     }
 
     // Test 7: Periodic timer (verify timing consistency)
-    uart_puts(&uart, "Test 7: Periodic timer (3 ticks at 100us)\r\n");
+    uart_puts(&uart, "Test 7: Periodic timer (2 ticks at 100us)\r\n");
     Instant next_tick = timer_now(&timer);
     Duration tick_interval = duration_from_micros(100);
 
-    for (int i = 1; i <= 3; i++) {
+    for (int i = 1; i <= 2; i++) {
         next_tick = instant_add(next_tick, tick_interval);
         WaitResult res = timer_wait_until(&timer, next_tick);
         if (res != WAIT_SUCCESS) {
@@ -184,6 +184,93 @@ int c_main(void) {
             test_fail(&uart, "Periodic timer tick arrived early");
         }
     }
+
+    // Test 8: WaitResult returns WAIT_ALREADY_PASSED for past times
+    uart_puts(&uart, "Test 8: WaitResult behavior for past times\r\n");
+
+    // Create a time that's definitely in the past (time zero)
+    Instant past_time = instant_from_micros(0);
+
+    WaitResult past_result = timer_wait_until(&timer, past_time);
+    if (past_result != WAIT_ALREADY_PASSED) {
+        test_fail(&uart, "wait_until should return WAIT_ALREADY_PASSED for past times");
+    }
+    uart_puts(&uart, "        Result: WAIT_ALREADY_PASSED (correct)\r\n");
+
+    // Test 9: WaitResult returns SUCCESS for future times
+    uart_puts(&uart, "Test 9: WaitResult behavior for future times\r\n");
+
+    Instant current = timer_now(&timer);
+    Instant future_time = instant_add(current, duration_from_micros(100));
+
+    WaitResult future_result = timer_wait_until(&timer, future_time);
+    if (future_result != WAIT_SUCCESS) {
+        test_fail(&uart, "wait_until should return WAIT_SUCCESS for future times");
+    }
+    uart_puts(&uart, "        Result: WAIT_SUCCESS (correct)\r\n");
+
+    Instant after_future = timer_now(&timer);
+    // Verify we actually waited
+    if (after_future.micros < future_time.micros) {
+        test_fail(&uart, "wait_until returned before target time");
+    }
+
+    // Test 10: WaitResult behavior for wait_until_cycles (low-level API)
+    uart_puts(&uart, "Test 10: WaitResult for cycle-based API\r\n");
+
+    // Try to wait for cycles in the past
+    uint64_t past_cycles = 0;
+
+    WaitResult cycles_past_result = timer_wait_until_cycles(&timer, past_cycles);
+    if (cycles_past_result != WAIT_ALREADY_PASSED) {
+        test_fail(&uart, "wait_until_cycles should return WAIT_ALREADY_PASSED for past");
+    }
+    uart_puts(&uart, "        Result: WAIT_ALREADY_PASSED (correct)\r\n");
+
+    // Get fresh reading, compute target, and wait immediately (minimal delay)
+    uint64_t current_cycles = timer_now_cycles(&timer);
+    uint64_t future_cycles = current_cycles + micros_to_cycles(100, freq);
+    WaitResult cycles_future_result = timer_wait_until_cycles(&timer, future_cycles);
+
+    // Now print the results
+
+
+    if (cycles_future_result != WAIT_SUCCESS) {
+        test_fail(&uart, "wait_until_cycles should return WAIT_SUCCESS for future");
+    }
+    uart_puts(&uart, "        Result: WAIT_SUCCESS (correct)\r\n");
+
+    uint64_t after_cycles = timer_now_cycles(&timer);
+
+    if (after_cycles < future_cycles) {
+        uart_puts(&uart, "        After wait: ");
+        uart_putdec(&uart, after_cycles);
+        uart_puts(&uart, " cycles\r\n");
+        test_fail(&uart, "wait_until_cycles returned before target");
+    }
+
+    // Test 11: WaitResult behavior for stalling variants
+    uart_puts(&uart, "Test 11: WaitResult for stalling wait variants\r\n");
+
+    // Use time zero as the past time to avoid underflow
+    Instant stall_past = instant_from_micros(0);
+
+    uart_puts(&uart, "        Testing wait_until_stall with past time\r\n");
+    WaitResult stall_past_result = timer_wait_until_stall(&timer, stall_past);
+    if (stall_past_result != WAIT_ALREADY_PASSED) {
+        test_fail(&uart, "wait_until_stall should return WAIT_ALREADY_PASSED for past");
+    }
+    uart_puts(&uart, "        Result: WAIT_ALREADY_PASSED (correct)\r\n");
+
+    Instant stall_current = timer_now(&timer);
+    Instant stall_future = instant_add(stall_current, duration_from_micros(100));
+
+    uart_puts(&uart, "        Testing wait_until_stall with future time\r\n");
+    WaitResult stall_future_result = timer_wait_until_stall(&timer, stall_future);
+    if (stall_future_result != WAIT_SUCCESS) {
+        test_fail(&uart, "wait_until_stall should return WAIT_SUCCESS for future");
+    }
+    uart_puts(&uart, "        Result: WAIT_SUCCESS (correct)\r\n");
 
     uart_puts(&uart, "\r\n=== All tests PASSED! ===\r\n\r\n");
     uart_puts(&uart, "C Timer HAL test completed successfully!\r\n");

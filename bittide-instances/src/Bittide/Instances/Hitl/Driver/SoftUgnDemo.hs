@@ -266,6 +266,17 @@ driver testName targets = do
               $ forConcurrently_ picocoms
               $ \pico ->
                 waitForLine pico.stdoutHandle "[MU] All UGNs captured"
+
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Waiting for calendar initialization"
+                (3 * 60_000_000)
+                goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[MU] All calendars initialized"
+
             -- From here the actual test should be done, but for now it's just going to be
             -- waiting for the devices to print out over UART.
 
@@ -273,12 +284,12 @@ driver testName targets = do
             liftIO
               $ T.tryWithTimeoutOn
                 T.PrintActionTime
-                "Waiting for GPPE hello"
-                (5_000_000)
+                "Waiting for UGN discovery protocol to complete"
+                (60_000_000)
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico.stdoutHandle "[PE] Hello from C!"
+                waitForLine pico.stdoutHandle "[PE] UGN discovery protocol complete!"
 
             liftIO goDumpCcSamples
 

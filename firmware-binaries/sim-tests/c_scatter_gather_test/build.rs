@@ -6,7 +6,8 @@ use memmap_generate::build_utils::standard_memmap_build;
 use std::path::PathBuf;
 
 fn main() {
-    standard_memmap_build("SoftUgnDemoGppe.json", "DataMemory", "InstructionMemory");
+    // Generate memory.x linker script
+    standard_memmap_build("ScatterGatherPe.json", "DataMemory", "InstructionMemory");
 
     // Use C headers from auto-generated bittide-hal-c
     let hal_c_headers = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -23,17 +24,12 @@ fn main() {
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
-        .file("src/peripherals.c")
         .file(hal_c_src.join("bittide_uart.c"))
-        .file(hal_c_src.join("bittide_timer.c"))
         .file(hal_c_src.join("bittide_scatter.c"))
         .file(hal_c_src.join("bittide_gather.c"))
-        .file(hal_c_src.join("priority_queue.c"))
-        .file(hal_c_src.join("bittide_ugn.c"))
         .compiler("clang")
-        .include("src")
         .include(hal_c_headers)
-        .include(hal_c_include)
+        .include(hal_c_include) // Add HAL include directory
         .flag("--target=riscv32-unknown-none-elf") // RISC-V target
         .flag("-march=rv32imc")
         .flag("-mabi=ilp32")
@@ -44,13 +40,8 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/main.c");
-    println!("cargo:rerun-if-changed=src/peripherals.c");
-    println!("cargo:rerun-if-changed=src/peripherals.h");
     println!(
         "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_uart.h"
-    );
-    println!(
-        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_timer.h"
     );
     println!(
         "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_scatter.h"
@@ -58,18 +49,9 @@ fn main() {
     println!(
         "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_gather.h"
     );
-    println!(
-        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/priority_queue.h"
-    );
-    println!(
-        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_ugn.h"
-    );
     println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_uart.c");
-    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_timer.c");
     println!(
         "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_scatter.c"
     );
     println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_gather.c");
-    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/priority_queue.c");
-    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_ugn.c");
 }

@@ -53,14 +53,14 @@ dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
 dutMM =
   (\(SimOnly mm, _) -> mm)
     $ withClockResetEnable @System clockGen (resetGenN d2) enableGen
-    $ toSignals dut ((), pure $ deepErrorX "memoryMap")
+    $ toSignals (dutWithBinary "") ((), pure $ deepErrorX "memoryMap")
 
-{- | A simulation-only instance containing just VexRisc with UART and a scatter and a
-gather unit. The VexRiscv runs the `scatter_gather_test` binary from `firmware-binaries`.
--}
-dut ::
-  (HasCallStack, HiddenClockResetEnable dom) => Circuit (ConstBwd MM) (Df dom (BitVector 8))
-dut = withBittideByteOrder $ circuit $ \mm -> do
+-- | Parameterized DUT that loads a specific firmware binary.
+dutWithBinary ::
+  (HasCallStack, HiddenClockResetEnable dom) =>
+  String ->
+  Circuit (ConstBwd MM) (Df dom (BitVector 8))
+dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [ uartBus
     , wbSu
@@ -68,17 +68,17 @@ dut = withBittideByteOrder $ circuit $ \mm -> do
     , wbSuCal
     , wbGuCal
     ] <-
-    processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
+    processingElement NoDumpVcd (peConfig binaryName) -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   Fwd link <- gatherUnitWbC gatherConfig -< (wbGu, wbGuCal)
   scatterUnitWbC scatterConfig link -< (wbSu, wbSuCal)
   idC -< uartTx
  where
-  peConfig = unsafePerformIO $ do
+  peConfig binary = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "scatter_gather_test"
+      elfPath = elfDir </> binary
     pure
       PeConfig
         { initI =
@@ -95,7 +95,7 @@ dut = withBittideByteOrder $ circuit $ \mm -> do
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
         }
-{-# OPAQUE dut #-}
+{-# OPAQUE dutWithBinary #-}
 
 type IMemWords = DivRU (64 * 1024) 4
 type DMemWords = DivRU (32 * 1024) 4
