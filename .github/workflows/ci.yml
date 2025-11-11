@@ -718,6 +718,35 @@ jobs:
           overwrite: true
           retention-days: 14
 
+  mdbook:
+    name: Build and publish mdBook
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --ignore-environment
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-11-05
+      options: --memory=11g
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set CI flags
+        run: |
+          .github/scripts/set_ci_flags.sh
+
+      - name: Build mdBook
+        run: |
+          cd docs
+          mdbook build
+
+      - name: Upload book artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: _build/book
+
+      # Deployment: see .github/workflows/deploy-documentation.yml
+
   all:
     name: All jobs finished
     if: ${{ !cancelled() }}
@@ -734,6 +763,7 @@ jobs:
         haskell-tests,
         license-check,
         lint,
+        mdbook,
         rust-lints,
         should-run-haskell-tests,
       ]
