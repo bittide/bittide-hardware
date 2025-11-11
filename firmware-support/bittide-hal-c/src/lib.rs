@@ -149,4 +149,32 @@
 //! ```
 //!
 
-#![no_std]
+use std::path::PathBuf;
+
+pub fn get_generated_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("generated")
+}
+
+pub fn get_manual_include_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("include")
+}
+
+pub fn get_manual_source_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("c_src")
+}
+
+pub fn manual_source_files() -> impl Iterator<Item = std::path::PathBuf> {
+    get_manual_source_dir()
+        .read_dir()
+        .expect("cannot open `c_src`")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let ext = path.extension()?.to_str()?;
+            if ext == "c" {
+                Some(path)
+            } else {
+                None
+            }
+        })
+}

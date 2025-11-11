@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "softugndemogppe_memmap.h"
+#include "hals/soft_ugn_demo_gppe/device_instances.h"
 #include "bittide_dna.h"
 #include "bittide_uart.h"
 

@@ -48,6 +48,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bittide-hal-c"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "memmap-generate",
+]
+
+[[package]]
 name = "bittide-macros"
 version = "0.1.0"
 dependencies = [
@@ -100,6 +108,7 @@ dependencies = [
 name = "c_timer_wb"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal-c",
  "bittide-sys",
  "cc",
  "memmap-generate",
@@ -633,6 +642,7 @@ name = "soft-ugn-gppe"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-hal-c",
  "bittide-sys",
  "cc",
  "memmap-generate",
