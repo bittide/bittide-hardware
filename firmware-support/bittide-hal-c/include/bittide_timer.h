@@ -27,13 +27,6 @@ typedef enum {
     WAIT_ALREADY_PASSED = 1 // Requested instant already passed
 } WaitResult;
 
-/// Timer device structure (populated with memory-mapped register pointers)
-typedef struct {
-    volatile uint8_t*  command;
-    volatile uint64_t* scratchpad;
-    volatile uint64_t* frequency;
-    volatile uint8_t*  cmp_result;
-} Timer;
 
 // ============================================================================
 // Duration Function Declarations
@@ -88,13 +81,6 @@ uint64_t instant_to_cycles(Instant i, uint64_t frequency);
 // ============================================================================
 // Timer Function Declarations
 // ============================================================================
-
-Timer timer_init(
-    volatile uint8_t*  command,
-    volatile uint64_t* scratchpad,
-    volatile uint64_t* frequency,
-    volatile uint8_t*  cmp_result
-);
 
 uint64_t timer_frequency(const Timer* timer);
 

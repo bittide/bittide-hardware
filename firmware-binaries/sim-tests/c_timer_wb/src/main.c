@@ -2,17 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "timewb_memmap.h"
+#include "hals/time_wb/device_instances.h"
 #include "bittide_timer.h"
-#include "bittide_uart.h"
+// #include "bittide_uart.h"
 
-// Test status values (must match Haskell TestStatus enum)
-#define TEST_RUNNING 0
-#define TEST_SUCCESS 1
-#define TEST_FAIL 2
 
 // Helper to report test failure and halt
-static void test_fail(const Uart* uart, const char* message) {
+static void test_fail(Uart uart, const char* message) {
     uart_puts(uart, "\r\n*** TEST FAILED: ");
     uart_puts(uart, message);
     uart_puts(uart, " ***\r\n");

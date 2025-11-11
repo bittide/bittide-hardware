@@ -17,6 +17,8 @@ typedef signed int int32_t;
 typedef unsigned int uint32_t;
 typedef signed long long int64_t;
 typedef unsigned long long uint64_t;
+typedef __uint128_t uint128_t;
+typedef __int128_t int128_t;
 
 /* DNA integer type (BitVector 96) stored as 3x32-bit words in little-endian order
  * Index 0: bits [31:0]   (least significant)
@@ -28,6 +30,7 @@ typedef uint32_t dna_t[3];
 /* Pointer-sized integer types */
 typedef int32_t intptr_t;
 typedef uint32_t uintptr_t;
+typedef uintptr_t size_t;
 
 /* Minimum-width integer types */
 typedef int8_t int_least8_t;
@@ -84,5 +87,6 @@ typedef uint64_t uintmax_t;
 #define SIZE_MAX UINT32_MAX
 #define PTRDIFF_MIN INT32_MIN
 #define PTRDIFF_MAX INT32_MAX
+#define SIZE_WIDTH (sizeof(size_t))
 
 #endif /* STDINT_H */

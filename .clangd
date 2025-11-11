@@ -1,0 +1,4 @@
+CompileFlags:
+  Add:
+    - "-Ifirmware/bittide-hal-c/generated"
+    - "-Ifirmware/bittide-hal-c/include"
