@@ -18,11 +18,10 @@
 // Low-level Message Helpers (similar to elara_snd_lib.c and elara_rec_lib.c)
 // ============================================================================
 
-// Send a 2-argument command to scatter unit at specified metacycle
-static void send_cmd2(ScatterUnit* unit, uint32_t metacycle, uint64_t cmd,
+// Send a 2-argument command to scatter unit at specified offset
+static void send_cmd2(ScatterUnit* unit, uint32_t offset, uint64_t cmd,
                      uint64_t arg1, uint64_t arg2) {
     uint64_t buffer[5];
-    uint32_t offset = metacycle % unit->memory_len;
 
     buffer[0] = BT_MAGIC_LO;
     buffer[1] = BT_MAGIC_HI;
@@ -33,28 +32,25 @@ static void send_cmd2(ScatterUnit* unit, uint32_t metacycle, uint64_t cmd,
     scatter_unit_write_slice(unit, buffer, offset, 5);
 }
 
-// Check if there's a valid message in gather unit at specified metacycle
-static bool received_magic(GatherUnit* unit, uint32_t metacycle) {
+// Check if there's a valid message in gather unit at specified offset
+static bool received_magic(GatherUnit* unit, uint32_t offset) {
     uint64_t data[2];
-    uint32_t offset = metacycle % unit->memory_len;
 
     gather_unit_read_slice(unit, data, offset, 2);
     return (data[0] == BT_MAGIC_LO) && (data[1] == BT_MAGIC_HI);
 }
 
-// Read a word from gather buffer at offset relative to metacycle
-static uint64_t read_at_offset(GatherUnit* unit, uint32_t metacycle, uint32_t word_offset) {
+// Read a word from gather buffer at offset (with additional word offset)
+static uint64_t read_at_offset(GatherUnit* unit, uint32_t offset, uint32_t word_offset) {
     uint64_t data;
-    uint32_t offset = (metacycle + word_offset) % unit->memory_len;
 
-    gather_unit_read_slice(unit, &data, offset, 1);
+    gather_unit_read_slice(unit, &data, offset + word_offset, 1);
     return data;
 }
 
-// Invalidate scatter buffer at specified metacycle
-static void invalidate(ScatterUnit* unit, uint32_t metacycle) {
+// Invalidate scatter buffer at specified offset
+static void invalidate(ScatterUnit* unit, uint32_t offset) {
     uint64_t zeros[5] = {0, 0, 0, 0, 0};
-    uint32_t offset = metacycle % unit->memory_len;
 
     scatter_unit_write_slice(unit, zeros, offset, 5);
 }
@@ -75,15 +71,15 @@ static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_po
 }
 
 // Extract response meaning from received message (like receiver_extract_response_meaning)
-static uint32_t receiver_extract_response_meaning(GatherUnit* unit, uint32_t metacycle,
+static uint32_t receiver_extract_response_meaning(GatherUnit* unit, uint32_t offset,
                                                   uint32_t port, uint32_t node_id,
                                                   UgnEdge* u) {
-    uint64_t cmd = read_at_offset(unit, metacycle, 2);
+    uint64_t cmd = read_at_offset(unit, offset, 2);
 
     if (cmd == BT_SENDING_UGN) {
         // Received a UGN timing message
-        int64_t ugn = (int64_t)metacycle + 3 - (int64_t)read_at_offset(unit, metacycle, 3);
-        uint64_t remote_nodeid_port = read_at_offset(unit, metacycle, 4);
+        int64_t ugn = (int64_t)offset + 3 - (int64_t)read_at_offset(unit, offset, 3);
+        uint64_t remote_nodeid_port = read_at_offset(unit, offset, 4);
 
         initialize_ugn_object(u,
             ((uint32_t)remote_nodeid_port) & 0xffff,          // src_node
@@ -95,8 +91,8 @@ static uint32_t receiver_extract_response_meaning(GatherUnit* unit, uint32_t met
 
     } else if (cmd == BT_FOUND_UGN) {
         // Received acknowledgement for our outgoing UGN
-        int64_t ugn = (int64_t)read_at_offset(unit, metacycle, 3);
-        uint64_t remote_nodeid_port = read_at_offset(unit, metacycle, 4);
+        int64_t ugn = (int64_t)read_at_offset(unit, offset, 3);
+        uint64_t remote_nodeid_port = read_at_offset(unit, offset, 4);
 
         initialize_ugn_object(u,
             node_id,                                           // src_node (us)
@@ -111,54 +107,78 @@ static uint32_t receiver_extract_response_meaning(GatherUnit* unit, uint32_t met
 }
 
 // Send messages to all ports (like send_messages_to_all_ports in source)
-void send_ugns_to_all_ports(UgnContext* ctx, uint64_t send_time) {
+// ============================================================================
+// Protocol Event Handlers
+// ============================================================================
+
+void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t offset) {
+    if (port >= ctx->num_ports) return;
+
+    uint64_t port_nodeid = (uint64_t)(ctx->node_id) + ((port + 1) << 16);
+
+    // Announce our local time to communicate outgoing UGN
+    send_cmd2(&ctx->scatter_units[port], offset, BT_SENDING_UGN,
+             offset + 3, port_nodeid);
+
+    // If we have a valid incoming UGN for this port, send back ack
+    if (ctx->incoming_link_ugn_list[port].is_valid) {
+        send_cmd2(&ctx->scatter_units[port], offset + 5, BT_FOUND_UGN,
+                 (uint64_t)(ctx->incoming_link_ugn_list[port].ugn),
+                 (uint64_t)(ctx->node_id) + ((port + 1) << 16));
+    }
+}
+
+void send_ugns_to_all_ports(UgnContext* ctx, uint64_t offset) {
     for (uint32_t port = 0; port < ctx->num_ports; port++) {
-        uint64_t port_nodeid = (uint64_t)(ctx->node_id) + ((port + 1) << 16);
+        send_ugn_to_port(ctx, port, offset);
+    }
+}
 
-        // Announce our local time to communicate outgoing UGN
-        send_cmd2(&ctx->scatter_units[port], send_time, BT_SENDING_UGN,
-                 send_time + 3, port_nodeid);
+void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t offset) {
+    if (port >= ctx->num_ports) return;
 
-        // If we have a valid incoming UGN for this port, send back ack
-        if (ctx->incoming_link_ugn_list[port].is_valid) {
-            send_cmd2(&ctx->scatter_units[port], send_time + 5, BT_FOUND_UGN,
-                     (uint64_t)(ctx->incoming_link_ugn_list[port].ugn),
-                     (uint64_t)(ctx->node_id) + ((port + 1) << 16));
-        }
+    GatherUnit* unit = &ctx->gather_units[port];
+
+    // Check if scatter unit has signaled "received"
+    if (!received_magic(unit, offset)) return;
+
+    // Create temporary UgnEdge for receiver_extract_response_meaning
+    UgnEdge temp_edge;
+    uint32_t meaning =
+        receiver_extract_response_meaning(unit, offset, port, ctx->node_id, &temp_edge);
+
+    if (meaning == 0) return;
+
+    if (meaning == RECEIVED_OUTGOING_UGN_ACK) {
+        // Use the UGN from temp_edge
+        ctx->outgoing_link_ugn_list[port].ugn = temp_edge.ugn;
+        ctx->outgoing_link_ugn_list[port].is_valid = true;
+        return;
+    }
+
+    if (meaning == RECEIVED_INCOMING_UGN) {
+        // Use the UGN from temp_edge
+        ctx->incoming_link_ugn_list[port].ugn = temp_edge.ugn;
+        ctx->incoming_link_ugn_list[port].is_valid = true;
     }
 }
 
 // Check all incoming buffers (like check_all_incoming_buffers in source)
-void check_all_incoming_buffers(UgnContext* ctx, uint64_t event_time) {
+void check_all_incoming_buffers(UgnContext* ctx, uint64_t offset) {
     for (uint32_t port = 0; port < ctx->num_ports; port++) {
-        UgnEdge* incoming_ugn_storage = &ctx->incoming_link_ugn_list[port];
-        UgnEdge* outgoing_ugn_storage = &ctx->outgoing_link_ugn_list[port];
-
-        // Check if there's a message at this metacycle
-        if (received_magic(&ctx->gather_units[port], event_time)) {
-            UgnEdge u;
-            uint32_t type_of_thing_extracted = receiver_extract_response_meaning(
-                &ctx->gather_units[port], event_time, port + 1, ctx->node_id, &u);
-
-            if (type_of_thing_extracted == RECEIVED_INCOMING_UGN) {
-                if (!incoming_ugn_storage->is_valid) {
-                    ctx->number_incoming_link_ugns_known += 1;
-                    *incoming_ugn_storage = u;
-                }
-            } else if (type_of_thing_extracted == RECEIVED_OUTGOING_UGN_ACK) {
-                if (!outgoing_ugn_storage->is_valid) {
-                    ctx->number_outgoing_link_ugns_acknowledged += 1;
-                    *outgoing_ugn_storage = u;
-                }
-            }
-        }
+        check_incoming_buffer(ctx, port, offset);
     }
 }
 
+void invalidate_port(UgnContext* ctx, uint32_t port, uint64_t offset) {
+    if (port >= ctx->num_ports) return;
+    invalidate(&ctx->scatter_units[port], offset);
+}
+
 // Handle invalidate (like handle_invalidate in source)
-void handle_invalidate(UgnContext* ctx, uint64_t event_time) {
+void handle_invalidate(UgnContext* ctx, uint64_t offset) {
     for (uint32_t port = 0; port < ctx->num_ports; port++) {
-        invalidate(&ctx->scatter_units[port], event_time);
+        invalidate_port(ctx, port, offset);
     }
 }
 

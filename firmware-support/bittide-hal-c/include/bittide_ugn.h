@@ -13,9 +13,11 @@
 // ============================================================================
 // Event System Constants
 // ============================================================================
-// We encode event type in the top 8 bits and event time in bottom 56 bits
-// This allows the priority queue to naturally order by time while preserving type
-#define EVENT_TIME_MASK (0x00ffffffffffffffULL)
+// We encode event type in the top 8 bits, port in bits 48-51, and event time in bottom 48 bits
+// This allows the priority queue to naturally order by time while preserving type and port
+#define EVENT_TIME_MASK (0x0000ffffffffffffULL)
+#define EVENT_PORT_MASK (0x000f000000000000ULL)
+#define EVENT_PORT_SHIFT 48
 #define EVENT_TYPE_SEND (0x0100000000000000ULL)
 #define EVENT_TYPE_RECEIVE (0x0200000000000000ULL)
 #define EVENT_TYPE_INVALIDATE (0x0400000000000000ULL)
@@ -65,19 +67,29 @@ typedef struct {
 // Event Helper Functions
 // ============================================================================
 
-// Encode event type and time into a single 64-bit value
+// Encode event type, port, and time into a single 64-bit value
 static inline uint64_t ugn_encode_event(uint64_t event_type, uint64_t time) {
     return event_type | (time & EVENT_TIME_MASK);
 }
 
+// Encode event with port information (for SEND and RECEIVE events)
+static inline uint64_t ugn_encode_event_with_port(uint64_t event_type, uint32_t port, uint64_t time) {
+    return event_type | (((uint64_t)port << EVENT_PORT_SHIFT) & EVENT_PORT_MASK) | (time & EVENT_TIME_MASK);
+}
+
 // Extract event type from encoded event
 static inline uint64_t get_event_type(uint64_t event) {
-    return event & ~EVENT_TIME_MASK;
+    return event & ~(EVENT_TIME_MASK | EVENT_PORT_MASK);
 }
 
 // Extract event time from encoded event
 static inline uint64_t get_event_time(uint64_t event) {
     return event & EVENT_TIME_MASK;
+}
+
+// Extract port number from encoded event
+static inline uint32_t get_event_port(uint64_t event) {
+    return (uint32_t)((event & EVENT_PORT_MASK) >> EVENT_PORT_SHIFT);
 }
 
 // ============================================================================
@@ -106,13 +118,22 @@ void ugn_context_init(UgnContext* ctx, ScatterUnit* scatter_units,
 // Protocol Event Handlers
 // ============================================================================
 
+// Send UGN to a specific port
+void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t offset);
+
 // Send UGNs to all ports
-void send_ugns_to_all_ports(UgnContext* ctx, uint64_t event_time);
+void send_ugns_to_all_ports(UgnContext* ctx, uint64_t offset);
+
+// Check incoming buffer for a specific port
+void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t offset);
 
 // Check all incoming buffers for received UGNs
-void check_all_incoming_buffers(UgnContext* ctx, uint64_t event_time);
+void check_all_incoming_buffers(UgnContext* ctx, uint64_t offset);
+
+// Invalidate old scatter buffer data for a specific port
+void invalidate_port(UgnContext* ctx, uint32_t port, uint64_t offset);
 
 // Invalidate old scatter buffer data
-void handle_invalidate(UgnContext* ctx, uint64_t event_time);
+void handle_invalidate(UgnContext* ctx, uint64_t offset);
 
 #endif // BITTIDE_UGN_H

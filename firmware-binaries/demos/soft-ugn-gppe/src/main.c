@@ -20,9 +20,13 @@
 
 // Protocol timing parameter
 #define METACYCLE_CLOCKS 2000
-#define SEND_PERIOD (METACYCLE_CLOCKS * MAXDEG)            // How often to send UGN broadcasts
-#define RECEIVE_PERIOD (METACYCLE_CLOCKS * MAXDEG + 1)     // How often to check for incoming UGNs
+// Schedule one SEND task per neighbor every 3 metacycles
+#define SEND_PERIOD (METACYCLE_CLOCKS * 3)
+// Schedule one RECEIVE task per link each metacycle
+#define RECEIVE_PERIOD METACYCLE_CLOCKS
 #define MAX_SEND_PRIORITY_OVERRIDE 5000                    // Max delay before RECEIVE overrides SEND priority
+// Invalidate 2 metacycles after send
+#define INVALIDATE_DELAY (METACYCLE_CLOCKS * 2)
 
 // Initial offsets for starting events in metacycles
 // Increased to allow time for startup printing (UART is slow)
@@ -84,20 +88,26 @@ uint64_t pq_extract_min_send_first(FixedIntPriorityQueue* pq) {
 // Process a single event and schedule any follow-up events
 static void process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQueue* event_queue) {
     uint64_t event_time = get_event_time(event);
+    uint64_t metacycle_offset = event_time % METACYCLE_CLOCKS;
+    uint32_t port = get_event_port(event);
 
     if (event & EVENT_TYPE_SEND) {
-        send_ugns_to_all_ports(ugn_ctx, event_time);
-        // Schedule next send and invalidate events
-        pq_insert(event_queue, ugn_encode_event(EVENT_TYPE_SEND, event_time + SEND_PERIOD));
-        pq_insert(event_queue, ugn_encode_event(EVENT_TYPE_INVALIDATE, event_time));
+        // Send UGN to the specific port encoded in the event
+        send_ugn_to_port(ugn_ctx, port, metacycle_offset);
+        // Schedule next send event for this port
+        pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_SEND, port, event_time + SEND_PERIOD));
+        // Schedule invalidate for this port 2 metacycles after this send
+        pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_INVALIDATE, port, event_time + INVALIDATE_DELAY));
 
     } else if (event & EVENT_TYPE_INVALIDATE) {
-        handle_invalidate(ugn_ctx, event_time);
+        // Invalidate the specific port encoded in the event
+        invalidate_port(ugn_ctx, port, metacycle_offset);
 
     } else if (event & EVENT_TYPE_RECEIVE) {
-        check_all_incoming_buffers(ugn_ctx, event_time);
-        // Schedule next receive event
-        pq_insert(event_queue, ugn_encode_event(EVENT_TYPE_RECEIVE, event_time + RECEIVE_PERIOD));
+        // Check incoming buffer for the specific port encoded in the event
+        check_incoming_buffer(ugn_ctx, port, metacycle_offset);
+        // Schedule next receive event for this port
+        pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port, event_time + RECEIVE_PERIOD));
     }
 }
 
@@ -215,9 +225,16 @@ int c_main(void) {
     // Schedule initial events (in cycles, aligned to metacycle boundaries)
     pq_init(&event_queue);
 
-    for (uint32_t degree = 0; degree < MAXDEG; degree++) {
-        pq_insert(&event_queue, ugn_encode_event(EVENT_TYPE_SEND, start_cycles + STARTING_TICK_SND_OFFSET + degree * METACYCLE_CLOCKS));
-        pq_insert(&event_queue, ugn_encode_event(EVENT_TYPE_RECEIVE, start_cycles + STARTING_TICK_REC_OFFSET + degree * METACYCLE_CLOCKS));
+    // Schedule SEND events: one per port every 3 metacycles, staggered across ports
+    for (uint32_t port = 0; port < MAXDEG; port++) {
+        pq_insert(&event_queue, ugn_encode_event_with_port(EVENT_TYPE_SEND, port,
+            start_cycles + STARTING_TICK_SND_OFFSET + port * SEND_PERIOD));
+    }
+
+    // Schedule RECEIVE events: one per port each metacycle, staggered across the first MAXDEG metacycles
+    for (uint32_t port = 0; port < MAXDEG; port++) {
+        pq_insert(&event_queue, ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port,
+            start_cycles + STARTING_TICK_REC_OFFSET + port * RECEIVE_PERIOD));
     }
 
     PRINT_QUEUE_STATS(&peripherals, &event_queue);
