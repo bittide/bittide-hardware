@@ -191,6 +191,36 @@
         uart_puts(&((PERIPHERALS_PTR)->uart), " ports\n"); \
     } while(0)
 
+// Message for printing initialization information - compact summary
+#define PRINT_INIT_INFO(PERIPHERALS_PTR, UGN_CTX_PTR, METACYCLE_CLOCKS, SEND_PERIOD, RECEIVE_PERIOD, MAXDEG) \
+    do { \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "========================================\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "Bittide UGN Discovery Protocol\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "========================================\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "Node ID: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->node_id)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), " | Ports: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->num_ports)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), " | Metacycle: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(METACYCLE_CLOCKS)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), " cycles\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "Send period: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(SEND_PERIOD)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), " | Receive period: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(RECEIVE_PERIOD)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), " | Max degree: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MAXDEG)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n========================================\n"); \
+    } while(0)
+
+// Message for printing event queue start information
+#define PRINT_EVENT_LOOP_START(PERIPHERALS_PTR, EVENT_QUEUE_PTR) \
+    do { \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "Starting event loop with "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((EVENT_QUEUE_PTR)->size)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), " initial events...\n\n"); \
+    } while(0)
+
 // ============================================================================
 // Pre-defined Message Strings
 // ============================================================================

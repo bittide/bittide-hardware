@@ -181,26 +181,14 @@ int c_main(void) {
     Peripherals peripherals;
     peripherals_init(&peripherals);
 
-    uart_puts(&peripherals.uart, "========================================\n");
-    uart_puts(&peripherals.uart, "Bittide UGN Discovery Protocol\n");
-    uart_puts(&peripherals.uart, "========================================\n");
-    uart_puts(&peripherals.uart, "Config: METACYCLE_CLOCKS=");
-    uart_putdec(&peripherals.uart, METACYCLE_CLOCKS);
-    uart_puts(&peripherals.uart, ", MAXDEG=");
-    uart_putdec(&peripherals.uart, MAXDEG);
-    uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "Initialized scatter/gather units\n");
-
     // Get current metacycle count and convert to cycles (aligned to metacycle boundary)
     scatter_unit_wait_for_new_metacycle(&peripherals.scatter_units[0]);
     uint32_t start_metacycle = scatter_unit_metacycle_count(&peripherals.scatter_units[0]) + 1;
     uint64_t start_cycles = (uint64_t)start_metacycle * METACYCLE_CLOCKS;
 
-    PRINT_START_INFO(&peripherals, METACYCLE_CLOCKS);
-
     // Initialize UGN protocol context
     // TODO: Get actual node ID from hardware or configuration
-    uint32_t node_id = 0;  // Placeholder
+    uint32_t node_id = 0xDEADBEEF;  // Placeholder
 
     // Allocate UGN edge lists
     UgnEdge incoming_link_ugn_list[MAXDEG];
@@ -211,13 +199,8 @@ int c_main(void) {
                      NUM_PORTS, node_id,
                      incoming_link_ugn_list, outgoing_link_ugn_list, MAXDEG);
 
-    uart_puts(&peripherals.uart, "Initialized UGN protocol context\n");
-    uart_puts(&peripherals.uart, "Node ID: ");
-    uart_putdec(&peripherals.uart, node_id);
-    uart_puts(&peripherals.uart, ", Ports: ");
-    uart_putdec(&peripherals.uart, NUM_PORTS);
-    uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "Starting UGN discovery protocol...\n");
+    // Print consolidated initialization information
+    PRINT_INIT_INFO(&peripherals, &ugn_ctx, METACYCLE_CLOCKS, SEND_PERIOD, RECEIVE_PERIOD, MAXDEG);
 
     // Event loop variables
     FixedIntPriorityQueue event_queue;
@@ -237,8 +220,6 @@ int c_main(void) {
             start_cycles + STARTING_TICK_REC_OFFSET + port * RECEIVE_PERIOD));
     }
 
-    PRINT_QUEUE_STATS(&peripherals, &event_queue);
-
     // Get the first event before starting the loop
     if (pq_is_empty(&event_queue)) {
         uart_puts(&peripherals.uart, MSG_QUEUE_EMPTY);
@@ -246,17 +227,7 @@ int c_main(void) {
     }
     uint64_t current_event = pq_extract_min_send_first(&event_queue);
 
-    // Print pre-loop information about what we're about to do
-    uart_puts(&peripherals.uart, "\n========================================\n");
-    uart_puts(&peripherals.uart, "Starting Real-Time Event Loop\n");
-    uart_puts(&peripherals.uart, "========================================\n");
-
-    PRINT_FIRST_EVENT_INFO(&peripherals, current_event, METACYCLE_CLOCKS);
-    PRINT_LOOP_CONFIG(&peripherals, NUM_PERIODS, SEND_PERIOD, RECEIVE_PERIOD, METACYCLE_CLOCKS);
-    PRINT_PROTOCOL_GOALS(&peripherals, &ugn_ctx);
-
-    uart_puts(&peripherals.uart, "\nWaiting for first event...\n");
-    uart_puts(&peripherals.uart, "========================================\n\n");
+    PRINT_EVENT_LOOP_START(&peripherals, &event_queue);
 
     // Track progress (print every 1000 iterations to avoid UART overhead)
     uint32_t last_progress_report = 0;
