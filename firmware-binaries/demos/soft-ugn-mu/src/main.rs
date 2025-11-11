@@ -15,14 +15,14 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 use riscv_rt::entry;
 
 /// Initialize scatter and gather calendars with incrementing counter entries.
-/// Each calendar entry has a duration of 0 (no repeat), with 1024 entries total.
+/// Each calendar entry has a duration of 0 (no repeat), with 2000 entries total.
 fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
-    const NUM_ENTRIES: usize = 1024;
+    const NUM_ENTRIES: usize = 2000;
 
-    // Prepare calendar entries: incrementing counter 0-1023, no repeat
-    let calendar_entries: [ValidEntry<Index![1024]>; NUM_ENTRIES] =
+    // Prepare calendar entries: incrementing counter 0-1999, no repeat
+    let calendar_entries: [ValidEntry<Index![2000]>; NUM_ENTRIES] =
         core::array::from_fn(|i| ValidEntry {
-            ve_entry: index!(i as u16, n = 1024),
+            ve_entry: index!(i as u16, n = 2000),
             ve_repeat: 0,
         });
 
@@ -41,9 +41,9 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
         uwriteln!(uart, "  Initializing scatter calendar {}", i).unwrap();
         for (n, entry) in calendar_entries.iter().enumerate() {
             calendar.set_shadow_entry(*entry);
-            calendar.set_write_addr(index!(n as u16, n = 1024));
+            calendar.set_write_addr(index!(n as u16, n = 2096));
         }
-        calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 1024));
+        calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 2096));
         calendar.set_end_of_metacycle(true);
         calendar.set_swap_active(true);
         calendar.set_end_of_metacycle(true);
@@ -65,9 +65,9 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
         uwriteln!(uart, "  Initializing gather calendar {}", i).unwrap();
         for (n, entry) in calendar_entries.iter().enumerate() {
             calendar.set_shadow_entry(*entry);
-            calendar.set_write_addr(index!(n as u16, n = 1024));
+            calendar.set_write_addr(index!(n as u16, n = 2096));
         }
-        calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 1024));
+        calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 2096));
         calendar.set_end_of_metacycle(true);
         calendar.set_swap_active(true);
         calendar.set_end_of_metacycle(true);

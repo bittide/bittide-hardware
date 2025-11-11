@@ -15,11 +15,11 @@
 // Number of event loop iterations
 #define NUM_PERIODS 5000
 
-// Maximum number of neighbor nodes (degree of the network)
+// Maximum number of nodes including myself (degree of the network)
 #define MAXDEG 8
 
 // Protocol timing parameter
-#define METACYCLE_CLOCKS 1024
+#define METACYCLE_CLOCKS 2000
 #define SEND_PERIOD (METACYCLE_CLOCKS * MAXDEG)            // How often to send UGN broadcasts
 #define RECEIVE_PERIOD (METACYCLE_CLOCKS * MAXDEG + 1)     // How often to check for incoming UGNs
 #define MAX_SEND_PRIORITY_OVERRIDE 5000                    // Max delay before RECEIVE overrides SEND priority
