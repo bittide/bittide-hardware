@@ -111,7 +111,7 @@ static uint32_t receiver_extract_response_meaning(GatherUnit* unit, uint32_t off
 // Protocol Event Handlers
 // ============================================================================
 
-void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t offset) {
+void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return;
 
     uint64_t port_nodeid = (uint64_t)(ctx->node_id) + ((port + 1) << 16);
@@ -128,13 +128,13 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t offset) {
     }
 }
 
-void send_ugns_to_all_ports(UgnContext* ctx, uint64_t offset) {
+void send_ugns_to_all_ports(UgnContext* ctx, uint32_t offset) {
     for (uint32_t port = 0; port < ctx->num_ports; port++) {
         send_ugn_to_port(ctx, port, offset);
     }
 }
 
-void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t offset) {
+void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return;
 
     GatherUnit* unit = &ctx->gather_units[port];
@@ -164,19 +164,19 @@ void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t offset) {
 }
 
 // Check all incoming buffers (like check_all_incoming_buffers in source)
-void check_all_incoming_buffers(UgnContext* ctx, uint64_t offset) {
+void check_all_incoming_buffers(UgnContext* ctx, uint32_t offset) {
     for (uint32_t port = 0; port < ctx->num_ports; port++) {
         check_incoming_buffer(ctx, port, offset);
     }
 }
 
-void invalidate_port(UgnContext* ctx, uint32_t port, uint64_t offset) {
+void invalidate_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return;
     invalidate(&ctx->scatter_units[port], offset);
 }
 
 // Handle invalidate (like handle_invalidate in source)
-void handle_invalidate(UgnContext* ctx, uint64_t offset) {
+void handle_invalidate(UgnContext* ctx, uint32_t offset) {
     for (uint32_t port = 0; port < ctx->num_ports; port++) {
         invalidate_port(ctx, port, offset);
     }

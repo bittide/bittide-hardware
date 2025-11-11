@@ -119,21 +119,21 @@ void ugn_context_init(UgnContext* ctx, ScatterUnit* scatter_units,
 // ============================================================================
 
 // Send UGN to a specific port
-void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t offset);
+void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset);
 
 // Send UGNs to all ports
-void send_ugns_to_all_ports(UgnContext* ctx, uint64_t offset);
+void send_ugns_to_all_ports(UgnContext* ctx, uint32_t offset);
 
 // Check incoming buffer for a specific port
-void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t offset);
+void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset);
 
 // Check all incoming buffers for received UGNs
-void check_all_incoming_buffers(UgnContext* ctx, uint64_t offset);
+void check_all_incoming_buffers(UgnContext* ctx, uint32_t offset);
 
 // Invalidate old scatter buffer data for a specific port
-void invalidate_port(UgnContext* ctx, uint32_t port, uint64_t offset);
+void invalidate_port(UgnContext* ctx, uint32_t port, uint32_t offset);
 
 // Invalidate old scatter buffer data
-void handle_invalidate(UgnContext* ctx, uint64_t offset);
+void handle_invalidate(UgnContext* ctx, uint32_t offset);
 
 #endif // BITTIDE_UGN_H
