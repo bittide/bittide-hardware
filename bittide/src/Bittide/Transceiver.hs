@@ -232,6 +232,9 @@ data Inputs tx rx ref free rxS n = Inputs
 data Output tx rx tx1 rx1 txS free = Output
   { txOutClock :: Clock tx1
   -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
+  , txReset :: Reset tx
+  -- ^ Reset for 'Input.clockTx2'. Clock can be unstable until this reset is
+  -- deasserted. See documentation of 'transceiverPrbsN' for more information.
   , txReady :: Signal tx Bool
   -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
@@ -403,12 +406,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxUsrClkRst = noReset @rx
 
   txOutClk = (head outputs).txOutClock
-
-  -- XXX: Usually, we'd just use 'txClkActives' here, but we're in a bit of a
-  --      predicament: we can't pass a (synchronous) reset to 'xilinxGthUserClockNetworkTx'
-  --      because we need a stable clock to do so. To get a stable clock, we need
-  --      'xilinxGthUserClockNetworkTx' to work.
-  txReset = xpmResetSynchronizer Asserted clock txClock reset
+  txReset = (head outputs).txReset
 
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
@@ -572,6 +570,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       , txSim
       , txN = txN
       , txP = txP
+      , txReset = txDomainReset
       , txOutClock
       , rxOutClock
       , rxReset
@@ -728,14 +727,18 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         , errorAfterRxUser = withLockRxFree errorAfterRxUserData
         }
 
-  -- Synchronized version of 'resets.txUser'. We use 'holdReset', because 'txUser'
-  -- can be asserted for a single clock cycle, while 'xpmResetSynchronizer'
-  -- requires that the target domain samples at least 2 clock cycles. A value of
-  -- 32 means that the target domain (TX) can therefore be 16 times slower than
-  -- the source domain (free).
+  -- Synchronized version of 'resets.txUser' and 'resets.txDomain'. We use
+  -- 'holdReset', because 'txUser' and 'txDomain' can be asserted for a single
+  -- clock cycle, while 'xpmResetSynchronizer' requires that the target domain
+  -- samples at least 2 clock cycles. A value of 32 means that the target domain
+  -- (TX) can therefore be 16 times slower than the source domain (free).
   txReset =
     xpmResetSynchronizer Asserted clock txClock
       $ holdReset clock enableGen d32 resets.txUser
+
+  txDomainReset =
+    xpmResetSynchronizer Asserted clock txClock
+      $ holdReset clock enableGen d32 resets.txDomain
 
   -- Both the TX and RX domain may sometimes be disabled entirely. To prevent
   -- seeing stale signals, 'withLock' is employed. This means that constructs

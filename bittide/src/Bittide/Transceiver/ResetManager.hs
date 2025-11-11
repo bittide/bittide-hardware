@@ -141,6 +141,9 @@ data Resets dom = Resets
   -- ^ Should be routed to @gtwiz_reset_tx_pll_and_datapath_in@.
   , txDatapath :: Reset dom
   -- ^ Should be routed to @gtwiz_reset_tx_datapath_in@.
+  , txDomain :: Reset dom
+  -- ^ Reset that can be paired with the TX clock. It is deasserted once the TX
+  -- clock is stable.
   , txUser :: Reset dom
   -- ^ Should be used to reset user-side logic, e.g., comma generation,
   -- PRBS generation, etc.
@@ -155,6 +158,7 @@ data FsmResets = FsmResets
   { all :: Bool
   , txPllAndDatapath :: Bool
   , txDatapath :: Bool
+  , txDomain :: Bool
   , txUser :: Bool
   , rxPllAndDatapath :: Bool
   , rxDatapath :: Bool
@@ -191,6 +195,7 @@ resetManager config clk rst args = (resets, statistics)
       { all = unsafeFromActiveHigh fsmResets.all
       , txPllAndDatapath = unsafeFromActiveHigh fsmResets.txPllAndDatapath
       , txDatapath = unsafeFromActiveHigh fsmResets.txDatapath
+      , txDomain = unsafeFromActiveHigh fsmResets.txDomain
       , txUser = unsafeFromActiveHigh fsmResets.txUser
       , rxPllAndDatapath = unsafeFromActiveHigh fsmResets.rxPllAndDatapath
       , rxDatapath = unsafeFromActiveHigh fsmResets.rxDatapath
@@ -284,6 +289,7 @@ resetManager config clk rst args = (resets, statistics)
       { all = st == InReset
       , txPllAndDatapath = st <= StartTxClock
       , txDatapath = st <= StartTxClock
+      , txDomain = st < ResetUserTx
       , txUser = st <= ResetUserTx
       , rxPllAndDatapath = False
       , rxDatapath = st <= ResetRx
