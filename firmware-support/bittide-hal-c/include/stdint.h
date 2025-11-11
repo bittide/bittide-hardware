@@ -17,6 +17,8 @@ typedef signed int int32_t;
 typedef unsigned int uint32_t;
 typedef signed long long int64_t;
 typedef unsigned long long uint64_t;
+typedef uint64_t uint128_t[2];
+typedef int64_t int128_t[2];
 
 /* DNA integer type (BitVector 96) stored as 3x32-bit words in little-endian
  * order Index 0: bits [31:0]   (least significant) Index 1: bits [63:32] Index
@@ -81,7 +83,5 @@ typedef uint64_t uintmax_t;
 
 /* Limits of other integer types */
 #define SIZE_MAX UINT32_MAX
-#define PTRDIFF_MIN INT32_MIN
-#define PTRDIFF_MAX INT32_MAX
 
 #endif /* STDINT_H */

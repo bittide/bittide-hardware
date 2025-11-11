@@ -12,7 +12,7 @@ use crate::{
     input_language::{RegisterAccess, TypeName},
     ir::{
         deduplicate::HalShared,
-        monomorph::{MonomorphVariant, MonomorphVariants},
+        monomorph::{MonomorphVariants, TypeRefVariant},
         types::{
             DeviceDescription, IrCtx, PathComp, RegisterDescription, TreeElem, TypeDefinition,
             TypeDescription, TypeRef,
@@ -57,9 +57,9 @@ pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
 /// User provided annotations. Will be considered during code generation.
 #[derive(Default)]
 pub struct Annotations {
-    pub type_annotation: HashMap<Handle<MonomorphVariant>, TokenStream>,
-    pub type_imports: HashMap<Handle<MonomorphVariant>, TokenStream>,
-    pub type_tags: HashMap<Handle<MonomorphVariant>, Vec<String>>,
+    pub type_annotation: HashMap<Handle<TypeRefVariant>, TokenStream>,
+    pub type_imports: HashMap<Handle<TypeRefVariant>, TokenStream>,
+    pub type_tags: HashMap<Handle<TypeRefVariant>, Vec<String>>,
 }
 
 /// Generate code for a type description, taking into account monomorp variants.
@@ -200,12 +200,12 @@ fn path_name(path: &[PathComp]) -> Option<&str> {
 fn generate_type_definition(
     ctx: &IrCtx,
     varis: &MonomorphVariants,
-    var_handle: Handle<MonomorphVariant>,
+    var_handle: Handle<TypeRefVariant>,
     anns: &Annotations,
     refs: &mut TypeReferences,
     desc: &TypeDescription,
 ) -> TokenStream {
-    let variant = &varis.variants[var_handle];
+    let variant = &varis.type_ref_variants[var_handle];
     let raw_name = &ctx.type_names[desc.name];
     let (ty_name, has_mono_args) = mono_variant_name(ctx, variant);
 
@@ -662,7 +662,7 @@ pub struct TypeReferences {
 fn generate_type_ref(
     ctx: &IrCtx,
     varis: &MonomorphVariants,
-    variant: Option<&MonomorphVariant>,
+    variant: Option<&TypeRefVariant>,
     refs: &mut TypeReferences,
     ty: Handle<TypeRef>,
 ) -> TokenStream {
@@ -746,14 +746,14 @@ fn generate_type_ref(
         TypeRef::Reference { name, args } => {
             refs.references.insert(*name);
             let mono_ref = if let Some(var) = variant {
-                var.monomorph_substitutions.get(&handle)
+                var.monomorph_type_ref_substitutions.get(&handle)
             } else {
                 None
             };
             let mono_ref = mono_ref.or_else(|| varis.type_refs.get(&handle));
 
             if let Some(mono_ref) = mono_ref.copied() {
-                let mono_variant = &varis.variants[mono_ref];
+                let mono_variant = &varis.type_ref_variants[mono_ref];
                 let (name, _has_mono_arg) = mono_variant_name(ctx, mono_variant);
                 let any_args = mono_variant
                     .argument_mono_values
@@ -799,7 +799,7 @@ fn generate_type_ref(
     }
 }
 
-fn lookup_sub(variant: Option<&MonomorphVariant>, handle: Handle<TypeRef>) -> Handle<TypeRef> {
+fn lookup_sub(variant: Option<&TypeRefVariant>, handle: Handle<TypeRef>) -> Handle<TypeRef> {
     let mut handle = handle;
     let subs = if let Some(var) = variant {
         &var.variable_substitutions
@@ -821,7 +821,7 @@ fn po2_type(n: u64) -> u64 {
     }
 }
 
-fn mono_variant_name(ctx: &IrCtx, var: &MonomorphVariant) -> (Ident, bool) {
+fn mono_variant_name(ctx: &IrCtx, var: &TypeRefVariant) -> (Ident, bool) {
     let desc = &ctx.type_descs[var.original_type_desc];
     let ty_name = &ctx.type_names[desc.name];
     let args = var

@@ -152,76 +152,61 @@ uint64_t instant_to_cycles(Instant i, uint64_t frequency) {
 }
 
 // ============================================================================
-// Timer Functions
-// ============================================================================
-
-Timer timer_init(volatile uint8_t *command, volatile uint64_t *scratchpad,
-                 volatile uint64_t *frequency, volatile uint8_t *cmp_result) {
-  Timer timer = {.command = command,
-                 .scratchpad = scratchpad,
-                 .frequency = frequency,
-                 .cmp_result = cmp_result};
-  return timer;
-}
-
-uint64_t timer_frequency(const Timer *timer) { return *timer->frequency; }
-
-// ============================================================================
 // Timer API - Cycle-based (Low-level)
 // ============================================================================
 
-uint64_t timer_now_cycles(const Timer *timer) {
-  *timer->command = TIME_CMD_CAPTURE;
-  return *timer->scratchpad;
+uint64_t timer_now_cycles(Timer timer) {
+  timer_set_command(timer, TIME_CMD_CAPTURE);
+  return timer_get_scratchpad(timer);
 }
 
-void timer_wait_cycles(const Timer *timer, uint64_t cycles) {
-  *timer->command = TIME_CMD_CAPTURE;
-  uint64_t now = *timer->scratchpad;
+void timer_wait_cycles(Timer timer, uint64_t cycles) {
+  timer_set_command(timer, TIME_CMD_CAPTURE);
+  uint64_t now = timer_get_scratchpad(timer);
   uint64_t target = now + cycles;
 
-  *timer->scratchpad = target;
-  while (!*timer->cmp_result) {
+  timer_set_scratchpad(timer, target);
+
+  while (!timer_get_cmp_result(timer)) {
     // Busy wait
   }
 }
 
-WaitResult timer_wait_until_cycles(const Timer *timer, uint64_t target_cycles) {
-  *timer->command = TIME_CMD_CAPTURE;
-  uint64_t now = *timer->scratchpad;
+WaitResult timer_wait_until_cycles(Timer timer, uint64_t target_cycles) {
+  timer_set_command(timer, TIME_CMD_CAPTURE);
+  uint64_t now = timer_get_scratchpad(timer);
 
   if (now > target_cycles) {
     return WAIT_ALREADY_PASSED;
   }
 
-  *timer->scratchpad = target_cycles;
-  while (!*timer->cmp_result) {
+  timer_set_scratchpad(timer, target_cycles);
+  while (!timer_get_cmp_result(timer)) {
     // Busy wait
   }
 
   return WAIT_SUCCESS;
 }
 
-void timer_wait_cycles_stall(const Timer *timer, uint64_t cycles) {
-  *timer->command = TIME_CMD_CAPTURE;
-  uint64_t now = *timer->scratchpad;
+void timer_wait_cycles_stall(Timer timer, uint64_t cycles) {
+  timer_set_command(timer, TIME_CMD_CAPTURE);
+  uint64_t now = timer_get_scratchpad(timer);
   uint64_t target = now + cycles;
 
-  *timer->scratchpad = target;
-  *timer->command = TIME_CMD_WAIT_FOR_CMP;
+  timer_set_scratchpad(timer, target);
+  timer_set_command(timer, TIME_CMD_WAIT_FOR_CMP);
 }
 
-WaitResult timer_wait_until_cycles_stall(const Timer *timer,
-                                         uint64_t target_cycles) {
-  *timer->command = TIME_CMD_CAPTURE;
-  uint64_t now = *timer->scratchpad;
+WaitResult timer_wait_until_cycles_stall(Timer timer, uint64_t target_cycles) {
+  timer_set_command(timer, TIME_CMD_CAPTURE);
+  uint64_t now = timer_get_scratchpad(timer);
 
   if (now > target_cycles) {
     return WAIT_ALREADY_PASSED;
   }
 
-  *timer->scratchpad = target_cycles;
-  *timer->command = TIME_CMD_WAIT_FOR_CMP;
+  timer_set_scratchpad(timer, target_cycles);
+  timer_set_command(timer, TIME_CMD_WAIT_FOR_CMP);
 
   return WAIT_SUCCESS;
 }
@@ -230,33 +215,33 @@ WaitResult timer_wait_until_cycles_stall(const Timer *timer,
 // Timer API - Microsecond-based (High-level)
 // ============================================================================
 
-Instant timer_now(const Timer *timer) {
+Instant timer_now(Timer timer) {
   uint64_t cycles = timer_now_cycles(timer);
-  uint64_t freq = *timer->frequency;
+  uint64_t freq = timer_get_frequency(timer);
   Instant result = {cycles_to_micros(cycles, freq)};
   return result;
 }
 
-void timer_wait(const Timer *timer, Duration duration) {
-  uint64_t freq = *timer->frequency;
+void timer_wait(Timer timer, Duration duration) {
+  uint64_t freq = timer_get_frequency(timer);
   uint64_t cycles = duration_to_cycles(duration, freq);
   timer_wait_cycles(timer, cycles);
 }
 
-WaitResult timer_wait_until(const Timer *timer, Instant target) {
-  uint64_t freq = *timer->frequency;
+WaitResult timer_wait_until(Timer timer, Instant target) {
+  uint64_t freq = timer_get_frequency(timer);
   uint64_t target_cycles = instant_to_cycles(target, freq);
   return timer_wait_until_cycles(timer, target_cycles);
 }
 
-void timer_wait_stall(const Timer *timer, Duration duration) {
-  uint64_t freq = *timer->frequency;
+void timer_wait_stall(Timer timer, Duration duration) {
+  uint64_t freq = timer_get_frequency(timer);
   uint64_t cycles = duration_to_cycles(duration, freq);
   timer_wait_cycles_stall(timer, cycles);
 }
 
-WaitResult timer_wait_until_stall(const Timer *timer, Instant target) {
-  uint64_t freq = *timer->frequency;
+WaitResult timer_wait_until_stall(Timer timer, Instant target) {
+  uint64_t freq = timer_get_frequency(timer);
   uint64_t target_cycles = instant_to_cycles(target, freq);
   return timer_wait_until_cycles_stall(timer, target_cycles);
 }

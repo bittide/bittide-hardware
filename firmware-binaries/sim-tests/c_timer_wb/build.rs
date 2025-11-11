@@ -3,33 +3,28 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use memmap_generate::build_utils::standard_memmap_build;
-use std::path::PathBuf;
 
 fn main() {
     // Generate memory.x linker script
     standard_memmap_build("TimeWb.json", "DataMemory", "InstructionMemory");
 
     // Use C headers from auto-generated bittide-hal-c
-    let hal_c_headers = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../firmware-support/bittide-hal-c/generated");
+    let hal_c_headers = bittide_hal_c::generated_dir();
 
     // Include directory for the Bittide HAL
-    let hal_c_include = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../firmware-support/bittide-hal-c/include");
+    let hal_c_include = bittide_hal_c::manual_include_dir();
 
     // Source directory for the Bittide HAL
-    let hal_c_src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../firmware-support/bittide-hal-c/src");
+    let hal_c_src = bittide_hal_c::manual_source_dir();
 
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
-        .file(hal_c_src.join("bittide_uart.c"))
-        .file(hal_c_src.join("bittide_timer.c"))
+        .files(bittide_hal_c::manual_source_files())
         .compiler("clang")
         .include("src") // Add src directory for our custom stdint.h
-        .include(hal_c_headers)
-        .include(hal_c_include) // Add HAL include directory
+        .include(&hal_c_headers)
+        .include(&hal_c_include) // Add HAL include directory
         .flag("--target=riscv32-unknown-none-elf") // RISC-V target
         .flag("-march=rv32imc")
         .flag("-mabi=ilp32")
@@ -40,13 +35,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/main.c");
-    println!("cargo:rerun-if-changed=src/stdint.h");
-    println!(
-        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_uart.h"
-    );
-    println!(
-        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_timer.h"
-    );
-    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_uart.c");
-    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_timer.c");
+    println!("cargo:rerun-if-changed={}", hal_c_headers.display());
+    println!("cargo:rerun-if-changed={}", hal_c_include.display());
+    println!("cargo:rerun-if-changed={}", hal_c_src.display());
 }
