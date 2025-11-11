@@ -21,9 +21,9 @@
 // Protocol timing parameter
 #define METACYCLE_CLOCKS 2000
 // Schedule one SEND task per neighbor every 3 metacycles
-#define SEND_PERIOD (METACYCLE_CLOCKS * 3)
+#define SEND_PERIOD (METACYCLE_CLOCKS * 3 * MAXDEG)
 // Schedule one RECEIVE task per link each metacycle
-#define RECEIVE_PERIOD METACYCLE_CLOCKS
+#define RECEIVE_PERIOD (METACYCLE_CLOCKS * MAXDEG)
 #define MAX_SEND_PRIORITY_OVERRIDE 5000                    // Max delay before RECEIVE overrides SEND priority
 // Invalidate 2 metacycles after send
 #define INVALIDATE_DELAY (METACYCLE_CLOCKS * 2)
