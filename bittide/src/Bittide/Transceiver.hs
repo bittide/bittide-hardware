@@ -160,82 +160,6 @@ defConfig =
     , resetManagerConfig = ResetManager.defConfig
     }
 
-{- | Careful: the domains for the rx side of each transceiver are different, even if their
-types say otherwise.
--}
-data Outputs n tx rx txS free = Outputs
-  { txClock :: Clock tx
-  -- ^ Single transmit clock, shared by all links
-  , txReset :: Reset tx
-  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable.
-  , txReadys :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txReady'
-  , txSamplings :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txSampling'
-  , handshakesDoneTx :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.handshakeDoneTx'
-  , txPs :: Gth.Wires txS n
-  -- ^ See 'Output.txP'
-  , txNs :: Gth.Wires txS n
-  -- ^ See 'Output.txN'
-  , txSims :: Gth.SimWires tx n
-  -- ^ See 'Output.txSim'
-  , rxClocks :: Vec n (Clock rx)
-  -- ^ See 'Output.rxClock'
-  , rxResets :: Vec n (Reset rx)
-  -- ^ See 'Output.rxReset'
-  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
-  -- ^ See 'Output.rxData'
-  , handshakesDone :: Vec n (Signal rx Bool)
-  -- ^ See 'Output.handshakeDone'
-  , linkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkUp'
-  , linkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkReady'
-  , handshakesDoneFree :: Vec n (Signal free Bool)
-  -- ^ See 'Output.handshakeDoneFree'
-  , stats :: Vec n (Signal free ResetManager.Statistics)
-  -- ^ See 'Output.stats'
-  }
-
-data Output tx rx tx1 rx1 txS free = Output
-  { txOutClock :: Clock tx1
-  -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
-  , txReady :: Signal tx Bool
-  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
-  -- 'Input.txStart' to be asserted before starting to send 'txData'.
-  , txSampling :: Signal tx Bool
-  -- ^ Data is sampled from 'Input.txData'
-  , handshakeDoneTx :: Signal tx Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
-  , txP :: Gth.Wire txS
-  -- ^ Transmit data (and implicitly a clock), positive
-  , txN :: Gth.Wire txS
-  -- ^ Transmit data (and implicitly a clock), negative
-  , txSim :: Gth.SimWire tx
-  -- ^ Simulation only construct. Data for the transmit side. Used for testing.
-  , rxOutClock :: Clock rx1
-  -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
-  , rxReset :: Reset rx
-  -- ^ Reset signal for the receive side. Clock can be unstable until this reset
-  -- is deasserted.
-  , rxData :: Signal rx (Maybe (BitVector 64))
-  -- ^ User data received from the neighbor
-  , handshakeDone :: Signal rx Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  , linkUp :: Signal free Bool
-  -- ^ True if both the transmit and receive side are either handling user data
-  , linkReady :: Signal free Bool
-  -- ^ True if both the transmit and receive side ready to handle user data or
-  -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
-  , handshakeDoneFree :: Signal free Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
-  , stats :: Signal free ResetManager.Statistics
-  -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
-  }
-
 data Input tx rx tx1 rx1 ref free rxS = Input
   { clock :: Clock free
   -- ^ Any "always on" clock
@@ -303,6 +227,82 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.txStart'
   , rxReadys :: Vec n (Signal rx Bool)
   -- ^ See 'Input.rxReady'
+  }
+
+data Output tx rx tx1 rx1 txS free = Output
+  { txOutClock :: Clock tx1
+  -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
+  , txReady :: Signal tx Bool
+  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
+  -- 'Input.txStart' to be asserted before starting to send 'txData'.
+  , txSampling :: Signal tx Bool
+  -- ^ Data is sampled from 'Input.txData'
+  , handshakeDoneTx :: Signal tx Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  , txP :: Gth.Wire txS
+  -- ^ Transmit data (and implicitly a clock), positive
+  , txN :: Gth.Wire txS
+  -- ^ Transmit data (and implicitly a clock), negative
+  , txSim :: Gth.SimWire tx
+  -- ^ Simulation only construct. Data for the transmit side. Used for testing.
+  , rxOutClock :: Clock rx1
+  -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
+  , rxReset :: Reset rx
+  -- ^ Reset signal for the receive side. Clock can be unstable until this reset
+  -- is deasserted.
+  , rxData :: Signal rx (Maybe (BitVector 64))
+  -- ^ User data received from the neighbor
+  , handshakeDone :: Signal rx Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  , linkUp :: Signal free Bool
+  -- ^ True if both the transmit and receive side are either handling user data
+  , linkReady :: Signal free Bool
+  -- ^ True if both the transmit and receive side ready to handle user data or
+  -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
+  , handshakeDoneFree :: Signal free Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  , stats :: Signal free ResetManager.Statistics
+  -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
+  }
+
+{- | Careful: the domains for the rx side of each transceiver are different, even if their
+types say otherwise.
+-}
+data Outputs n tx rx txS free = Outputs
+  { txClock :: Clock tx
+  -- ^ Single transmit clock, shared by all links
+  , txReset :: Reset tx
+  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable.
+  , txReadys :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txReady'
+  , txSamplings :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txSampling'
+  , handshakesDoneTx :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.handshakeDoneTx'
+  , txPs :: Gth.Wires txS n
+  -- ^ See 'Output.txP'
+  , txNs :: Gth.Wires txS n
+  -- ^ See 'Output.txN'
+  , txSims :: Gth.SimWires tx n
+  -- ^ See 'Output.txSim'
+  , rxClocks :: Vec n (Clock rx)
+  -- ^ See 'Output.rxClock'
+  , rxResets :: Vec n (Reset rx)
+  -- ^ See 'Output.rxReset'
+  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  -- ^ See 'Output.rxData'
+  , handshakesDone :: Vec n (Signal rx Bool)
+  -- ^ See 'Output.handshakeDone'
+  , linkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkUp'
+  , linkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkReady'
+  , handshakesDoneFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.handshakeDoneFree'
+  , stats :: Vec n (Signal free ResetManager.Statistics)
+  -- ^ See 'Output.stats'
   }
 
 {-
