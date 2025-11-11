@@ -9,7 +9,10 @@
 
 use bittide_hal::{
     index,
-    manual_additions::{index::IndexTy, switch_calendar::EntryType},
+    manual_additions::{
+        index::IndexTy,
+        switch_calendar::{CalEntry, Calendar},
+    },
     shared::types::ValidEntry,
     Index,
 };
@@ -67,7 +70,7 @@ fn main() -> ! {
         },
     ];
 
-    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| ValidEntry {
+    let cal_shadow: [CalEntry<hal::SwitchCalendar>; 16] = core::array::from_fn(|i| ValidEntry {
         ve_entry: core::array::from_fn(|_j| unsafe { IndexTy::new_unchecked(i as u8) }),
         ve_repeat: i as u16,
     });
