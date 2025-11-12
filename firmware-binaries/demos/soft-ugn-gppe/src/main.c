@@ -46,34 +46,6 @@ static uint32_t met_send_count = 0;
 static uint32_t met_receive_count = 0;
 static uint32_t met_invalidate_count = 0;
 
-bool find_min_send_event(const FixedIntPriorityQueue* pq, uint32_t* found_index) {
-  bool found = false;
-  uint64_t min_value;
-  uint32_t min_index;
-  uint64_t etime;
-  for (uint32_t i = 0; i < pq->size; i++) {
-    etime = pq->items[i] & EVENT_TIME_MASK;
-    if (pq->items[i] & EVENT_TYPE_SEND) {
-      if (found) {
-        if (etime < min_value) {
-          min_value = etime;
-          min_index = i;
-        }
-      } else {
-        found = true;
-        min_value = etime;
-        min_index = i;
-      }
-    }
-  }
-  if (found) {
-    *found_index = min_index;
-    return true;
-  }
-  return false;
-}
-
-
 // ============================================================================
 // Event Processing Functions
 // ============================================================================
@@ -95,9 +67,12 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
             missed_send_count++;
         }
         // Always reschedule next send event for this port
-        pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_SEND, port, event_time + SEND_PERIOD));
+        uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port, event_time + SEND_PERIOD);
+        pq_insert(event_queue, next_send_event, event_time + SEND_PERIOD);
+
         // Schedule invalidate for this port 2 metacycles after this send
-        pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_INVALIDATE, port, event_time + INVALIDATE_DELAY));
+        uint64_t invalidate_event = ugn_encode_event_with_port(EVENT_TYPE_INVALIDATE, port, event_time + INVALIDATE_DELAY);
+        pq_insert(event_queue, invalidate_event, event_time + INVALIDATE_DELAY);
 
     } else if (event & EVENT_TYPE_INVALIDATE) {
         if (execute) {
@@ -127,7 +102,8 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
             missed_receive_count++;
         }
         // Always reschedule next receive event for this port
-        pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port, event_time + RECEIVE_PERIOD));
+        uint64_t next_receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port, event_time + RECEIVE_PERIOD);
+        pq_insert(event_queue, next_receive_event, event_time + RECEIVE_PERIOD);
     }
 
     return execute;
@@ -280,14 +256,16 @@ int c_main(void) {
 
     // Schedule SEND events: one per port every 3 metacycles, staggered across ports
     for (uint32_t port = 0; port < NUM_PORTS; port++) {
-        pq_insert(&event_queue, ugn_encode_event_with_port(EVENT_TYPE_SEND, port,
-            start_cycles + STARTING_TICK_SND_OFFSET + port * SEND_PERIOD));
+        uint64_t send_time = start_cycles + STARTING_TICK_SND_OFFSET + port * SEND_PERIOD;
+        uint64_t send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port, send_time);
+        pq_insert(&event_queue, send_event, send_time);
     }
 
     // Schedule RECEIVE events: one per port each metacycle, staggered across the first NUM_PORTS metacycles
     for (uint32_t port = 0; port < NUM_PORTS; port++) {
-        pq_insert(&event_queue, ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port,
-            start_cycles + STARTING_TICK_REC_OFFSET + port * RECEIVE_PERIOD));
+        uint64_t receive_time = start_cycles + STARTING_TICK_REC_OFFSET + port * RECEIVE_PERIOD;
+        uint64_t receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port, receive_time);
+        pq_insert(&event_queue, receive_event, receive_time);
     }
 
     PRINT_EVENT_LOOP_START(&peripherals, &event_queue);
