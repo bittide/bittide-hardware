@@ -160,93 +160,15 @@ defConfig =
     , resetManagerConfig = ResetManager.defConfig
     }
 
-{- | Careful: the domains for the rx side of each transceiver are different, even if their
-types say otherwise.
--}
-data Outputs n tx rx txS free = Outputs
-  { txClock :: Clock tx
-  -- ^ Single transmit clock, shared by all links
-  , txReset :: Reset tx
-  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable. In
-  -- the current implementation, this also means the first link has completed a
-  -- (low level) handshake. In the future we want to decouple this: the TX clock
-  -- should be able to come up independently of any link.
-  , txReadys :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txReady'
-  , txSamplings :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txSampling'
-  , handshakesDoneTx :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.handshakeDoneTx'
-  , txPs :: Gth.Wires txS n
-  -- ^ See 'Output.txP'
-  , txNs :: Gth.Wires txS n
-  -- ^ See 'Output.txN'
-  , txSims :: Gth.SimWires tx n
-  -- ^ See 'Output.txSim'
-  , rxClocks :: Vec n (Clock rx)
-  -- ^ See 'Output.rxClock'
-  , rxResets :: Vec n (Reset rx)
-  -- ^ See 'Output.rxReset'
-  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
-  -- ^ See 'Output.rxData'
-  , handshakesDone :: Vec n (Signal rx Bool)
-  -- ^ See 'Output.handshakeDone'
-  , linkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkUp'
-  , linkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkReady'
-  , handshakesDoneFree :: Vec n (Signal free Bool)
-  -- ^ See 'Output.handshakeDoneFree'
-  , stats :: Vec n (Signal free ResetManager.Statistics)
-  -- ^ See 'Output.stats'
-  }
-
-data Output tx rx tx1 rx1 txS free = Output
-  { txOutClock :: Clock tx1
-  -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
-  , txReset :: Reset tx
-  -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
-  -- is deasserted.
-  , txReady :: Signal tx Bool
-  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
-  -- 'Input.txStart' to be asserted before starting to send 'txData'.
-  , txSampling :: Signal tx Bool
-  -- ^ Data is sampled from 'Input.txData'
-  , handshakeDoneTx :: Signal tx Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
-  , txP :: Gth.Wire txS
-  -- ^ Transmit data (and implicitly a clock), positive
-  , txN :: Gth.Wire txS
-  -- ^ Transmit data (and implicitly a clock), negative
-  , txSim :: Gth.SimWire tx
-  -- ^ Simulation only construct. Data for the transmit side. Used for testing.
-  , rxOutClock :: Clock rx1
-  -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
-  , rxReset :: Reset rx
-  -- ^ Reset signal for the receive side. Clock can be unstable until this reset
-  -- is deasserted.
-  , rxData :: Signal rx (Maybe (BitVector 64))
-  -- ^ User data received from the neighbor
-  , handshakeDone :: Signal rx Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  , linkUp :: Signal free Bool
-  -- ^ True if both the transmit and receive side are either handling user data
-  , linkReady :: Signal free Bool
-  -- ^ True if both the transmit and receive side ready to handle user data or
-  -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
-  , handshakeDoneFree :: Signal free Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
-  , stats :: Signal free ResetManager.Statistics
-  -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
-  }
-
 data Input tx rx tx1 rx1 ref free rxS = Input
   { clock :: Clock free
   -- ^ Any "always on" clock
   , reset :: Reset free
   -- ^ Reset signal for the entire transceiver
+  , channelReset :: Reset free
+  -- ^ Reset from user logic. The transceiver will not attempt to establish a link
+  -- while this reset is asserted. If this is asserted while a link is established,
+  -- the link will be torn down.
   , refClock :: Clock ref
   -- ^ Reference clock. Used to synthesize transmit clock.
   , clockTx1 :: Clock tx1
@@ -285,6 +207,8 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.clock'
   , reset :: Reset free
   -- ^ See 'Input.reset'
+  , channelResets :: Vec n (Reset free)
+  -- ^ Resets for each individual link
   , refClock :: Clock ref
   -- ^ See 'Input.refClock'
   , channelNames :: Vec n String
@@ -303,6 +227,85 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.txStart'
   , rxReadys :: Vec n (Signal rx Bool)
   -- ^ See 'Input.rxReady'
+  }
+
+data Output tx rx tx1 rx1 txS free = Output
+  { txOutClock :: Clock tx1
+  -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
+  , txReset :: Reset tx
+  -- ^ Reset for 'Input.clockTx2'. Clock can be unstable until this reset is
+  -- deasserted. See documentation of 'transceiverPrbsN' for more information.
+  , txReady :: Signal tx Bool
+  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
+  -- 'Input.txStart' to be asserted before starting to send 'txData'.
+  , txSampling :: Signal tx Bool
+  -- ^ Data is sampled from 'Input.txData'
+  , handshakeDoneTx :: Signal tx Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  , txP :: Gth.Wire txS
+  -- ^ Transmit data (and implicitly a clock), positive
+  , txN :: Gth.Wire txS
+  -- ^ Transmit data (and implicitly a clock), negative
+  , txSim :: Gth.SimWire tx
+  -- ^ Simulation only construct. Data for the transmit side. Used for testing.
+  , rxOutClock :: Clock rx1
+  -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
+  , rxReset :: Reset rx
+  -- ^ Reset signal for the receive side. Clock can be unstable until this reset
+  -- is deasserted.
+  , rxData :: Signal rx (Maybe (BitVector 64))
+  -- ^ User data received from the neighbor
+  , handshakeDone :: Signal rx Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  , linkUp :: Signal free Bool
+  -- ^ True if both the transmit and receive side are either handling user data
+  , linkReady :: Signal free Bool
+  -- ^ True if both the transmit and receive side ready to handle user data or
+  -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
+  , handshakeDoneFree :: Signal free Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  , stats :: Signal free ResetManager.Statistics
+  -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
+  }
+
+{- | Careful: the domains for the rx side of each transceiver are different, even if their
+types say otherwise.
+-}
+data Outputs n tx rx txS free = Outputs
+  { txClock :: Clock tx
+  -- ^ Single transmit clock, shared by all links
+  , txReset :: Reset tx
+  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable.
+  , txReadys :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txReady'
+  , txSamplings :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txSampling'
+  , handshakesDoneTx :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.handshakeDoneTx'
+  , txPs :: Gth.Wires txS n
+  -- ^ See 'Output.txP'
+  , txNs :: Gth.Wires txS n
+  -- ^ See 'Output.txN'
+  , txSims :: Gth.SimWires tx n
+  -- ^ See 'Output.txSim'
+  , rxClocks :: Vec n (Clock rx)
+  -- ^ See 'Output.rxClock'
+  , rxResets :: Vec n (Reset rx)
+  -- ^ See 'Output.rxReset'
+  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  -- ^ See 'Output.rxData'
+  , handshakesDone :: Vec n (Signal rx Bool)
+  -- ^ See 'Output.handshakeDone'
+  , linkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkUp'
+  , linkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkReady'
+  , handshakesDoneFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.handshakeDoneFree'
+  , stats :: Vec n (Signal free ResetManager.Statistics)
+  -- ^ See 'Output.stats'
   }
 
 {-
@@ -350,8 +353,8 @@ transceiverPrbsN ::
 transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
-      txClock = txClock
-    , txReset = unsafeFromActiveLow (head outputs).handshakeDoneTx
+      txClock
+    , txReset
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , handshakesDoneTx = map (.handshakeDoneTx) outputs
@@ -389,6 +392,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       <*> simOnlyHdlWorkaround (map SimOnly (Gth.unSimOnly inputs.rxSims))
       <*> unbundle (unpack <$> inputs.rxNs)
       <*> unbundle (unpack <$> inputs.rxPs)
+      <*> inputs.channelResets
       <*> inputs.txDatas
       <*> inputs.txStarts
       <*> inputs.rxReadys
@@ -402,6 +406,8 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxUsrClkRst = noReset @rx
 
   txOutClk = (head outputs).txOutClock
+  txReset = (head outputs).txReset
+
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
   (_txClk1s, txClock, _txClkActives) = txClockNw
@@ -411,7 +417,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
-  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxSim rxN rxP txData txStart rxReady (clockRx1, clockRx2, rxActive) =
+  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxSim rxN rxP channelReset txData txStart rxReady (clockRx1, clockRx2, rxActive) =
     transceiverPrbs
       opts
       Input
@@ -420,6 +426,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
         , rxSim
         , rxN
         , rxP
+        , channelReset
         , txData
         , txStart
         , rxReady
@@ -505,7 +512,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
               :> "ila_probe_prbsOk"
               :> "ila_probe_prbsOkDelayed"
               :> "ila_probe_rst_all"
-              :> "ila_probe_rst_rx"
+              :> "ila_probe_rst_rx_datapath"
               :> "ila_probe_rxReset"
               :> "ila_probe_txReset"
               :> "ila_probe_metaTx"
@@ -543,8 +550,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (xpmCdcArraySingle rxClock clock rxCtrl3)
         (xpmCdcSingle rxClock clock prbsOk)
         (xpmCdcSingle rxClock clock prbsOkDelayed)
-        (unsafeToActiveHigh rst_all)
-        (unsafeToActiveHigh rst_rx)
+        (unsafeToActiveHigh resets.all)
+        (unsafeToActiveHigh resets.rxDatapath)
         (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
         (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
         (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
@@ -552,8 +559,6 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         txLastFree
         (pure True :: Signal free Bool) -- capture
         txLastFree -- trigger
-  tx_active = args.txActive
-
   result =
     Output
       { txSampling = txUserData
@@ -565,8 +570,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       , txSim
       , txN = txN
       , txP = txP
+      , txReset = txDomainReset
       , txOutClock
-      , txReset
       , rxOutClock
       , rxReset
       , linkUp
@@ -602,11 +607,15 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         args.rxN
         args.rxP
         clock -- gtwiz_reset_clk_freerun_in
-        (delayReset Asserted clock rst_all)
-        -- \* filter glitches *
-        (delayReset Asserted clock rst_rx)
-        -- \* filter glitches *
-        -- gtwiz_reset_rx_datapath_in
+        -- We insert 'delayReset' to filter out glitches in the reset signals. That
+        -- is, a synchronous reset may glitch/stabilize outside of the setup and
+        -- hold window. An asynchronous reset (the ones on the GTH core) cannot
+        -- do so and should therefore come straight from a flipflop.
+        (delayReset Asserted clock resets.all)
+        (delayReset Asserted clock resets.txPllAndDatapath)
+        (delayReset Asserted clock resets.txDatapath)
+        (delayReset Asserted clock resets.rxPllAndDatapath)
+        (delayReset Asserted clock resets.rxDatapath)
         gtwiz_userdata_tx_in
         txctrl
         args.refClock -- gtrefclk0_in
@@ -702,21 +711,38 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
       <*> pure args.transceiverIndex
 
-  (rst_all, rst_rx, stats) =
+  errorAfterRxUserData :: Signal rx Bool
+  errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
+
+  (resets, stats) =
     ResetManager.resetManager
       opts.resetManagerConfig
       clock
       reset
-      (withLockTxFree (pure True))
-      (withLockRxFree (pure True))
-      (withLockRxFree (prbsOk .||. rxUserData))
+      ResetManager.Input
+        { channelReset = args.channelReset
+        , txInitDone = withLockTxFree (pure True) -- See note @ withLockRxFree
+        , rxInitDone = withLockRxFree (pure True) -- See note @ withLockRxFree
+        , rxDataGood = withLockRxFree (prbsOk .||. rxUserData)
+        , errorAfterRxUser = withLockRxFree errorAfterRxUserData
+        }
 
+  -- Synchronized version of 'resets.txUser' and 'resets.txDomain'. We use
+  -- 'holdReset', because 'txUser' and 'txDomain' can be asserted for a single
+  -- clock cycle, while 'xpmResetSynchronizer' requires that the target domain
+  -- samples at least 2 clock cycles. A value of 32 means that the target domain
+  -- (TX) can therefore be 16 times slower than the source domain (free).
   txReset =
-    xpmResetSynchronizer Asserted txClock txClock
-      $ unsafeFromActiveLow (bitCoerce <$> tx_active)
-      `orReset` unsafeFromActiveLow (bitCoerce <$> reset_tx_done)
-      `orReset` xpmResetSynchronizer Asserted clock txClock reset
+    xpmResetSynchronizer Asserted clock txClock
+      $ holdReset clock enableGen d32 resets.txUser
 
-  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
+  txDomainReset =
+    xpmResetSynchronizer Asserted clock txClock
+      $ holdReset clock enableGen d32 resets.txDomain
+
+  -- Both the TX and RX domain may sometimes be disabled entirely. To prevent
+  -- seeing stale signals, 'withLock' is employed. This means that constructs
+  -- such as @withLockRxFree (pure True)@ are actually doing something!
   withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
+  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset

@@ -102,6 +102,9 @@ gthCoreBBTF bbCtx
           , _gthrxp_in -- " ::: Signal rxS (BitVector ChansUsed)
           , (gtwiz_reset_clk_freerun_in, _) -- " ::: Clock freerun
           , _gtwiz_reset_all_in -- " ::: Reset freerun
+          , _gtwiz_reset_tx_pll_and_datapath_in -- " ::: Reset freerun
+          , _gtwiz_reset_tx_datapath_in -- " ::: Reset freerun
+          , _gtwiz_reset_rx_pll_and_datapath_in -- " ::: Reset freerun
           , _gtwiz_reset_rx_datapath_in -- " ::: Reset freerun
           , _gtwiz_userdata_tx_in -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH))
           , _txctrl2_in -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH/8))
@@ -128,6 +131,9 @@ gthCoreBBTF bbCtx
             , ("gthrxp_in", N.BitVector chansUsed)
             , ("gtwiz_reset_clk_freerun_in", N.Clock "freerun")
             , ("gtwiz_reset_all_in", N.Reset "freerun")
+            , ("gtwiz_reset_tx_pll_and_datapath_in", N.Reset "freerun")
+            , ("gtwiz_reset_tx_datapath_in", N.Reset "freerun")
+            , ("gtwiz_reset_rx_pll_and_datapath_in", N.Reset "freerun")
             , ("gtwiz_reset_rx_datapath_in", N.Reset "freerun")
             , ("gtwiz_userdata_tx_in", N.BitVector (chansUsed * tX_DATA_WIDTH))
             , ("txctrl2_in", N.BitVector (chansUsed * (tX_DATA_WIDTH `div` 8)))
@@ -146,9 +152,6 @@ gthCoreBBTF bbCtx
             [ ("drpclk_in", gtwiz_reset_clk_freerun_in)
             , ("txctrl0_in", DSL.bvLit 16 0)
             , ("txctrl1_in", DSL.bvLit 16 0)
-            , ("gtwiz_reset_tx_pll_and_datapath_in", DSL.bvLit 1 0)
-            , ("gtwiz_reset_tx_datapath_in", DSL.bvLit 1 0)
-            , ("gtwiz_reset_rx_pll_and_datapath_in", DSL.bvLit 1 0)
             , ("tx8b10ben_in", DSL.bvLit 1 1)
             , ("rx8b10ben_in", DSL.bvLit 1 1)
             , ("rxcommadeten_in", DSL.bvLit 1 1)

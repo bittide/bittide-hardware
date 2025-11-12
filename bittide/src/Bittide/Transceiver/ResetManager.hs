@@ -10,6 +10,7 @@ import Clash.Explicit.Prelude
 
 import Bittide.Arithmetic.Time (IndexMs)
 import Clash.Class.Counter (countSucc)
+import Data.Bifunctor (Bifunctor (first))
 
 -- | See 'Config.txTimeoutMs'
 type MaxTxTimeoutMs = Index 128
@@ -23,18 +24,20 @@ type MaxRxRetries = Index 128
 -- | Statistics exported by 'resetManager'
 data Statistics = Statistics
   { txRetries :: Unsigned 32
-  -- ^ How many times the transmit side was reset
+  -- ^ How many times the transmit side was reset in order to get a stable clock
+  -- signal.
   , rxRetries :: MaxRxRetries
   -- ^ How many times the receive side was reset. Note that this value in itself
-  -- will reset if the transmit side resets - see 'rxFullRetries'.
+  -- will reset if the receive side doesn't come up quickly enough - see
+  -- 'rxFullRetries'.
   , rxFullRetries :: Unsigned 32
-  -- ^ How many times 'rxRetries' overflowed. I.e., how many times 'RxWait' moved
-  -- the state machine back to 'StartTx'.
+  -- ^ How many times 'rxRetries' overflowed. I.e., how many times 'WaitRx' moved
+  -- the state machine back to 'ResetUserTx'.
   , failAfterUps :: Unsigned 32
   -- ^ How many times the link failed when in the 'Monitor' state - i.e., after
-  -- detecting it fully worked. This usually happens if the other side drops its
-  -- link because it tried resetting its receive side too many times - see
-  -- 'rxFullRetries'.
+  -- detecting it fully worked. A failure can have a diverse number of root
+  -- causes. Examples include 8b/10b decoding errors, disconnected cables, or
+  -- instable clocks.
   }
   deriving (Generic, NFDataX)
 
@@ -60,7 +63,7 @@ data Config = Config
 
 {- | Default configuration for 'resetManager'
 
-XXX: Current timeout values for 'TxWait' and 'RxWait' are chosen arbitrarily.
+XXX: Current timeout values for 'WaitTxClock' and 'WaitRx' are chosen arbitrarily.
      We should investigate what these values should be for quick bring-up.
 -}
 defConfig :: Config
@@ -71,65 +74,146 @@ defConfig =
     , rxRetries = 8
     }
 
-{- | Bringing up the transceivers is a stochastic process - at least, that is
-what Xilinx reference designs make us believe. We therefore retry a number of
-times if we don't see sensible data coming in. See the individual constructors
-and 'resetManager' for more information.
+{- | 'resetManager' moves through the state in order of constructor definition. If
+a state's documentation explicitly mentions that it resets a subcomponent, all
+previous states will have that reset asserted too. Note that 'Resets.rxPllAndDatapath'
+isn't currently mentioned: it is never asserted.
 -}
 data State dom
-  = InReset
-  | -- | Reset everything - transmit and receive side
-    StartTx
-  | -- | Reset just the receive side
-    StartRx
-  | -- | Wait for the transmit side to report it is done. After /n/ milliseconds
-    -- (see type) it times out, moving to 'StartTx'.
-    TxWait (MaxTxTimeoutMs, IndexMs dom 1)
+  = -- | Reset everything, including TX PLLs - transmit and receive side. I.e.,
+    -- 'Resets.all'.
+    --
+    -- TODO: Transceiver is edge sensitive on its falling edge. This means that
+    -- *leaving* the InReset state triggers a reset. This is counterintuitive, so
+    -- maybe we should make sure that whenever a reset is asserted a falling edge
+    -- is produced for the transceiver IP. But also, maybe that's not necessary
+    -- because we assert all other reset signals on the transceiver?
+    InReset
+  | -- | Reset all PLLs and datapaths, i.e. 'Resets.txPllAndDatapath'.
+    StartTxClock
+  | -- | Wait for 'Input.txInitDone'
+    WaitTxClock (MaxTxTimeoutMs, IndexMs dom 1)
+  | -- | Assert 'Resets.txUser'. After deassertion, the user should (re)start
+    -- comma generation, PRBS generation, etc. If 'Input.channelReset' is asserted,
+    -- the state machine will never make it past this point.
+    ResetUserTx
+  | -- | Reset the receive side datapath. Note that we don't reset the PLL here,
+    -- as the TX and RX PLL are assumed to be shared (CPLL / Channel-PLL).
+    ResetRx
   | -- | Wait for the receive side to report it is done _and_ that it can predict
     -- the data coming from the other side. After /n/ milliseconds (see type) it
     -- times out. Depending on the value of 'ResetStat's 'rxRetries' it will
-    -- either reset both the receive and the transmit side, or just the receive
-    -- side. If all is well though, move on to 'Monitor'.
-    RxWait (MaxRxTimeoutMs, IndexMs dom 1)
+    -- either reset both the receive and the transmit side (see 'ResetUserTx'), or
+    -- just the receive side. If all is well though, move on to 'Monitor'.
+    WaitRx (MaxRxTimeoutMs, IndexMs dom 1)
   | -- | Wait till the end of the universe, or until a link goes down - whichever
-    -- comes first. In case of the latter, the state machine moves to 'StartTx'.
+    -- comes first. In case of the latter, the state machine moves to 'ResetUserTx'.
+    --
+    -- TODO: Manager should stay in the monitor state on failure and export
+    --       failure reason. It should only move back upon 'Input.channelReset'
+    --       assertion.
     Monitor
-  deriving (Generic, NFDataX, Eq)
+  deriving (Generic, NFDataX, Eq, Ord)
+
+data Input dom = Input
+  { channelReset :: Reset dom
+  -- ^ Channel reset. Asserting this will cause the state machine to assert
+  -- 'Resets.txUser' and renegotiate the RX subsystem.
+  , txInitDone :: Signal dom Bool
+  -- ^ Transmit side initialization done. Should come from the GTH core.
+  , rxInitDone :: Signal dom Bool
+  -- ^ Receive side initialization done. Should come from the GTH core.
+  , rxDataGood :: Signal dom Bool
+  -- ^ Receive side data good. Should be asserted if the PRBS checker has been
+  -- content for \"long enough\".
+  , errorAfterRxUser :: Signal dom Bool
+  -- ^ Indicates that an error has been detected after the RX user reset has
+  -- been deasserted. This is used to detect link failures while in the
+  -- 'Monitor' state.
+  --
+  -- TODO: Accept more fine-grained error information here.
+  }
+
+data Resets dom = Resets
+  { all :: Reset dom
+  -- ^ Should be routed to @gtwiz_reset_all_in@.
+  , txPllAndDatapath :: Reset dom
+  -- ^ Should be routed to @gtwiz_reset_tx_pll_and_datapath_in@.
+  , txDatapath :: Reset dom
+  -- ^ Should be routed to @gtwiz_reset_tx_datapath_in@.
+  , txDomain :: Reset dom
+  -- ^ Reset that can be paired with the TX clock. It is deasserted once the TX
+  -- clock is stable.
+  , txUser :: Reset dom
+  -- ^ Should be used to reset user-side logic, e.g., comma generation,
+  -- PRBS generation, etc.
+  , rxPllAndDatapath :: Reset dom
+  -- ^ Never asserted in the current state machine. Should be routed to
+  -- @gtwiz_reset_rx_pll_and_datapath_in@.
+  , rxDatapath :: Reset dom
+  -- ^ Should be routed to @gtwiz_reset_rx_datapath_in@.
+  }
+
+data FsmResets = FsmResets
+  { all :: Bool
+  , txPllAndDatapath :: Bool
+  , txDatapath :: Bool
+  , txDomain :: Bool
+  , txUser :: Bool
+  , rxPllAndDatapath :: Bool
+  , rxDatapath :: Bool
+  }
 
 {- | Reset manager for transceivers: see 'State' for more information on
 this state machine. See 'Statistics' for information on what debug values
 are exported.
+
+The reset manager is designed such that it can be used for systems that share a
+TX clock signal. I.e., where one (channel) PLL generates the user TX clock
+signal for all others. In practice this means that, once the main reset is
+deasserted, the reset manager will step through a number of steps to get the PLL
+up and running. This state is only ever revisited upon main reset (de)assertion.
 -}
 resetManager ::
   forall dom.
   (KnownDomain dom) =>
   Config ->
   Clock dom ->
+  -- | Global reset. If asserted, this will keep the PLL and TX/RX datapath in
+  -- reset. Note that the GTH core itself will only respond to 'Resets.all' on
+  -- reset deassertion, though this difference is largely an academic difference
+  -- due to the aforementioned components being held in reset. Note that this is
+  -- the only reset that can reinitialize PLLs, the individual 'Input.channelReset'
+  -- won't do so.
   Reset dom ->
-  "tx_init_done" ::: Signal dom Bool ->
-  "rx_init_done" ::: Signal dom Bool ->
-  "rx_data_good" ::: Signal dom Bool ->
-  ( "reset_all_out" ::: Reset dom
-  , "reset_rx" ::: Reset dom
-  , "stats" ::: Signal dom Statistics
-  )
-resetManager config clk rst tx_init_done rx_init_done rx_data_good =
-  ( unsafeFromActiveHigh reset_all_out_sig
-  , unsafeFromActiveHigh reset_rx_sig
-  , statistics
-  )
+  Input dom ->
+  (Resets dom, Signal dom Statistics)
+resetManager config clk rst args = (resets, statistics)
  where
-  (reset_all_out_sig, reset_rx_sig, statistics) =
+  resets =
+    Resets
+      { all = unsafeFromActiveHigh fsmResets.all
+      , txPllAndDatapath = unsafeFromActiveHigh fsmResets.txPllAndDatapath
+      , txDatapath = unsafeFromActiveHigh fsmResets.txDatapath
+      , txDomain = unsafeFromActiveHigh fsmResets.txDomain
+      , txUser = unsafeFromActiveHigh fsmResets.txUser
+      , rxPllAndDatapath = unsafeFromActiveHigh fsmResets.rxPllAndDatapath
+      , rxDatapath = unsafeFromActiveHigh fsmResets.rxDatapath
+      }
+
+  (fsmResets :: Signal dom FsmResets, statistics :: Signal dom Statistics) =
     mooreB
       clk
       rst
       enableGen
       update
-      extractOutput
+      (first stateToFsmResets)
       (initState, initStats)
-      ( tx_init_done
-      , rx_init_done
-      , rx_data_good
+      ( unsafeToActiveHigh args.channelReset
+      , args.txInitDone
+      , args.rxInitDone
+      , args.rxDataGood
+      , args.errorAfterRxUser
       )
 
   initStats :: Statistics
@@ -144,38 +228,69 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
   initState :: State dom
   initState = InReset
 
-  update :: (State dom, Statistics) -> (Bool, Bool, Bool) -> (State dom, Statistics)
-  update st (tx_done, rx_done, rx_good) =
+  -- I'm purposely adding empty comment lines, so that each case is visually
+  -- separated from the next. Without them, it's hard to read (IMO).
+  update ::
+    (State dom, Statistics) ->
+    (Bool, Bool, Bool, Bool, Bool) ->
+    (State dom, Statistics)
+  update st (channelReset, txInitDone, rxInitDone, rxDataGood, errorAfterRxUser) =
     case st of
-      (InReset, stats) -> (StartTx, stats)
-      -- Reset everything:
-      (StartTx, stats) -> (TxWait minBound, stats)
-      -- Wait for transceiver to indicate it is done
-      (TxWait cntr@(ms, _), stats@Statistics{txRetries})
-        | tx_done -> (RxWait minBound, stats)
-        | ms == config.txTimeoutMs -> (StartTx, stats{txRetries = satSucc SatBound txRetries})
-        | otherwise -> (TxWait (countSucc cntr), stats)
-      -- Reset receive side logic
-      (StartRx, stats) -> (RxWait minBound, stats)
+      -- Reset everything, including TX PLLs - transmit and receive side.
+      (InReset, stats) -> (StartTxClock, stats)
+      --
+      -- Reset all PLLs and datapaths. Note that, after the TX clock comes up,
+      -- we don't reset the PLL again.
+      (StartTxClock, stats) -> (WaitTxClock minBound, stats)
+      --
+      -- Wait for transmit side to come up. If it doesn't within the timeout,
+      -- reset the transmit side again.
+      (WaitTxClock cntr@(ms, _), stats@Statistics{txRetries})
+        | txInitDone -> (ResetUserTx, stats)
+        | ms == config.txTimeoutMs ->
+            (StartTxClock, stats{txRetries = satSucc SatBound txRetries})
+        | otherwise -> (WaitTxClock (countSucc cntr), stats)
+      --
+      -- If user requested a channel reset, go back to 'ResetUserTx' / never
+      -- move past it. This makes sure that the PLL keeps running, but the
+      -- channel is down otherwise.
+      (_, stats) | channelReset -> (ResetUserTx, stats)
+      --
+      -- Assert 'Resets.txUser'. After deassertion, the user should (re)start
+      -- comma generation, PRBS generation, etc.
+      (ResetUserTx, stats) -> (ResetRx, stats)
+      --
+      -- Reset receive side datapath. We don't reset the PLL here, as it is assumed
+      -- to be shared with the transmit side.
+      (ResetRx, stats) -> (WaitRx minBound, stats)
+      --
       -- Wait for a reliable incoming link. This can fail in multiple ways, see
-      -- 'RxWait'.
-      (RxWait cntr@(ms, _), stats@Statistics{rxRetries, rxFullRetries})
-        | rx_done && rx_good ->
+      -- 'WaitRx'.
+      (WaitRx cntr@(ms, _), stats@Statistics{rxRetries, rxFullRetries})
+        | rxInitDone && rxDataGood ->
             (Monitor, stats)
         | ms == config.rxTimeoutMs && rxRetries >= config.rxRetries ->
-            (StartTx, stats{rxFullRetries = satSucc SatBound rxFullRetries})
+            (ResetUserTx, stats{rxFullRetries = satSucc SatBound rxFullRetries})
         | ms == config.rxTimeoutMs ->
-            (StartRx, stats{rxRetries = satSucc SatBound rxRetries})
+            (ResetRx, stats{rxRetries = satSucc SatBound rxRetries})
         | otherwise ->
-            (RxWait (countSucc cntr), stats)
-      -- Monitor link. Move all the way back to 'StartTx' if the link goes down
+            (WaitRx (countSucc cntr), stats)
+      --
+      -- Monitor link. Move all the way back to 'ResetUserTx' if the link goes down
       -- for some reason.
+      --
+      -- TODO: Make this more fine-grained, add error state, wait for user channel reset.
       (Monitor, stats@Statistics{failAfterUps})
-        | rx_done && rx_good -> (Monitor, stats)
-        | otherwise -> (StartTx, stats{failAfterUps = satSucc SatBound failAfterUps})
+        | rxInitDone && rxDataGood && not errorAfterRxUser -> (Monitor, stats)
+        | otherwise -> (ResetUserTx, stats{failAfterUps = satSucc SatBound failAfterUps})
 
-  extractOutput (st, stats) =
-    ( st == StartTx
-    , st == StartRx
-    , stats
-    )
+  stateToFsmResets st =
+    FsmResets
+      { all = st == InReset
+      , txPllAndDatapath = st <= StartTxClock
+      , txDatapath = st <= StartTxClock
+      , txDomain = st < ResetUserTx
+      , txUser = st <= ResetUserTx
+      , rxPllAndDatapath = False
+      , rxDatapath = st <= ResetRx
+      }

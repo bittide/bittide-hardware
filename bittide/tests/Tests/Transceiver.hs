@@ -102,7 +102,10 @@ gthCoreMock
   _rxSerialP
   freeClk
   rstAll
-  rstRx
+  rstTxPllAndDatapath
+  rstTxDatapath
+  rstRxPllAndDatapath
+  rstRxDatapath
   txWord
   _txCtrl
   _refClk
@@ -133,8 +136,8 @@ gthCoreMock
         $ WordAlign.aligner WordAlign.dealignLsbFirst (pure False) (pure offset)
         $ Gth.unSimOnly rx
 
-    registerRx = register rxClk rxRstRx enableGen
-    registerTx = register txClk txRstAll enableGen
+    registerRx = register rxClk rxRst enableGen
+    registerTx = register txClk txRst enableGen
 
     rxResetCounter = registerRx nRxResetCycles (predSatZeroNatural <$> rxResetCounter)
     txDoneCounter = registerTx (nTxResetCycles + nTxDoneCycles) (predSatZeroNatural <$> txDoneCounter)
@@ -148,12 +151,21 @@ gthCoreMock
     txClk = tx2Clk
     rxClk = rx2Clk
 
-    txRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstAll))
     rxRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstAll))
-    rxRstRx =
-      unsafeOrReset
-        rxRstAll
-        (unsafeFromActiveHigh (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRx)))
+    rxRstRxPllAndDatapath =
+      unsafeFromActiveHigh
+        (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRxPllAndDatapath))
+    rxRstRxDatapath =
+      unsafeFromActiveHigh (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstRxDatapath))
+    rxRst = rxRstAll `unsafeOrReset` rxRstRxPllAndDatapath `unsafeOrReset` rxRstRxDatapath
+
+    txRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstAll))
+    txRstTxPllAndDatapath =
+      unsafeFromActiveHigh
+        (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstTxPllAndDatapath))
+    txRstTxDatapath =
+      unsafeFromActiveHigh (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstTxDatapath))
+    txRst = txRstAll `unsafeOrReset` txRstTxPllAndDatapath `unsafeOrReset` txRstTxDatapath
 
     predSatZeroNatural :: Natural -> Natural
     predSatZeroNatural 0 = 0
@@ -226,6 +238,7 @@ dut
           , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
           , rxN = error "A: rxN not used in simulation"
           , rxP = error "A: rxP not used in simulation"
+          , channelReset = noReset
           , txData = inputA.dat
           , txStart = inputA.txStart
           , rxReady = inputA.rxReady
@@ -251,6 +264,7 @@ dut
           , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
           , rxN = error "B: rxN not used in simulation"
           , rxP = error "B: rxP not used in simulation"
+          , channelReset = noReset
           , txData = inputB.dat
           , txStart = inputB.txStart
           , rxReady = inputB.rxReady
