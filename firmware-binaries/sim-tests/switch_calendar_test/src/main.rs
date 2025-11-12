@@ -10,7 +10,7 @@
 use bittide_hal::{
     index,
     manual_additions::{index::IndexTy, switch_calendar::EntryType},
-    shared::types::ValidEntry,
+    switch_c::ValidEntry,
     Index,
 };
 use ufmt::{uDebug, uwrite, uwriteln};

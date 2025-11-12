@@ -5,7 +5,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::{index, shared::types::ValidEntry, soft_ugn_demo_mu::DeviceInstances, Index};
+use bittide_hal::{
+    index,
+    soft_ugn_demo_mu::{types::ValidEntry, DeviceInstances},
+    Index,
+};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
@@ -15,15 +19,15 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 use riscv_rt::entry;
 
 /// Initialize scatter and gather calendars with incrementing counter entries.
-/// Each calendar entry has a duration of 0 (no repeat), with 2000 entries total.
+/// Each calendar entry has a duration of 0 (no repeat), with 1000 entries total.
 fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
-    const NUM_ENTRIES: usize = 2000;
+    const NUM_ENTRIES: usize = 1000;
 
-    // Prepare calendar entries: incrementing counter 0-1999, no repeat
-    let calendar_entries: [ValidEntry<Index![2000]>; NUM_ENTRIES] =
+    // Prepare calendar entries: incrementing counter 0-999 where each entry repeats 100 times
+    let calendar_entries: [ValidEntry<Index![1000]>; NUM_ENTRIES] =
         core::array::from_fn(|i| ValidEntry {
-            ve_entry: index!(i as u16, n = 2000),
-            ve_repeat: 0,
+            ve_entry: index!(i as u16, n = 1000),
+            ve_repeat: 99,
         });
 
     // Initialize all scatter calendars

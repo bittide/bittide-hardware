@@ -19,7 +19,10 @@
 #define PROGRESS_INTERVAL 1000
 
 // Protocol timing parameter
-#define METACYCLE_CLOCKS 2000
+#define CYCLES_PER_BUFFER_ENTRY 100
+#define BUFFER_SIZE 1000
+#define METACYCLE_CLOCKS (CYCLES_PER_BUFFER_ENTRY * BUFFER_SIZE)
+
 // Schedule one SEND task per neighbor every 3 metacycles
 #define SEND_PERIOD (METACYCLE_CLOCKS * 3 * NUM_PORTS)
 
@@ -55,13 +58,13 @@ static uint32_t met_invalidate_count = 0;
 static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQueue* event_queue,
                           bool execute, Peripherals* peripherals) {
     uint64_t event_time = get_event_time(event);
-    uint64_t metacycle_offset = event_time % METACYCLE_CLOCKS;
+    uint64_t buffer_offset = event_time % BUFFER_SIZE;
     uint32_t port = get_event_port(event);
 
     if (event & EVENT_TYPE_SEND) {
         if (execute) {
             // Send UGN to the specific port encoded in the event
-            send_ugn_to_port(ugn_ctx, port, metacycle_offset);
+            send_ugn_to_port(ugn_ctx, port, buffer_offset);
             met_send_count++;
         } else {
             missed_send_count++;
@@ -77,7 +80,7 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
     } else if (event & EVENT_TYPE_INVALIDATE) {
         if (execute) {
             // Invalidate the specific port encoded in the event
-            invalidate_port(ugn_ctx, port, metacycle_offset);
+            invalidate_port(ugn_ctx, port, buffer_offset);
             met_invalidate_count++;
         } else {
             missed_invalidate_count++;
@@ -86,7 +89,7 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
     } else if (event & EVENT_TYPE_RECEIVE) {
         if (execute) {
             // Check incoming buffer for the specific port encoded in the event
-            bool received = check_incoming_buffer(ugn_ctx, port, metacycle_offset);
+            bool received = check_incoming_buffer(ugn_ctx, port, buffer_offset);
 
             // If we received new data, print all discovered edges
             if (received) {
