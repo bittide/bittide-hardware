@@ -192,7 +192,7 @@
     } while(0)
 
 // Message for printing initialization information - compact summary
-#define PRINT_INIT_INFO(PERIPHERALS_PTR, UGN_CTX_PTR, METACYCLE_CLOCKS, SEND_PERIOD, RECEIVE_PERIOD, MAXDEG) \
+#define PRINT_INIT_INFO(PERIPHERALS_PTR, UGN_CTX_PTR, METACYCLE_CLOCKS, SEND_PERIOD, RECEIVE_PERIOD, NUM_PORTS) \
     do { \
         uart_puts(&((PERIPHERALS_PTR)->uart), "========================================\n"); \
         uart_puts(&((PERIPHERALS_PTR)->uart), "Bittide UGN Discovery Protocol\n"); \
@@ -209,7 +209,7 @@
         uart_puts(&((PERIPHERALS_PTR)->uart), " | Receive period: "); \
         uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(RECEIVE_PERIOD)); \
         uart_puts(&((PERIPHERALS_PTR)->uart), " | Max degree: "); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MAXDEG)); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(NUM_PORTS)); \
         uart_puts(&((PERIPHERALS_PTR)->uart), "\n========================================\n"); \
     } while(0)
 

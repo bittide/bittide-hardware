@@ -18,15 +18,12 @@
 // Progress reporting interval (print progress every N iterations)
 #define PROGRESS_INTERVAL 1000
 
-// Maximum number of nodes including myself (degree of the network)
-#define MAXDEG 9
-
 // Protocol timing parameter
 #define METACYCLE_CLOCKS 2000
 // Schedule one SEND task per neighbor every 3 metacycles
-#define SEND_PERIOD (METACYCLE_CLOCKS * 3 * MAXDEG)
+#define SEND_PERIOD (METACYCLE_CLOCKS * 3 * NUM_PORTS)
 // Schedule one RECEIVE task per link each metacycle
-#define RECEIVE_PERIOD (METACYCLE_CLOCKS * MAXDEG)
+#define RECEIVE_PERIOD (METACYCLE_CLOCKS * NUM_PORTS)
 #define MAX_SEND_PRIORITY_OVERRIDE 5000                    // Max delay before RECEIVE overrides SEND priority
 // Invalidate 2 metacycles after send
 #define INVALIDATE_DELAY (METACYCLE_CLOCKS * 2)
@@ -215,16 +212,16 @@ int c_main(void) {
     uint32_t node_id = 0xDEADBEEF;  // Placeholder
 
     // Allocate UGN edge lists
-    UgnEdge incoming_link_ugn_list[MAXDEG];
-    UgnEdge outgoing_link_ugn_list[MAXDEG];
+    UgnEdge incoming_link_ugn_list[NUM_PORTS];
+    UgnEdge outgoing_link_ugn_list[NUM_PORTS];
 
     UgnContext ugn_ctx;
     ugn_context_init(&ugn_ctx, peripherals.scatter_units, peripherals.gather_units,
                      NUM_PORTS, node_id,
-                     incoming_link_ugn_list, outgoing_link_ugn_list, MAXDEG);
+                     incoming_link_ugn_list, outgoing_link_ugn_list, NUM_PORTS);
 
     // Print consolidated initialization information
-    PRINT_INIT_INFO(&peripherals, &ugn_ctx, METACYCLE_CLOCKS, SEND_PERIOD, RECEIVE_PERIOD, MAXDEG);
+    PRINT_INIT_INFO(&peripherals, &ugn_ctx, METACYCLE_CLOCKS, SEND_PERIOD, RECEIVE_PERIOD, NUM_PORTS);
 
     // Event loop variables
     FixedIntPriorityQueue event_queue;
@@ -233,13 +230,13 @@ int c_main(void) {
     pq_init(&event_queue);
 
     // Schedule SEND events: one per port every 3 metacycles, staggered across ports
-    for (uint32_t port = 0; port < MAXDEG; port++) {
+    for (uint32_t port = 0; port < NUM_PORTS; port++) {
         pq_insert(&event_queue, ugn_encode_event_with_port(EVENT_TYPE_SEND, port,
             start_cycles + STARTING_TICK_SND_OFFSET + port * SEND_PERIOD));
     }
 
-    // Schedule RECEIVE events: one per port each metacycle, staggered across the first MAXDEG metacycles
-    for (uint32_t port = 0; port < MAXDEG; port++) {
+    // Schedule RECEIVE events: one per port each metacycle, staggered across the first NUM_PORTS metacycles
+    for (uint32_t port = 0; port < NUM_PORTS; port++) {
         pq_insert(&event_queue, ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port,
             start_cycles + STARTING_TICK_REC_OFFSET + port * RECEIVE_PERIOD));
     }
