@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use memmap_generate::build_utils::standard_memmap_build;
-use std::path::PathBuf;
 
 fn main() {
     standard_memmap_build("SoftUgnDemoGppe.json", "DataMemory", "InstructionMemory");

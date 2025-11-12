@@ -59,7 +59,7 @@ pub struct TypeReferences {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum VariableRefType {
+pub enum VariableRefType {
     Const,
     ConstVec,
     Mutable,
@@ -214,7 +214,7 @@ fn po2_type(n: u64) -> u64 {
     }
 }
 
-fn tuple_name(ctx: &IrCtx, varis: &MonomorphVariants, elems: HandleRange<TypeRef>) -> String {
+fn tuple_name(ctx: &IrCtx, _varis: &MonomorphVariants, elems: HandleRange<TypeRef>) -> String {
     let n = elems.len;
 
     if n == 0 {

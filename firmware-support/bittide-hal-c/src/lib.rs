@@ -149,8 +149,6 @@
 //! ```
 //!
 
-use std::path::PathBuf;
-
 pub fn get_generated_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("generated")
 }

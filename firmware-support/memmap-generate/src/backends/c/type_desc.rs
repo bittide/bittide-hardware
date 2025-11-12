@@ -2,26 +2,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fmt::Write;
-
-use heck::{ToPascalCase, ToShoutySnakeCase, ToSnakeCase};
-use proc_macro2::{Ident, Literal, Span, TokenStream};
-use quote::{quote, ToTokens};
 
 use crate::backends::c::{generate_variable_binding, VariableRefType};
 use crate::ir::types::TypeConstructor;
 use crate::storage::HandleRange;
 use crate::{
     backends::c::{ident, mono_variant_name, IdentType, TypeReferences},
-    input_language::{RegisterAccess, TypeName},
+    input_language::TypeName,
     ir::{
-        deduplicate::HalShared,
         monomorph::{MonomorphVariant, MonomorphVariants},
-        types::{
-            DeviceDescription, IrCtx, PathComp, RegisterDescription, TreeElem, TypeDefinition,
-            TypeDescription, TypeRef,
-        },
+        types::{IrCtx, TypeDefinition, TypeDescription},
     },
     storage::Handle,
 };
