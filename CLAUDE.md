@@ -27,7 +27,9 @@ cabal build -v0 all
 ## Dependencies
 You probably want to look around in `clash-prelude`, `clash-cores` and `clash-protocols`
 some of the time. You can (currently) find these files in `dist-newstyle/src` after
-building any package that depends on them or running `cabal update`.
+building any package that depends on them or running `cabal update`. Note that your
+normal search will ignore anything in `dist-newstyle`, so use `find` or similar tools
+in the terminal.
 
 ## Development
 Don't use `RecordWildCards` in new code. Use `NamedFieldPuns` instead. Or, if that's

@@ -6,13 +6,9 @@ module Clash.Cores.Xilinx.Gth.Internal where
 
 import Clash.Explicit.Prelude
 
-import Clash.Annotations.Primitive (
-  Primitive (InlineYamlPrimitive),
-  hasBlackBox,
- )
-import Clash.Cores.Xilinx.Gth.BlackBoxes
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
   ClockPort (..),
+  NamedDiffClockPort (..),
   Param (..),
   Port (..),
   ResetPort (..),
@@ -23,7 +19,6 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
   instWithXilinxWizard,
   unPort,
  )
-import Data.String.Interpolate (__i)
 
 type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
@@ -308,21 +303,15 @@ xilinxGthUserClockNetworkRx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out
   go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_rx")
 {-# OPAQUE xilinxGthUserClockNetworkRx #-}
 
-ibufds_gte3 :: (KnownDomain dom) => DiffClock dom -> Clock dom
-ibufds_gte3 !_clk = clockGen
+ibufds_gte3 :: forall dom. (KnownDomain dom) => DiffClock dom -> Clock dom
+ibufds_gte3 diffClk = unPort @(ClockPort "O" dom) clkOut
+ where
+  clkOut =
+    inst
+      (instConfig "IBUFDS_GTE3")
+      (Param @"REFCLK_EN_TX_PATH" (0 :: Bit))
+      (Param @"REFCLK_HROW_CK_SEL" (0b10 :: BitVector 2))
+      (Param @"REFCLK_ICNTL_RX" (0b00 :: BitVector 2))
+      (NamedDiffClockPort @"I" @"IB" diffClk)
+      (Port @"CEB" @dom @Bit 0)
 {-# OPAQUE ibufds_gte3 #-}
-{-# ANN ibufds_gte3 hasBlackBox #-}
-{-# ANN
-  ibufds_gte3
-  ( let primName = 'ibufds_gte3
-        tfName = 'ibufds_gte3BBF
-     in InlineYamlPrimitive
-          [minBound ..]
-          [__i|
-        BlackBoxHaskell:
-            name: #{primName}
-            templateFunction: #{tfName}
-            workInfo: Always
-        |]
-  )
-  #-}
