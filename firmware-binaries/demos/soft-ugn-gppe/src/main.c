@@ -44,6 +44,10 @@ static uint32_t missed_send_count = 0;
 static uint32_t missed_receive_count = 0;
 static uint32_t missed_invalidate_count = 0;
 
+static uint32_t met_send_count = 0;
+static uint32_t met_receive_count = 0;
+static uint32_t met_invalidate_count = 0;
+
 bool find_min_send_event(const FixedIntPriorityQueue* pq, uint32_t* found_index) {
   bool found = false;
   uint64_t min_value;
@@ -88,6 +92,7 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
         if (execute) {
             // Send UGN to the specific port encoded in the event
             send_ugn_to_port(ugn_ctx, port, metacycle_offset);
+            met_send_count++;
         } else {
             missed_send_count++;
         }
@@ -100,6 +105,7 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
         if (execute) {
             // Invalidate the specific port encoded in the event
             invalidate_port(ugn_ctx, port, metacycle_offset);
+            met_invalidate_count++;
         } else {
             missed_invalidate_count++;
         }
@@ -118,6 +124,7 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
                                     ugn_ctx->outgoing_link_ugn_list, ugn_ctx->num_ports);
                 uart_puts(&peripherals->uart, "\n");
             }
+            met_receive_count++;
         } else {
             missed_receive_count++;
         }
@@ -248,6 +255,7 @@ int c_main(void) {
 
     // Main event loop - process events metacycle by metacycle
     uint32_t k;
+    uint32_t last_progress_report = 0;
     for (k = 0; k < NUM_PERIODS; k++) {
         uint64_t event_time = get_event_time(current_event);
 
@@ -300,18 +308,38 @@ int c_main(void) {
     PRINT_COMPLETION_STATS(&peripherals, k, start_cycles, METACYCLE_CLOCKS);
 
     // Print deadline miss statistics
-    uart_puts(&peripherals.uart, "\nDeadline Miss Statistics:\n");
-    uart_puts(&peripherals.uart, "-------------------------\n");
-    uart_puts(&peripherals.uart, "Missed SEND deadlines: ");
+    uart_puts(&peripherals.uart, "\nDeadline Statistics:\n");
+    uart_puts(&peripherals.uart, "--------------------\n");
+
+    uart_puts(&peripherals.uart, "SEND events:\n");
+    uart_puts(&peripherals.uart, "  Met deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)met_send_count);
+    uart_puts(&peripherals.uart, "\n");
+    uart_puts(&peripherals.uart, "  Missed deadlines: ");
     uart_putdec(&peripherals.uart, (uint64_t)missed_send_count);
     uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "Missed RECEIVE deadlines: ");
+
+    uart_puts(&peripherals.uart, "RECEIVE events:\n");
+    uart_puts(&peripherals.uart, "  Met deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)met_receive_count);
+    uart_puts(&peripherals.uart, "\n");
+    uart_puts(&peripherals.uart, "  Missed deadlines: ");
     uart_putdec(&peripherals.uart, (uint64_t)missed_receive_count);
     uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "Missed INVALIDATE deadlines: ");
+
+    uart_puts(&peripherals.uart, "INVALIDATE events:\n");
+    uart_puts(&peripherals.uart, "  Met deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)met_invalidate_count);
+    uart_puts(&peripherals.uart, "\n");
+    uart_puts(&peripherals.uart, "  Missed deadlines: ");
     uart_putdec(&peripherals.uart, (uint64_t)missed_invalidate_count);
     uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "Total missed deadlines: ");
+
+    uart_puts(&peripherals.uart, "Total:\n");
+    uart_puts(&peripherals.uart, "  Met deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)(met_send_count + met_receive_count + met_invalidate_count));
+    uart_puts(&peripherals.uart, "\n");
+    uart_puts(&peripherals.uart, "  Missed deadlines: ");
     uart_putdec(&peripherals.uart, (uint64_t)(missed_send_count + missed_receive_count + missed_invalidate_count));
     uart_puts(&peripherals.uart, "\n");
 
