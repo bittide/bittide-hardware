@@ -189,7 +189,7 @@ transceiversUpTest ::
 transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
   (txs, txns, txps, syncOut, spiDone, spiOut)
  where
-  refClk = Gth.ibufds_gte3 refClkDiff :: Clock Ext200
+  (refClk, _) = Gth.ibufds_gte3 refClkDiff
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 

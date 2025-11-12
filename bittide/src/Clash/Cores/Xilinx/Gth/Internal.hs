@@ -301,17 +301,28 @@ xilinxGthUserClockNetworkRx clkIn rstIn = (usrclk_out, usrclk2_out, pack <$> rx_
         (ResetPort @"gtwiz_userclk_rx_reset_in" @ActiveHigh rstIn)
 {-# OPAQUE xilinxGthUserClockNetworkRx #-}
 
-ibufds_gte3 :: forall dom. (KnownDomain dom) => DiffClock dom -> Clock dom
-ibufds_gte3 diffClk = unPort @(ClockPort "O" dom) clkOut
+{- | IBUFDS_GTE3 outputs 2 clocks: @O@, which is directly connected to the
+transceiver and @ODIV2@, which is the same clock but which can be used for
+logic. The @ODIV2@ clock can be configured to a divide by 2 of @O@ or to be the
+same frequency as @O@, but the blackbox hardcodes it to be equal to @O@.
+Note that @ODIV2@ has a different phase than @O@.
+
+__Warning__: The @ODIV2@ output must be connected to a 'bufgGt' in order to be
+usable.
+-}
+ibufds_gte3 :: forall dom. (KnownDomain dom) => DiffClock dom -> (Clock dom, Clock dom)
+ibufds_gte3 diffClk = (clkOut, clkOutDiv2)
  where
-  clkOut =
-    inst
-      (instConfig "IBUFDS_GTE3")
-      (Param @"REFCLK_EN_TX_PATH" (0 :: Bit))
-      (Param @"REFCLK_HROW_CK_SEL" (0b10 :: BitVector 2))
-      (Param @"REFCLK_ICNTL_RX" (0b00 :: BitVector 2))
-      (NamedDiffClockPort @"I" @"IB" diffClk)
-      (Port @"CEB" @dom @Bit 0)
+  ( unPort @(ClockPort "O" dom) -> clkOut
+    , unPort @(ClockPort "ODIV2" dom) -> clkOutDiv2
+    ) =
+      inst
+        (instConfig "IBUFDS_GTE3")
+        (Param @"REFCLK_EN_TX_PATH" (0 :: Bit))
+        (Param @"REFCLK_HROW_CK_SEL" (0b00 :: BitVector 2))
+        (Param @"REFCLK_ICNTL_RX" (0b00 :: BitVector 2))
+        (NamedDiffClockPort @"I" @"IB" diffClk)
+        (Port @"CEB" @dom @Bit 0)
 {-# OPAQUE ibufds_gte3 #-}
 
 {- | Clock Buffer Driven by Gigabit Transceiver. For more information see:
