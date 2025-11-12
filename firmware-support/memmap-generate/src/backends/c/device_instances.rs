@@ -7,14 +7,10 @@ use std::fmt::Write;
 
 use crate::ir::types::TreeElemType;
 use crate::{
-    backends::c::{
-        generate_variable_binding, ident, lookup_sub, IdentType, TypeReferences, VariableRefType,
-    },
-    input_language::RegisterAccess,
+    backends::c::{ident, IdentType},
     ir::{
         deduplicate::HalShared,
-        monomorph::{MonomorphVariant, MonomorphVariants},
-        types::{DeviceDescription, IrCtx, PathComp, RegisterDescription, TreeElem, TypeRef},
+        types::{IrCtx, PathComp, TreeElem},
     },
     storage::Handle,
 };
@@ -48,8 +44,8 @@ pub fn generate_device_instances(
                 (device_name, addr)
             }
             TreeElemType::Interconnect {
-                rel_addrs,
-                components,
+                rel_addrs: _,
+                components: _,
             } => continue,
         };
         let name = &ctx.identifiers[name];

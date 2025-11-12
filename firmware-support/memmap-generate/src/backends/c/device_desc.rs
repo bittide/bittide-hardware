@@ -40,11 +40,18 @@ typedef struct {name_ident} {{
 "#
     );
 
-    if desc.registers.len > 0 {
+    let mut consts = desc
+        .registers
+        .handles()
+        .filter_map(|reg| generate_const(ctx, &name_ident, reg))
+        .peekable();
+    if consts.peek().is_some() {
         writeln!(code, "enum {{").unwrap();
-        for reg in desc.registers.handles() {
-            generate_const(ctx, &name_ident, reg, &mut code);
+
+        for (name, val) in consts {
+            writeln!(code, "  {name} = {val},").unwrap();
         }
+
         writeln!(code, "}};").unwrap();
         writeln!(code).unwrap();
     }
@@ -61,8 +68,7 @@ fn generate_const(
     ctx: &IrCtx,
     dev_name: &str,
     reg: Handle<RegisterDescription>,
-    code: &mut String,
-) {
+) -> Option<(String, u64)> {
     let desc = &ctx.registers[reg];
     let ty = &ctx.type_refs[desc.type_ref];
 
@@ -93,7 +99,7 @@ fn generate_const(
         IdentType::Constant,
         format!("{dev_name}_{desc_name}_{suffix}"),
     );
-    writeln!(code, "  {const_name} = {value},").unwrap();
+    Some((const_name, value))
 }
 
 fn generate_reg_get_func(

@@ -6,6 +6,7 @@
 #define BITTIDE_UART_H
 
 #include <stdint.h>
+#include "shared_devices/uart.h"
 
 // ============================================================================
 // UART Status Flags
@@ -40,7 +41,7 @@ void uart_puthex32(Uart uart, uint32_t val);
 void uart_puthex64(Uart uart, uint64_t val);
 
 /// Print a DNA value (96 bits) to UART
-void uart_putdna(const Uart* uart, const dna_t val);
+void uart_putdna(Uart uart, const dna_t val);
 
 /// Print a decimal number to UART
 void uart_putdec(Uart uart, uint64_t val);

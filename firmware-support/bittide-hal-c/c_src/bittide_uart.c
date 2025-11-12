@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "bittide_uart.h"
 #include "shared_devices/uart.h"
+#include "bittide_uart.h"
 
 int uart_tx_full(Uart uart) {
     return uart_get_status(uart) & UART_STATUS_TX_FULL;
