@@ -7,35 +7,15 @@
 
 #include <stdint.h>
 
-/**
- * ScatterUnit - Handle for interfacing with a scatter unit
- *
- * The scatter unit receives data from other nodes over the Bittide network
- * and stores it in local memory. The scatter memory is double-buffered and
- * swaps buffers at metacycle boundaries according to the calendar configuration.
- */
-typedef struct {
-    volatile uint64_t* scatter_memory;      ///< Pointer to scatter memory base address
-    volatile uint32_t* metacycle_count;     ///< Pointer to metacycle count register
-    volatile uint32_t* metacycle_register;  ///< Pointer to metacycle synchronization register
-    uint32_t memory_len;                    ///< Length of scatter memory in uint64_t words
-} ScatterUnit;
-
-/**
- * Initialize a ScatterUnit
- *
- * @param scatter_memory Pointer to the scatter memory base address
- * @param metacycle_count Pointer to the metacycle count register
- * @param metacycle_register Pointer to the metacycle synchronization register
- * @param memory_len Length of the scatter memory in uint64_t words
- * @return Initialized ScatterUnit struct
- */
-ScatterUnit scatter_unit_init(
-    volatile uint64_t* scatter_memory,
-    volatile uint32_t* metacycle_count,
-    volatile uint32_t* metacycle_register,
-    uint32_t memory_len
-);
+#ifdef HAL_SCATTER_GATHER_PE_DEVICE_SCATTER_UNIT_H
+#include "hals/scatter_gather_pe/devices/scatter_unit.h"
+#elif HAL_SOFT_UGN_DEMO_GPPE_DEVICE_SCATTER_UNIT_H
+#include "hals/soft_ugn_demo_gppe/devices/scatter_unit.h"
+#elif HAL_SWITCH_DEMO_GPPE_PE_DEVICE_SCATTER_UNIT_H
+#include "hals/switch_demo_gppe_pe/devices/scatter_unit.h"
+#else
+#error "No scatter unit header definition found!"
+#endif
 
 /**
  * Read a slice of data from scatter memory
@@ -47,33 +27,26 @@ ScatterUnit scatter_unit_init(
  * @param dst Destination buffer for the read data (must be at least len words)
  * @param offset Offset in scatter memory (in uint64_t words) to start reading from
  * @param len Number of uint64_t words to read
- * @return 0 on success, -1 if bounds check fails or parameters are invalid
+ * @return true on success, false if bounds check fails or parameters are invalid
  */
-int scatter_unit_read_slice(
-    const ScatterUnit* unit,
+bool scatter_unit_read_slice(
+    ScatterUnit unit,
     uint64_t* dst,
     uint32_t offset,
     uint32_t len
-);
+) {
+    if (dst == 0 || offset + len > SCATTER_UNIT_SCATTER_MEMORY_LEN) {
+        return false;
+    }
 
-/**
- * Write a slice of data to scatter memory
- *
- * Writes data to the scatter memory buffer. This function performs bounds
- * checking to prevent writing beyond the allocated memory region.
- *
- * @param unit Pointer to the ScatterUnit
- * @param src Source buffer containing data to write (must contain at least len words)
- * @param offset Offset in scatter memory (in uint64_t words) to start writing to
- * @param len Number of uint64_t words to write
- * @return 0 on success, -1 if bounds check fails or parameters are invalid
- */
-int scatter_unit_write_slice(
-    const ScatterUnit* unit,
-    const uint64_t* src,
-    uint32_t offset,
-    uint32_t len
-);
+    // Perform read
+    for (uint32_t i = 0; i < len; i++) {
+        scatter_unit_get_scatter_memory_unchecked(unit, offset + i, &dst[i]);
+    }
+
+    // return 0;
+    return true;
+}
 
 /**
  * Wait for the next metacycle boundary
@@ -83,14 +56,8 @@ int scatter_unit_write_slice(
  *
  * @param unit Pointer to the ScatterUnit
  */
-void scatter_unit_wait_for_new_metacycle(const ScatterUnit* unit);
-
-/**
- * Get the current metacycle count
- *
- * @param unit Pointer to the ScatterUnit
- * @return Current metacycle count
- */
-uint32_t scatter_unit_metacycle_count(const ScatterUnit* unit);
+void scatter_unit_wait_for_new_metacycle(ScatterUnit unit) {
+    (void)scatter_unit_get_metacycle_register(unit);
+}
 
 #endif // BITTIDE_SCATTER_H
