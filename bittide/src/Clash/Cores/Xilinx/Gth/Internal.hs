@@ -269,18 +269,17 @@ xilinxGthUserClockNetworkTx ::
   Clock user ->
   Reset user2 ->
   (Clock user, Clock user2, Signal user2 (BitVector 1))
-xilinxGthUserClockNetworkTx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out, pack <$> unPort tx_active_out)
+xilinxGthUserClockNetworkTx clkIn rstIn = (usrclk_out, usrclk2_out, pack <$> tx_active_out)
  where
-  (usrclk_out, usrclk2_out, tx_active_out) = go (Param 2) (ClockPort clkIn) (ResetPort rstIn)
-  go ::
-    Param "P_FREQ_RATIO_USRCLK_TO_USRCLK2" Integer ->
-    ClockPort "gtwiz_userclk_tx_srcclk_in" user ->
-    ResetPort "gtwiz_userclk_tx_reset_in" ActiveHigh user2 ->
-    ( ClockPort "gtwiz_userclk_tx_usrclk_out" user
-    , ClockPort "gtwiz_userclk_tx_usrclk2_out" user2
-    , Port "gtwiz_userclk_tx_active_out" user2 Bit
-    )
-  go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_tx")
+  ( unPort @(ClockPort "gtwiz_userclk_tx_usrclk_out" user) -> usrclk_out
+    , unPort @(ClockPort "gtwiz_userclk_tx_usrclk2_out" user2) -> usrclk2_out
+    , unPort @(Port "gtwiz_userclk_tx_active_out" user2 Bit) -> tx_active_out
+    ) =
+      inst
+        (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_tx")
+        (Param @"P_FREQ_RATIO_USRCLK_TO_USRCLK2" (2 :: Integer))
+        (ClockPort @"gtwiz_userclk_tx_srcclk_in" clkIn)
+        (ResetPort @"gtwiz_userclk_tx_reset_in" @ActiveHigh rstIn)
 {-# OPAQUE xilinxGthUserClockNetworkTx #-}
 
 xilinxGthUserClockNetworkRx ::
