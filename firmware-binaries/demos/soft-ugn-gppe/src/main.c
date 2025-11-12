@@ -15,6 +15,9 @@
 // Number of event loop iterations
 #define NUM_PERIODS 5000
 
+// Progress reporting interval (print progress every N iterations)
+#define PROGRESS_INTERVAL 1000
+
 // Maximum number of nodes including myself (degree of the network)
 #define MAXDEG 9
 
