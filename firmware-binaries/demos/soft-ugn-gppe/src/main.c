@@ -75,7 +75,8 @@ bool find_min_send_event(const FixedIntPriorityQueue* pq, uint32_t* found_index)
 
 // Process a single event and schedule any follow-up events
 // Returns true if event should be executed, false if it should be skipped (deadline missed)
-static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQueue* event_queue, bool execute) {
+static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQueue* event_queue,
+                          bool execute, Peripherals* peripherals) {
     uint64_t event_time = get_event_time(event);
     uint64_t metacycle_offset = event_time % METACYCLE_CLOCKS;
     uint32_t port = get_event_port(event);
@@ -103,7 +104,17 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
     } else if (event & EVENT_TYPE_RECEIVE) {
         if (execute) {
             // Check incoming buffer for the specific port encoded in the event
-            check_incoming_buffer(ugn_ctx, port, metacycle_offset);
+            bool received = check_incoming_buffer(ugn_ctx, port, metacycle_offset);
+
+            // If we received new data, print all discovered edges
+            if (received) {
+                PRINT_UGN_EDGE_LIST(peripherals, "Incoming Link UGNs:\n",
+                                    ugn_ctx->incoming_link_ugn_list, ugn_ctx->num_ports);
+                uart_puts(&peripherals->uart, "\n");
+                PRINT_UGN_EDGE_LIST(peripherals, "Outgoing Link UGNs:\n",
+                                    ugn_ctx->outgoing_link_ugn_list, ugn_ctx->num_ports);
+                uart_puts(&peripherals->uart, "\n");
+            }
         } else {
             missed_receive_count++;
         }
@@ -122,13 +133,14 @@ static bool process_metacycle(
     Timer* timer,
     Uart* uart,
     UgnContext* ugn_ctx,
-    FixedIntPriorityQueue* event_queue
+    FixedIntPriorityQueue* event_queue,
+    Peripherals* peripherals
 ) {
     // Process all events scheduled in this metacycle
     bool on_time = true;
 
     // Process the first event (already extracted before entering this function)
-    process_event(*current_event, ugn_ctx, event_queue, on_time);
+    process_event(*current_event, ugn_ctx, event_queue, on_time, peripherals);
 
     while (true) {
         // Check if protocol is complete
@@ -167,7 +179,7 @@ static bool process_metacycle(
         on_time = cmp_result == COMPARE_LESS;
 
         // Process the event (skip execution if deadline missed)
-        process_event(*current_event, ugn_ctx, event_queue, on_time);
+        process_event(*current_event, ugn_ctx, event_queue, on_time, peripherals);
     }
 
     // Should never reach here
@@ -258,7 +270,8 @@ int c_main(void) {
             &peripherals.timer,
             &peripherals.uart,
             &ugn_ctx,
-            &event_queue
+            &event_queue,
+            &peripherals
         );
 
         if (!continue_processing) {

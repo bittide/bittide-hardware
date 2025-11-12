@@ -125,7 +125,8 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset);
 void send_ugns_to_all_ports(UgnContext* ctx, uint32_t offset);
 
 // Check incoming buffer for a specific port
-void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset);
+// Returns true if new data was received, false otherwise
+bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset);
 
 // Check all incoming buffers for received UGNs
 void check_all_incoming_buffers(UgnContext* ctx, uint32_t offset);

@@ -134,33 +134,38 @@ void send_ugns_to_all_ports(UgnContext* ctx, uint32_t offset) {
     }
 }
 
-void check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
-    if (port >= ctx->num_ports) return;
+bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
+    if (port >= ctx->num_ports) return false;
 
     GatherUnit* unit = &ctx->gather_units[port];
 
     // Check if scatter unit has signaled "received"
-    if (!received_magic(unit, offset)) return;
+    if (!received_magic(unit, offset)) return false;
 
     // Create temporary UgnEdge for receiver_extract_response_meaning
     UgnEdge temp_edge;
     uint32_t meaning =
         receiver_extract_response_meaning(unit, offset, port, ctx->node_id, &temp_edge);
 
-    if (meaning == 0) return;
+    if (meaning == 0) return false;
 
     if (meaning == RECEIVED_OUTGOING_UGN_ACK) {
         // Use the UGN from temp_edge
         ctx->outgoing_link_ugn_list[port].ugn = temp_edge.ugn;
         ctx->outgoing_link_ugn_list[port].is_valid = true;
-        return;
+        ctx->number_outgoing_link_ugns_acknowledged++;
+        return true;
     }
 
     if (meaning == RECEIVED_INCOMING_UGN) {
         // Use the UGN from temp_edge
         ctx->incoming_link_ugn_list[port].ugn = temp_edge.ugn;
         ctx->incoming_link_ugn_list[port].is_valid = true;
+        ctx->number_incoming_link_ugns_known++;
+        return true;
     }
+
+    return false;
 }
 
 // Check all incoming buffers (like check_all_incoming_buffers in source)
