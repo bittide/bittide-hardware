@@ -43,8 +43,8 @@ uint32_t find_min_index(const FixedIntPriorityQueue* pq);
 // Searches the entire array, removes the item.
 // Assumes queue is non-empty
 //    pq: A pointer to the FixedIntPriorityQueue.
-// Returns the extracted data.
-uint64_t pq_extract_min(FixedIntPriorityQueue* pq);
+// Returns the extracted item (both data and priority).
+PriorityQueueItem pq_extract_min(FixedIntPriorityQueue* pq);
 
 // Checks if the priority queue is empty
 bool pq_is_empty(const FixedIntPriorityQueue* pq);
@@ -55,11 +55,11 @@ bool pq_is_full(const FixedIntPriorityQueue* pq);
 // Returns the current size of the priority queue
 uint32_t pq_size(const FixedIntPriorityQueue* pq);
 
-// Returns the data of the item with the highest priority without removing it.
+// Returns the item with the highest priority without removing it.
 // Searches the entire array.
 //        pq: A pointer to the FixedIntPriorityQueue.
-// Returns the peeked data.
+// Returns the peeked item (both data and priority).
 // Assumes queue is not empty.
-uint64_t pq_peek_min(const FixedIntPriorityQueue* pq);
+PriorityQueueItem pq_peek_min(const FixedIntPriorityQueue* pq);
 
 #endif // BITTIDE_PRIORITY_QUEUE_H

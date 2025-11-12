@@ -13,9 +13,8 @@
 // ============================================================================
 // Event System Constants
 // ============================================================================
-// We encode event type in the top 8 bits, port in bits 48-51, and event time in bottom 48 bits
-// This allows the priority queue to naturally order by time while preserving type and port
-#define EVENT_TIME_MASK (0x0000ffffffffffffULL)
+// We encode event type in the top 8 bits and port in bits 48-51
+// Event time is stored separately in the priority queue's priority field
 #define EVENT_PORT_MASK (0x000f000000000000ULL)
 #define EVENT_PORT_SHIFT 48
 #define EVENT_TYPE_SEND (0x0100000000000000ULL)
@@ -67,24 +66,20 @@ typedef struct {
 // Event Helper Functions
 // ============================================================================
 
-// Encode event type, port, and time into a single 64-bit value
-static inline uint64_t ugn_encode_event(uint64_t event_type, uint64_t time) {
-    return event_type | (time & EVENT_TIME_MASK);
+// Encode event type only (no port, no time)
+static inline uint64_t ugn_encode_event(uint64_t event_type) {
+    return event_type;
 }
 
 // Encode event with port information (for SEND and RECEIVE events)
-static inline uint64_t ugn_encode_event_with_port(uint64_t event_type, uint32_t port, uint64_t time) {
-    return event_type | (((uint64_t)port << EVENT_PORT_SHIFT) & EVENT_PORT_MASK) | (time & EVENT_TIME_MASK);
+// Time is passed separately to the priority queue
+static inline uint64_t ugn_encode_event_with_port(uint64_t event_type, uint32_t port) {
+    return event_type | (((uint64_t)port << EVENT_PORT_SHIFT) & EVENT_PORT_MASK);
 }
 
 // Extract event type from encoded event
 static inline uint64_t get_event_type(uint64_t event) {
-    return event & ~(EVENT_TIME_MASK | EVENT_PORT_MASK);
-}
-
-// Extract event time from encoded event
-static inline uint64_t get_event_time(uint64_t event) {
-    return event & EVENT_TIME_MASK;
+    return event & ~EVENT_PORT_MASK;
 }
 
 // Extract port number from encoded event

@@ -31,14 +31,14 @@ uint32_t find_min_index(const FixedIntPriorityQueue* pq) {
 // Searches the entire array, removes the item.
 // Assumes queue is non-empty
 //    pq: A pointer to the FixedIntPriorityQueue.
-// Returns the extracted data.
-uint64_t pq_extract_min(FixedIntPriorityQueue* pq) {
+// Returns the extracted item (both data and priority).
+PriorityQueueItem pq_extract_min(FixedIntPriorityQueue* pq) {
     uint32_t min_index = find_min_index(pq);
-    uint64_t data_out = pq->items[min_index].data;
+    PriorityQueueItem item_out = pq->items[min_index];
     // Replace the extracted item with the last item in the array
     pq->items[min_index] = pq->items[pq->size - 1];
     pq->size--;  // Decrement size
-    return data_out;
+    return item_out;
 }
 
 bool pq_is_empty(const FixedIntPriorityQueue* pq) {
@@ -53,12 +53,12 @@ uint32_t pq_size(const FixedIntPriorityQueue* pq) {
     return pq->size;
 }
 
-// Returns the data of the item with the highest priority without removing it.
+// Returns the item with the highest priority without removing it.
 // Searches the entire array.
 //        pq: A pointer to the FixedIntPriorityQueue.
-// Returns the peeked data.
+// Returns the peeked item (both data and priority).
 // Assumes queue is not empty.
-uint64_t pq_peek_min(const FixedIntPriorityQueue* pq) {
+PriorityQueueItem pq_peek_min(const FixedIntPriorityQueue* pq) {
     uint32_t min_index = find_min_index(pq);
-    return pq->items[min_index].data;
+    return pq->items[min_index];
 }
