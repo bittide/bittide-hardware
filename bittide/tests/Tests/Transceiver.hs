@@ -13,7 +13,7 @@ import Hedgehog
 
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Clash.Annotations.Primitive (dontTranslate)
-import Clash.Cores.Xilinx.GTH (GthCore)
+import Clash.Cores.Xilinx.Gth (GthCore)
 import Clash.Hedgehog.Sized.Index (genIndex)
 import Clash.Signal.Internal (Signal ((:-)))
 import Data.Proxy (Proxy (Proxy))
@@ -26,7 +26,7 @@ import "extra" Data.List.Extra (splitOn)
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
-import qualified Clash.Cores.Xilinx.GTH as Gth
+import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import qualified Hedgehog.Gen as Gen

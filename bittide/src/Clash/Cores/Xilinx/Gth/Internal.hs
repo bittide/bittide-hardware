@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Clash.Cores.Xilinx.GTH.Internal where
+module Clash.Cores.Xilinx.Gth.Internal where
 
 import Clash.Explicit.Prelude
 
@@ -12,7 +12,7 @@ import Clash.Annotations.Primitive (
  )
 import Data.String.Interpolate (__i)
 
-import Clash.Cores.Xilinx.GTH.BlackBoxes
+import Clash.Cores.Xilinx.Gth.BlackBoxes
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
   ClockPort (..),
   Param (..),

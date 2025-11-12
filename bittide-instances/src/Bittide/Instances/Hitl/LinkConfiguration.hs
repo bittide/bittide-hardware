@@ -41,7 +41,7 @@ import System.FilePath ((</>))
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
-import qualified Clash.Cores.Xilinx.GTH as Gth
+import qualified Clash.Cores.Xilinx.Gth as Gth
 
 {- | Checks whether the received index matches with the corresponding
 entry in 'Bittide.Instances.Hitl.Setup.fpgaSetup' and sychronizes

@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {- | Transceiver module for the Bittide project. This module is a wrapper around
-the 'Clash.Cores.Xilinx.GTH.gthCore' function, adding additional functionality
+the 'Clash.Cores.Xilinx.Gth.gthCore' function, adding additional functionality
 such as PRBS generation and checking, comma insertion, word alignment, and
 user data handshaking.
 
@@ -102,7 +102,7 @@ import qualified Bittide.Transceiver.Comma as Comma
 import qualified Bittide.Transceiver.Prbs as Prbs
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
-import qualified Clash.Cores.Xilinx.GTH as Gth
+import qualified Clash.Cores.Xilinx.Gth as Gth
 
 {- | Meta information send along with the PRBS and alignment symbols. See module
 documentation for more information.

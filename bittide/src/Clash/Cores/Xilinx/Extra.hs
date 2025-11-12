@@ -3,12 +3,12 @@
 -- SPDX-License-Identifier: Apache-2.0
 module Clash.Cores.Xilinx.Extra (
   readDnaPortE2I,
-  module GTH,
+  module Gth,
 ) where
 
 import Clash.Prelude
 
-import Clash.Cores.Xilinx.GTH as GTH
+import Clash.Cores.Xilinx.Gth as Gth
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2)
 
 -- | Like 'dnaPortE2', but with a hidden clock, reset, and enable

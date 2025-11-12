@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
-module Clash.Cores.Xilinx.GTH.BlackBoxes where
+module Clash.Cores.Xilinx.Gth.BlackBoxes where
 
 import Prelude
 
