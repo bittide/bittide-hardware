@@ -21,7 +21,7 @@ module Bittide.Instances.Hitl.Dut.SoftUgnDemo (
 ) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, hasClock, withClockResetEnable)
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
@@ -56,6 +56,7 @@ import Bittide.Wishbone (
   uartInterfaceWb,
   whoAmIC,
  )
+import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
@@ -194,6 +195,7 @@ managementUnit =
       }
 
 gppe ::
+  forall dom.
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
@@ -218,15 +220,68 @@ gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
 
   -- Scatter Gather units
   (wbScatCals, wbGathCal) <- Vec.split -< nmuWbMmsDelayed
+  let
+    gppeInLinks = loopback :> linksIn
+    activity = fmap (any (/= 0)) $ bundle (gppeInLinks ++ gppeOutLinks)
+    myIla :: Signal dom ()
+    myIla =
+      setName @"bittidePeIla"
+        ila
+        ( ilaConfig
+            $ "trigger"
+            :> "capture"
+            :> "counter"
+            :> "pe_in_0"
+            :> "pe_in_1"
+            :> "pe_in_2"
+            :> "pe_in_3"
+            :> "pe_in_4"
+            :> "pe_in_5"
+            :> "pe_in_6"
+            :> "pe_in_7"
+            :> "pe_out_0"
+            :> "pe_out_1"
+            :> "pe_out_2"
+            :> "pe_out_3"
+            :> "pe_out_4"
+            :> "pe_out_5"
+            :> "pe_out_6"
+            :> "pe_out_7"
+            :> Nil
+        )
+          { depth = D1024
+          }
+        hasClock
+        activity
+        activity
+        cnt
+        (gppeInLinks !! (0 :: Index LinkCount))
+        (gppeInLinks !! (1 :: Index LinkCount))
+        (gppeInLinks !! (2 :: Index LinkCount))
+        (gppeInLinks !! (3 :: Index LinkCount))
+        (gppeInLinks !! (4 :: Index LinkCount))
+        (gppeInLinks !! (5 :: Index LinkCount))
+        (gppeInLinks !! (6 :: Index LinkCount))
+        (gppeInLinks !! (7 :: Index LinkCount))
+        (gppeOutLinks !! (0 :: Index LinkCount))
+        (gppeOutLinks !! (1 :: Index LinkCount))
+        (gppeOutLinks !! (2 :: Index LinkCount))
+        (gppeOutLinks !! (3 :: Index LinkCount))
+        (gppeOutLinks !! (4 :: Index LinkCount))
+        (gppeOutLinks !! (5 :: Index LinkCount))
+        (gppeOutLinks !! (6 :: Index LinkCount))
+        (gppeOutLinks !! (7 :: Index LinkCount))
+
   idleSink
-    <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) (loopback :> linksIn))
+    <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) (myIla `hwSeqX` gppeInLinks))
     <| Vec.zip
     -< (wbScats, wbScatCals)
-  ([Fwd loopback], linksOut) <-
-    Vec.split <| repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (wbGus, wbGathCal)
+  ([Fwd loopback], linksOut) <- Vec.split -< Fwd gppeOutLinks
+
+  Fwd gppeOutLinks <- repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (wbGus, wbGathCal)
 
   -- Peripherals
-  _cnt <- timeWb -< wbTime
+  Fwd cnt <- timeWb -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
   whoAmIC gppeWhoAmID -< whoAmIWB
 
