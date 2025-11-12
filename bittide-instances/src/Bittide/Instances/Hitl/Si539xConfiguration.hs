@@ -127,11 +127,10 @@ dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag, miso)
       $ processingElement NoDumpVcd peConfig
       -< (mm, jtag)
 
-  -- The reset in the destination domain (free) of the `domainDiffCounter` must be
-  -- deasserted after the source domain (sky). The minimum reset duration is trivially
+  -- The reset in the destination domain (free) of the `domainDiffCounterWbC` is
+  -- set by the enables register. The minimum reset duration is trivially
   -- met by the source of `spiDone`.
   let skyRst = xpmResetSynchronizer Asserted freeClk skyClk $ unsafeFromActiveLow spiDone
-  let skyRstFree = xpmResetSynchronizer Asserted skyClk freeClk $ skyRst
 
   (Fwd spiDone, spiOut) <-
     withClockResetEnable freeClk freeRst enableGen
@@ -143,7 +142,7 @@ dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag, miso)
       $ uartInterfaceWb d16 d16 uartBytes
       -< (uartBus, (Fwd (pure Nothing)))
   Fwd _domainDiff <-
-    domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk skyRstFree -< dcBus
+    domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
 
   idC -< (uartOut, Fwd spiDone, spiOut)
  where
