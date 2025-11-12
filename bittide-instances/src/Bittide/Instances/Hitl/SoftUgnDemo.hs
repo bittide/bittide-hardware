@@ -60,7 +60,7 @@ import VexRiscv (JtagIn (..), JtagOut (..))
 
 import qualified Bittide.Instances.Hitl.Driver.SoftUgnDemo as D
 import qualified Bittide.Transceiver as Transceiver
-import qualified Clash.Cores.Xilinx.GTH as Gth
+import qualified Clash.Cores.Xilinx.Gth as Gth
 
 {- | Reset logic:
 

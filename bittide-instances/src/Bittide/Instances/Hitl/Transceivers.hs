@@ -36,7 +36,7 @@ import Data.Maybe (fromMaybe, isJust)
 import System.FilePath ((</>))
 
 import qualified Bittide.Transceiver.ResetManager as ResetManager
-import qualified Clash.Cores.Xilinx.GTH as Gth
+import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.List as L
 import qualified Data.Map as Map
