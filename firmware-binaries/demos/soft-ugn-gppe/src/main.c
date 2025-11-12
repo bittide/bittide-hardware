@@ -33,6 +33,14 @@
 #define STARTING_TICK_SND_OFFSET (METACYCLE_CLOCKS * 1000)
 #define STARTING_TICK_REC_OFFSET (METACYCLE_CLOCKS * 1001)
 
+// ============================================================================
+// Global Variables for Deadline Miss Tracking
+// ============================================================================
+
+static uint32_t missed_send_count = 0;
+static uint32_t missed_receive_count = 0;
+static uint32_t missed_invalidate_count = 0;
+
 bool find_min_send_event(const FixedIntPriorityQueue* pq, uint32_t* found_index) {
   bool found = false;
   uint64_t min_value;
@@ -66,31 +74,45 @@ bool find_min_send_event(const FixedIntPriorityQueue* pq, uint32_t* found_index)
 // ============================================================================
 
 // Process a single event and schedule any follow-up events
-static void process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQueue* event_queue) {
+// Returns true if event should be executed, false if it should be skipped (deadline missed)
+static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQueue* event_queue, bool execute) {
     uint64_t event_time = get_event_time(event);
     uint64_t metacycle_offset = event_time % METACYCLE_CLOCKS;
     uint32_t port = get_event_port(event);
 
     if (event & EVENT_TYPE_SEND) {
-        // Send UGN to the specific port encoded in the event
-        send_ugn_to_port(ugn_ctx, port, metacycle_offset);
-        // Schedule next send event for this port
+        if (execute) {
+            // Send UGN to the specific port encoded in the event
+            send_ugn_to_port(ugn_ctx, port, metacycle_offset);
+        } else {
+            missed_send_count++;
+        }
+        // Always reschedule next send event for this port
         pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_SEND, port, event_time + SEND_PERIOD));
         // Schedule invalidate for this port 2 metacycles after this send
         pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_INVALIDATE, port, event_time + INVALIDATE_DELAY));
 
     } else if (event & EVENT_TYPE_INVALIDATE) {
-        // Invalidate the specific port encoded in the event
-        invalidate_port(ugn_ctx, port, metacycle_offset);
+        if (execute) {
+            // Invalidate the specific port encoded in the event
+            invalidate_port(ugn_ctx, port, metacycle_offset);
+        } else {
+            missed_invalidate_count++;
+        }
 
     } else if (event & EVENT_TYPE_RECEIVE) {
-        // Check incoming buffer for the specific port encoded in the event
-        check_incoming_buffer(ugn_ctx, port, metacycle_offset);
-        // Schedule next receive event for this port
+        if (execute) {
+            // Check incoming buffer for the specific port encoded in the event
+            check_incoming_buffer(ugn_ctx, port, metacycle_offset);
+        } else {
+            missed_receive_count++;
+        }
+        // Always reschedule next receive event for this port
         pq_insert(event_queue, ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port, event_time + RECEIVE_PERIOD));
     }
-}
 
+    return execute;
+}
 // Process all events in a single metacycle
 // Assumes: timer scratchpad is already set to metacycle_end for deadline checking
 // Returns true if processing should continue, false if we should stop
@@ -104,11 +126,11 @@ static bool process_metacycle(
 ) {
     // Process all events scheduled in this metacycle
     bool on_time = true;
-    while (on_time) {
 
-        // Process the current event
-        process_event(*current_event, ugn_ctx, event_queue);
+    // Process the first event (already extracted before entering this function)
+    process_event(*current_event, ugn_ctx, event_queue, on_time);
 
+    while (true) {
         // Check if protocol is complete
         if (ugn_ctx->number_incoming_link_ugns_known == ugn_ctx->num_ports &&
             ugn_ctx->number_outgoing_link_ugns_acknowledged == ugn_ctx->num_ports) {
@@ -137,18 +159,18 @@ static bool process_metacycle(
             return true;  // Continue processing in next metacycle
         }
 
-        // Otherwise, extract and process this event in the current metacycle
+        // Otherwise, extract this event to process in the current metacycle
         *current_event = pq_extract_min(event_queue);
+
+        // Check if we're still on time
         CompareResult cmp_result = get_compare_result(timer);
         on_time = cmp_result == COMPARE_LESS;
 
-        // Report deadline miss (but continue processing)
-        if (!on_time) {
-            uart_puts(uart, MSG_DEADLINE_MISS);
-        }
+        // Process the event (skip execution if deadline missed)
+        process_event(*current_event, ugn_ctx, event_queue, on_time);
     }
 
-    // If we exit the loop because on_time became false, continue to next metacycle
+    // Should never reach here
     return true;
 }
 
@@ -209,10 +231,6 @@ int c_main(void) {
 
     PRINT_EVENT_LOOP_START(&peripherals, &event_queue);
 
-    // Track progress (print every 1000 iterations to avoid UART overhead)
-    uint32_t last_progress_report = 0;
-    const uint32_t PROGRESS_INTERVAL = 1000;
-
     // Main event loop - process events metacycle by metacycle
     uint32_t k;
     for (k = 0; k < NUM_PERIODS; k++) {
@@ -264,6 +282,22 @@ int c_main(void) {
 
     // Print completion statistics
     PRINT_COMPLETION_STATS(&peripherals, k, start_cycles, METACYCLE_CLOCKS);
+
+    // Print deadline miss statistics
+    uart_puts(&peripherals.uart, "\nDeadline Miss Statistics:\n");
+    uart_puts(&peripherals.uart, "-------------------------\n");
+    uart_puts(&peripherals.uart, "Missed SEND deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)missed_send_count);
+    uart_puts(&peripherals.uart, "\n");
+    uart_puts(&peripherals.uart, "Missed RECEIVE deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)missed_receive_count);
+    uart_puts(&peripherals.uart, "\n");
+    uart_puts(&peripherals.uart, "Missed INVALIDATE deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)missed_invalidate_count);
+    uart_puts(&peripherals.uart, "\n");
+    uart_puts(&peripherals.uart, "Total missed deadlines: ");
+    uart_putdec(&peripherals.uart, (uint64_t)(missed_send_count + missed_receive_count + missed_invalidate_count));
+    uart_puts(&peripherals.uart, "\n");
 
     // Print discovery results
     uart_puts(&peripherals.uart, "\nDiscovery Protocol Results:\n");
