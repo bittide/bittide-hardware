@@ -236,7 +236,6 @@ library
     Clash.Cores.Xilinx.Ddr4
     Clash.Cores.Xilinx.Extra
     Clash.Cores.Xilinx.Gth
-    Clash.Cores.Xilinx.Gth.BlackBoxes
     Clash.Cores.Xilinx.Gth.Internal
     Clash.Cores.Xilinx.SystemMonitor
     Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
