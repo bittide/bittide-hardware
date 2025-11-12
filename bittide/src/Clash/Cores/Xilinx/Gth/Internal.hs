@@ -313,3 +313,44 @@ ibufds_gte3 diffClk = unPort @(ClockPort "O" dom) clkOut
       (NamedDiffClockPort @"I" @"IB" diffClk)
       (Port @"CEB" @dom @Bit 0)
 {-# OPAQUE ibufds_gte3 #-}
+
+{- | Clock Buffer Driven by Gigabit Transceiver. For more information see:
+
+    https://docs.xilinx.com/r/en-US/ug974-vivado-ultrascale-libraries/BUFG_GT
+
+The actual divide value is the value provided in @SNat div@ plus 1.
+So an @SNat 0@ gives you a division of 1
+-}
+bufgGt ::
+  forall domIn domOut div.
+  (KnownDomain domIn, KnownDomain domOut, 0 <= div, div <= 7) =>
+  SNat div ->
+  Clock domIn ->
+  Reset domIn ->
+  Clock domOut
+bufgGt = unsafeBufgGt
+
+{- | Internal implementation of 'bufgGt' without domain or division constraints.
+
+This function should not be used directly - use 'bufgGt' instead which provides
+proper type safety.
+-}
+unsafeBufgGt ::
+  forall domIn domOut div.
+  (KnownDomain domOut) =>
+  SNat div ->
+  Clock domIn ->
+  Reset domIn ->
+  Clock domOut
+unsafeBufgGt SNat clkIn rstIn = unPort @(ClockPort "O" domOut) clkOut
+ where
+  clkOut =
+    inst
+      (instConfig "BUFG_GT")
+      (ClockPort @"I" clkIn)
+      (ResetPort @"CLR" @ActiveHigh rstIn)
+      (Port @"DIV" @domIn @(BitVector 3) (pure (natToNum @div)))
+      (Port @"CE" @domIn @Bit 1)
+      (Port @"CEMASK" @domIn @Bit 0)
+      (Port @"CLRMASK" @domIn @Bit 0)
+{-# OPAQUE unsafeBufgGt #-}

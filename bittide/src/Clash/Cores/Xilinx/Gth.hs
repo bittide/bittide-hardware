@@ -4,4 +4,4 @@
 
 module Clash.Cores.Xilinx.Gth (module Gth) where
 
-import Clash.Cores.Xilinx.Gth.Internal as Gth
+import Clash.Cores.Xilinx.Gth.Internal as Gth hiding (unsafeBufgGt)
