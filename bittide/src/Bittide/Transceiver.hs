@@ -585,46 +585,49 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   linkReady = linkUp .||. withLockRxFree rxReadyNeighborSticky
 
-  ( txSim
-    , txN
-    , txP
-    , txOutClock
-    , rxOutClock
-    , rx_data0
-    , reset_tx_done
-    , reset_rx_done
-    , _txpmaresetdone_out
-    , _rxpmaresetdone_out
-    , rxCtrl0 :: Signal rx (BitVector 16)
-    , rxCtrl1 :: Signal rx (BitVector 16)
-    , rxCtrl2 :: Signal rx (BitVector 8)
-    , rxCtrl3 :: Signal rx (BitVector 8)
-    ) =
+  Gth.CoreOutput
+    { gthtxOut = txSim
+    , gthtxnOut = txN
+    , gthtxpOut = txP
+    , txoutclkOut = txOutClock
+    , rxoutclkOut = rxOutClock
+    , gtwizUserdataRxOut = rx_data0
+    , gtwizResetTxDoneOut = reset_tx_done
+    , gtwizResetRxDoneOut = reset_rx_done
+    , txpmaresetdoneOut = _txpmaresetdone_out
+    , rxpmaresetdoneOut = _rxpmaresetdone_out
+    , rxctrl0Out = rxCtrl0 :: Signal rx (BitVector 16)
+    , rxctrl1Out = rxCtrl1 :: Signal rx (BitVector 16)
+    , rxctrl2Out = rxCtrl2 :: Signal rx (BitVector 8)
+    , rxctrl3Out = rxCtrl3 :: Signal rx (BitVector 8)
+    } =
       gthCore
-        args.channelName
-        args.clockPath
-        args.rxSim
-        args.rxN
-        args.rxP
-        clock -- gtwiz_reset_clk_freerun_in
-        -- We insert 'delayReset' to filter out glitches in the reset signals. That
-        -- is, a synchronous reset may glitch/stabilize outside of the setup and
-        -- hold window. An asynchronous reset (the ones on the GTH core) cannot
-        -- do so and should therefore come straight from a flipflop.
-        (delayReset Asserted clock resets.all)
-        (delayReset Asserted clock resets.txPllAndDatapath)
-        (delayReset Asserted clock resets.txDatapath)
-        (delayReset Asserted clock resets.rxPllAndDatapath)
-        (delayReset Asserted clock resets.rxDatapath)
-        gtwiz_userdata_tx_in
-        txctrl
-        args.refClock -- gtrefclk0_in
-        args.clockTx1
-        args.clockTx2
-        args.txActive
-        args.clockRx1
-        args.clockRx2
-        args.rxActive
+        Gth.CoreInput
+          { channel = args.channelName
+          , refClkSpec = args.clockPath
+          , gthrxIn = args.rxSim
+          , gthrxnIn = args.rxN
+          , gthrxpIn = args.rxP
+          , gtwizResetClkFreerunIn = clock -- gtwiz_reset_clk_freerun_in
+          -- We insert 'delayReset' to filter out glitches in the reset signals. That
+          -- is, a synchronous reset may glitch/stabilize outside of the setup and
+          -- hold window. An asynchronous reset (the ones on the GTH core) cannot
+          -- do so and should therefore come straight from a flipflop.
+          , gtwizResetAllIn = delayReset Asserted clock resets.all
+          , gtwizResetTxPllAndDatapathIn = delayReset Asserted clock resets.txPllAndDatapath
+          , gtwizResetTxDatapathIn = delayReset Asserted clock resets.txDatapath
+          , gtwizResetRxPllAndDatapathIn = delayReset Asserted clock resets.rxPllAndDatapath
+          , gtwizResetRxDatapathIn = delayReset Asserted clock resets.rxDatapath
+          , gtwizUserdataTxIn = gtwiz_userdata_tx_in
+          , txctrl2In = txctrl
+          , gtrefclk0In = args.refClock -- gtrefclk0_in
+          , txusrclkIn = args.clockTx1
+          , txusrclk2In = args.clockTx2
+          , gtwizUserclkTxActiveIn = args.txActive
+          , rxusrclkIn = args.clockRx1
+          , rxusrclk2In = args.clockRx2
+          , gtwizUserclkRxActiveIn = args.rxActive
+          }
 
   prbsConfig = Prbs.conf31 @48
 

@@ -42,7 +42,14 @@ channelNames =
 
 clockPaths :: Vec LinkCount String
 clockPaths =
-  "clk0" :> "clk0" :> "clk0-2" :> "clk0-2" :> "clk0-2" :> "clk0-2" :> "clk0" :> Nil
+  "X0Y10 clk0"
+    :> "X0Y9 clk0"
+    :> "X0Y16 clk0-2"
+    :> "X0Y17 clk0-2"
+    :> "X0Y18 clk0-2"
+    :> "X0Y19 clk0-2"
+    :> "X0Y11 clk0"
+    :> Nil
 
 {- | Some order of the FPGA ids and a mapping to their connected
 neighbors (via the index position in the vector) according to the

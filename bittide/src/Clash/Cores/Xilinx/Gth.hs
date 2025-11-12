@@ -2,6 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Clash.Cores.Xilinx.Gth (module X) where
+module Clash.Cores.Xilinx.Gth (module Gth) where
 
-import Clash.Cores.Xilinx.Gth.Internal as X
+import Clash.Cores.Xilinx.Gth.Internal as Gth

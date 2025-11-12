@@ -95,41 +95,34 @@ gthCoreMock
   nTxResetCycles
   nTxDoneCycles
   offset
-  _channelName
-  _clockPath
-  rx
-  _rxSerialN
-  _rxSerialP
-  freeClk
-  rstAll
-  rstTxPllAndDatapath
-  rstTxDatapath
-  rstRxPllAndDatapath
-  rstRxDatapath
-  txWord
-  _txCtrl
-  _refClk
-  _tx1Clk
-  tx2Clk
-  _txActive
-  _rx1Clk
-  rx2Clk
-  _rxActive =
-    ( SimOnly txWord
-    , pure 0
-    , pure 0
-    , txOutClk
-    , rxOutClk
-    , rxWord
-    , pack <$> txDone
-    , pack <$> rxDone
-    , error "txpmaresetdone_out unused in test"
-    , error "rxpmaresetdone_out unused in test"
-    , 0
-    , 0
-    , 0
-    , 0
-    )
+  Gth.CoreInput
+    { gthrxIn = rx
+    , gtwizResetClkFreerunIn = freeClk
+    , gtwizResetAllIn = rstAll
+    , gtwizResetTxPllAndDatapathIn = rstTxPllAndDatapath
+    , gtwizResetTxDatapathIn = rstTxDatapath
+    , gtwizResetRxPllAndDatapathIn = rstRxPllAndDatapath
+    , gtwizResetRxDatapathIn = rstRxDatapath
+    , gtwizUserdataTxIn = txWord
+    , txusrclk2In = tx2Clk
+    , rxusrclk2In = rx2Clk
+    } =
+    Gth.CoreOutput
+      { gthtxOut = SimOnly txWord
+      , gthtxnOut = pure 0
+      , gthtxpOut = pure 0
+      , txoutclkOut = txOutClk
+      , rxoutclkOut = rxOutClk
+      , gtwizUserdataRxOut = rxWord
+      , gtwizResetTxDoneOut = pack <$> txDone
+      , gtwizResetRxDoneOut = pack <$> rxDone
+      , txpmaresetdoneOut = error "txpmaresetdone_out unused in test"
+      , rxpmaresetdoneOut = error "rxpmaresetdone_out unused in test"
+      , rxctrl0Out = 0
+      , rxctrl1Out = 0
+      , rxctrl2Out = 0
+      , rxctrl3Out = 0
+      }
    where
     rxWord =
       withClock rxClk
@@ -234,7 +227,7 @@ dut
           , rxActive = pure 1 -- TODO: a better simulation of this
           , transceiverIndex = 0
           , channelName = "A"
-          , clockPath = "clkA"
+          , clockPath = "A clkA"
           , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
           , rxN = error "A: rxN not used in simulation"
           , rxP = error "A: rxP not used in simulation"
@@ -260,7 +253,7 @@ dut
           , rxActive = pure 1
           , transceiverIndex = 1
           , channelName = "B"
-          , clockPath = "clkB"
+          , clockPath = "B clkB"
           , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
           , rxN = error "B: rxN not used in simulation"
           , rxP = error "B: rxP not used in simulation"
