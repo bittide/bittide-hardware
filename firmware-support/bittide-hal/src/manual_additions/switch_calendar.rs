@@ -10,8 +10,8 @@ peripheral access code for the `Calendar` device.
 use crate as bittide_hal;
 
 use bittide_hal::{
-    hals::switch_c::devices::switch_calendar::SwitchCalendar, manual_additions::index::IndexTy,
-    switch_c::ValidEntry,
+    hals::switch_c::devices::calendar::Calendar as SwitchCalendar,
+    manual_additions::index::IndexTy, switch_c::ValidEntry,
 };
 use bittide_macros::{index, Index};
 
