@@ -221,6 +221,14 @@
         uart_puts(&((PERIPHERALS_PTR)->uart), " initial events...\n\n"); \
     } while(0)
 
+// Message for SEND/INVALIDATE error in same metacycle
+#define PRINT_SEND_INVALIDATE_ERROR(PERIPHERALS_PTR, PORT) \
+    do { \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "*** ERROR: INVALIDATE event for port "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(PORT)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), " in same metacycle as SEND event ***\n"); \
+    } while(0)
+
 // ============================================================================
 // Pre-defined Message Strings
 // ============================================================================

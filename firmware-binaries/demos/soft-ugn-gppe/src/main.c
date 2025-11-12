@@ -22,6 +22,7 @@
 #define METACYCLE_CLOCKS 2000
 // Schedule one SEND task per neighbor every 3 metacycles
 #define SEND_PERIOD (METACYCLE_CLOCKS * 3 * NUM_PORTS)
+
 // Schedule one RECEIVE task per link each metacycle
 #define RECEIVE_PERIOD (METACYCLE_CLOCKS * NUM_PORTS)
 #define MAX_SEND_PRIORITY_OVERRIDE 5000                    // Max delay before RECEIVE overrides SEND priority
@@ -171,8 +172,24 @@ static bool process_metacycle(
     // Set the scratchpad to the end of this metacycle for deadline checking
     *timer->scratchpad = metacycle_end;
 
+    // Track which ports had SEND events in this metacycle (for error detection)
+    // Using a simple bitmap - supports up to 32 ports
+    uint32_t send_ports_bitmap = 0;
+
     // Process all events scheduled in this metacycle
     bool on_time = true;
+
+    // Track the first event type and port
+    if (current_event & EVENT_TYPE_SEND) {
+        uint32_t port = get_event_port(current_event);
+        send_ports_bitmap |= (1u << port);
+    } else if (current_event & EVENT_TYPE_INVALIDATE) {
+        uint32_t port = get_event_port(current_event);
+        // Check if we already processed a SEND for this port in this metacycle
+        if (send_ports_bitmap & (1u << port)) {
+            PRINT_SEND_INVALIDATE_ERROR(peripherals, port);
+        }
+    }
 
     // Process the first event (already extracted)
     process_event(current_event, ugn_ctx, event_queue, on_time, peripherals);
@@ -200,6 +217,18 @@ static bool process_metacycle(
 
         // Otherwise, extract this event to process in the current metacycle
         current_event = pq_extract_min(event_queue);
+
+        // Track SEND/INVALIDATE events for error detection
+        if (current_event & EVENT_TYPE_SEND) {
+            uint32_t port = get_event_port(current_event);
+            send_ports_bitmap |= (1u << port);
+        } else if (current_event & EVENT_TYPE_INVALIDATE) {
+            uint32_t port = get_event_port(current_event);
+            // Check if we already processed a SEND for this port in this metacycle
+            if (send_ports_bitmap & (1u << port)) {
+                PRINT_SEND_INVALIDATE_ERROR(peripherals, port);
+            }
+        }
 
         // Check if we're still on time
         CompareResult cmp_result = get_compare_result(timer);
