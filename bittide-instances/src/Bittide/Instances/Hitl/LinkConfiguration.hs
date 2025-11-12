@@ -229,7 +229,7 @@ linkConfigurationTest ::
 linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
   (txSims, txns, txps, syncOut, spiDone, spiOut)
  where
-  refClk = Gth.ibufds_gte3 refClkDiff :: Clock Ext200
+  (refClk, _) = Gth.ibufds_gte3 refClkDiff
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
   -- the test starts with a valid configuration coming in

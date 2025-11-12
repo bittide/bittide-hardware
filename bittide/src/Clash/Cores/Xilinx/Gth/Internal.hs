@@ -269,18 +269,17 @@ xilinxGthUserClockNetworkTx ::
   Clock user ->
   Reset user2 ->
   (Clock user, Clock user2, Signal user2 (BitVector 1))
-xilinxGthUserClockNetworkTx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out, pack <$> unPort tx_active_out)
+xilinxGthUserClockNetworkTx clkIn rstIn = (usrclk_out, usrclk2_out, pack <$> tx_active_out)
  where
-  (usrclk_out, usrclk2_out, tx_active_out) = go (Param 2) (ClockPort clkIn) (ResetPort rstIn)
-  go ::
-    Param "P_FREQ_RATIO_USRCLK_TO_USRCLK2" Integer ->
-    ClockPort "gtwiz_userclk_tx_srcclk_in" user ->
-    ResetPort "gtwiz_userclk_tx_reset_in" ActiveHigh user2 ->
-    ( ClockPort "gtwiz_userclk_tx_usrclk_out" user
-    , ClockPort "gtwiz_userclk_tx_usrclk2_out" user2
-    , Port "gtwiz_userclk_tx_active_out" user2 Bit
-    )
-  go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_tx")
+  ( unPort @(ClockPort "gtwiz_userclk_tx_usrclk_out" user) -> usrclk_out
+    , unPort @(ClockPort "gtwiz_userclk_tx_usrclk2_out" user2) -> usrclk2_out
+    , unPort @(Port "gtwiz_userclk_tx_active_out" user2 Bit) -> tx_active_out
+    ) =
+      inst
+        (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_tx")
+        (Param @"P_FREQ_RATIO_USRCLK_TO_USRCLK2" (2 :: Integer))
+        (ClockPort @"gtwiz_userclk_tx_srcclk_in" clkIn)
+        (ResetPort @"gtwiz_userclk_tx_reset_in" @ActiveHigh rstIn)
 {-# OPAQUE xilinxGthUserClockNetworkTx #-}
 
 xilinxGthUserClockNetworkRx ::
@@ -289,29 +288,80 @@ xilinxGthUserClockNetworkRx ::
   Clock user ->
   Reset user2 ->
   (Clock user, Clock user2, Signal user2 (BitVector 1))
-xilinxGthUserClockNetworkRx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out, pack <$> unPort rx_active_out)
+xilinxGthUserClockNetworkRx clkIn rstIn = (usrclk_out, usrclk2_out, pack <$> rx_active_out)
  where
-  (usrclk_out, usrclk2_out, rx_active_out) = go (Param 2) (ClockPort clkIn) (ResetPort rstIn)
-  go ::
-    Param "P_FREQ_RATIO_USRCLK_TO_USRCLK2" Integer ->
-    ClockPort "gtwiz_userclk_rx_srcclk_in" user ->
-    ResetPort "gtwiz_userclk_rx_reset_in" ActiveHigh user2 ->
-    ( ClockPort "gtwiz_userclk_rx_usrclk_out" user
-    , ClockPort "gtwiz_userclk_rx_usrclk2_out" user2
-    , Port "gtwiz_userclk_rx_active_out" user2 Bit
-    )
-  go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_rx")
+  ( unPort @(ClockPort "gtwiz_userclk_rx_usrclk_out" user) -> usrclk_out
+    , unPort @(ClockPort "gtwiz_userclk_rx_usrclk2_out" user2) -> usrclk2_out
+    , unPort @(Port "gtwiz_userclk_rx_active_out" user2 Bit) -> rx_active_out
+    ) =
+      inst
+        (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_rx")
+        (Param @"P_FREQ_RATIO_USRCLK_TO_USRCLK2" (2 :: Integer))
+        (ClockPort @"gtwiz_userclk_rx_srcclk_in" clkIn)
+        (ResetPort @"gtwiz_userclk_rx_reset_in" @ActiveHigh rstIn)
 {-# OPAQUE xilinxGthUserClockNetworkRx #-}
 
-ibufds_gte3 :: forall dom. (KnownDomain dom) => DiffClock dom -> Clock dom
-ibufds_gte3 diffClk = unPort @(ClockPort "O" dom) clkOut
+{- | IBUFDS_GTE3 outputs 2 clocks: @O@, which is directly connected to the
+transceiver and @ODIV2@, which is the same clock but which can be used for
+logic. The @ODIV2@ clock can be configured to a divide by 2 of @O@ or to be the
+same frequency as @O@, but the blackbox hardcodes it to be equal to @O@.
+Note that @ODIV2@ has a different phase than @O@.
+
+__Warning__: The @ODIV2@ output must be connected to a 'bufgGt' in order to be
+usable.
+-}
+ibufds_gte3 :: forall dom. (KnownDomain dom) => DiffClock dom -> (Clock dom, Clock dom)
+ibufds_gte3 diffClk = (clkOut, clkOutDiv2)
+ where
+  ( unPort @(ClockPort "O" dom) -> clkOut
+    , unPort @(ClockPort "ODIV2" dom) -> clkOutDiv2
+    ) =
+      inst
+        (instConfig "IBUFDS_GTE3")
+        (Param @"REFCLK_EN_TX_PATH" (0 :: Bit))
+        (Param @"REFCLK_HROW_CK_SEL" (0b00 :: BitVector 2))
+        (Param @"REFCLK_ICNTL_RX" (0b00 :: BitVector 2))
+        (NamedDiffClockPort @"I" @"IB" diffClk)
+        (Port @"CEB" @dom @Bit 0)
+{-# OPAQUE ibufds_gte3 #-}
+
+{- | Clock Buffer Driven by Gigabit Transceiver. For more information see:
+
+    https://docs.xilinx.com/r/en-US/ug974-vivado-ultrascale-libraries/BUFG_GT
+
+The actual divide value is the value provided in @SNat div@ plus 1.
+So an @SNat 0@ gives you a division of 1
+-}
+bufgGt ::
+  forall domIn domOut div.
+  (KnownDomain domIn, KnownDomain domOut, 0 <= div, div <= 7) =>
+  SNat div ->
+  Clock domIn ->
+  Reset domIn ->
+  Clock domOut
+bufgGt = unsafeBufgGt
+
+{- | Internal implementation of 'bufgGt' without domain or division constraints.
+
+This function should not be used directly - use 'bufgGt' instead which provides
+proper type safety.
+-}
+unsafeBufgGt ::
+  forall domIn domOut div.
+  (KnownDomain domOut) =>
+  SNat div ->
+  Clock domIn ->
+  Reset domIn ->
+  Clock domOut
+unsafeBufgGt SNat clkIn rstIn = unPort @(ClockPort "O" domOut) clkOut
  where
   clkOut =
     inst
-      (instConfig "IBUFDS_GTE3")
-      (Param @"REFCLK_EN_TX_PATH" (0 :: Bit))
-      (Param @"REFCLK_HROW_CK_SEL" (0b10 :: BitVector 2))
-      (Param @"REFCLK_ICNTL_RX" (0b00 :: BitVector 2))
-      (NamedDiffClockPort @"I" @"IB" diffClk)
-      (Port @"CEB" @dom @Bit 0)
-{-# OPAQUE ibufds_gte3 #-}
+      (instConfig "BUFG_GT")
+      (ClockPort @"I" clkIn)
+      (ResetPort @"CLR" @ActiveHigh rstIn)
+      (Port @"DIV" @domIn @(BitVector 3) (pure (natToNum @div)))
+      (Port @"CE" @domIn @Bit 1)
+      (Port @"CEMASK" @domIn @Bit 0)
+      (Port @"CLRMASK" @domIn @Bit 0)
+{-# OPAQUE unsafeBufgGt #-}

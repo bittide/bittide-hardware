@@ -387,7 +387,7 @@ switchDemoGppeTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syn
     )
  where
   boardClk :: Clock Ext200
-  boardClk = Gth.ibufds_gte3 boardClkDiff
+  (boardClk, _) = Gth.ibufds_gte3 boardClkDiff
 
   refClk :: Clock Basic125
   refRst :: Reset Basic125
