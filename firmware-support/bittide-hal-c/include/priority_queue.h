@@ -10,7 +10,7 @@
 
 // Maximum size of the priority queue
 #ifndef MAX_FIXED_PQ_SIZE
-#define MAX_FIXED_PQ_SIZE 100
+#define MAX_FIXED_PQ_SIZE 256
 #endif
 
 // Structure to represent the priority queue
