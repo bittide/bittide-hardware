@@ -132,31 +132,52 @@ static bool process_event(uint64_t event, UgnContext* ugn_ctx, FixedIntPriorityQ
     return execute;
 }
 // Process all events in a single metacycle
-// Assumes: timer scratchpad is already set to metacycle_end for deadline checking
+// Extracts the next event from the queue, waits for its metacycle, and processes all events in that metacycle
 // Returns true if processing should continue, false if we should stop
 static bool process_metacycle(
-    uint64_t metacycle_start,
-    uint64_t* current_event,
     Timer* timer,
     Uart* uart,
     UgnContext* ugn_ctx,
     FixedIntPriorityQueue* event_queue,
     Peripherals* peripherals
 ) {
+    // Check if there are events to process
+    if (pq_is_empty(event_queue)) {
+        return false;  // Stop processing - no more events
+    }
+
+    // Check if queue is full
+    if (pq_is_full(event_queue)) {
+        uart_puts(uart, MSG_QUEUE_FULL);
+        return false;  // Stop processing
+    }
+
+    // Extract the next event to process
+    uint64_t current_event = pq_extract_min(event_queue);
+    uint64_t event_time = get_event_time(current_event);
+
+    // Determine the metacycle this event belongs to
+    uint64_t metacycle_offset = event_time % METACYCLE_CLOCKS;
+    uint64_t metacycle_start = event_time - metacycle_offset;
+    uint64_t metacycle_end = metacycle_start + METACYCLE_CLOCKS - 1;
+
+    // Wait until the start of this metacycle
+    WaitResult wait_result = timer_wait_until_cycles(timer, metacycle_start);
+
+    if (wait_result == WAIT_ALREADY_PASSED) {
+        PRINT_MISSED_METACYCLE(peripherals, metacycle_start, METACYCLE_CLOCKS);
+    }
+
+    // Set the scratchpad to the end of this metacycle for deadline checking
+    *timer->scratchpad = metacycle_end;
+
     // Process all events scheduled in this metacycle
     bool on_time = true;
 
-    // Process the first event (already extracted before entering this function)
-    process_event(*current_event, ugn_ctx, event_queue, on_time, peripherals);
+    // Process the first event (already extracted)
+    process_event(current_event, ugn_ctx, event_queue, on_time, peripherals);
 
     while (true) {
-        // Check if protocol is complete
-        if (ugn_ctx->number_incoming_link_ugns_known == ugn_ctx->num_ports &&
-            ugn_ctx->number_outgoing_link_ugns_acknowledged == ugn_ctx->num_ports) {
-            uart_puts(uart, MSG_PROTOCOL_COMPLETE);
-            return false;  // Stop processing
-        }
-
         // Check if there are more events in the queue
         if (pq_is_empty(event_queue)) {
             return false;  // Stop processing - no more events
@@ -171,22 +192,21 @@ static bool process_metacycle(
         // Peek at the next event
         uint64_t next_event = pq_peek_min(event_queue);
         uint64_t next_event_time = get_event_time(next_event);
-        uint64_t next_metacycle_start = next_event_time - (next_event_time % METACYCLE_CLOCKS);
 
         // If next event is in a different metacycle, exit without removing it
-        if (next_metacycle_start != metacycle_start) {
+        if (next_event_time > metacycle_end) {
             return true;  // Continue processing in next metacycle
         }
 
         // Otherwise, extract this event to process in the current metacycle
-        *current_event = pq_extract_min(event_queue);
+        current_event = pq_extract_min(event_queue);
 
         // Check if we're still on time
         CompareResult cmp_result = get_compare_result(timer);
         on_time = cmp_result == COMPARE_LESS;
 
         // Process the event (skip execution if deadline missed)
-        process_event(*current_event, ugn_ctx, event_queue, on_time, peripherals);
+        process_event(current_event, ugn_ctx, event_queue, on_time, peripherals);
     }
 
     // Should never reach here
@@ -241,46 +261,27 @@ int c_main(void) {
             start_cycles + STARTING_TICK_REC_OFFSET + port * RECEIVE_PERIOD));
     }
 
-    // Get the first event before starting the loop
-    if (pq_is_empty(&event_queue)) {
-        uart_puts(&peripherals.uart, MSG_QUEUE_EMPTY);
-        return 0;
-    }
-    uint64_t current_event = pq_extract_min(&event_queue);
-
     PRINT_EVENT_LOOP_START(&peripherals, &event_queue);
 
     // Main event loop - process events metacycle by metacycle
     uint32_t k;
     uint32_t last_progress_report = 0;
     for (k = 0; k < NUM_PERIODS; k++) {
-        uint64_t event_time = get_event_time(current_event);
-
-        // Determine the metacycle this event belongs to
-        uint64_t metacycle_offset = event_time % METACYCLE_CLOCKS;
-        uint64_t metacycle_start = event_time - metacycle_offset;
-        uint64_t metacycle_end = metacycle_start + METACYCLE_CLOCKS - 1;
-
-        // Wait until the start of this metacycle
-        WaitResult wait_result = timer_wait_until_cycles(&peripherals.timer, metacycle_start);
-
-        if (wait_result == WAIT_ALREADY_PASSED) {
-            PRINT_MISSED_METACYCLE(&peripherals, metacycle_start, METACYCLE_CLOCKS);
-        }
-
-        // Set the scratchpad to the end of this metacycle for deadline checking
-        *peripherals.timer.scratchpad = metacycle_end;
-
-        // Process all events in this metacycle
+        // Process all events in the next metacycle
         bool continue_processing = process_metacycle(
-            metacycle_start,
-            &current_event,
             &peripherals.timer,
             &peripherals.uart,
             &ugn_ctx,
             &event_queue,
             &peripherals
         );
+
+        // Check if protocol is complete
+        if (ugn_ctx.number_incoming_link_ugns_known == ugn_ctx.num_ports &&
+            ugn_ctx.number_outgoing_link_ugns_acknowledged == ugn_ctx.num_ports) {
+            uart_puts(&peripherals.uart, MSG_PROTOCOL_COMPLETE);
+            break;  // Stop processing
+        }
 
         if (!continue_processing) {
             break;
@@ -291,12 +292,6 @@ int c_main(void) {
             PRINT_PROTOCOL_PROGRESS(&peripherals, &ugn_ctx);
             last_progress_report = k;
         }
-
-        // Get the next event for the next iteration
-        if (pq_is_empty(&event_queue)) {
-            break;
-        }
-        current_event = pq_extract_min(&event_queue);
     }
 
     uart_puts(&peripherals.uart, "========================================\n");
