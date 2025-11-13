@@ -26,8 +26,8 @@
 // Schedule one SEND task per neighbor every 3 metacycles
 #define SEND_PERIOD (METACYCLE_CLOCKS * 3 * NUM_PORTS + 1)
 
-// Schedule one RECEIVE task per link each metacycle
-#define RECEIVE_PERIOD (METACYCLE_CLOCKS * NUM_PORTS)
+// Schedule one RECEIVE task (checking all ports) each metacycle
+#define RECEIVE_PERIOD METACYCLE_CLOCKS
 
 // Invalidate 2 metacycles after send
 #define INVALIDATE_DELAY (METACYCLE_CLOCKS * 2)
@@ -89,15 +89,17 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
 
     } else if (event & EVENT_TYPE_RECEIVE) {
         if (execute) {
-            // Check incoming buffer for the specific port encoded in the event
-            bool received = check_incoming_buffer(ugn_ctx, port, buffer_offset);
+            // Check incoming buffer for all ports
+            for (uint32_t i = 0; i < ugn_ctx->num_ports; i++) {
+                (void)check_incoming_buffer(ugn_ctx, i, buffer_offset);
+            }
             met_receive_count++;
         } else {
             missed_receive_count++;
         }
-        // Always reschedule next receive event for this port
+        // Always reschedule next receive event
         uint64_t next_receive_time = event_time + RECEIVE_PERIOD;
-        uint64_t next_receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port);
+        uint64_t next_receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, 0);
         pq_insert(event_queue, next_receive_event, next_receive_time);
     }
 
@@ -261,12 +263,10 @@ int c_main(void) {
         pq_insert(&event_queue, send_event, send_time);
     }
 
-    // Schedule RECEIVE events: one per port each metacycle, staggered across the first NUM_PORTS metacycles
-    for (uint32_t port = 0; port < NUM_PORTS; port++) {
-        uint64_t receive_time = start_cycles + STARTING_TICK_REC_OFFSET + port * RECEIVE_PERIOD;
-        uint64_t receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, port);
-        pq_insert(&event_queue, receive_event, receive_time);
-    }
+    // Schedule a single RECEIVE event that checks all ports each metacycle
+    uint64_t receive_time = start_cycles + STARTING_TICK_REC_OFFSET;
+    uint64_t receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, 0);
+    pq_insert(&event_queue, receive_event, receive_time);
 
     PRINT_EVENT_LOOP_START(&peripherals, &event_queue);
 
