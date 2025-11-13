@@ -49,10 +49,10 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
             calendar.set_write_addr(index!(n as u16, n = 2096));
         }
         calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 2096));
-        calendar.set_end_of_metacycle(true);
+        // calendar.set_end_of_metacycle(true);
         calendar.set_swap_active(true);
-        calendar.set_end_of_metacycle(true);
-        calendar.set_swap_active(false);
+        // calendar.set_end_of_metacycle(true);
+        // calendar.set_swap_active(false);
     }
 
     // Initialize all gather calendars
@@ -74,10 +74,10 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
             calendar.set_write_addr(index!(n as u16, n = 2096));
         }
         calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 2096));
-        calendar.set_end_of_metacycle(true);
+        // calendar.set_end_of_metacycle(true);
         calendar.set_swap_active(true);
-        calendar.set_end_of_metacycle(true);
-        calendar.set_swap_active(false);
+        // calendar.set_end_of_metacycle(true);
+        // calendar.set_swap_active(false);
     }
 }
 
