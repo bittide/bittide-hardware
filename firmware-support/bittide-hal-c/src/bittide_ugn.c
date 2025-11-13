@@ -81,9 +81,13 @@ static uint32_t receiver_extract_response_meaning(ScatterUnit* unit, uint32_t of
         int64_t ugn = (int64_t)offset + 3 - (int64_t)read_at_offset(unit, offset, 3);
         uint64_t remote_nodeid_port = read_at_offset(unit, offset, 4);
 
+        // Extract node_id from lower 32 bits, port from upper 32 bits
+        uint32_t remote_node = (uint32_t)(remote_nodeid_port & 0xffffffff);
+        uint32_t remote_port = (uint32_t)(remote_nodeid_port >> 32);
+
         initialize_ugn_object(u,
-            ((uint32_t)remote_nodeid_port) & 0xffff,          // src_node
-            (((uint32_t)remote_nodeid_port) & 0xffff0000) >> 16,  // src_port
+            remote_node,                                       // src_node
+            remote_port - 1,                                   // src_port (subtract 1 because we send port+1)
             node_id,                                           // dst_node (us)
             port,                                              // dst_port
             ugn);
@@ -94,11 +98,15 @@ static uint32_t receiver_extract_response_meaning(ScatterUnit* unit, uint32_t of
         int64_t ugn = (int64_t)read_at_offset(unit, offset, 3);
         uint64_t remote_nodeid_port = read_at_offset(unit, offset, 4);
 
+        // Extract node_id from lower 32 bits, port from upper 32 bits
+        uint32_t remote_node = (uint32_t)(remote_nodeid_port & 0xffffffff);
+        uint32_t remote_port = (uint32_t)(remote_nodeid_port >> 32);
+
         initialize_ugn_object(u,
             node_id,                                           // src_node (us)
             port,                                              // src_port
-            ((uint32_t)remote_nodeid_port) & 0xffff,          // dst_node
-            (((uint32_t)remote_nodeid_port) & 0xffff0000) >> 16,  // dst_port
+            remote_node,                                       // dst_node
+            remote_port - 1,                                   // dst_port (subtract 1 because we send port+1)
             ugn);
         return RECEIVED_OUTGOING_UGN_ACK;
     }
@@ -114,7 +122,8 @@ static uint32_t receiver_extract_response_meaning(ScatterUnit* unit, uint32_t of
 void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return;
 
-    uint64_t port_nodeid = (uint64_t)(ctx->node_id) + ((port + 1) << 16);
+    // Encode node_id in lower 32 bits, (port+1) in upper 32 bits
+    uint64_t port_nodeid = ctx->node_id | (((uint64_t)(port + 1)) << 32);
 
     // Announce our local time to communicate outgoing UGN
     send_cmd2(&ctx->gather_units[port], offset, BT_SENDING_UGN,
@@ -124,7 +133,7 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (ctx->incoming_link_ugn_list[port].is_valid) {
         send_cmd2(&ctx->gather_units[port], offset + 5, BT_FOUND_UGN,
                  (uint64_t)(ctx->incoming_link_ugn_list[port].ugn),
-                 (uint64_t)(ctx->node_id) + ((port + 1) << 16));
+                 ctx->node_id | (((uint64_t)(port + 1)) << 32));
     }
 }
 
@@ -144,17 +153,15 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (meaning == 0) return false;
 
     if (meaning == RECEIVED_OUTGOING_UGN_ACK) {
-        // Use the UGN from temp_edge
-        ctx->outgoing_link_ugn_list[port].ugn = temp_edge.ugn;
-        ctx->outgoing_link_ugn_list[port].is_valid = true;
+        // Copy the complete UGN edge data from temp_edge
+        ctx->outgoing_link_ugn_list[port] = temp_edge;
         ctx->number_outgoing_link_ugns_acknowledged++;
         return true;
     }
 
     if (meaning == RECEIVED_INCOMING_UGN) {
-        // Use the UGN from temp_edge
-        ctx->incoming_link_ugn_list[port].ugn = temp_edge.ugn;
-        ctx->incoming_link_ugn_list[port].is_valid = true;
+        // Copy the complete UGN edge data from temp_edge
+        ctx->incoming_link_ugn_list[port] = temp_edge;
         ctx->number_incoming_link_ugns_known++;
         return true;
     }
