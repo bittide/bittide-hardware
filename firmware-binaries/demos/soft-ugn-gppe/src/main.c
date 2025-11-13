@@ -91,16 +91,6 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
         if (execute) {
             // Check incoming buffer for the specific port encoded in the event
             bool received = check_incoming_buffer(ugn_ctx, port, buffer_offset);
-
-            // If we received new data, print all discovered edges
-            if (received) {
-                PRINT_UGN_EDGE_LIST(peripherals, "Incoming Link UGNs:\n",
-                                    ugn_ctx->incoming_link_ugn_list, ugn_ctx->num_ports);
-                uart_puts(&peripherals->uart, "\n");
-                PRINT_UGN_EDGE_LIST(peripherals, "Outgoing Link UGNs:\n",
-                                    ugn_ctx->outgoing_link_ugn_list, ugn_ctx->num_ports);
-                uart_puts(&peripherals->uart, "\n");
-            }
             met_receive_count++;
         } else {
             missed_receive_count++;
