@@ -30,8 +30,9 @@ import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Control.Monad.IO.Class
+import Control.Monad.Reader (ask)
 import Data.Char (chr, isAscii, isPrint)
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
@@ -43,9 +44,21 @@ import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
 import System.IO
-import Vivado.Tcl (HwTarget)
+import Vivado (VivadoHandle)
+import Vivado.Tcl (
+  HwIla,
+  HwTarget,
+  current_hw_ila,
+  execCmd,
+  execCmd_,
+  get_hw_ilas,
+  openHwTarget,
+  refresh_hw_device,
+  run_hw_ila,
+ )
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
+import "extra" Data.List.Extra ((!?))
 
 import qualified Bittide.Calculator as Calc
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
@@ -53,6 +66,7 @@ import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
+import qualified "extra" Data.List.Extra as L
 
 data OcdInitData = OcdInitData
   { muPort :: Int
@@ -132,6 +146,18 @@ readWhoAmID addr gdb = do
       then Right $ V.toList chars
       else Left $ V.toList bytes
 
+-- Copied from `Clash.Shake.Vivado`. we dont want to depend on that package.
+getIlaShortName :: VivadoHandle -> HwIla -> IO String
+getIlaShortName v ila = do
+  -- First, set this ILA as the current one in Tcl
+  _ <- current_hw_ila v [show ila]
+  -- Now use [current_hw_ila] to reference the Tcl object
+  ilaCellName <- execCmd v "get_property" ["CELL_NAME", "[current_hw_ila]"]
+  pure
+    $ fromMaybe
+      (error $ "Determining short name failed for ILA with CELL_NAME " <> ilaCellName)
+      (L.reverse (L.split (== '/') ilaCellName) !? 1)
+
 {- | Given an expected @whoAmID@ and a GDB process connected to a target CPU, check
 whether the target CPU reports the expected @whoAmID@.
 -}
@@ -163,6 +189,69 @@ gdbCheck expectedBE expectedAddr altAddrs gdb = do
     case maybeId of
       Right ident -> putStrLn [i|Address for #{name} gives ID '#{ident}'|]
       Left ints -> putStrLn [i|Address for #{name} gives malformed ID. Raw: #{ints}|]
+
+{- | Arm the bittidePeIla ILA specifically. This function runs in VivadoM and configures
+and arms the ILA with trigger and capture probes set to detect activity.
+The function should be called after calendar initialization is complete.
+-}
+armBittidePeIla :: [(HwTarget, DeviceInfo)] -> VivadoM ()
+armBittidePeIla targets = do
+  v <- ask -- Get the VivadoHandle from the ReaderT context
+  forM_ targets $ \(hwTarget, deviceInfo) -> do
+    liftIO $ do
+      putStrLn $ "[DEBUG] Starting ILA arming for device " <> deviceInfo.deviceId <> "..."
+      putStrLn $ "[DEBUG] Hardware target: " <> show hwTarget
+
+      -- Open the hardware target to access its ILAs
+      putStrLn "[DEBUG] Opening hardware target..."
+      openHwTarget v hwTarget
+      putStrLn "[DEBUG] Refreshing hardware device..."
+      refresh_hw_device v []
+
+      -- Get all ILAs for this target
+      putStrLn "[DEBUG] Getting list of ILAs..."
+      ilas <- get_hw_ilas v []
+      putStrLn $ "[DEBUG] Found " <> show (L.length ilas) <> " ILA(s)"
+
+      -- Debug: print all ILAs
+      forM_ (L.zip [(1 :: Int) ..] ilas) $ \(idx, ila) -> do
+        putStrLn $ "[DEBUG] ILA #" <> show idx <> ": " <> show ila
+
+      -- Find and arm the bittidePeIla specifically
+      forM_ ilas $ \ila -> do
+        putStrLn $ "[DEBUG] Processing ILA: " <> show ila
+        putStrLn $ "[DEBUG] Attempting to get ILA short name..."
+        ilaName <- getIlaShortName v ila
+        putStrLn $ "[DEBUG] ILA short name: " <> ilaName
+
+        -- Check if this is the bittidePeIla
+        when ("bittidePeIla" `L.isInfixOf` ilaName) $ do
+          putStrLn $ "[DEBUG] Found matching bittidePeIla: " <> ilaName
+
+          -- Select this ILA as current
+          putStrLn "[DEBUG] Setting current ILA..."
+          _ <- current_hw_ila v [show ila]
+
+          -- Configure trigger probe (trigger on activity = 1)
+          putStrLn "[DEBUG] Configuring trigger probe..."
+          let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
+          execCmd_ v "set_property" ["trigger_compare_value", "eq1'b1", triggerProbe]
+
+          -- Enable capture control and set capture probe
+          putStrLn "[DEBUG] Configuring capture mode..."
+          execCmd_ v "set_property" ["control.capture_mode", "BASIC", "[current_hw_ila]"]
+          putStrLn "[DEBUG] Configuring capture probe..."
+          let captureProbe = "[get_hw_probes -of_objects [current_hw_ila] */capture*]"
+          execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
+
+          -- Set trigger position (0 = trigger at start of capture window)
+          putStrLn "[DEBUG] Setting trigger position..."
+          execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
+
+          -- ARM THE ILA
+          putStrLn "[DEBUG] Arming ILA..."
+          run_hw_ila v ["[current_hw_ila]"]
+          putStrLn $ "[DEBUG] Successfully armed bittidePeIla for " <> deviceInfo.deviceId
 
 driver ::
   (HasCallStack) =>
@@ -276,6 +365,9 @@ driver testName targets = do
               $ forConcurrently_ picocoms
               $ \pico ->
                 waitForLine pico.stdoutHandle "[MU] All calendars initialized"
+
+            -- Arm the bittidePeIla ILA after calendars are initialized
+            armBittidePeIla targets
 
             -- From here the actual test should be done, but for now it's just going to be
             -- waiting for the devices to print out over UART.
