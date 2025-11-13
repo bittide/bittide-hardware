@@ -29,20 +29,6 @@
         uart_puts(&((PERIPHERALS_PTR)->uart), " ***\r\n"); \
     } while(0)
 
-// Message for protocol completion progress - takes UgnContext pointer
-#define PRINT_PROTOCOL_PROGRESS(PERIPHERALS_PTR, UGN_CTX_PTR) \
-    do { \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "Progress: IN="); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->number_incoming_link_ugns_known)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "/"); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->num_ports)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), ", OUT="); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->number_outgoing_link_ugns_acknowledged)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "/"); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->num_ports)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
-    } while(0)
-
 // Message for starting cycle information - takes scatter unit and calculates values
 #define PRINT_START_INFO(PERIPHERALS_PTR, METACYCLE_CLOCKS) \
     do { \
