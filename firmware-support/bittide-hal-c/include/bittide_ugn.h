@@ -39,6 +39,7 @@ typedef struct {
     uint32_t dst_node;   // Destination node ID
     uint32_t dst_port;   // Destination port number
     int64_t ugn;         // The UGN value for this edge
+    uint64_t arrival_time; // Time when message was received (metacycle_start + buffer_offset)
     uint32_t is_valid;   // Whether this UGN entry is valid
 } UgnEdge;
 
