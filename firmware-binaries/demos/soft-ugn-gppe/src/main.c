@@ -220,6 +220,9 @@ static bool process_metacycle(
         // Process the event (skip execution if deadline missed)
         process_event(current_event, event_time, ugn_ctx, event_queue, on_time, peripherals);
     }
+
+    // Should never reach here, but add return to satisfy compiler
+    return false;
 }
 
 // ============================================================================
@@ -231,57 +234,45 @@ int c_main(void) {
     Peripherals peripherals;
     peripherals_init(&peripherals);
 
-    // Fill all gather units with counter values
-    // Each entry contains the port number in the upper bits and a counter in the lower bits
-    uart_puts(&peripherals.uart, "Initializing gather units with test data...\n");
-    scatter_unit_wait_for_new_metacycle(&peripherals.scatter_units[0]);
+    // Initialize and test gather/scatter units in a single loop per port
+    uart_puts(&peripherals.uart, "Testing gather/scatter units...\n");
+
     for (uint32_t port = 0; port < NUM_PORTS; port++) {
         GatherUnit* gather = &peripherals.gather_units[port];
+        ScatterUnit* scatter = &peripherals.scatter_units[port];
 
-        // Get the actual memory length from the gather unit
-        uint32_t mem_len = gather->memory_len;
+        uint32_t gather_mem_len = gather->memory_len;
+        uint32_t scatter_mem_len = scatter->memory_len;
 
-        // Create a buffer with entries containing port number and address
-        // Allocate on stack (assuming reasonable memory length)
-        uint64_t test_data[mem_len];
-        for (uint32_t addr = 0; addr < mem_len; addr++) {
-            // Put port number in upper 16 bits, address in lower 48 bits
+        // Wait for the start of a gather unit metacycle
+        gather_unit_wait_for_new_metacycle(gather);
+
+        // Fill the gather unit's memory with test data
+        // Each entry contains the port number in upper bits and address in lower bits
+        uint64_t test_data[gather_mem_len];
+        for (uint32_t addr = 0; addr < gather_mem_len; addr++) {
             test_data[addr] = ((uint64_t)port << 48) | addr;
         }
+        gather_unit_write_slice(gather, test_data, 0, gather_mem_len);
 
-        // Write the test data to the gather unit
-        gather_unit_write_slice(gather, test_data, 0, mem_len);
+        // Wait until the start of the next gather unit metacycle (data transmitted)
+        gather_unit_wait_for_new_metacycle(gather);
 
-        uart_puts(&peripherals.uart, "  Port ");
-        uart_putdec(&peripherals.uart, port);
-        uart_puts(&peripherals.uart, " gather unit initialized (");
-        uart_putdec(&peripherals.uart, mem_len);
-        uart_puts(&peripherals.uart, " words)\n");
-    }
-    uart_puts(&peripherals.uart, "Gather unit initialization complete.\n");
+        // Wait for the start of a scatter unit metacycle
+        scatter_unit_wait_for_new_metacycle(scatter);
 
-    // Wait until the end of the metacycle to let the test data be transmitted
-    uart_puts(&peripherals.uart, "Waiting for metacycle boundary...\n");
-    gather_unit_wait_for_new_metacycle(&peripherals.gather_units[0]);
+        // Read the scatter memory
+        uint64_t scatter_data[scatter_mem_len];
+        scatter_unit_read_slice(scatter, scatter_data, 0, scatter_mem_len);
 
-    // Check all scatter units for received data
-    uart_puts(&peripherals.uart, "Checking scatter units for received data...\n");
-    for (uint32_t port = 0; port < NUM_PORTS; port++) {
-        ScatterUnit* scatter = &peripherals.scatter_units[port];
-        uint32_t mem_len = scatter->memory_len;
-
-        // Read the entire scatter memory
-        uint64_t scatter_data[mem_len];
-        scatter_unit_read_slice(scatter, scatter_data, 0, mem_len);
-
-        // Check for non-zero entries
+        // Check for non-zero data and print if found
         bool found_data = false;
-        for (uint32_t addr = 0; addr < mem_len; addr++) {
+        for (uint32_t addr = 0; addr < scatter_mem_len; addr++) {
             if (scatter_data[addr] != 0) {
                 if (!found_data) {
                     uart_puts(&peripherals.uart, "  Port ");
                     uart_putdec(&peripherals.uart, port);
-                    uart_puts(&peripherals.uart, " scatter unit received data:\n");
+                    uart_puts(&peripherals.uart, " received data:\n");
                     found_data = true;
                 }
                 uart_puts(&peripherals.uart, "    [");
@@ -295,31 +286,10 @@ int c_main(void) {
         if (!found_data) {
             uart_puts(&peripherals.uart, "  Port ");
             uart_putdec(&peripherals.uart, port);
-            uart_puts(&peripherals.uart, " scatter unit: no data received\n");
+            uart_puts(&peripherals.uart, ": no data\n");
         }
     }
-    uart_puts(&peripherals.uart, "Scatter unit check complete.\n\n");
-
-    // Clear all gather units by filling them with zeroes
-    uart_puts(&peripherals.uart, "Clearing gather units...\n");
-    for (uint32_t port = 0; port < NUM_PORTS; port++) {
-        GatherUnit* gather = &peripherals.gather_units[port];
-        uint32_t mem_len = gather->memory_len;
-
-        // Create a buffer filled with zeroes
-        uint64_t zero_data[mem_len];
-        for (uint32_t addr = 0; addr < mem_len; addr++) {
-            zero_data[addr] = 0;
-        }
-
-        // Write the zeroes to the gather unit
-        gather_unit_write_slice(gather, zero_data, 0, mem_len);
-
-        uart_puts(&peripherals.uart, "  Port ");
-        uart_putdec(&peripherals.uart, port);
-        uart_puts(&peripherals.uart, " gather unit cleared\n");
-    }
-    uart_puts(&peripherals.uart, "Gather unit clearing complete.\n\n");
+    uart_puts(&peripherals.uart, "Gather/scatter test complete.\n\n");
 
     // Get current metacycle count and convert to cycles (aligned to metacycle boundary)
     scatter_unit_wait_for_new_metacycle(&peripherals.scatter_units[0]);
