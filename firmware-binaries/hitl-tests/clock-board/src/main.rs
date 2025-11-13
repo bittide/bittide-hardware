@@ -32,8 +32,9 @@ enum FrequencyCheckError {
 }
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const CONFIG_200: Config<3, 584, 5> =
-    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-and-out1.csv");
+const CONFIG_200: Config<3, 590, 5> = load_clock_config_csv!(
+    "../../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-Registers.csv"
+);
 
 /// System clock frequency in Hz (125 MHz).
 const SYS_FREQ: u32 = 125_000_000;
@@ -51,15 +52,23 @@ fn check_frequency(
     expected_freq: u32,
 ) -> Result<(), FrequencyCheckError> {
     domain_diff_counters.set_enable(0, true);
-    // Wait briefly for counter to become active
-    timer.wait(Duration::from_micros(10));
 
     // Verify the counter is accessible and active. When inactive, it was either
     // not enabled correctly or one of the 2 clocks is not running.
-    match domain_diff_counters.counters_active(0) {
-        None => return Err(FrequencyCheckError::CounterInaccessible),
-        Some(false) => return Err(FrequencyCheckError::CounterInactive),
-        Some(true) => (),
+    // Retry up to 10 times if inactive, but error immediately if inaccessible.
+    const MAX_RETRIES: u32 = 10;
+    for attempt in 0..=MAX_RETRIES {
+        match domain_diff_counters.counters_active(0) {
+            None => return Err(FrequencyCheckError::CounterInaccessible),
+            Some(false) => {
+                if attempt == MAX_RETRIES {
+                    return Err(FrequencyCheckError::CounterInactive);
+                }
+                // Counter is inactive, wait a bit and retry
+                timer.wait(Duration::from_millis(100));
+            }
+            Some(true) => break,
+        }
     }
 
     // Measure counter values over a 1-second period

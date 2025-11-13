@@ -152,7 +152,7 @@ driverFunc _name targets = do
           liftIO $ mapConcurrently_ Gdb.continue gdbs
 
           liftIO
-            $ T.tryWithTimeout T.PrintActionTime "Waiting for test success" 120_000_000
+            $ T.tryWithTimeout T.PrintActionTime "Waiting for test success" 15_000_000
             $ forConcurrently_ picocoms
             $ \pico ->
               waitForLine pico.stdoutHandle "All tests passed"
