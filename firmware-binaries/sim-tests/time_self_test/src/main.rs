@@ -8,8 +8,8 @@
 use ufmt::uwriteln;
 
 use bittide_hal::manual_additions::timer::self_test::self_test;
-use bittide_hal::shared::devices::timer::Timer;
-use bittide_hal::shared::devices::uart::Uart;
+use bittide_hal::shared_devices::timer::Timer;
+use bittide_hal::shared_devices::uart::Uart;
 #[cfg(not(test))]
 use riscv_rt::entry;
 

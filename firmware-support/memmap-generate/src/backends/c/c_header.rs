@@ -10,8 +10,10 @@
 //! - Volatile pointer macros for direct memory access
 
 use crate::{
-    hal_set::DeviceInstance,
-    parse::{path_name, DeviceDesc, MemoryMapDesc, MemoryMapTree, Type},
+    deprecated::hal_set::DeviceInstance,
+    input_language::{
+        path_name, DeviceDesc, MemoryMapDesc, MemoryMapTree, RegisterAccess, TypeRef,
+    },
 };
 use heck::ToShoutySnakeCase;
 use std::collections::BTreeMap;
@@ -139,7 +141,7 @@ fn collect_device_instances(tree: &MemoryMapTree) -> Vec<DeviceInstance> {
                 device_name: device_name.clone(),
                 absolute_address: *absolute_address,
                 tags: tags.clone(),
-                src_location: *src_location,
+                src_location: src_location.clone(),
             });
         }
     }
@@ -166,52 +168,53 @@ fn get_instance_name_with_index(
 }
 
 /// Format a Type as a human-readable string for documentation.
-fn format_type(ty: &Type) -> String {
+fn format_type(ty: &TypeRef) -> String {
     match ty {
-        Type::Bool => "bool".to_string(),
-        Type::Float => "float".to_string(),
-        Type::Double => "double".to_string(),
-        Type::BitVector(n) => format!("BitVector({n})"),
-        Type::Signed(n) => format!("Signed({n})"),
-        Type::Unsigned(n) => format!("Unsigned({n})"),
-        Type::Index(n) => format!("Index({n})"),
-        Type::Variable(n) => format!("Variable({n})"),
-        Type::Vec(n, inner) => format!("Vec({n}, {})", format_type(inner)),
-        Type::Reference(name, generics) => {
-            if generics.is_empty() {
-                name.clone()
-            } else {
-                format!(
-                    "{name}<{}>",
-                    generics
-                        .iter()
-                        .map(format_type)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+        TypeRef::TypeReference { base, args } => match (base.base.as_str(), base.module.as_str()) {
+            ("BitVector", "Clash.Sized.Internal.BitVector") => {
+                format!("BitVector({})", format_type(&args[0]))
             }
-        }
-        Type::SumOfProducts { variants } => {
-            if variants.is_empty() {
-                "()".to_string()
-            } else {
-                let variant_strs: Vec<_> = variants
-                    .iter()
-                    .map(|v| {
-                        if v.fields.is_empty() {
-                            v.name.clone()
-                        } else {
-                            let field_types: Vec<_> = v
-                                .fields
-                                .iter()
-                                .map(|f| format!("{}: {}", f.name, format_type(&f.type_)))
-                                .collect();
-                            format!("{}({})", v.name, field_types.join(", "))
-                        }
-                    })
-                    .collect();
-                variant_strs.join(" | ")
+            ("Signed", "Clash.Sized.Internal.Signed") => {
+                format!("Signed({})", format_type(&args[0]))
             }
+            ("Unsigned", "Clash.Sized.Internal.Unsigned") => {
+                format!("Unsigned({})", format_type(&args[0]))
+            }
+            ("Index", "Clash.Sized.Internal.Index") => {
+                format!("Index({})", format_type(&args[0]))
+            }
+            ("Float", "GHC.Types") => "float".to_string(),
+            ("Double", "GHC.Types") => "double".to_string(),
+            ("Bool", "GHC.Types") => "bool".to_string(),
+            ("Vec", "Clash.Sized.Vector") => {
+                format!("Vec({}, {})", format_type(&args[0]), format_type(&args[1]))
+            }
+            ("Unit", "GHC.Tuple") => "unit".to_string(),
+            (name, "GHC.Tuple") if name.starts_with("Tuple") => {
+                let inner = args.iter().map(format_type).collect::<Vec<_>>().join(", ");
+                format!("({inner})")
+            }
+            (_, _) => {
+                if args.is_empty() {
+                    base.base.clone()
+                } else {
+                    format!(
+                        "{}<{}>",
+                        base.base,
+                        args.iter().map(format_type).collect::<Vec<_>>().join(", ")
+                    )
+                }
+            }
+        },
+        TypeRef::Variable(name) => name.clone(),
+        TypeRef::Nat(n) => format!("{n}"),
+        TypeRef::Tuple(type_refs) => {
+            let inner = type_refs
+                .iter()
+                .map(format_type)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({inner})")
         }
     }
 }
@@ -238,9 +241,9 @@ fn generate_register_defines(output: &mut String, device: &DeviceDesc, base_name
 
         // Add access information
         let access_str = match register.access {
-            crate::parse::RegisterAccess::ReadWrite => "read-write",
-            crate::parse::RegisterAccess::ReadOnly => "read-only",
-            crate::parse::RegisterAccess::WriteOnly => "write-only",
+            RegisterAccess::ReadWrite => "read-write",
+            RegisterAccess::ReadOnly => "read-only",
+            RegisterAccess::WriteOnly => "write-only",
         };
         writeln!(output, " * Access: {access_str}").unwrap();
 
@@ -291,28 +294,52 @@ mod tests {
         let json = r#"{
             "devices": {
                 "UART": {
+                    "description": "Wishbone accessible UART interface with configurable FIFO buffers.",
                     "name": "UART",
-                    "description": "Universal Asynchronous Receiver/Transmitter",
                     "registers": [
                         {
-                            "name": "data",
-                            "description": "Data register",
                             "access": "read_write",
                             "address": 0,
+                            "description": "",
+                            "name": "data",
+                            "reset": null,
                             "size": 1,
-                            "type": ["bitvector", 8],
                             "src_location": 0,
-                            "tags": []
+                            "tags": [],
+                            "type": {
+                                "args": [
+                                    {
+                                        "nat": 8
+                                    }
+                                ],
+                                "type_reference": {
+                                    "name_base": "BitVector",
+                                    "name_module": "Clash.Sized.Internal.BitVector",
+                                    "name_package": "clash-prelude-1.9.0-eadec655997035db08ec9d628cb7c4f74fdb8e3e4b6c17010f9d9312ce4b9c36"
+                                }
+                            }
                         },
                         {
-                            "name": "status",
-                            "description": "Status register",
                             "access": "read_only",
                             "address": 4,
+                            "description": "",
+                            "name": "status",
+                            "reset": null,
                             "size": 1,
-                            "type": ["bitvector", 8],
                             "src_location": 0,
-                            "tags": []
+                            "tags": [],
+                            "type": {
+                                "args": [
+                                    {
+                                        "nat": 8
+                                    }
+                                ],
+                                "type_reference": {
+                                    "name_base": "BitVector",
+                                    "name_module": "Clash.Sized.Internal.BitVector",
+                                    "name_package": "clash-prelude-1.9.0-eadec655997035db08ec9d628cb7c4f74fdb8e3e4b6c17010f9d9312ce4b9c36"
+                                }
+                            }
                         }
                     ],
                     "src_location": 0,

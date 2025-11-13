@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::shared::devices::elastic_buffer::ElasticBuffer;
-use crate::shared::types::EbCommand;
+use crate::shared_devices::elastic_buffer::ElasticBuffer;
+use crate::types::EbCommand;
 
 impl ElasticBuffer {
     /// Minimum occupancy value for the elastic buffer (signed 8-bit).

@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::manual_additions::timer::Duration;
-use crate::shared::devices::Si539xSpi;
-use crate::shared::devices::Timer;
-use crate::shared::types::Maybe::{Just, Nothing};
-use crate::shared::types::RegisterOperation;
+use crate::shared_devices::Si539xSpi;
+use crate::shared_devices::Timer;
+use crate::types::Maybe::{Just, Nothing};
+use crate::types::RegisterOperation;
 
 use ufmt::derive::uDebug;
 

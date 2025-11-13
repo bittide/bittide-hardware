@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::shared::devices::uart::Uart;
+use crate::shared_devices::uart::Uart;
 
 pub struct UartStatus {
     pub receive_buffer_empty: bool,
@@ -15,7 +15,7 @@ pub struct ReceiveBufferEmpty;
 impl Uart {
     /// UART status register output
     pub fn read_status(&self) -> UartStatus {
-        let flags: u8 = self.status();
+        let flags = self.status();
 
         let rx_mask = 0b10;
         let rx_empty = flags & rx_mask;

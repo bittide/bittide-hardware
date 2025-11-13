@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::scatter_gather_pe::devices::{GatherUnit, ScatterUnit};
+use crate::hals::scatter_gather_pe::devices::{GatherUnit, ScatterUnit};
 
 impl GatherUnit {
     /// Write a slice to the gather memory.

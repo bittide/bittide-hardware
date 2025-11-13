@@ -2,7 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::freeze::{Freeze, SampleMemory};
+use bittide_hal::shared_devices::freeze::Freeze;
+use bittide_hal::shared_devices::sample_memory::SampleMemory;
 
 use crate::stability_detector::Stability;
 
@@ -31,12 +32,12 @@ impl SampleStore {
     /// function 'store' does 'store_samples_every' boundary checking.
     fn do_store(
         &mut self,
-        freeze: &bittide_hal::freeze::Freeze,
+        freeze: &Freeze,
         bump_counter: bool,
         stability: Stability,
         net_speed_change: i32,
     ) {
-        let n_samples_stored = self.memory.data(0).unwrap() as usize;
+        let n_samples_stored: usize = self.memory.data(0).unwrap() as usize;
         let start_index = n_samples_stored * WORDS_PER_SAMPLE + 1;
 
         // Store local clock counter
