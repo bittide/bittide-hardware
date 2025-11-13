@@ -145,6 +145,7 @@ fn main() -> ! {
     // Initialize scatter/gather calendars with incrementing counters
     uwriteln!(uart, "Initializing scatter/gather calendars").unwrap();
     initialize_calendars(&mut uart);
+    initialize_calendars(&mut uart);
     uwriteln!(uart, "All calendars initialized").unwrap();
 
     #[allow(clippy::empty_loop)]
