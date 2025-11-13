@@ -249,11 +249,11 @@ int c_main(void) {
 
         // Fill the gather unit's memory with test data
         // Each entry contains the port number in upper bits and address in lower bits
-        uint64_t test_data[gather_mem_len];
-        for (uint32_t addr = 0; addr < gather_mem_len; addr++) {
+        uint64_t test_data[120];
+        for (uint32_t addr = 0; addr < 120; addr++) {
             test_data[addr] = ((uint64_t)port << 48) | addr;
         }
-        gather_unit_write_slice(gather, test_data, 0, gather_mem_len);
+        gather_unit_write_slice(gather, test_data, 0, 120);
 
         // Wait until the start of the next gather unit metacycle (data transmitted)
         gather_unit_wait_for_new_metacycle(gather);
