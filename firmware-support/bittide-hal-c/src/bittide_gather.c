@@ -30,17 +30,6 @@ void gather_unit_write_slice(
     }
 }
 
-void gather_unit_read_slice(
-    const GatherUnit* unit,
-    uint64_t* dst,
-    uint32_t offset,
-    uint32_t len
-) {
-    for (uint32_t i = 0; i < len; i++) {
-        dst[i] = unit->gather_memory[offset + i];
-    }
-}
-
 void gather_unit_wait_for_new_metacycle(const GatherUnit* unit) {
     // Reading this register causes a stall until end of metacycle
     (void)*unit->metacycle_register;

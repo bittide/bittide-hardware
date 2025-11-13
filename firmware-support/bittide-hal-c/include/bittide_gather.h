@@ -53,21 +53,6 @@ void gather_unit_write_slice(
 );
 
 /**
- * Read a slice of data from gather memory
- *
- * @param unit Pointer to the GatherUnit
- * @param dst Destination buffer for the read data
- * @param offset Offset in gather memory (in uint64_t words) to start reading from
- * @param len Number of uint64_t words to read
- */
-void gather_unit_read_slice(
-    const GatherUnit* unit,
-    uint64_t* dst,
-    uint32_t offset,
-    uint32_t len
-);
-
-/**
  * Wait for the next metacycle boundary
  *
  * This function blocks until the end of the current metacycle. It is typically

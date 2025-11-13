@@ -53,21 +53,6 @@ void scatter_unit_read_slice(
 );
 
 /**
- * Write a slice of data to scatter memory
- *
- * @param unit Pointer to the ScatterUnit
- * @param src Source buffer containing data to write
- * @param offset Offset in scatter memory (in uint64_t words) to start writing to
- * @param len Number of uint64_t words to write
- */
-void scatter_unit_write_slice(
-    const ScatterUnit* unit,
-    const uint64_t* src,
-    uint32_t offset,
-    uint32_t len
-);
-
-/**
  * Wait for the next metacycle boundary
  *
  * This function blocks until the end of the current metacycle. It is typically
