@@ -6,9 +6,7 @@
 
 use ufmt::uwriteln;
 
-use bittide_hal::shared::devices::dna::Dna;
-use bittide_hal::shared::devices::uart::Uart;
-
+use bittide_hal::shared_devices::{Dna, Uart};
 #[cfg(not(test))]
 use riscv_rt::entry;
 

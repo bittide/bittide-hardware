@@ -6,7 +6,9 @@
 
 use ufmt::uwriteln;
 
-use bittide_hal::{freeze::Timer, manual_additions::timer::Instant, shared::devices::uart::Uart};
+use bittide_hal::{
+    manual_additions::timer::Instant, shared_devices::uart::Uart, shared_devices::Timer,
+};
 
 #[cfg(not(test))]
 use riscv_rt::entry;

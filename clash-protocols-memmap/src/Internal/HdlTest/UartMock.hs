@@ -41,7 +41,7 @@ import Protocols.MemoryMap (
   withPrefix,
   withTag,
  )
-import Protocols.MemoryMap.FieldType
+import Protocols.MemoryMap.TypeDescription
 import Protocols.Wishbone (
   Wishbone,
   WishboneM2S (..),
@@ -60,11 +60,7 @@ data FakeType a b
   = FakeA a
   | FakeB b
   deriving (Generic, BitPackC)
-
-instance (ToFieldType a, ToFieldType b) => ToFieldType (FakeType a b) where
-  type Generics (FakeType a b) = 2
-  type WithVars (FakeType a b) = FakeType (Var 0) (Var 1)
-  args = toFieldType @a :> toFieldType @b :> Nil
+deriveTypeDescription ''FakeType
 
 magicUart ::
   (HasCallStack, HiddenClockResetEnable dom, KnownNat addrWidth) =>

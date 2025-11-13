@@ -5,8 +5,8 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(sync_unsafe_cell)]
 
-use bittide_hal::shared::devices::timer::Timer;
-use bittide_hal::{manual_additions::timer::Duration, shared::devices::uart::Uart};
+use bittide_hal::shared_devices::timer::Timer;
+use bittide_hal::{manual_additions::timer::Duration, shared_devices::uart::Uart};
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
 use bittide_sys::uart::log::LOGGER;
 

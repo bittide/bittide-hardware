@@ -13,56 +13,40 @@ import Protocols.MemoryMap (
   DeviceDefinitions,
   NamedLoc (..),
   Register (..),
-  regFieldType,
+  RegisterType (..),
  )
-import Protocols.MemoryMap.FieldType (FieldType (..), TypeName)
+import Protocols.MemoryMap.TypeDescription
 
+import Data.Data (Proxy (..))
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
+import Data.Sequence (Seq ((:<|)))
+import qualified Data.Sequence as Seq
+import qualified Language.Haskell.TH as TH
 
-data TypeDescription = TypeDescription
-  { name :: TypeName
-  , nGenerics :: Int
-  , definition :: FieldType
-  }
-  deriving (Show)
+tyReferences ::
+  forall a.
+  (WithTypeDescription a) =>
+  Proxy a ->
+  Seq.Seq (TH.Name, WithSomeTypeDescription)
+tyReferences p@Proxy = Seq.fromList (dependsOn p) <> Seq.fromList (argTypes p)
 
--- | Collect all referenced types in a 'MemoryMap' into a type map.
-collect :: DeviceDefinitions -> Map.Map TypeName TypeDescription
-collect defs = typeMap $ collectTypeDefsFromMM defs
-
-typeMap :: [(TypeName, TypeDescription)] -> Map.Map TypeName TypeDescription
-typeMap = L.foldl go Map.empty
+allReferences :: [RegisterType] -> Map.Map TH.Name WithSomeTypeDescription
+allReferences regs = go Map.empty regsAsList
  where
-  go m (name, def) = Map.insert name def m
+  regToNameDesc (RegisterType proxy) = ((typeDescription proxy).name, WithSomeTypeDescription proxy)
+  regsAsList = Seq.fromList $ regToNameDesc <$> regs
 
-collectTypeDefsFromMM :: DeviceDefinitions -> [(TypeName, TypeDescription)]
-collectTypeDefsFromMM deviceDefs = go $ snd <$> Map.toList deviceDefs
+  go alreadyChecked Seq.Empty = alreadyChecked
+  go alreadyChecked ((name, desc@(WithSomeTypeDescription proxy)) :<| toCheck)
+    | Just _ <- Map.lookup name alreadyChecked = go alreadyChecked toCheck
+    | otherwise = go (Map.insert name desc alreadyChecked) (toCheck <> deps)
+   where
+    deps = tyReferences proxy
+
+collect :: DeviceDefinitions -> Map.Map TH.Name WithSomeTypeDescription
+collect defs0 = allReferences regTypes
  where
-  go :: [DeviceDefinition] -> [(TypeName, TypeDescription)]
-  go [] = []
-  go (deviceDef : devs) = goRegisters deviceDef.registers <> go devs
+  defs1 = Map.elems defs0
 
-  goRegisters :: [NamedLoc Register] -> [(TypeName, TypeDescription)]
-  goRegisters [] = []
-  goRegisters (reg : regs) = collectDefs (regFieldType reg.value.fieldType) <> goRegisters regs
-
-collectDefs :: FieldType -> [(TypeName, TypeDescription)]
-collectDefs fieldType = case fieldType of
-  sop@(SumOfProductFieldType name variants) ->
-    let
-      def = TypeDescription name 0 sop
-      inner =
-        L.concat $ L.concatMap (\(_name, fields) -> L.map collectDefs $ snd <$> fields) variants
-     in
-      (name, def) : inner
-  TypeReference inner@(SumOfProductFieldType tyName variants) args' ->
-    let
-      def = TypeDescription tyName (L.length args') inner
-      variantInner =
-        L.concat $ L.concatMap (\(_name, fields) -> L.map collectDefs $ snd <$> fields) variants
-      argDefs = L.concatMap collectDefs args'
-     in
-      (tyName, def) : variantInner <> argDefs
-  TypeReference ty args' -> collectDefs ty <> L.concatMap collectDefs args'
-  _ -> []
+  regTypes = (.value.fieldType) <$> L.concatMap (.registers) defs1

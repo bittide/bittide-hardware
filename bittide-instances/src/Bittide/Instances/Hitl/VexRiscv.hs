@@ -20,13 +20,13 @@ import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Maybe (fromMaybe)
 import Protocols
 import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, getMMAny)
-import Protocols.MemoryMap.FieldType
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
   registerConfig,
   registerWb,
  )
+import Protocols.MemoryMap.TypeDescription.TH
 import Protocols.Wishbone
 import System.Environment (lookupEnv)
 import VexRiscv
@@ -56,7 +56,8 @@ import System.IO.Unsafe (unsafePerformIO)
 import qualified Protocols.MemoryMap as MM
 
 data TestStatus = Running | Success | Fail
-  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType, Show)
+  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, Show)
+deriveTypeDescription ''TestStatus
 
 type TestDone = Bool
 type TestSuccess = Bool
