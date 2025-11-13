@@ -10,42 +10,71 @@
 #define BT_MAGIC_LO (0x8cb5f3192996a86bULL)
 #define BT_MAGIC_HI (0x18c6659dc30d46f2ULL)
 
-// Message response codes
-#define RECEIVED_INCOMING_UGN 1
-#define RECEIVED_OUTGOING_UGN_ACK 2
-
 // ============================================================================
-// Low-level Message Helpers (similar to elara_snd_lib.c and elara_rec_lib.c)
+// Message Types and Encoding
 // ============================================================================
 
-// Send a 2-argument command to gather unit at specified offset
-static void send_cmd2(GatherUnit* unit, uint32_t offset, uint64_t cmd,
-                     uint64_t arg1, uint64_t arg2) {
+typedef enum {
+    MSG_TYPE_ANNOUNCE = 0xf0f00001ULL,      // Announcing presence/timing
+    MSG_TYPE_ACKNOWLEDGE = 0xf0f00002ULL    // Acknowledging neighbor's announcement
+} UgnMessageType;
+
+// Message structure (logical view)
+typedef struct {
+    UgnMessageType type;
+    int64_t timing_or_ugn;     // For ANNOUNCE: timing offset, for ACK: ugn value
+    uint32_t node_id;
+    uint32_t port;
+} UgnMessage;
+
+// Encode node_id and port into a single uint64_t
+static inline uint64_t ugn_encode_node_port(uint32_t node_id, uint32_t port) {
+    // node_id in lower 32 bits, (port+1) in upper 32 bits
+    return node_id | (((uint64_t)(port + 1)) << 32);
+}
+
+// Decode node_id from encoded value
+static inline uint32_t ugn_decode_node_id(uint64_t encoded) {
+    return (uint32_t)(encoded & 0xffffffff);
+}
+
+// Decode port from encoded value
+static inline uint32_t ugn_decode_port(uint64_t encoded) {
+    uint32_t port_plus_one = (uint32_t)(encoded >> 32);
+    return port_plus_one - 1;
+}
+
+// Read a complete message from scatter buffer
+static bool ugn_read_message(ScatterUnit* unit, uint32_t offset, UgnMessage* msg) {
+    uint64_t data[5];
+    scatter_unit_read_slice(unit, data, offset, 5);
+
+    // Check magic bytes
+    if (data[0] != BT_MAGIC_LO || data[1] != BT_MAGIC_HI) {
+        return false;
+    }
+
+    msg->type = (UgnMessageType)data[2];
+    msg->timing_or_ugn = (int64_t)data[3];
+
+    uint64_t encoded_node_port = data[4];
+    msg->node_id = ugn_decode_node_id(encoded_node_port);
+    msg->port = ugn_decode_port(encoded_node_port);
+
+    return true;
+}
+
+// Write a message to gather buffer
+static void ugn_write_message(GatherUnit* unit, uint32_t offset, const UgnMessage* msg) {
     uint64_t buffer[5];
 
     buffer[0] = BT_MAGIC_LO;
     buffer[1] = BT_MAGIC_HI;
-    buffer[2] = cmd;
-    buffer[3] = arg1;
-    buffer[4] = arg2;
+    buffer[2] = msg->type;
+    buffer[3] = (uint64_t)msg->timing_or_ugn;
+    buffer[4] = ugn_encode_node_port(msg->node_id, msg->port);
 
     gather_unit_write_slice(unit, buffer, offset, 5);
-}
-
-// Check if there's a valid message in scatter unit at specified offset
-static bool received_magic(ScatterUnit* unit, uint32_t offset) {
-    uint64_t data[2];
-
-    scatter_unit_read_slice(unit, data, offset, 2);
-    return (data[0] == BT_MAGIC_LO) && (data[1] == BT_MAGIC_HI);
-}
-
-// Read a word from scatter buffer at offset (with additional word offset)
-static uint64_t read_at_offset(ScatterUnit* unit, uint32_t offset, uint32_t word_offset) {
-    uint64_t data;
-
-    scatter_unit_read_slice(unit, &data, offset + word_offset, 1);
-    return data;
 }
 
 // Invalidate gather buffer at specified offset
@@ -56,10 +85,10 @@ static void invalidate(GatherUnit* unit, uint32_t offset) {
 }
 
 // ============================================================================
-// Protocol Helper Functions (following simultaneousugn source)
+// Protocol Helper Functions
 // ============================================================================
 
-// Initialize UGN object (similar to initialize_ugn_object in source)
+// Initialize UGN object
 static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_port,
                                   uint32_t dst_node, uint32_t dst_port, int64_t ugn) {
     u->src_node = src_node;
@@ -70,51 +99,35 @@ static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_po
     u->is_valid = 1;
 }
 
-// Extract response meaning from received message (like receiver_extract_response_meaning)
-static uint32_t receiver_extract_response_meaning(ScatterUnit* unit, uint32_t offset,
-                                                  uint32_t port, uint32_t node_id,
-                                                  UgnEdge* u) {
-    uint64_t cmd = read_at_offset(unit, offset, 2);
+// Process received message and update UGN edge
+// Returns true if message was valid and processed
+static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
+                                uint32_t local_node_id, uint32_t offset, UgnEdge* edge) {
+    if (msg->type == MSG_TYPE_ANNOUNCE) {
+        // Received announcement from neighbor - calculate incoming UGN
+        int64_t ugn = (int64_t)offset + 3 - msg->timing_or_ugn;
 
-    if (cmd == BT_SENDING_UGN) {
-        // Received a UGN timing message
-        int64_t ugn = (int64_t)offset + 3 - (int64_t)read_at_offset(unit, offset, 3);
-        uint64_t remote_nodeid_port = read_at_offset(unit, offset, 4);
-
-        // Extract node_id from lower 32 bits, port from upper 32 bits
-        uint32_t remote_node = (uint32_t)(remote_nodeid_port & 0xffffffff);
-        uint32_t remote_port = (uint32_t)(remote_nodeid_port >> 32);
-
-        initialize_ugn_object(u,
-            remote_node,                                       // src_node
-            remote_port - 1,                                   // src_port (subtract 1 because we send port+1)
-            node_id,                                           // dst_node (us)
-            port,                                              // dst_port
+        initialize_ugn_object(edge,
+            msg->node_id,        // src_node (remote)
+            msg->port,           // src_port (remote)
+            local_node_id,       // dst_node (us)
+            local_port,          // dst_port (us)
             ugn);
-        return RECEIVED_INCOMING_UGN;
+        return true;
 
-    } else if (cmd == BT_FOUND_UGN) {
-        // Received acknowledgement for our outgoing UGN
-        int64_t ugn = (int64_t)read_at_offset(unit, offset, 3);
-        uint64_t remote_nodeid_port = read_at_offset(unit, offset, 4);
-
-        // Extract node_id from lower 32 bits, port from upper 32 bits
-        uint32_t remote_node = (uint32_t)(remote_nodeid_port & 0xffffffff);
-        uint32_t remote_port = (uint32_t)(remote_nodeid_port >> 32);
-
-        initialize_ugn_object(u,
-            node_id,                                           // src_node (us)
-            port,                                              // src_port
-            remote_node,                                       // dst_node
-            remote_port - 1,                                   // dst_port (subtract 1 because we send port+1)
-            ugn);
-        return RECEIVED_OUTGOING_UGN_ACK;
+    } else if (msg->type == MSG_TYPE_ACKNOWLEDGE) {
+        // Received acknowledgment from neighbor - store outgoing UGN
+        initialize_ugn_object(edge,
+            local_node_id,       // src_node (us)
+            local_port,          // src_port (us)
+            msg->node_id,        // dst_node (remote)
+            msg->port,           // dst_port (remote)
+            msg->timing_or_ugn); // ugn value
+        return true;
     }
 
-    return 0;  // Unknown response type
+    return false;
 }
-
-// Send messages to all ports (like send_messages_to_all_ports in source)
 // ============================================================================
 // Protocol Event Handlers
 // ============================================================================
@@ -122,18 +135,24 @@ static uint32_t receiver_extract_response_meaning(ScatterUnit* unit, uint32_t of
 void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return;
 
-    // Encode node_id in lower 32 bits, (port+1) in upper 32 bits
-    uint64_t port_nodeid = ctx->node_id | (((uint64_t)(port + 1)) << 32);
+    // Send announcement message
+    UgnMessage announce = {
+        .type = MSG_TYPE_ANNOUNCE,
+        .timing_or_ugn = offset + 3,
+        .node_id = ctx->node_id,
+        .port = port
+    };
+    ugn_write_message(&ctx->gather_units[port], offset, &announce);
 
-    // Announce our local time to communicate outgoing UGN
-    send_cmd2(&ctx->gather_units[port], offset, BT_SENDING_UGN,
-             offset + 3, port_nodeid);
-
-    // If we have a valid incoming UGN for this port, send back ack
+    // If we have received an announcement from this neighbor, send acknowledgment
     if (ctx->incoming_link_ugn_list[port].is_valid) {
-        send_cmd2(&ctx->gather_units[port], offset + 5, BT_FOUND_UGN,
-                 (uint64_t)(ctx->incoming_link_ugn_list[port].ugn),
-                 ctx->node_id | (((uint64_t)(port + 1)) << 32));
+        UgnMessage ack = {
+            .type = MSG_TYPE_ACKNOWLEDGE,
+            .timing_or_ugn = ctx->incoming_link_ugn_list[port].ugn,
+            .node_id = ctx->node_id,
+            .port = port
+        };
+        ugn_write_message(&ctx->gather_units[port], offset + 5, &ack);
     }
 }
 
@@ -142,28 +161,29 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
 
     ScatterUnit* unit = &ctx->scatter_units[port];
 
-    // Check if scatter unit has signaled "received"
-    if (!received_magic(unit, offset)) return false;
-
-    // Create temporary UgnEdge for receiver_extract_response_meaning
-    UgnEdge temp_edge;
-    uint32_t meaning =
-        receiver_extract_response_meaning(unit, offset, port, ctx->node_id, &temp_edge);
-
-    if (meaning == 0) return false;
-
-    if (meaning == RECEIVED_OUTGOING_UGN_ACK) {
-        // Copy the complete UGN edge data from temp_edge
-        ctx->outgoing_link_ugn_list[port] = temp_edge;
-        ctx->number_outgoing_link_ugns_acknowledged++;
-        return true;
+    // Try to read message from scatter buffer
+    UgnMessage msg;
+    if (!ugn_read_message(unit, offset, &msg)) {
+        return false;  // No valid message
     }
 
-    if (meaning == RECEIVED_INCOMING_UGN) {
-        // Copy the complete UGN edge data from temp_edge
-        ctx->incoming_link_ugn_list[port] = temp_edge;
-        ctx->number_incoming_link_ugns_known++;
-        return true;
+    // Process the message based on its type
+    if (msg.type == MSG_TYPE_ANNOUNCE) {
+        // Received announcement - update incoming link UGN
+        UgnEdge edge;
+        if (process_ugn_message(&msg, port, ctx->node_id, offset, &edge)) {
+            ctx->incoming_link_ugn_list[port] = edge;
+            ctx->number_incoming_link_ugns_known++;
+            return true;
+        }
+    } else if (msg.type == MSG_TYPE_ACKNOWLEDGE) {
+        // Received acknowledgment - update outgoing link UGN
+        UgnEdge edge;
+        if (process_ugn_message(&msg, port, ctx->node_id, offset, &edge)) {
+            ctx->outgoing_link_ugn_list[port] = edge;
+            ctx->number_outgoing_link_ugns_acknowledged++;
+            return true;
+        }
     }
 
     return false;

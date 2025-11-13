@@ -22,8 +22,12 @@
 #define EVENT_TYPE_INVALIDATE (0x0400000000000000ULL)
 
 // Magic numbers for protocol messages
-#define BT_SENDING_UGN (0xf0f00001ULL)
-#define BT_FOUND_UGN (0xf0f00002ULL)
+#define UGN_MSG_ANNOUNCE (0xf0f00001ULL)      // Announcing presence/timing
+#define UGN_MSG_ACKNOWLEDGE (0xf0f00002ULL)   // Acknowledging neighbor's announcement
+
+// Legacy aliases (for compatibility during transition)
+#define BT_SENDING_UGN UGN_MSG_ANNOUNCE
+#define BT_FOUND_UGN UGN_MSG_ACKNOWLEDGE
 
 // ============================================================================
 // UGN Edge Structure
