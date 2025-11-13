@@ -18,8 +18,8 @@
 // Low-level Message Helpers (similar to elara_snd_lib.c and elara_rec_lib.c)
 // ============================================================================
 
-// Send a 2-argument command to scatter unit at specified offset
-static void send_cmd2(ScatterUnit* unit, uint32_t offset, uint64_t cmd,
+// Send a 2-argument command to gather unit at specified offset
+static void send_cmd2(GatherUnit* unit, uint32_t offset, uint64_t cmd,
                      uint64_t arg1, uint64_t arg2) {
     uint64_t buffer[5];
 
@@ -29,30 +29,30 @@ static void send_cmd2(ScatterUnit* unit, uint32_t offset, uint64_t cmd,
     buffer[3] = arg1;
     buffer[4] = arg2;
 
-    scatter_unit_write_slice(unit, buffer, offset, 5);
+    gather_unit_write_slice(unit, buffer, offset, 5);
 }
 
-// Check if there's a valid message in gather unit at specified offset
-static bool received_magic(GatherUnit* unit, uint32_t offset) {
+// Check if there's a valid message in scatter unit at specified offset
+static bool received_magic(ScatterUnit* unit, uint32_t offset) {
     uint64_t data[2];
 
-    gather_unit_read_slice(unit, data, offset, 2);
+    scatter_unit_read_slice(unit, data, offset, 2);
     return (data[0] == BT_MAGIC_LO) && (data[1] == BT_MAGIC_HI);
 }
 
-// Read a word from gather buffer at offset (with additional word offset)
-static uint64_t read_at_offset(GatherUnit* unit, uint32_t offset, uint32_t word_offset) {
+// Read a word from scatter buffer at offset (with additional word offset)
+static uint64_t read_at_offset(ScatterUnit* unit, uint32_t offset, uint32_t word_offset) {
     uint64_t data;
 
-    gather_unit_read_slice(unit, &data, offset + word_offset, 1);
+    scatter_unit_read_slice(unit, &data, offset + word_offset, 1);
     return data;
 }
 
-// Invalidate scatter buffer at specified offset
-static void invalidate(ScatterUnit* unit, uint32_t offset) {
+// Invalidate gather buffer at specified offset
+static void invalidate(GatherUnit* unit, uint32_t offset) {
     uint64_t zeros[5] = {0, 0, 0, 0, 0};
 
-    scatter_unit_write_slice(unit, zeros, offset, 5);
+    gather_unit_write_slice(unit, zeros, offset, 5);
 }
 
 // ============================================================================
@@ -117,12 +117,12 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     uint64_t port_nodeid = (uint64_t)(ctx->node_id) + ((port + 1) << 16);
 
     // Announce our local time to communicate outgoing UGN
-    send_cmd2(&ctx->scatter_units[port], offset, BT_SENDING_UGN,
+    send_cmd2(&ctx->gather_units[port], offset, BT_SENDING_UGN,
              offset + 3, port_nodeid);
 
     // If we have a valid incoming UGN for this port, send back ack
     if (ctx->incoming_link_ugn_list[port].is_valid) {
-        send_cmd2(&ctx->scatter_units[port], offset + 5, BT_FOUND_UGN,
+        send_cmd2(&ctx->gather_units[port], offset + 5, BT_FOUND_UGN,
                  (uint64_t)(ctx->incoming_link_ugn_list[port].ugn),
                  (uint64_t)(ctx->node_id) + ((port + 1) << 16));
     }
@@ -137,7 +137,7 @@ void send_ugns_to_all_ports(UgnContext* ctx, uint32_t offset) {
 bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return false;
 
-    GatherUnit* unit = &ctx->gather_units[port];
+    ScatterUnit* unit = &ctx->scatter_units[port];
 
     // Check if scatter unit has signaled "received"
     if (!received_magic(unit, offset)) return false;
@@ -177,7 +177,7 @@ void check_all_incoming_buffers(UgnContext* ctx, uint32_t offset) {
 
 void invalidate_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return;
-    invalidate(&ctx->scatter_units[port], offset);
+    invalidate(&ctx->gather_units[port], offset);
 }
 
 // Handle invalidate (like handle_invalidate in source)
