@@ -94,10 +94,6 @@ static inline uint32_t get_event_port(uint64_t event) {
 // Initialize a UGN edge to invalid state
 void ugn_edge_init(UgnEdge* edge);
 
-// Set UGN edge information
-void ugn_edge_set(UgnEdge* edge, uint32_t src_node, uint32_t src_port,
-                  uint32_t dst_node, uint32_t dst_port, int64_t ugn);
-
 // ============================================================================
 // UGN Context Management
 // ============================================================================
@@ -116,20 +112,11 @@ void ugn_context_init(UgnContext* ctx, ScatterUnit* scatter_units,
 // Send UGN to a specific port
 void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset);
 
-// Send UGNs to all ports
-void send_ugns_to_all_ports(UgnContext* ctx, uint32_t offset);
-
 // Check incoming buffer for a specific port
 // Returns true if new data was received, false otherwise
 bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset);
 
-// Check all incoming buffers for received UGNs
-void check_all_incoming_buffers(UgnContext* ctx, uint32_t offset);
-
 // Invalidate old scatter buffer data for a specific port
 void invalidate_port(UgnContext* ctx, uint32_t port, uint32_t offset);
-
-// Invalidate old scatter buffer data
-void handle_invalidate(UgnContext* ctx, uint32_t offset);
 
 #endif // BITTIDE_UGN_H

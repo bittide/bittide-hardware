@@ -128,12 +128,6 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     }
 }
 
-void send_ugns_to_all_ports(UgnContext* ctx, uint32_t offset) {
-    for (uint32_t port = 0; port < ctx->num_ports; port++) {
-        send_ugn_to_port(ctx, port, offset);
-    }
-}
-
 bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return false;
 
@@ -168,23 +162,9 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset) {
     return false;
 }
 
-// Check all incoming buffers (like check_all_incoming_buffers in source)
-void check_all_incoming_buffers(UgnContext* ctx, uint32_t offset) {
-    for (uint32_t port = 0; port < ctx->num_ports; port++) {
-        check_incoming_buffer(ctx, port, offset);
-    }
-}
-
 void invalidate_port(UgnContext* ctx, uint32_t port, uint32_t offset) {
     if (port >= ctx->num_ports) return;
     invalidate(&ctx->gather_units[port], offset);
-}
-
-// Handle invalidate (like handle_invalidate in source)
-void handle_invalidate(UgnContext* ctx, uint32_t offset) {
-    for (uint32_t port = 0; port < ctx->num_ports; port++) {
-        invalidate_port(ctx, port, offset);
-    }
 }
 
 // ============================================================================
@@ -198,16 +178,6 @@ void ugn_edge_init(UgnEdge* edge) {
     edge->dst_port = 0;
     edge->ugn = 0;
     edge->is_valid = 0;
-}
-
-void ugn_edge_set(UgnEdge* edge, uint32_t src_node, uint32_t src_port,
-                  uint32_t dst_node, uint32_t dst_port, int64_t ugn) {
-    edge->src_node = src_node;
-    edge->src_port = src_port;
-    edge->dst_node = dst_node;
-    edge->dst_port = dst_port;
-    edge->ugn = ugn;
-    edge->is_valid = 1;
 }
 
 // ============================================================================
