@@ -21,7 +21,7 @@ module Bittide.Instances.Hitl.Dut.SoftUgnDemo (
 ) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, hasClock, withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, hasClock, hasReset, withClockResetEnable)
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
@@ -62,6 +62,7 @@ import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Data.Char (ord)
+import Data.Maybe
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
@@ -194,6 +195,18 @@ managementUnit =
       , includeIlaWb = False
       }
 
+onChange ::
+  (KnownDomain dom) =>
+  (Eq a) =>
+  (NFDataX a) =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom a ->
+  Signal dom Bool
+onChange clk rst new = (\old1 new1 -> fromMaybe False $ (/=) <$> old1 <*> Just new1) <$> old <*> new
+ where
+  old = register clk rst enableGen Nothing (fmap Just new)
+
 gppe ::
   forall dom.
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
@@ -222,7 +235,7 @@ gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   (wbScatCals, wbGathCal) <- Vec.split -< nmuWbMmsDelayed
   let
     gppeInLinks = loopback :> linksIn
-    activity = fmap (any (/= 0)) $ bundle (gppeInLinks ++ gppeOutLinks)
+    activity = onChange hasClock hasReset $ bundle (gppeInLinks ++ gppeOutLinks)
     myIla :: Signal dom ()
     myIla =
       setName @"bittidePeIla"
