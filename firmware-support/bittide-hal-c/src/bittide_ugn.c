@@ -71,7 +71,7 @@ static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_po
 }
 
 // Extract response meaning from received message (like receiver_extract_response_meaning)
-static uint32_t receiver_extract_response_meaning(GatherUnit* unit, uint32_t offset,
+static uint32_t receiver_extract_response_meaning(ScatterUnit* unit, uint32_t offset,
                                                   uint32_t port, uint32_t node_id,
                                                   UgnEdge* u) {
     uint64_t cmd = read_at_offset(unit, offset, 2);
