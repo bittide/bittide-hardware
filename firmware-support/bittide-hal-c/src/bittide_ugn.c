@@ -178,12 +178,18 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
     // Update UGN edge lists based on message type
     if (msg.type == MSG_TYPE_ANNOUNCE) {
         // Received announcement - update incoming link UGN
+        // Only increment counter if this is the first time we're recording this UGN
+        if (!ctx->incoming_link_ugn_list[port].is_valid) {
+            ctx->number_incoming_link_ugns_known++;
+        }
         ctx->incoming_link_ugn_list[port] = edge;
-        ctx->number_incoming_link_ugns_known++;
     } else if (msg.type == MSG_TYPE_ACKNOWLEDGE) {
         // Received acknowledgment - update outgoing link UGN
+        // Only increment counter if this is the first time we're recording this UGN
+        if (!ctx->outgoing_link_ugn_list[port].is_valid) {
+            ctx->number_outgoing_link_ugns_acknowledged++;
+        }
         ctx->outgoing_link_ugn_list[port] = edge;
-        ctx->number_outgoing_link_ugns_acknowledged++;
     }
     return true;
 }
