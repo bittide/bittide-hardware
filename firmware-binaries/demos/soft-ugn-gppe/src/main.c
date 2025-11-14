@@ -68,13 +68,11 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
             missed_send_count++;
         }
 
-        // Only reschedule if we haven't been acknowledged yet
-        if (!ugn_ctx->outgoing_link_ugn_list[port].is_valid) {
-            // Reschedule next send event for this port
-            uint64_t next_send_time = event_time + SEND_PERIOD;
-            uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
-            pq_insert(event_queue, next_send_event, next_send_time);
-        }
+
+        // Reschedule next send event for this port
+        uint64_t next_send_time = event_time + SEND_PERIOD;
+        uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
+        pq_insert(event_queue, next_send_event, next_send_time);
 
         // Always schedule invalidate for current send (2 metacycles after this send)
         uint64_t invalidate_time = event_time + INVALIDATE_DELAY;
