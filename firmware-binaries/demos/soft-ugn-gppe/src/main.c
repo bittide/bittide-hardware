@@ -99,9 +99,10 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
                                 ugn_ctx->outgoing_link_ugn_list[i].is_valid;
                 if (found_message && both_ugns) {
                     // Reschedule final send event for this port.
-                    uint64_t next_send_time = event_time + ((METACYCLE_CLOCKS + ugn_ctx->outgoing_link_ugn_list[i].ugn) % BUFFER_SIZE);
-                    uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
+                    uint64_t next_send_time = event_time + ((BUFFER_SIZE + ugn_ctx->outgoing_link_ugn_list[i].ugn) % BUFFER_SIZE);
+                    uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, i);
                     pq_insert(event_queue, next_send_event, next_send_time);
+
                 }
             }
             met_receive_count++;
