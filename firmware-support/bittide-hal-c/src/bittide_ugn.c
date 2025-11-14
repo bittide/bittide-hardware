@@ -160,6 +160,11 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t event_time) {
 bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) {
     if (port >= ctx->num_ports) return false;
 
+    // If both incoming and outgoing UGNs are already valid, ignore further messages for this port
+    if (ctx->incoming_link_ugn_list[port].is_valid && ctx->outgoing_link_ugn_list[port].is_valid) {
+        return false;
+    }
+
     UgnMessage msg;
     UgnEdge edge;
 
@@ -170,26 +175,21 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
         return false;  // No valid message
     }
 
-    bool valid_message = process_ugn_message(&msg, port, ctx->node_id, event_time, &edge);    // Early return if message was invalid
+    bool valid_message = process_ugn_message(&msg, port, ctx->node_id, event_time, &edge);
     if (!valid_message) {
         return false;
     }
 
-    // Update UGN edge lists based on message type
-    if (msg.type == MSG_TYPE_ANNOUNCE) {
-        // Received announcement - update incoming link UGN
-        // Only increment counter if this is the first time we're recording this UGN
-        if (!ctx->incoming_link_ugn_list[port].is_valid) {
+    // Only update if not already valid
+    if (!ctx->incoming_link_ugn_list[port].is_valid) {
+            ctx->incoming_link_ugn_list[port] = edge;
             ctx->number_incoming_link_ugns_known++;
         }
-        ctx->incoming_link_ugn_list[port] = edge;
-    } else if (msg.type == MSG_TYPE_ACKNOWLEDGE) {
-        // Received acknowledgment - update outgoing link UGN
-        // Only increment counter if this is the first time we're recording this UGN
+    if (msg.type == MSG_TYPE_ACKNOWLEDGE) {
         if (!ctx->outgoing_link_ugn_list[port].is_valid) {
+            ctx->outgoing_link_ugn_list[port] = edge;
             ctx->number_outgoing_link_ugns_acknowledged++;
         }
-        ctx->outgoing_link_ugn_list[port] = edge;
     }
     return true;
 }
