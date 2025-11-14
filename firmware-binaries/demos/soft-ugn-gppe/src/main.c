@@ -68,11 +68,13 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
             missed_send_count++;
         }
 
-
-        // Reschedule next send event for this port
-        uint64_t next_send_time = event_time + SEND_PERIOD;
-        uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
-        pq_insert(event_queue, next_send_event, next_send_time);
+        bool both_ugns = ugn_ctx->incoming_link_ugn_list[port].is_valid && ugn_ctx->outgoing_link_ugn_list[port].is_valid;
+        if (!both_ugns){
+            // Reschedule next send event for this port
+            uint64_t next_send_time = event_time + SEND_PERIOD;
+            uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
+            pq_insert(event_queue, next_send_event, next_send_time);
+        }
 
         // Always schedule invalidate for current send (2 metacycles after this send)
         uint64_t invalidate_time = event_time + INVALIDATE_DELAY;
@@ -92,7 +94,15 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
         if (execute) {
             // Check incoming buffer for all ports
             for (uint32_t i = 0; i < ugn_ctx->num_ports; i++) {
-                (void)check_incoming_buffer(ugn_ctx, i, event_time);
+                bool found_message = check_incoming_buffer(ugn_ctx, i, event_time);
+                bool both_ugns = ugn_ctx->incoming_link_ugn_list[i].is_valid &&
+                                ugn_ctx->outgoing_link_ugn_list[i].is_valid;
+                if (found_message && both_ugns) {
+                    // Reschedule final send event for this port.
+                    uint64_t next_send_time = event_time + ((METACYCLE_CLOCKS + ugn_ctx->outgoing_link_ugn_list[i].ugn) % BUFFER_SIZE);
+                    uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
+                    pq_insert(event_queue, next_send_event, next_send_time);
+                }
             }
             met_receive_count++;
         } else {
