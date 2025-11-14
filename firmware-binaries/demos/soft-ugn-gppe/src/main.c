@@ -57,13 +57,12 @@ static uint32_t met_invalidate_count = 0;
 // Returns true if event should be executed, false if it should be skipped (deadline missed)
 static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_ctx,
                           FixedIntPriorityQueue* event_queue, bool execute, Peripherals* peripherals) {
-    uint64_t buffer_offset = event_time % BUFFER_SIZE;
     uint32_t port = get_event_port(event);
 
     if (event & EVENT_TYPE_SEND) {
         if (execute) {
             // Send UGN to the specific port encoded in the event
-            send_ugn_to_port(ugn_ctx, port, buffer_offset);
+            send_ugn_to_port(ugn_ctx, port, event_time);
             met_send_count++;
         } else {
             missed_send_count++;
@@ -85,7 +84,7 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
     } else if (event & EVENT_TYPE_INVALIDATE) {
         if (execute) {
             // Invalidate the specific port encoded in the event
-            invalidate_port(ugn_ctx, port, buffer_offset);
+            invalidate_port(ugn_ctx, port, event_time);
             met_invalidate_count++;
         } else {
             missed_invalidate_count++;
@@ -95,7 +94,7 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
         if (execute) {
             // Check incoming buffer for all ports
             for (uint32_t i = 0; i < ugn_ctx->num_ports; i++) {
-                (void)check_incoming_buffer(ugn_ctx, i, buffer_offset);
+                (void)check_incoming_buffer(ugn_ctx, i, event_time);
             }
             met_receive_count++;
         } else {

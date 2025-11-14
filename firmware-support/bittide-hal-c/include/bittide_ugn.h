@@ -39,7 +39,6 @@ typedef struct {
     uint32_t dst_node;   // Destination node ID
     uint32_t dst_port;   // Destination port number
     int64_t ugn;         // The UGN value for this edge
-    uint64_t arrival_time; // Time when message was received (metacycle_start + buffer_offset)
     uint32_t is_valid;   // Whether this UGN entry is valid
 } UgnEdge;
 
@@ -66,6 +65,19 @@ typedef struct {
     // Node identification
     uint32_t node_id;
 } UgnContext;
+
+typedef enum {
+    MSG_TYPE_ANNOUNCE = 0xf0f00001ULL,      // Announcing presence/timing
+    MSG_TYPE_ACKNOWLEDGE = 0xf0f00002ULL    // Acknowledging neighbor's announcement
+} UgnMessageType;
+
+// Message structure (logical view)
+typedef struct {
+    UgnMessageType type;
+    int64_t payload;           // For ANNOUNCE: sender's event_time, for ACK: incoming_ugn value
+    uint32_t node_id;
+    uint32_t port;
+} UgnMessage;
 
 // ============================================================================
 // Event Helper Functions
@@ -111,17 +123,39 @@ void ugn_context_init(UgnContext* ctx, ScatterUnit* scatter_units,
                       uint32_t max_degree);
 
 // ============================================================================
+// Buffer Offset Calculation
+// ============================================================================
+// These functions centralize the event_time -> buffer_offset translation logic.
+// Future changes to the offset calculation (e.g., for non-trivial calendar
+// configurations) only need to be updated here.
+
+// Calculate scatter buffer offset for a given event time and port
+static inline uint32_t ugn_calculate_scatter_offset(const UgnContext* ctx, uint32_t port, uint64_t event_time) {
+    return (uint32_t)(event_time % ctx->scatter_units[port].memory_len);
+}
+
+// Calculate gather buffer offset for a given event time and port
+static inline uint32_t ugn_calculate_gather_offset(const UgnContext* ctx, uint32_t port, uint64_t event_time) {
+    return (uint32_t)(event_time % ctx->gather_units[port].memory_len);
+}
+
+// ============================================================================
 // Protocol Event Handlers
 // ============================================================================
+// Note: These functions take event_time (uint64_t timestamp in clock cycles)
+// and internally compute the buffer offset via: offset = event_time % memory_len
 
 // Send UGN to a specific port
-void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint32_t offset);
+// @param event_time: Current time in clock cycles (used for message payload and buffer offset)
+void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t event_time);
 
 // Check incoming buffer for a specific port
+// @param event_time: Current time in clock cycles (used for UGN calculation and buffer offset)
 // Returns true if new data was received, false otherwise
-bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint32_t offset);
+bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time);
 
 // Invalidate old scatter buffer data for a specific port
-void invalidate_port(UgnContext* ctx, uint32_t port, uint32_t offset);
+// @param event_time: Current time in clock cycles (used to compute buffer offset)
+void invalidate_port(UgnContext* ctx, uint32_t port, uint64_t event_time);
 
 #endif // BITTIDE_UGN_H
