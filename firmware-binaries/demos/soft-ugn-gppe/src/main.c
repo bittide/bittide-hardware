@@ -303,40 +303,9 @@ int c_main(void) {
     PRINT_COMPLETION_STATS(&peripherals, k, start_cycles, METACYCLE_CLOCKS);
 
     // Print deadline miss statistics
-    uart_puts(&peripherals.uart, "\nDeadline Statistics:\n");
-    uart_puts(&peripherals.uart, "--------------------\n");
-
-    uart_puts(&peripherals.uart, "SEND events:\n");
-    uart_puts(&peripherals.uart, "  Met deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)met_send_count);
-    uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "  Missed deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)missed_send_count);
-    uart_puts(&peripherals.uart, "\n");
-
-    uart_puts(&peripherals.uart, "RECEIVE events:\n");
-    uart_puts(&peripherals.uart, "  Met deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)met_receive_count);
-    uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "  Missed deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)missed_receive_count);
-    uart_puts(&peripherals.uart, "\n");
-
-    uart_puts(&peripherals.uart, "INVALIDATE events:\n");
-    uart_puts(&peripherals.uart, "  Met deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)met_invalidate_count);
-    uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "  Missed deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)missed_invalidate_count);
-    uart_puts(&peripherals.uart, "\n");
-
-    uart_puts(&peripherals.uart, "Total:\n");
-    uart_puts(&peripherals.uart, "  Met deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)(met_send_count + met_receive_count + met_invalidate_count));
-    uart_puts(&peripherals.uart, "\n");
-    uart_puts(&peripherals.uart, "  Missed deadlines: ");
-    uart_putdec(&peripherals.uart, (uint64_t)(missed_send_count + missed_receive_count + missed_invalidate_count));
-    uart_puts(&peripherals.uart, "\n");
+    PRINT_DEADLINE_STATS(&peripherals, met_send_count, missed_send_count,
+                         met_receive_count, missed_receive_count,
+                         met_invalidate_count, missed_invalidate_count);
 
     // Print discovery results
     uart_puts(&peripherals.uart, "\nDiscovery Protocol Results:\n");
@@ -347,6 +316,9 @@ int c_main(void) {
     PRINT_UGN_EDGE_LIST(&peripherals, "Incoming Link UGNs:\n", ugn_ctx.incoming_link_ugn_list, ugn_ctx.num_ports);
     uart_puts(&peripherals.uart, "\n");
     PRINT_UGN_EDGE_LIST(&peripherals, "Outgoing Link UGNs:\n", ugn_ctx.outgoing_link_ugn_list, ugn_ctx.num_ports);
+
+    // Calculate and print roundtrip latencies
+    PRINT_ROUNDTRIP_LATENCIES(&peripherals, &ugn_ctx);
 
     uart_puts(&peripherals.uart, "\n========================================\n");
     uart_puts(&peripherals.uart, "UGN discovery protocol complete!\n");

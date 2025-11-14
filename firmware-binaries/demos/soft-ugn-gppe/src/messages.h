@@ -215,6 +215,63 @@
         uart_puts(&((PERIPHERALS_PTR)->uart), " in same metacycle as SEND event ***\n"); \
     } while(0)
 
+// Message for printing deadline statistics
+#define PRINT_DEADLINE_STATS(PERIPHERALS_PTR, MET_SEND, MISSED_SEND, MET_RECEIVE, MISSED_RECEIVE, MET_INVALIDATE, MISSED_INVALIDATE) \
+    do { \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\nDeadline Statistics:\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "--------------------\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "SEND events:\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "  Met deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MET_SEND)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n  Missed deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MISSED_SEND)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "RECEIVE events:\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "  Met deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MET_RECEIVE)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n  Missed deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MISSED_RECEIVE)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "INVALIDATE events:\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "  Met deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MET_INVALIDATE)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n  Missed deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)(MISSED_INVALIDATE)); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "Total:\n"); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "  Met deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((MET_SEND) + (MET_RECEIVE) + (MET_INVALIDATE))); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n  Missed deadlines: "); \
+        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((MISSED_SEND) + (MISSED_RECEIVE) + (MISSED_INVALIDATE))); \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
+    } while(0)
+
+// Message for printing roundtrip latencies
+#define PRINT_ROUNDTRIP_LATENCIES(PERIPHERALS_PTR, UGN_CTX_PTR) \
+    do { \
+        uart_puts(&((PERIPHERALS_PTR)->uart), "\nRoundtrip Latencies:\n"); \
+        for (uint32_t port = 0; port < (UGN_CTX_PTR)->num_ports; port++) { \
+            UgnEdge* incoming = &((UGN_CTX_PTR)->incoming_link_ugn_list[port]); \
+            UgnEdge* outgoing = &((UGN_CTX_PTR)->outgoing_link_ugn_list[port]); \
+            if (incoming->is_valid && outgoing->is_valid) { \
+                int64_t roundtrip = incoming->ugn + outgoing->ugn; \
+                uart_puts(&((PERIPHERALS_PTR)->uart), "  Port "); \
+                uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)port); \
+                uart_puts(&((PERIPHERALS_PTR)->uart), ": "); \
+                uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)roundtrip); \
+                uart_puts(&((PERIPHERALS_PTR)->uart), " cycles\n"); \
+            } else { \
+                uart_puts(&((PERIPHERALS_PTR)->uart), "  Port "); \
+                uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)port); \
+                uart_puts(&((PERIPHERALS_PTR)->uart), ": (incomplete - missing "); \
+                if (!incoming->is_valid) uart_puts(&((PERIPHERALS_PTR)->uart), "incoming"); \
+                if (!incoming->is_valid && !outgoing->is_valid) uart_puts(&((PERIPHERALS_PTR)->uart), " and "); \
+                if (!outgoing->is_valid) uart_puts(&((PERIPHERALS_PTR)->uart), "outgoing"); \
+                uart_puts(&((PERIPHERALS_PTR)->uart), ")\n"); \
+            } \
+        } \
+    } while(0)
+
 // ============================================================================
 // Pre-defined Message Strings
 // ============================================================================
