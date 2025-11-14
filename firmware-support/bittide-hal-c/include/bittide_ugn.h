@@ -33,13 +33,16 @@
 // UGN Edge Structure
 // ============================================================================
 // Represents UGN (Universal Global Number) information for a network edge
+// Stores delay measurement (direction-specific):
+//   - For incoming edges: stores receive_delay (neighbor -> us)
+//   - For outgoing edges: stores send_delay (us -> neighbor)
 typedef struct {
-    uint32_t src_node;   // Source node ID
-    uint32_t src_port;   // Source port number
-    uint32_t dst_node;   // Destination node ID
-    uint32_t dst_port;   // Destination port number
-    int64_t ugn;         // The UGN value for this edge
-    uint32_t is_valid;   // Whether this UGN entry is valid
+    uint32_t src_node;           // Source node ID
+    uint32_t src_port;           // Source port number
+    uint32_t dst_node;           // Destination node ID
+    uint32_t dst_port;           // Destination port number
+    int32_t ugn;                 // Propagation delay in clock cycles (direction depends on edge type)
+    uint32_t is_valid;           // Whether this UGN entry is valid
 } UgnEdge;
 
 // ============================================================================
@@ -74,7 +77,8 @@ typedef enum {
 // Message structure (logical view)
 typedef struct {
     UgnMessageType type;
-    int64_t payload;           // For ANNOUNCE: sender's event_time, for ACK: incoming_ugn value
+    uint64_t local_counter;    // Sender's local time (event_time)
+    uint64_t remote_counter;   // For ACK: sender_time from incoming edge; For ANNOUNCE: 0
     uint32_t node_id;
     uint32_t port;
 } UgnMessage;

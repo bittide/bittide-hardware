@@ -37,8 +37,8 @@ static inline uint32_t ugn_decode_port(uint64_t encoded) {
 
 // Read a complete message from scatter buffer
 static bool ugn_read_message(ScatterUnit* unit, uint32_t offset, UgnMessage* msg) {
-    uint64_t data[5];
-    scatter_unit_read_slice(unit, data, offset, 5);
+    uint64_t data[6];
+    scatter_unit_read_slice(unit, data, offset, 6);
 
     // Check magic bytes
     if (data[0] != BT_MAGIC_LO || data[1] != BT_MAGIC_HI) {
@@ -46,9 +46,10 @@ static bool ugn_read_message(ScatterUnit* unit, uint32_t offset, UgnMessage* msg
     }
 
     msg->type = (UgnMessageType)data[2];
-    msg->payload = (int64_t)data[3];
+    msg->local_counter = data[3];
+    msg->remote_counter = data[4];
 
-    uint64_t encoded_node_port = data[4];
+    uint64_t encoded_node_port = data[5];
     msg->node_id = ugn_decode_node_id(encoded_node_port);
     msg->port = ugn_decode_port(encoded_node_port);
 
@@ -57,22 +58,23 @@ static bool ugn_read_message(ScatterUnit* unit, uint32_t offset, UgnMessage* msg
 
 // Write a message to gather buffer
 static void ugn_write_message(GatherUnit* unit, uint32_t offset, const UgnMessage* msg) {
-    uint64_t buffer[5];
+    uint64_t buffer[6];
 
     buffer[0] = BT_MAGIC_LO;
     buffer[1] = BT_MAGIC_HI;
     buffer[2] = msg->type;
-    buffer[3] = (uint64_t)msg->payload;
-    buffer[4] = ugn_encode_node_port(msg->node_id, msg->port);
+    buffer[3] = msg->local_counter;
+    buffer[4] = msg->remote_counter;
+    buffer[5] = ugn_encode_node_port(msg->node_id, msg->port);
 
-    gather_unit_write_slice(unit, buffer, offset, 5);
+    gather_unit_write_slice(unit, buffer, offset, 6);
 }
 
 // Invalidate gather buffer at specified offset
 static void invalidate(GatherUnit* unit, uint32_t offset) {
-    uint64_t zeros[5] = {0, 0, 0, 0, 0};
+    uint64_t zeros[6] = {0, 0, 0, 0, 0, 0};
 
-    gather_unit_write_slice(unit, zeros, offset, 5);
+    gather_unit_write_slice(unit, zeros, offset, 6);
 }
 
 // ============================================================================
@@ -81,7 +83,8 @@ static void invalidate(GatherUnit* unit, uint32_t offset) {
 
 // Initialize UGN object
 static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_port,
-                                  uint32_t dst_node, uint32_t dst_port, int64_t ugn) {
+                                  uint32_t dst_node, uint32_t dst_port,
+                                  int32_t ugn) {
     u->src_node = src_node;
     u->src_port = src_port;
     u->dst_node = dst_node;
@@ -96,26 +99,30 @@ static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
                                 uint32_t local_node_id, uint64_t local_time, UgnEdge* edge) {
 
     if (msg->type == MSG_TYPE_ANNOUNCE) {
-        // Received announcement from neighbor - calculate incoming UGN
-        // UGN = receiver_time - sender_time (same as hardware capture)
-        int64_t ugn = (int64_t)local_time - msg->payload;
+        // Received announcement from neighbor - this is an INCOMING edge
+        // Calculate receive_delay = receive_time - send_time
+        int32_t receive_delay = (int32_t)((int64_t)local_time - (int64_t)msg->local_counter);
 
         initialize_ugn_object(edge,
             msg->node_id,        // src_node (remote)
             msg->port,           // src_port (remote)
             local_node_id,       // dst_node (us)
             local_port,          // dst_port (us)
-            ugn);
+            receive_delay);      // delay (receive_delay for incoming edge)
         return true;
 
     } else if (msg->type == MSG_TYPE_ACKNOWLEDGE) {
-        // Received acknowledgment from neighbor - store outgoing UGN
+        // Received acknowledgment from neighbor - this is an OUTGOING edge
+        // Calculate send_delay = neighbor's receive_time - our original send_time
+        // send_delay = local_counter - remote_counter
+        int32_t send_delay = (int32_t)((int64_t)msg->local_counter - (int64_t)msg->remote_counter);
+
         initialize_ugn_object(edge,
             local_node_id,       // src_node (us)
             local_port,          // src_port (us)
             msg->node_id,        // dst_node (remote)
             msg->port,           // dst_port (remote)
-            msg->payload);
+            send_delay);         // delay (send_delay for outgoing edge)
         return true;
     }
 
@@ -128,30 +135,26 @@ static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
 void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t event_time) {
     if (port >= ctx->num_ports) return;
 
-    // Send announcement message
-    int64_t event_timer_or_ugn;
-    UgnMessageType type;
-
-    if (ctx->incoming_link_ugn_list[port].is_valid) {
-        // If we have received an announcement from this neighbor, send ugn
-        event_timer_or_ugn = ctx->incoming_link_ugn_list[port].ugn;
-        type = MSG_TYPE_ACKNOWLEDGE;
-    } else {
-        // Otherwise, send event_time
-        event_timer_or_ugn = (int64_t)event_time;
-        type = MSG_TYPE_ANNOUNCE;
-    }
-
     UgnMessage msg = {
-        .type = type,
-        .payload = event_timer_or_ugn,
+        .type = MSG_TYPE_ANNOUNCE,
+        .local_counter = event_time,
+        .remote_counter = 0,
         .node_id = ctx->node_id,
         .port = port
     };
 
+    // If we have received an announcement from this neighbor,
+    // also send an ACKNOWLEDGE by calculating their original send time
+    if (ctx->incoming_link_ugn_list[port].is_valid) {
+        msg.type = MSG_TYPE_ACKNOWLEDGE;
+        // Calculate neighbor's send_time from: receive_delay = event_time - send_time
+        // Therefore: send_time = event_time - receive_delay
+        int32_t receive_delay = ctx->incoming_link_ugn_list[port].ugn;
+        msg.remote_counter = event_time - receive_delay;
+    }
+
     uint32_t offset = ugn_calculate_gather_offset(ctx, port, event_time);
     ugn_write_message(&ctx->gather_units[port], offset, &msg);
-
 }
 
 bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) {
