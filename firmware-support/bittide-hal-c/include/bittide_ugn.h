@@ -32,7 +32,7 @@
 // ============================================================================
 // UGN Edge Structure
 // ============================================================================
-// Represents UGN (Universal Global Number) information for a network edge
+// Represents UGN (Uninterpretable Garbage Number) information for a network edge
 // Stores delay measurement (direction-specific):
 //   - For incoming edges: stores receive_delay (neighbor -> us)
 //   - For outgoing edges: stores send_delay (us -> neighbor)
@@ -41,7 +41,7 @@ typedef struct {
     uint32_t src_port;           // Source port number
     uint32_t dst_node;           // Destination node ID
     uint32_t dst_port;           // Destination port number
-    int32_t ugn;                 // Propagation delay in clock cycles (direction depends on edge type)
+    int64_t ugn;                 // Propagation delay in clock cycles (direction depends on edge type)
     uint32_t is_valid;           // Whether this UGN entry is valid
 } UgnEdge;
 

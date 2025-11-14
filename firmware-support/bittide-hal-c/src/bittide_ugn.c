@@ -84,7 +84,7 @@ static void invalidate(GatherUnit* unit, uint32_t offset) {
 // Initialize UGN object
 static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_port,
                                   uint32_t dst_node, uint32_t dst_port,
-                                  int32_t ugn) {
+                                  int64_t ugn) {
     u->src_node = src_node;
     u->src_port = src_port;
     u->dst_node = dst_node;
@@ -101,7 +101,7 @@ static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
     if (msg->type == MSG_TYPE_ANNOUNCE) {
         // Received announcement from neighbor - this is an INCOMING edge
         // Calculate receive_delay = receive_time - send_time
-        int32_t receive_delay = (int32_t)((int64_t)local_time - (int64_t)msg->local_counter);
+        int64_t receive_delay = (int64_t)local_time - (int64_t)msg->local_counter;
 
         initialize_ugn_object(edge,
             msg->node_id,        // src_node (remote)
@@ -115,7 +115,7 @@ static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
         // Received acknowledgment from neighbor - this is an OUTGOING edge
         // Calculate send_delay = neighbor's receive_time - our original send_time
         // send_delay = local_counter - remote_counter
-        int32_t send_delay = (int32_t)((int64_t)msg->local_counter - (int64_t)msg->remote_counter);
+        int64_t send_delay = (int64_t)msg->local_counter - (int64_t)msg->remote_counter;
 
         initialize_ugn_object(edge,
             local_node_id,       // src_node (us)
@@ -149,7 +149,7 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t event_time) {
         msg.type = MSG_TYPE_ACKNOWLEDGE;
         // Calculate neighbor's send_time from: receive_delay = event_time - send_time
         // Therefore: send_time = event_time - receive_delay
-        int32_t receive_delay = ctx->incoming_link_ugn_list[port].ugn;
+        int64_t receive_delay = ctx->incoming_link_ugn_list[port].ugn;
         msg.remote_counter = event_time - receive_delay;
     }
 
