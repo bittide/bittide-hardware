@@ -24,7 +24,7 @@
 #define METACYCLE_CLOCKS (CYCLES_PER_BUFFER_ENTRY * BUFFER_SIZE)
 
 // Schedule one SEND task per neighbor every 3 metacycles
-#define SEND_PERIOD (METACYCLE_CLOCKS * 3 * NUM_PORTS + 1)
+#define SEND_PERIOD (METACYCLE_CLOCKS * 3 * NUM_PORTS)
 
 // Schedule one RECEIVE task (checking all ports) each metacycle
 #define RECEIVE_PERIOD METACYCLE_CLOCKS
@@ -71,7 +71,7 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
         bool both_ugns = ugn_ctx->incoming_link_ugn_list[port].is_valid && ugn_ctx->outgoing_link_ugn_list[port].is_valid;
         if (!both_ugns){
             // Reschedule next send event for this port
-            uint64_t next_send_time = event_time + SEND_PERIOD;
+            uint64_t next_send_time = event_time + SEND_PERIOD + 1;
             uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
             pq_insert(event_queue, next_send_event, next_send_time);
         }
