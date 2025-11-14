@@ -98,8 +98,11 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
                 bool both_ugns = ugn_ctx->incoming_link_ugn_list[i].is_valid &&
                                 ugn_ctx->outgoing_link_ugn_list[i].is_valid;
                 if (found_message && both_ugns) {
-                    // Reschedule final send event for this port.
-                    uint64_t next_send_time = event_time + ((BUFFER_SIZE + ugn_ctx->outgoing_link_ugn_list[i].ugn) % BUFFER_SIZE);
+                    // Reschedule final send event for this port so it arrives at the next metacycle boundary
+                    int64_t ugn = ugn_ctx->outgoing_link_ugn_list[i].ugn;
+                    uint64_t arrival_time = event_time + ugn + METACYCLE_CLOCKS; // Should send in the next metacycle
+                    uint64_t next_metacycle_start = ((arrival_time + METACYCLE_CLOCKS - 1) / METACYCLE_CLOCKS) * METACYCLE_CLOCKS;
+                    uint64_t next_send_time = next_metacycle_start - ugn;
                     uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, i);
                     pq_insert(event_queue, next_send_event, next_send_time);
 
