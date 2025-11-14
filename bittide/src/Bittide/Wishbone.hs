@@ -49,6 +49,7 @@ import qualified Data.List as L
 import qualified Language.Haskell.TH.Syntax as TH.Syntax
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
+import qualified Protocols.Vec as Vec
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -757,6 +758,73 @@ andAck extraAck = Circuit go
   go (m2s, s2m0) = (s2m1, m2s)
    where
     s2m1 = (\wb ack -> wb{acknowledge = wb.acknowledge && ack}) <$> s2m0 <*> extraAck
+
+{- | Multi-manager, single subordinate interconnect. It is currently not configurable
+in its priority which means managers might starve. It will always prefer the
+manager with the lowest index.
+
+XXX: This arbiter does not support @LOCK@ cycles.
+-}
+arbiter ::
+  forall dom addrW a n.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , BitPack a
+  , NFDataX a
+  , KnownNat n
+  ) =>
+  Circuit
+    (Vec n (Wishbone dom 'Standard addrW a))
+    (Wishbone dom 'Standard addrW a)
+arbiter = Circuit goArbitrate0
+ where
+  -- Bundler / unbundler for 'goArbitrate1'
+  goArbitrate0 (bundle -> m2ss, s2m) = (unbundle s2ms, m2s)
+   where
+    (s2ms, m2s) = mealyB goArbitrate1 (Nothing @(Index n)) (m2ss, s2m)
+
+  -- Actual worker
+  goArbitrate1 current (m2ss, s2m) = (next, (s2ms, m2s))
+   where
+    candidate = findIndex (.busCycle) m2ss
+    selected = maybe candidate Just current
+    m2s = maybe emptyWishboneM2S (m2ss !!) selected
+
+    -- Always route the read data from the subordinate to all managers to prevent
+    -- muxing. Managers will only look at the read data when they get an
+    -- acknowledgement.
+    emptyS2Ms = repeat (emptyWishboneS2M @a){readData = s2m.readData}
+    s2ms = case selected of
+      Nothing -> emptyS2Ms
+      Just idx -> replace idx s2m emptyS2Ms
+
+    next =
+      case selected of
+        Just idx | not s2m.acknowledge -> Just idx
+        _ -> candidate
+
+-- | Like 'arbiter', but also handles memory maps.
+arbiterMm ::
+  forall dom addrW a n.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , BitPack a
+  , NFDataX a
+  , KnownNat n
+  ) =>
+  Circuit
+    ( Vec n (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW a)
+    )
+    ( MM.ConstBwd MM.MM
+    , Wishbone dom 'Standard addrW a
+    )
+arbiterMm = circuit $ \mmWbs -> do
+  (mms, wbs) <- Vec.unzip -< mmWbs
+  mm <- Circuit goDuplicate -< mms
+  wb <- arbiter -< wbs
+  idC -< (mm, wb)
+ where
+  goDuplicate (_, mm) = (repeat mm, ())
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit

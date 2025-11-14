@@ -29,7 +29,9 @@ import Test.Tasty.Hedgehog
 
 import Bittide.SharedTypes
 import Bittide.Wishbone as WB
+
 import Tests.Shared
+import Tests.Wishbone.Utils (genWishboneRequest)
 
 import qualified Data.List as L
 import qualified GHC.TypeNats as TN
@@ -345,7 +347,7 @@ prop_dfWishboneMaster =
     impl
  where
   gen :: Gen [WishboneRequest 32 4]
-  gen = Gen.list (Range.linear 0 100) genWishboneTransfer
+  gen = Gen.list (Range.linear 0 100) genWishboneRequest
   initReg = unpack 0xDEADBEEF
   range = 0x5555555
 
@@ -409,15 +411,3 @@ simpleSlave range readDataInit wbIn =
     Dict -> fst $ toSignals slaveCircuit (wbIn, ())
  where
   slaveCircuit = validatorCircuit |> simpleSlave' range readDataInit
-
-genWishboneTransfer ::
-  (KnownNat addrW, KnownNat nBytes) =>
-  Gen (WB.WishboneRequest addrW nBytes)
-genWishboneTransfer =
-  Gen.choice
-    [ WB.ReadRequest <$> genDefinedBitVector <*> genDefinedBitVector
-    , WB.WriteRequest
-        <$> genDefinedBitVector
-        <*> genDefinedBitVector
-        <*> genVec genDefinedBitVector
-    ]
