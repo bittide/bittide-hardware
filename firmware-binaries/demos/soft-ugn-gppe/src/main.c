@@ -13,7 +13,7 @@
 // ============================================================================
 
 // Number of event loop iterations
-#define NUM_PERIODS 100000
+#define NUM_PERIODS 20000
 
 // Progress reporting interval (print progress every N iterations)
 #define PROGRESS_INTERVAL 1000
