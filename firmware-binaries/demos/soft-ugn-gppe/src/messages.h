@@ -101,7 +101,7 @@
         uart_puts(&((PERIPHERALS_PTR)->uart), ", dst_port="); \
         uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((EDGE_PTR)->dst_port)); \
         uart_puts(&((PERIPHERALS_PTR)->uart), ", ugn="); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((EDGE_PTR)->ugn)); \
+        uart_putdec_signed(&((PERIPHERALS_PTR)->uart), (EDGE_PTR)->ugn); \
         uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
     } while(0)
 
@@ -258,7 +258,7 @@
                 uart_puts(&((PERIPHERALS_PTR)->uart), "  Port "); \
                 uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)port); \
                 uart_puts(&((PERIPHERALS_PTR)->uart), ": "); \
-                uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)roundtrip); \
+                uart_putdec_signed(&((PERIPHERALS_PTR)->uart), roundtrip); \
                 uart_puts(&((PERIPHERALS_PTR)->uart), " cycles\n"); \
             } else { \
                 uart_puts(&((PERIPHERALS_PTR)->uart), "  Port "); \
