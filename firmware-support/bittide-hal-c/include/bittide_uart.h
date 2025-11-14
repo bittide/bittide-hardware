@@ -55,4 +55,7 @@ void uart_puthex64(const Uart* uart, uint64_t val);
 /// Print a decimal number to UART
 void uart_putdec(const Uart* uart, uint64_t val);
 
+/// Print a signed decimal number to UART
+void uart_putdec_signed(const Uart* uart, int64_t val);
+
 #endif // BITTIDE_UART_H

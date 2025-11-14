@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "bittide_uart.h"
+#include <stdint.h>
 
 Uart uart_init(volatile uint8_t* data, volatile uint8_t* status) {
     Uart uart = {
@@ -72,4 +73,19 @@ void uart_putdec(const Uart* uart, uint64_t val) {
     }
 
     uart_puts(uart, &buf[i]);
+}
+
+void uart_putdec_signed(const Uart* uart, int64_t val) {
+    if (val < 0) {
+        uart_putc(uart, '-');
+        // Handle most negative value specially to avoid overflow
+        // INT64_MIN is -9223372036854775808, which can't be negated in int64_t
+        if (val == (int64_t)0x8000000000000000ULL) {
+            uart_putdec(uart, 9223372036854775808ULL);
+        } else {
+            uart_putdec(uart, (uint64_t)(-val));
+        }
+    } else {
+        uart_putdec(uart, (uint64_t)val);
+    }
 }
