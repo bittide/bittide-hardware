@@ -303,6 +303,8 @@ test-suite unittests
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign
     Tests.Wishbone
+    Tests.Wishbone.Arbiter
+    Tests.Wishbone.Utils
 
   build-depends:
     HUnit,
