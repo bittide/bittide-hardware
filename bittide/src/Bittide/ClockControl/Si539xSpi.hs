@@ -17,7 +17,6 @@ import Clash.Cores.Xilinx.DcFifo
 
 import Protocols
 import Protocols.MemoryMap (Access (..), ConstBwd, MM)
-import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -25,6 +24,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI,
   registerWbI_,
  )
+import Protocols.MemoryMap.TypeDescription.TH
 import Protocols.Wishbone
 
 import Bittide.Arithmetic.Time
@@ -56,7 +56,9 @@ data RegisterOperation = RegisterOperation
   , write :: Maybe Byte
   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this 'Page' and 'Address'.
   }
-  deriving (Show, Generic, NFDataX, BitPack, ToFieldType, BitPackC)
+  deriving (Show, Generic, NFDataX, BitPack, BitPackC)
+
+deriveTypeDescription ''RegisterOperation
 
 {- | Contains the configuration for an Si539x chip, explicitly differentiates between
 the configuration preamble, configuration and configuration postamble.

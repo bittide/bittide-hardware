@@ -6,8 +6,8 @@
 
 use ufmt::uwriteln;
 
-use bittide_hal::shared::devices::uart::Uart;
-use bittide_hal::shared::devices::CaptureUgn;
+use bittide_hal::shared_devices::uart::Uart;
+use bittide_hal::shared_devices::CaptureUgn;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -23,8 +23,8 @@ fn main() -> ! {
     uwriteln!(
         uart,
         "(0x{:16X},0x{:16X})",
-        capture_ugn.local_counter(),
-        capture_ugn.remote_counter()
+        Into::<u64>::into(capture_ugn.local_counter()),
+        Into::<u64>::into(capture_ugn.remote_counter())
     )
     .unwrap();
     loop {

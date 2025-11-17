@@ -16,12 +16,12 @@ import Data.Coerce (coerce)
 import Data.Functor ((<&>))
 import GHC.Stack (HasCallStack)
 import Protocols.Df (CollectMode (Skip))
-import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity,
   registerWb,
   registerWbDf,
  )
+import Protocols.MemoryMap.TypeDescription
 import Protocols.PacketStream (
   PacketStream,
   PacketStreamM2S (..),
@@ -151,7 +151,7 @@ wbToDf ::
   , KnownNat addrW
   , Show a
   , ShowX a
-  , ToFieldType a
+  , WithTypeDescription a
   , NFDataX a
   , BitPack a
   , BitPackC a

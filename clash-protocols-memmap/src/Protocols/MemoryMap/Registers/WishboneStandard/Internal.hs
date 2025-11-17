@@ -33,7 +33,7 @@ import Protocols.MemoryMap (
   locN,
   regType,
  )
-import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.TypeDescription
 import Protocols.Wishbone (
   Wishbone,
   WishboneM2S (..),
@@ -81,7 +81,7 @@ type RegisterWithOffsetWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
 -- | Common \"boring\" constraints for Wishbone mapped registers
 type RegisterWbConstraints (a :: Type) (dom :: Domain) (wordSize :: Nat) (aw :: Nat) =
   ( HasCallStack
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , NFDataX a
   , KnownDomain dom
@@ -121,7 +121,7 @@ activity.
 zeroWidthRegisterMeta ::
   forall a aw.
   ( KnownNat aw
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , NFDataX a
   ) =>

@@ -4,8 +4,8 @@
 
 // The logger utilizes core::fmt to format the log messages because ufmt formatting is not
 // compatible with (dependencies of) the log crate.
-use bittide_hal::shared::devices::timer;
-use bittide_hal::shared::devices::uart;
+use bittide_hal::shared_devices::timer;
+use bittide_hal::shared_devices::uart;
 use core::{cell::SyncUnsafeCell, fmt::Write};
 use log::LevelFilter;
 

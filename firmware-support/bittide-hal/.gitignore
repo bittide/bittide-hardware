@@ -4,5 +4,5 @@
 
 src/hals/*
 
-src/shared/*
-!src/shared/mod.rs
+src/shared_devices/*
+src/types/*

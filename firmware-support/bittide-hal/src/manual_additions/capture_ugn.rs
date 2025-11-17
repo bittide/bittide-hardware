@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::shared::devices::CaptureUgn;
+use crate::shared_devices::CaptureUgn;
 
 impl CaptureUgn {
     pub fn ugn(&self) -> Option<u64> {

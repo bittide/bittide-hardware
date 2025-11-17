@@ -6,9 +6,13 @@ use heck::ToShoutySnakeCase;
 use quote::quote;
 
 use crate::{
-    generators::{generate_tag_docs, ident, types::TypeGenerator, IdentType},
-    hal_set::DeviceDescAnnotations,
-    parse::{DeviceDesc, RegisterAccess, RegisterDesc, Type},
+    deprecated::generators::{
+        generate_tag_docs, ident,
+        types::{ParsedType, TypeGenerator},
+        IdentType,
+    },
+    deprecated::hal_set::DeviceDescAnnotations,
+    input_language::{DeviceDesc, RegisterAccess, RegisterDesc},
 };
 
 pub struct DeviceGenerator;
@@ -41,14 +45,16 @@ impl DeviceGenerator {
                 let offset = reg.address as usize;
 
                 let reg_description = &reg.description;
+                let ty = TypeGenerator::parse_type_ref(&reg.reg_type);
 
-                if let Type::Vec(len, inner) = &reg.reg_type {
+                if let ParsedType::Vector(len, inner) = &ty {
                     let unchecked_name =
                         ident(IdentType::Method, format!("{}_unchecked", &reg.name));
                     let iter_name =
                         ident(IdentType::Method, format!("{}_volatile_iter", &reg.name));
-                    let scalar_ty = ty_gen.generate_type_ref(inner);
-                    let size = *len as usize;
+
+                    let scalar_ty = ty_gen.generate_parsed_type_ref(inner);
+                    let size = ty_gen.generate_parsed_type_ref(len);
 
                     quote! {
                         #[doc = #reg_description]
@@ -114,12 +120,13 @@ impl DeviceGenerator {
                 let offset = reg.address as usize;
 
                 let reg_description = &reg.description;
+                let ty = TypeGenerator::parse_type_ref(&reg.reg_type);
 
-                if let Type::Vec(len, inner) = &reg.reg_type {
+                if let ParsedType::Vector(len, inner) = &ty {
                     let unchecked_name =
                         ident(IdentType::Method, format!("set_{}_unchecked", &reg.name));
-                    let scalar_ty = ty_gen.generate_type_ref(inner);
-                    let size = *len as usize;
+                    let scalar_ty = ty_gen.generate_parsed_type_ref(inner);
+                    let size = ty_gen.generate_parsed_type_ref(len);
 
                     quote! {
                         #[doc = #reg_description]
@@ -166,7 +173,7 @@ impl DeviceGenerator {
         let consts = desc
             .registers
             .iter()
-            .filter_map(generate_const)
+            .filter_map(|reg| generate_const(ty_gen, reg))
             .collect::<Vec<_>>();
 
         let tags = generate_tag_docs(
@@ -195,6 +202,10 @@ impl DeviceGenerator {
             }
         }
     }
+
+    pub(crate) fn clear(&self) {
+        // empty for now!
+    }
 }
 
 impl Default for DeviceGenerator {
@@ -205,13 +216,17 @@ impl Default for DeviceGenerator {
 
 /// Generates a constant for the given register description if applicable.
 /// Returns `None` if the register type does not have a constant value.
-fn generate_const(desc: &RegisterDesc) -> Option<proc_macro2::TokenStream> {
-    let (const_suffix, const_value) = match &desc.reg_type {
-        Type::BitVector(width) | Type::Signed(width) | Type::Unsigned(width) => {
-            Some(("WIDTH", *width as usize))
+fn generate_const(
+    ty_gen: &mut TypeGenerator,
+    desc: &RegisterDesc,
+) -> Option<proc_macro2::TokenStream> {
+    let ty = TypeGenerator::parse_type_ref(&desc.reg_type);
+    let (const_suffix, const_value) = match &ty {
+        ParsedType::BitVector(width) | ParsedType::Signed(width) | ParsedType::Unsigned(width) => {
+            Some(("WIDTH", ty_gen.generate_parsed_type_ref(width)))
         }
-        Type::Index(size) => Some(("SIZE", *size as usize)),
-        Type::Vec(len, _) => Some(("LEN", *len as usize)),
+        ParsedType::Index(size) => Some(("SIZE", ty_gen.generate_parsed_type_ref(size))),
+        ParsedType::Vector(len, _) => Some(("LEN", ty_gen.generate_parsed_type_ref(len))),
         _ => None,
     }?;
     let const_name = ident(

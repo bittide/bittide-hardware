@@ -7,12 +7,7 @@
 #![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
 
-use bittide_hal::{
-    index,
-    manual_additions::{index::IndexTy, switch_calendar::EntryType},
-    shared::types::ValidEntry,
-    Index,
-};
+use bittide_hal::{manual_additions::switch_calendar::EntryType, types::ValidEntry_12};
 use ufmt::{uDebug, uwrite, uwriteln};
 
 #[cfg(not(test))]
@@ -52,23 +47,23 @@ fn expect<T: uDebug + PartialEq>(msg: &str, expected: T, actual: T) {
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let active_entry0: [Index![17]; 16] = core::array::from_fn(|i| index!(i as u8, n = 17));
-    let mut active_entry1: [Index![17]; 16] = active_entry0;
+    let active_entry0: [u8; 16] = core::array::from_fn(|i| i as u8);
+    let mut active_entry1: [u8; 16] = active_entry0;
     active_entry1.reverse();
 
     let cal_active = [
-        ValidEntry {
+        ValidEntry_12 {
             ve_entry: active_entry0,
             ve_repeat: 8,
         },
-        ValidEntry {
+        ValidEntry_12 {
             ve_entry: active_entry1,
             ve_repeat: 16,
         },
     ];
 
-    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| ValidEntry {
-        ve_entry: core::array::from_fn(|_j| unsafe { IndexTy::new_unchecked(i as u8) }),
+    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| ValidEntry_12 {
+        ve_entry: core::array::from_fn(|_j| i as u8),
         ve_repeat: i as u16,
     });
 
@@ -106,7 +101,7 @@ fn main() -> ! {
             msg,
             "Reading shadow calendar entry {}/{}",
             i,
-            calendar.shadow_depth_index().into_underlying()
+            calendar.shadow_depth_index()
         );
         expect(&msg, expected[i], entry);
     }
@@ -120,7 +115,7 @@ fn main() -> ! {
             msg,
             "Reading shadow calendar entry post swap {}/{}",
             i,
-            calendar.shadow_depth_index().into_underlying()
+            calendar.shadow_depth_index(),
         );
         expect(&msg, expected[i], entry);
     }
@@ -134,7 +129,7 @@ fn main() -> ! {
             msg,
             "Reading shadow calendar pre write: {}/{}",
             i,
-            calendar.shadow_depth_index().into_underlying()
+            calendar.shadow_depth_index(),
         );
         expect(&msg, expected[i], actual);
     }
@@ -152,7 +147,7 @@ fn main() -> ! {
             msg,
             "Reading shadow calendar post write: {}/{}",
             i,
-            calendar.shadow_depth_index().into_underlying()
+            calendar.shadow_depth_index(),
         );
         expect(&msg, expected[i], actual);
     }
