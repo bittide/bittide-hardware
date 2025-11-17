@@ -684,6 +684,7 @@ data TimeCmd = Capture | WaitForCmp
   deriving (Eq, Generic, Show, NFDataX, BitPack, BitPackC)
 deriveTypeDescription ''TimeCmd
 
+{- FOURMOLU_DISABLE -}
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.
 -}
@@ -704,13 +705,11 @@ timeWb = circuit $ \mmWb -> do
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdMeta, cmdWb1)
 
-{- FOURMOLU_DISABLE -}
   -- Registers
   Fwd (_, cmdActivity) <- MM.registerWbI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
   MM.registerWbI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
   Fwd (scratch, _) <- MM.registerWbI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
   MM.registerWbI_ freqCfg freq -< (freqWb, Fwd noWrite)
-{- FOURMOLU_ ENABLE -}
 
   -- Local circuit dependent declarations
   let
@@ -746,6 +745,7 @@ timeWb = circuit $ \mmWb -> do
       { MM.access = MM.ReadOnly
       , MM.description = "Frequency of the clock domain"
       }
+{- FOURMOLU_ENABLE -}
 
 andAck ::
   Signal dom Bool ->
@@ -785,7 +785,7 @@ readDnaPortE2Wb simDna = circuit $ \wb -> do
   idC -< Fwd (fromMaybe 0 <$> maybeDna)
  where
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
-  config = (registerConfig "maybe_dna"){access=MM.ReadOnly}
+  config = (registerConfig "maybe_dna"){access = MM.ReadOnly}
 
 {- | A Wishbone worker circuit that exposes the DNA value from an external DnaPortE2.
 Only one DnaPortE2 can be instantiated in a design, so this component takes in the
@@ -811,7 +811,7 @@ readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
   [maybeDnaWb] <- MM.deviceWb "Dna" -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
  where
-  config = (registerConfig "maybe_dna"){access=MM.ReadOnly}
+  config = (registerConfig "maybe_dna"){access = MM.ReadOnly}
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'
@@ -884,7 +884,7 @@ whoAmIC whoAmI = circuit $ \wb -> do
   [idWb] <- MM.deviceWb "WhoAmI" -< wb
   registerWbI_ config whoAmI -< (idWb, Fwd (pure Nothing))
  where
-  config = (registerConfig "identifier"){access=ReadOnly}
+  config = (registerConfig "identifier"){access = ReadOnly}
 
 {- | Constructs a @BitVector 32@ from a @String@, which must be exactly 4 characters
 long and consist only of printable ASCII characters.
@@ -894,12 +894,12 @@ makeWhoAmId str =
   if L.length str == 4 && all (\c -> isAscii c && isPrint c) str
     then wordForm
     else
-      error $
-        "whoAmId strings must be four characters long! Input '"
-          <> str
-          <> "' is "
-          <> show (L.length str)
-          <> " characters."
+      error
+        $ "whoAmId strings must be four characters long! Input '"
+        <> str
+        <> "' is "
+        <> show (L.length str)
+        <> " characters."
  where
   strVec :: Vec 4 Char
   strVec = (\(idx :: Index 4) -> str L.!! (fromIntegral idx)) <$> indicesI
@@ -919,6 +919,7 @@ data WishboneRequest addrW nBytes
   = ReadRequest (BitVector addrW) (BitVector nBytes)
   | WriteRequest (BitVector addrW) (BitVector nBytes) (Vec nBytes Byte)
   deriving (Generic, NFData, NFDataX, Show, ShowX, Eq)
+
 deriving instance
   (KnownNat nBytes, KnownNat addrW) => BitPack (WishboneRequest addrW nBytes)
 
@@ -932,8 +933,9 @@ data WishboneResponse nBytes
 
 deriving instance (KnownNat nBytes) => BitPack (WishboneResponse nBytes)
 
--- | Receives a `Df` stream of `WishboneRequest` and acts as a Wishbone manager.
--- All responses to the master will be forwarded as a `Df` stream of `WishboneResponse`.
+{- | Receives a `Df` stream of `WishboneRequest` and acts as a Wishbone manager.
+All responses to the master will be forwarded as a `Df` stream of `WishboneResponse`.
+-}
 dfWishboneMaster ::
   forall dom addrW nBytes.
   ( HiddenClockResetEnable dom
