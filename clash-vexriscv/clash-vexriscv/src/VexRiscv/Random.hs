@@ -46,8 +46,8 @@ instance (KnownNat n) => DefinedRandom (BitVector n) where
     | mask == 0 = pure bv
     | otherwise = do
         let maxVal = natToNum @(2 ^ n - 1)
-        randomInt <- genNatural (0, fromIntegral maxVal)
-        pure $ BV 0 (((maxVal `xor` mask) .&. dat) .|. (mask .&. randomInt))
+        randomNat <- genNatural (0, maxVal)
+        pure $ BV 0 (((maxVal `xor` mask) .&. dat) .|. (mask .&. randomNat))
 
 -- | Generate a random natural number in the given inclusive range.
 genNatural :: (Natural, Natural) -> IO Natural

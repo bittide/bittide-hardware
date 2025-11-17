@@ -109,29 +109,34 @@ library
   default-language: Haskell2010
   exposed-modules:
     VexRiscv
+    VexRiscv.BlackBox
     VexRiscv.ClockTicks
     VexRiscv.FFI
     VexRiscv.JtagTcpBridge
     VexRiscv.Random
     VexRiscv.Reset
-    VexRiscv.TH
     VexRiscv.VecToTuple
 
   build-depends:
     base,
     bytestring >= 0.10 && < 0.13,
+    clash-lib,
     clash-prelude >= 1.9.0,
     clash-protocols,
     containers,
     directory >= 1.3 && < 1.4,
     filepath,
     Glob,
+    infinite-list,
+    mtl,
     network,
+    pretty-show,
     process >= 1.6 && < 1.8,
     random,
     string-interpolate,
     tagged,
     template-haskell,
+    text,
   extra-libraries: VexRiscvFFI, stdc++
   include-dirs: src/
 
