@@ -186,14 +186,14 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
         return false;
     }
 
+    ctx->incoming_link_ugn_list[port] = edge_in;
     // Only update if not already valid
     if (!ctx->incoming_link_ugn_list[port].is_valid) {
-            ctx->incoming_link_ugn_list[port] = edge_in;
             ctx->number_incoming_link_ugns_known++;
         }
     if (msg.type == MSG_TYPE_ACKNOWLEDGE) {
+        ctx->outgoing_link_ugn_list[port] = edge_out;
         if (!ctx->outgoing_link_ugn_list[port].is_valid) {
-            ctx->outgoing_link_ugn_list[port] = edge_out;
             ctx->number_outgoing_link_ugns_acknowledged++;
         }
     }
