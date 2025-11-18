@@ -121,7 +121,9 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
         // Always reschedule next receive event
         uint64_t next_receive_time = event_time + RECEIVE_PERIOD;
         uint64_t next_receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, 0);
-        pq_insert(event_queue, next_receive_event, next_receive_time);
+        if (!both_ugns){
+            pq_insert(event_queue, next_receive_event, next_receive_time);
+        }
     }
 
     return execute;
