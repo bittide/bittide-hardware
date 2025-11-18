@@ -96,19 +96,19 @@ static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_po
 // Process received message and update UGN edge
 // Returns true if message was valid and processed
 static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
-                                uint32_t local_node_id, uint64_t local_time, UgnEdge* edge) {
+                                uint32_t local_node_id, uint64_t local_time, UgnEdge* edge_in, UgnEdge* edge_out) {
 
     if (msg->type == MSG_TYPE_ANNOUNCE) {
         // Received announcement from neighbor - this is an INCOMING edge
         // Calculate receive_delay = receive_time - send_time
         int64_t receive_delay = (int64_t)local_time - (int64_t)msg->local_counter;
 
-        initialize_ugn_object(edge,
+        initialize_ugn_object(edge_in,
             msg->node_id,        // src_node (remote)
             msg->port,           // src_port (remote)
             local_node_id,       // dst_node (us)
             local_port,          // dst_port (us)
-            receive_delay);      // delay (receive_delay for incoming edge)
+            receive_delay);           // delay (receive_delay for incoming edge)
         return true;
 
     } else if (msg->type == MSG_TYPE_ACKNOWLEDGE) {
@@ -117,7 +117,7 @@ static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
         // send_delay = local_counter - remote_counter
         int64_t send_delay = (int64_t)msg->local_counter - (int64_t)msg->remote_counter;
 
-        initialize_ugn_object(edge,
+        initialize_ugn_object(edge_out,
             local_node_id,       // src_node (us)
             local_port,          // src_port (us)
             msg->node_id,        // dst_node (remote)
@@ -166,7 +166,8 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
     }
 
     UgnMessage msg;
-    UgnEdge edge;
+    UgnEdge edge_in;
+    UgnEdge edge_out;
 
     uint32_t offset = ugn_calculate_scatter_offset(ctx, port, event_time);
 
@@ -175,19 +176,19 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
         return false;  // No valid message
     }
 
-    bool valid_message = process_ugn_message(&msg, port, ctx->node_id, event_time, &edge);
+    bool valid_message = process_ugn_message(&msg, port, ctx->node_id, event_time, &edge_in, &edge_out);
     if (!valid_message) {
         return false;
     }
 
     // Only update if not already valid
     if (!ctx->incoming_link_ugn_list[port].is_valid) {
-            ctx->incoming_link_ugn_list[port] = edge;
+            ctx->incoming_link_ugn_list[port] = edge_in;
             ctx->number_incoming_link_ugns_known++;
         }
     if (msg.type == MSG_TYPE_ACKNOWLEDGE) {
         if (!ctx->outgoing_link_ugn_list[port].is_valid) {
-            ctx->outgoing_link_ugn_list[port] = edge;
+            ctx->outgoing_link_ugn_list[port] = edge_out;
             ctx->number_outgoing_link_ugns_acknowledged++;
         }
     }
