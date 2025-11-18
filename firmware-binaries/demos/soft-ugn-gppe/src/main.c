@@ -28,14 +28,14 @@
 
 // Schedule one RECEIVE task (checking all ports) each metacycle
 #define RECEIVE_PERIOD METACYCLE_CLOCKS
-
+#define RECEIVE_READ_OFFSET (BUFFER_SIZE / 2)
 // Invalidate 2 metacycles after send
 #define INVALIDATE_DELAY (METACYCLE_CLOCKS * 2)
 
 // Initial offsets for starting events in metacycles
 // Increased to allow time for startup printing (UART is slow)
 #define STARTING_TICK_SND_OFFSET (METACYCLE_CLOCKS * 1000)
-#define STARTING_TICK_REC_OFFSET (METACYCLE_CLOCKS * 1001)
+#define STARTING_TICK_REC_OFFSET (METACYCLE_CLOCKS * 1001 + RECEIVE_READ_OFFSET)
 
 // ============================================================================
 // Global Variables for Deadline Miss Tracking
@@ -108,7 +108,7 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
                     int64_t ugn = ugn_ctx->outgoing_link_ugn_list[i].ugn;
                     uint64_t send_time = last_scheduled_send_time - (last_scheduled_send_time % METACYCLE_CLOCKS) + METACYCLE_CLOCKS;
                     uint64_t arrival_time = send_time + ugn; // When would it arrive if we send at the start of next send metacycle
-                    uint64_t desired_arrival_time = (arrival_time + METACYCLE_CLOCKS) - (arrival_time % METACYCLE_CLOCKS); // We want it to arrive at the start of the next metacycle
+                    uint64_t desired_arrival_time = (arrival_time + METACYCLE_CLOCKS) - (arrival_time % METACYCLE_CLOCKS) + RECEIVE_READ_OFFSET; // We want it to arrive at the start of the next metacycle
                     uint64_t next_send_time = desired_arrival_time - ugn; // If we want it to arrive at desired time, we need to send at this time
                     uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, i);
                     pq_insert(event_queue, next_send_event, next_send_time);
