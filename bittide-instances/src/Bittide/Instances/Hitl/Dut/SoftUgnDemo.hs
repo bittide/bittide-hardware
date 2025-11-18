@@ -313,7 +313,7 @@ gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   gatherConfig = GatherConfig (SNat @1000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
   maxCalDepth = (SNat @2096)
   repetitionBits = d32
-  sgCal = ValidEntry 0 100000 :> Nil
+  sgCal = ValidEntry 0 99999 :> Nil
 
 softUgnDemoC ::
   ( ?busByteOrder :: ByteOrder
