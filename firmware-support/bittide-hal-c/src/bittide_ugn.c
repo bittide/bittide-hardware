@@ -98,20 +98,15 @@ static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_po
 static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
                                 uint32_t local_node_id, uint64_t local_time, UgnEdge* edge_in, UgnEdge* edge_out) {
 
-    if (msg->type == MSG_TYPE_ANNOUNCE) {
-        // Received announcement from neighbor - this is an INCOMING edge
-        // Calculate receive_delay = receive_time - send_time
-        int64_t receive_delay = (int64_t)local_time - (int64_t)msg->local_counter;
+    int64_t receive_delay = (int64_t)local_time - (int64_t)msg->local_counter;
+    initialize_ugn_object(edge_in,
+        msg->node_id,        // src_node (remote)
+        msg->port,           // src_port (remote)
+        local_node_id,       // dst_node (us)
+        local_port,          // dst_port (us)
+        receive_delay);           // delay (receive_delay for incoming edge)
 
-        initialize_ugn_object(edge_in,
-            msg->node_id,        // src_node (remote)
-            msg->port,           // src_port (remote)
-            local_node_id,       // dst_node (us)
-            local_port,          // dst_port (us)
-            receive_delay);           // delay (receive_delay for incoming edge)
-        return true;
-
-    } else if (msg->type == MSG_TYPE_ACKNOWLEDGE) {
+    if (msg->remote_counter != 0) {
         // Received acknowledgment from neighbor - this is an OUTGOING edge
         // Calculate send_delay = neighbor's receive_time - our original send_time
         // send_delay = local_counter - remote_counter
@@ -126,7 +121,7 @@ static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
         return true;
     }
 
-    return false;
+    return true;
 }
 // ============================================================================
 // Protocol Event Handlers
