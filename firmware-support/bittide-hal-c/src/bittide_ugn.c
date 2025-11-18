@@ -177,6 +177,9 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
     if (!ugn_read_message(&ctx->scatter_units[port], offset, &msg)) {
         return false;  // No valid message
     }
+    if (msg.node_id != ctx->node_id) {
+        return false;  // For now all id's should be node id
+    }
 
     bool valid_message = process_ugn_message(&msg, port, ctx->node_id, event_time, &edge_in, &edge_out);
     if (!valid_message) {
