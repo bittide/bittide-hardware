@@ -186,12 +186,11 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
         return false;
     }
 
-    ctx->incoming_link_ugn_list[port] = edge_in;
-    // Only update if not already valid
     if (!ctx->incoming_link_ugn_list[port].is_valid) {
             ctx->number_incoming_link_ugns_known++;
         }
-    if (msg.type == MSG_TYPE_ACKNOWLEDGE) {
+    ctx->incoming_link_ugn_list[port] = edge_in;
+    if (msg.remote_counter != 0) {
         ctx->outgoing_link_ugn_list[port] = edge_out;
         if (!ctx->outgoing_link_ugn_list[port].is_valid) {
             ctx->number_outgoing_link_ugns_acknowledged++;
