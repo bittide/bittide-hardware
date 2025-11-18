@@ -147,10 +147,12 @@ void send_ugn_to_port(UgnContext* ctx, uint32_t port, uint64_t event_time) {
     // also send an ACKNOWLEDGE by calculating their original send time
     if (ctx->incoming_link_ugn_list[port].is_valid) {
         msg.type = MSG_TYPE_ACKNOWLEDGE;
-        // Calculate neighbor's send_time from: receive_delay = event_time - send_time
-        // Therefore: send_time = event_time - receive_delay
+        // Calculate when neighbor should have sent their announcement to arrive
+        // it this event_time.
+        uint64_t receive_time = event_time;
         int64_t receive_delay = ctx->incoming_link_ugn_list[port].ugn;
-        msg.remote_counter = event_time - receive_delay;
+        uint64_t send_time = (uint64_t) (int64_t)receive_time - receive_delay;
+        msg.remote_counter = send_time;
     }
 
     uint32_t offset = ugn_calculate_gather_offset(ctx, port, event_time);
