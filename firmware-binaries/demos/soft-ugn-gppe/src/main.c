@@ -100,13 +100,12 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
                 if (found_message && both_ugns) {
                     // Reschedule final send event for this port so it arrives at the next metacycle boundary
                     int64_t ugn = ugn_ctx->outgoing_link_ugn_list[i].ugn;
-                    uint64_t send_metacycle = event_time + METACYCLE_CLOCKS;
+                    uint64_t send_metacycle = event_time + (METACYCLE_CLOCKS + SEND_PERIOD);
                     uint64_t arrival_time = send_metacycle + ugn; // When would it arrive if we send at the start of next metacycle
-                    uint64_t desired_arrival_time = (arrival_time + METACYCLE_CLOCKS) % METACYCLE_CLOCKS; // We want it to arrive at the start of the next metacycle
+                    uint64_t desired_arrival_time = arrival_time - (arrival_time % METACYCLE_CLOCKS); // We want it to arrive at the start of the next metacycle
                     uint64_t next_send_time = desired_arrival_time - ugn; // If we want it to arrive at desired time, we need to send at this time
                     uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, i);
                     pq_insert(event_queue, next_send_event, next_send_time);
-
                 }
             }
             met_receive_count++;
