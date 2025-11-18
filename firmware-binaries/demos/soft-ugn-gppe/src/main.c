@@ -100,9 +100,10 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
                 if (found_message && both_ugns) {
                     // Reschedule final send event for this port so it arrives at the next metacycle boundary
                     int64_t ugn = ugn_ctx->outgoing_link_ugn_list[i].ugn;
-                    uint64_t arrival_time = event_time + ugn + METACYCLE_CLOCKS; // Should send in the next metacycle
-                    uint64_t next_metacycle_start = ((arrival_time + METACYCLE_CLOCKS - 1) / METACYCLE_CLOCKS) * METACYCLE_CLOCKS;
-                    uint64_t next_send_time = next_metacycle_start - ugn;
+                    uint64_t send_metacycle = event_time + METACYCLE_CLOCKS;
+                    uint64_t arrival_time = send_metacycle + ugn; // When would it arrive if we send at the start of next metacycle
+                    uint64_t desired_arrival_time = (arrival_time + METACYCLE_CLOCKS) % METACYCLE_CLOCKS; // We want it to arrive at the start of the next metacycle
+                    uint64_t next_send_time = desired_arrival_time - ugn; // If we want it to arrive at desired time, we need to send at this time
                     uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, i);
                     pq_insert(event_queue, next_send_event, next_send_time);
 
@@ -161,12 +162,9 @@ static bool process_metacycle(
     // Set the scratchpad to the end of this metacycle for deadline checking
     *timer->scratchpad = metacycle_end;
 
-    // Track which ports had SEND events in this metacycle (for error detection)
+    // Track which ports had SEND events in this metacycle to detect invalidate after send errors
     // Using a simple bitmap - supports up to 32 ports
     uint32_t send_ports_bitmap = 0;
-
-    // Process all events scheduled in this metacycle
-    bool on_time = true;
 
     // Track the first event type and port
     if (current_event & EVENT_TYPE_SEND) {
@@ -180,6 +178,8 @@ static bool process_metacycle(
         }
     }
 
+    // Process all events scheduled in this metacycle
+    bool on_time = true;
     // Process the first event (already extracted)
     process_event(current_event, event_time, ugn_ctx, event_queue, on_time, peripherals);
     bool processing_metacycle = true;
