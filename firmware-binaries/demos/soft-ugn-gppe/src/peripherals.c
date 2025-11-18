@@ -60,7 +60,12 @@ void peripherals_init(Peripherals* peripherals) {
         (volatile uint32_t*)SCATTER_UNIT_6_METACYCLE_REGISTER,
         1000
     );
-
+    peripherals->scatter_units[7] = scatter_unit_init(
+        (volatile uint64_t*)SCATTER_UNIT_7_SCATTER_MEMORY,
+        (volatile uint32_t*)SCATTER_UNIT_7_METACYCLE_COUNT,
+        (volatile uint32_t*)SCATTER_UNIT_7_METACYCLE_REGISTER,
+        1000
+    );
     // Initialize gather units (ports 0-6)
     peripherals->gather_units[0] = gather_unit_init(
         (volatile uint64_t*)GATHER_UNIT_0_GATHER_MEMORY,
@@ -102,6 +107,12 @@ void peripherals_init(Peripherals* peripherals) {
         (volatile uint64_t*)GATHER_UNIT_6_GATHER_MEMORY,
         (volatile uint32_t*)GATHER_UNIT_6_METACYCLE_COUNT,
         (volatile uint32_t*)GATHER_UNIT_6_METACYCLE_REGISTER,
+        1000
+    );
+    peripherals->gather_units[7] = gather_unit_init(
+        (volatile uint64_t*)GATHER_UNIT_7_GATHER_MEMORY,
+        (volatile uint32_t*)GATHER_UNIT_7_METACYCLE_COUNT,
+        (volatile uint32_t*)GATHER_UNIT_7_METACYCLE_REGISTER,
         1000
     );
 }

@@ -11,7 +11,7 @@
 #include "bittide_timer.h"
 
 // Number of scatter/gather unit pairs available
-#define NUM_PORTS 7
+#define NUM_PORTS 8
 
 // Container for all peripherals used in the UGN demo
 typedef struct {
