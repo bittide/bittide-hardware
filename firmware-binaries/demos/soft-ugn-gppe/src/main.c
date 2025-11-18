@@ -49,15 +49,21 @@ static uint32_t met_send_count = 0;
 static uint32_t met_receive_count = 0;
 static uint32_t met_invalidate_count = 0;
 
+static uint64_t last_scheduled_send_time = 0;
+static uint64_t max(uint64_t a, uint64_t b) {
+    return (a > b) ? a : b;
+}
 // ============================================================================
 // Event Processing Functions
 // ============================================================================
+
 
 // Process a single event and schedule any follow-up events
 // Returns true if event should be executed, false if it should be skipped (deadline missed)
 static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_ctx,
                           FixedIntPriorityQueue* event_queue, bool execute, Peripherals* peripherals) {
     uint32_t port = get_event_port(event);
+    bool both_ugns = ugn_ctx->incoming_link_ugn_list[port].is_valid && ugn_ctx->outgoing_link_ugn_list[port].is_valid;
 
     if (event & EVENT_TYPE_SEND) {
         if (execute) {
@@ -68,10 +74,10 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
             missed_send_count++;
         }
 
-        bool both_ugns = ugn_ctx->incoming_link_ugn_list[port].is_valid && ugn_ctx->outgoing_link_ugn_list[port].is_valid;
         if (!both_ugns){
             // Reschedule next send event for this port
             uint64_t next_send_time = event_time + SEND_PERIOD + 1;
+            last_scheduled_send_time = max(last_scheduled_send_time, next_send_time);
             uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
             pq_insert(event_queue, next_send_event, next_send_time);
         }
@@ -100,9 +106,9 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
                 if (found_message && both_ugns) {
                     // Reschedule final send event for this port so it arrives at the next metacycle boundary
                     int64_t ugn = ugn_ctx->outgoing_link_ugn_list[i].ugn;
-                    uint64_t send_metacycle = event_time + (METACYCLE_CLOCKS + SEND_PERIOD);
-                    uint64_t arrival_time = send_metacycle + ugn; // When would it arrive if we send at the start of next metacycle
-                    uint64_t desired_arrival_time = arrival_time - (arrival_time % METACYCLE_CLOCKS); // We want it to arrive at the start of the next metacycle
+                    uint64_t send_time = last_scheduled_send_time - (last_scheduled_send_time % METACYCLE_CLOCKS) + METACYCLE_CLOCKS;
+                    uint64_t arrival_time = send_time + ugn; // When would it arrive if we send at the start of next send metacycle
+                    uint64_t desired_arrival_time = (arrival_time + METACYCLE_CLOCKS) - (arrival_time % METACYCLE_CLOCKS); // We want it to arrive at the start of the next metacycle
                     uint64_t next_send_time = desired_arrival_time - ugn; // If we want it to arrive at desired time, we need to send at this time
                     uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, i);
                     pq_insert(event_queue, next_send_event, next_send_time);
