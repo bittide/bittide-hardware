@@ -70,13 +70,6 @@ static void ugn_write_message(GatherUnit* unit, uint32_t offset, const UgnMessag
     gather_unit_write_slice(unit, buffer, offset, 6);
 }
 
-// Invalidate gather buffer at specified offset
-static void invalidate(GatherUnit* unit, uint32_t offset) {
-    uint64_t zeros[6] = {0, 0, 0, 0, 0, 0};
-
-    gather_unit_write_slice(unit, zeros, offset, 6);
-}
-
 // ============================================================================
 // Protocol Helper Functions
 // ============================================================================
@@ -90,7 +83,7 @@ static void initialize_ugn_object(UgnEdge* u, uint32_t src_node, uint32_t src_po
     u->dst_node = dst_node;
     u->dst_port = dst_port;
     u->ugn = ugn;
-    u->is_valid = 1;
+    u->is_valid = true;
 }
 
 // Process received message and update UGN edge
@@ -104,7 +97,7 @@ static bool process_ugn_message(const UgnMessage* msg, uint32_t local_port,
         msg->port,           // src_port (remote)
         local_node_id,       // dst_node (us)
         local_port,          // dst_port (us)
-        receive_delay);           // delay (receive_delay for incoming edge)
+        receive_delay);      // delay (receive_delay for incoming edge)
 
     if (msg->remote_counter != 0) {
         // Received acknowledgment from neighbor - this is an OUTGOING edge
@@ -181,23 +174,20 @@ bool check_incoming_buffer(UgnContext* ctx, uint32_t port, uint64_t event_time) 
         return false;
     }
 
-    if (!ctx->incoming_link_ugn_list[port].is_valid) {
-            ctx->number_incoming_link_ugns_known++;
-        }
     ctx->incoming_link_ugn_list[port] = edge_in;
     if (msg.remote_counter != 0) {
         ctx->outgoing_link_ugn_list[port] = edge_out;
-        if (!ctx->outgoing_link_ugn_list[port].is_valid) {
-            ctx->number_outgoing_link_ugns_acknowledged++;
-        }
+
     }
     return true;
 }
 
 void invalidate_port(UgnContext* ctx, uint32_t port, uint64_t event_time) {
     if (port >= ctx->num_ports) return;
+    GatherUnit* gather_unit = &ctx->gather_units[port];
     uint32_t offset = ugn_calculate_gather_offset(ctx, port, event_time);
-    invalidate(&ctx->gather_units[port], offset);
+    uint64_t zeros[6] = {0, 0, 0, 0, 0, 0};
+    gather_unit_write_slice(gather_unit, zeros, offset, 6);
 }
 
 // ============================================================================
@@ -210,7 +200,7 @@ void ugn_edge_init(UgnEdge* edge) {
     edge->dst_node = 0;
     edge->dst_port = 0;
     edge->ugn = 0;
-    edge->is_valid = 0;
+    edge->is_valid = false;
 }
 
 // ============================================================================
@@ -236,8 +226,22 @@ void ugn_context_init(UgnContext* ctx, ScatterUnit* scatter_units,
         ugn_edge_init(&ctx->outgoing_link_ugn_list[i]);
     }
 
-    // Initialize counters
-    ctx->number_outgoing_link_ugns_acknowledged = 0;
-    ctx->number_incoming_link_ugns_known = 0;
-    ctx->announced_done = 0;
+}
+
+bool port_done(UgnContext* ctx, uint32_t port) {
+    // Mark port as done (both UGNs valid)
+    if (port < ctx->num_ports) {
+        bool incoming_done = ctx->incoming_link_ugn_list[port].is_valid;
+        bool outgoing_done = ctx->outgoing_link_ugn_list[port].is_valid;
+        return incoming_done && outgoing_done;
+    }
+}
+bool all_ports_done(UgnContext* ctx) {
+    // Mark all ports as done
+    for (uint32_t port = 0; port < ctx->num_ports; port++) {
+        if (!port_done(ctx, port)) {
+            return false;
+        }
+    }
+    return true;
 }

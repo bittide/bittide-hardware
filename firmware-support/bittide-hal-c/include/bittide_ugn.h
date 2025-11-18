@@ -42,7 +42,7 @@ typedef struct {
     uint32_t dst_node;           // Destination node ID
     uint32_t dst_port;           // Destination port number
     int64_t ugn;                 // Propagation delay in clock cycles (direction depends on edge type)
-    uint32_t is_valid;           // Whether this UGN entry is valid
+    bool is_valid;           // Whether this UGN entry is valid
 } UgnEdge;
 
 // ============================================================================
@@ -59,11 +59,6 @@ typedef struct {
     UgnEdge* incoming_link_ugn_list;
     UgnEdge* outgoing_link_ugn_list;
     uint32_t max_degree;  // Maximum number of neighbor nodes
-
-    // Counters for protocol progress
-    uint32_t number_outgoing_link_ugns_acknowledged;
-    uint32_t number_incoming_link_ugns_known;
-    uint32_t announced_done;
 
     // Node identification
     uint32_t node_id;
@@ -87,14 +82,9 @@ typedef struct {
 // Event Helper Functions
 // ============================================================================
 
-// Encode event type only (no port, no time)
-static inline uint64_t ugn_encode_event(uint64_t event_type) {
-    return event_type;
-}
-
 // Encode event with port information (for SEND and RECEIVE events)
 // Time is passed separately to the priority queue
-static inline uint64_t ugn_encode_event_with_port(uint64_t event_type, uint32_t port) {
+static inline uint64_t ugn_encode_event(uint64_t event_type, uint32_t port) {
     return event_type | (((uint64_t)port << EVENT_PORT_SHIFT) & EVENT_PORT_MASK);
 }
 
@@ -125,6 +115,10 @@ void ugn_context_init(UgnContext* ctx, ScatterUnit* scatter_units,
                       uint32_t node_id,
                       UgnEdge* incoming_list, UgnEdge* outgoing_list,
                       uint32_t max_degree);
+
+bool port_done(UgnContext* ctx, uint32_t port);
+
+bool all_ports_done(UgnContext* ctx);
 
 // ============================================================================
 // Buffer Offset Calculation

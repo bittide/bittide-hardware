@@ -63,7 +63,7 @@ static uint64_t max(uint64_t a, uint64_t b) {
 static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_ctx,
                           FixedIntPriorityQueue* event_queue, bool execute, Peripherals* peripherals) {
     uint32_t port = get_event_port(event);
-    bool both_ugns = ugn_ctx->incoming_link_ugn_list[port].is_valid && ugn_ctx->outgoing_link_ugn_list[port].is_valid;
+    bool both_ugns = port_done(ugn_ctx, port);
 
     if (event & EVENT_TYPE_SEND) {
         if (execute) {
@@ -78,13 +78,13 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
             // Reschedule next send event for this port
             uint64_t next_send_time = event_time + SEND_PERIOD + 1;
             last_scheduled_send_time = max(last_scheduled_send_time, next_send_time);
-            uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
+            uint64_t next_send_event = ugn_encode_event(EVENT_TYPE_SEND, port);
             pq_insert(event_queue, next_send_event, next_send_time);
         }
 
         // Always schedule invalidate for current send (2 metacycles after this send)
         uint64_t invalidate_time = event_time + INVALIDATE_DELAY;
-        uint64_t invalidate_event = ugn_encode_event_with_port(EVENT_TYPE_INVALIDATE, port);
+        uint64_t invalidate_event = ugn_encode_event(EVENT_TYPE_INVALIDATE, port);
         pq_insert(event_queue, invalidate_event, invalidate_time);
 
     } else if (event & EVENT_TYPE_INVALIDATE) {
@@ -101,16 +101,16 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
             // Check incoming buffer for all ports
             for (uint32_t i = 0; i < ugn_ctx->num_ports; i++) {
                 bool found_message = check_incoming_buffer(ugn_ctx, i, event_time);
-                bool both_ugns = ugn_ctx->incoming_link_ugn_list[i].is_valid &&
-                                ugn_ctx->outgoing_link_ugn_list[i].is_valid;
+                bool both_ugns = port_done(ugn_ctx, i);
+                all_done = all_done && both_ugns;
                 if (found_message && both_ugns) {
                     // Reschedule final send event for this port so it arrives at the next metacycle boundary
                     int64_t ugn = ugn_ctx->outgoing_link_ugn_list[i].ugn;
-                    uint64_t send_time = last_scheduled_send_time - (last_scheduled_send_time % METACYCLE_CLOCKS) + METACYCLE_CLOCKS;
+                    uint64_t send_time = last_scheduled_send_time - (last_scheduled_send_time % METACYCLE_CLOCKS) + (2 * SEND_PERIOD) + METACYCLE_CLOCKS;
                     uint64_t arrival_time = send_time + ugn; // When would it arrive if we send at the start of next send metacycle
                     uint64_t desired_arrival_time = (arrival_time + METACYCLE_CLOCKS) - (arrival_time % METACYCLE_CLOCKS) + RECEIVE_READ_OFFSET; // We want it to arrive at the start of the next metacycle
                     uint64_t next_send_time = desired_arrival_time - ugn; // If we want it to arrive at desired time, we need to send at this time
-                    uint64_t next_send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, i);
+                    uint64_t next_send_event = ugn_encode_event(EVENT_TYPE_SEND, i);
                     pq_insert(event_queue, next_send_event, next_send_time);
                 }
             }
@@ -281,13 +281,13 @@ int c_main(void) {
     // Schedule SEND events: one per port every 3 metacycles, staggered across ports
     for (uint32_t port = 0; port < NUM_PORTS; port++) {
         uint64_t send_time = start_cycles + STARTING_TICK_SND_OFFSET + port * SEND_PERIOD;
-        uint64_t send_event = ugn_encode_event_with_port(EVENT_TYPE_SEND, port);
+        uint64_t send_event = ugn_encode_event(EVENT_TYPE_SEND, port);
         pq_insert(&event_queue, send_event, send_time);
     }
 
     // Schedule a single RECEIVE event that checks all ports each metacycle
     uint64_t receive_time = start_cycles + STARTING_TICK_REC_OFFSET;
-    uint64_t receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, 0);
+    uint64_t receive_event = ugn_encode_event(EVENT_TYPE_RECEIVE, 0);
     pq_insert(&event_queue, receive_event, receive_time);
 
     PRINT_EVENT_LOOP_START(&peripherals, &event_queue);
@@ -305,8 +305,7 @@ int c_main(void) {
         );
 
         // Check if protocol is complete
-        if (ugn_ctx.number_incoming_link_ugns_known == ugn_ctx.num_ports &&
-            ugn_ctx.number_outgoing_link_ugns_acknowledged == ugn_ctx.num_ports) {
+        if (all_ports_done(&ugn_ctx)) {
             uart_puts(&peripherals.uart, MSG_PROTOCOL_COMPLETE);
             break;  // Stop processing
         }
@@ -329,7 +328,6 @@ int c_main(void) {
     // Print discovery results
     uart_puts(&peripherals.uart, "\nDiscovery Protocol Results:\n");
     uart_puts(&peripherals.uart, "----------------------------\n");
-    PRINT_UGN_SUMMARY(&peripherals, &ugn_ctx);
 
     // Print incoming and outgoing link UGNs
     PRINT_UGN_EDGE_LIST(&peripherals, "Incoming Link UGNs:\n", ugn_ctx.incoming_link_ugn_list, ugn_ctx.num_ports);

@@ -66,27 +66,6 @@
         uart_puts(&((PERIPHERALS_PTR)->uart), " metacycles)\n"); \
     } while(0)
 
-// Message for UGN discovery summary - takes UgnContext pointer
-#define PRINT_UGN_SUMMARY(PERIPHERALS_PTR, UGN_CTX_PTR) \
-    do { \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "Node ID: "); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->node_id)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "Number of ports: "); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->num_ports)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "Incoming UGNs known: "); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->number_incoming_link_ugns_known)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "/"); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->num_ports)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "\n"); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "Outgoing UGNs acknowledged: "); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->number_outgoing_link_ugns_acknowledged)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "/"); \
-        uart_putdec(&((PERIPHERALS_PTR)->uart), (uint64_t)((UGN_CTX_PTR)->num_ports)); \
-        uart_puts(&((PERIPHERALS_PTR)->uart), "\n\n"); \
-    } while(0)
-
 // Message for printing a single UGN edge (valid)
 #define PRINT_UGN_EDGE(PERIPHERALS_PTR, PORT_NUM, EDGE_PTR) \
     do { \
