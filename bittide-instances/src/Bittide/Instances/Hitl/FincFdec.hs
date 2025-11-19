@@ -21,12 +21,12 @@ import Bittide.ClockControl.Si539xSpi (ConfigState (Finished), si539xSpi)
 import Bittide.Counter (domainDiffCounter)
 import Bittide.Hitl (
   HitlTestGroup (..),
-  HwTargetRef (HwTargetByIndex),
   hitlVio,
   testCasesFromEnum,
  )
 import Bittide.Instances.Common (commonSpiConfig)
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Setup (allHwTargets)
 
 import Data.Maybe (isJust)
 import System.FilePath ((</>))
@@ -226,7 +226,7 @@ tests =
         , "si539x" </> "spi.xdc"
         ]
     , externalHdl = []
-    , testCases = testCasesFromEnum @Test [HwTargetByIndex 7] ()
+    , testCases = testCasesFromEnum @Test allHwTargets ()
     , mDriverProc = Nothing
     , mPostProc = Nothing
     }
