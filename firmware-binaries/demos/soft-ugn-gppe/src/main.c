@@ -97,6 +97,7 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
         }
 
     } else if (event & EVENT_TYPE_RECEIVE) {
+        bool all_done = true;
         if (execute) {
             // Check incoming buffer for all ports
             for (uint32_t i = 0; i < ugn_ctx->num_ports; i++) {
@@ -120,8 +121,8 @@ static bool process_event(uint64_t event, uint64_t event_time, UgnContext* ugn_c
         }
         // Always reschedule next receive event
         uint64_t next_receive_time = event_time + RECEIVE_PERIOD;
-        uint64_t next_receive_event = ugn_encode_event_with_port(EVENT_TYPE_RECEIVE, 0);
-        if (!both_ugns){
+        uint64_t next_receive_event = ugn_encode_event(EVENT_TYPE_RECEIVE, 0);
+        if (!all_done){
             pq_insert(event_queue, next_receive_event, next_receive_time);
         }
     }
