@@ -13,6 +13,8 @@
   {"top": "scatterUnit1K",                 "stage": "hdl",   "cc_report": false},
   {"top": "switchExample",                 "stage": "hdl",   "cc_report": false},
 
+  {"top": "vexRiscvTcpTest",               "stage": "bitstream", "cc_report": false},
+
   {"top": "boardTestExtended",             "stage": "test",  "cc_report": false},
   {"top": "boardTestSimple",               "stage": "test",  "cc_report": false},
   {"top": "ddr4Test",                      "stage": "test",  "cc_report": false},
@@ -27,6 +29,5 @@
   {"top": "syncInSyncOut",                 "stage": "test",  "cc_report": false},
   {"top": "temperatureMonitor",            "stage": "test",  "cc_report": false},
   {"top": "transceiversUpTest",            "stage": "test",  "cc_report": false},
-  {"top": "vexRiscvTcpTest",               "stage": "test",  "cc_report": false},
   {"top": "vexRiscvTest",                  "stage": "test",  "cc_report": false}
 ]
