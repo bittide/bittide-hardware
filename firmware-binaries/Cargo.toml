@@ -35,6 +35,7 @@ members = [
   "hitl-tests/vexriscv-hello",
   "hitl-tests/clock-board",
 
+  "demos/boot",
   "demos/clock-control",
   "demos/soft-ugn-gppe",
   "demos/soft-ugn-mu",

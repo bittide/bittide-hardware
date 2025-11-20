@@ -14,7 +14,9 @@ import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Dut.SwitchDemo (
+  bootWhoAmId,
   ccWhoAmId,
+  memoryMapBoot,
   memoryMapCc,
   memoryMapMu,
   muWhoAmId,
@@ -71,7 +73,9 @@ import qualified Gdb
 import qualified System.Timeout.Extra as T
 
 data OcdInitData = OcdInitData
-  { muPort :: Int
+  { bootPort :: Int
+  -- ^ Boot CPU GDB port
+  , muPort :: Int
   -- ^ Management unit GDB port
   , ccPort :: Int
   -- ^ Clock control GDB port
@@ -257,7 +261,7 @@ initOpenOcd hitlDir (_, d) targetIndex = do
 
   let
     baseGdbPort = 3333
-    gdbPort = baseGdbPort + targetIndex * 2
+    gdbPort = baseGdbPort + targetIndex * 3
     tclPort = 6666 + targetIndex
     telnetPort = 4444 + targetIndex
     ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
@@ -268,7 +272,7 @@ initOpenOcd hitlDir (_, d) targetIndex = do
   putStrLn "Starting OpenOCD..."
   (ocd, ocdPh, ocdClean0) <-
     Ocd.startOpenOcdWithEnvAndArgs
-      ["-f", "sipeed.tcl", "-f", "ports.tcl", "-f", "vexriscv-2chain.tcl"]
+      ["-f", "sipeed.tcl", "-f", "ports.tcl", "-f", "vexriscv-3chain.tcl"]
       [ ("OPENOCD_STDOUT_LOG", ocdStdout)
       , ("OPENOCD_STDERR_LOG", ocdStderr)
       , ("USB_DEVICE", d.usbAdapterLocation)
@@ -282,15 +286,18 @@ initOpenOcd hitlDir (_, d) targetIndex = do
       $ readUntilLine ocd.stderrHandle Ocd.initCompleteMarker
 
   -- Parse the OpenOCD output to extract GDB ports based on JTAG IDs
-  -- Expect exactly 2 taps: MU (0x0514C001), CC (0x1514C001)
+  -- Expect exactly 3 taps: Boot (0x0514C001), MU (0x1514C001), CC (0x2514C001)
   case Ocd.parseJtagIdsAndGdbPorts output of
     Left err -> error $ "Failed to parse OpenOCD output: " <> err
     Right
-      [ (0x0_514C001, _, gdbPortMU)
-        , (0x1_514C001, _, gdbPortCC)
+      [ (0x0_514C001, _, gdbPortBoot)
+        , (0x1_514C001, _, gdbPortMU)
+        , (0x2_514C001, _, gdbPortCC)
         ] -> do
         putStrLn
-          $ "Found GDB ports - MU: "
+          $ "Found GDB ports - Boot: "
+          <> show gdbPortBoot
+          <> ", MU: "
           <> show gdbPortMU
           <> ", CC: "
           <> show gdbPortCC
@@ -299,7 +306,7 @@ initOpenOcd hitlDir (_, d) targetIndex = do
           ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
           ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
 
-        return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
+        return $ OcdInitData gdbPortBoot gdbPortMU gdbPortCC ocd ocdClean1
     Right other -> error $ "Unexpected JTAG configuration: " <> show other
 
 initGdb ::
@@ -517,120 +524,154 @@ driver testName targets = do
       return result
 
   forM_ targets (assertProbe "probe_test_start")
-  T.tryWithTimeout
-    T.PrintActionTime
-    "Wait for handshakes successes from all boards"
-    30_000_000
-    $ awaitHandshakes targets
   let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
+      bootPorts = (.bootPort) <$> initOcdsData
       muPorts = (.muPort) <$> initOcdsData
       ccPorts = (.ccPort) <$> initOcdsData
+      bootWhoAmIAddr = getPathAddress memoryMapBoot ["0", "WhoAmI", "identifier"]
       muWhoAmIAddr = getPathAddress memoryMapMu ["0", "WhoAmI", "identifier"]
       ccWhoAmIAddr = getPathAddress memoryMapCc ["0", "WhoAmI", "identifier"]
       -- When the `gdbCheck` fails, check these alternative addresses for debugging
+      bootAlt = ("BT", bootWhoAmIAddr)
       muAlt = ("MU", muWhoAmIAddr)
       ccAlt = ("CC", ccWhoAmIAddr)
 
-    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
-      liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-      gdbExitCodesCc <- mapM (gdbCheck ccWhoAmId ccWhoAmIAddr [muAlt]) ccGdbs
-      (gdbCountCc, gdbExitCodeCc) <-
-        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesCc
+    -- Flash the boot CPU
+    Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "boot") bootGdbs bootPorts targets
+      liftIO $ putStrLn "Checking for MMIO access to boot CPUs over GDB..."
+      gdbExitCodesBoot <- mapM (gdbCheck bootWhoAmId bootWhoAmIAddr [muAlt, ccAlt]) bootGdbs
+      (gdbCountBoot, gdbExitCodeBoot) <-
+        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesBoot
       liftIO
         $ putStrLn
-          [i|CC GDB testing passed on #{gdbCountCc} of #{L.length targets} targets|]
-      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+          [i|Boot GDB testing passed on #{gdbCountBoot} of #{L.length targets} targets|]
+      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) bootGdbs
 
-      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muPorts targets
-        liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        gdbExitCodesMu <- mapM (gdbCheck muWhoAmId muWhoAmIAddr [ccAlt]) muGdbs
-        (gdbCountMu, gdbExitCodeMu) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesMu
+      -- Start the boot CPUs and wait for them to finish clock configuration
+      let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
+      brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+        liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
-          $ putStrLn
-            [i|MU GDB testing passed on #{gdbCountMu} of #{L.length targets} targets|]
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+          $ T.tryWithTimeout
+            T.PrintActionTime
+            "Waiting for boot CPUs to finish clock configuration"
+            60_000_000
+          $ forConcurrently_ picocoms
+          $ \pico ->
+            waitForLine pico.stdoutHandle "[BT] Configured clocks"
 
-        let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+        -- Flash the clock control CPUs
+        Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+          liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
+          liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
+          gdbExitCodesCc <- mapM (gdbCheck ccWhoAmId ccWhoAmIAddr [bootAlt, muAlt]) ccGdbs
+          (gdbCountCc, gdbExitCodeCc) <-
+            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesCc
           liftIO
-            $ T.tryWithTimeoutOn T.PrintActionTime "Waiting for stable links" 60_000_000 goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "[CC] All links stable"
+            $ putStrLn
+              [i|CC GDB testing passed on #{gdbCountCc} of #{L.length targets} targets|]
+          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
-          liftIO $ mapConcurrently_ Gdb.continue muGdbs
-          liftIO
-            $ T.tryWithTimeoutOn
+          -- Flash the management unit CPUs
+          Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+            liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muPorts targets
+            liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
+            gdbExitCodesMu <- mapM (gdbCheck muWhoAmId muWhoAmIAddr [bootAlt, ccAlt]) muGdbs
+            (gdbCountMu, gdbExitCodeMu) <-
+              L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesMu
+            liftIO
+              $ putStrLn
+                [i|MU GDB testing passed on #{gdbCountMu} of #{L.length targets} targets|]
+            liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+
+            -- Wait for handshakes to complete and start the clock control CPUs
+            T.tryWithTimeout
               T.PrintActionTime
-              "Wait for elastic buffers to be centered"
-              60_000_000
-              goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "[MU] All elastic buffers centered"
+              "Wait for handshakes successes from all boards"
+              30_000_000
+              $ awaitHandshakes targets
+            liftIO $ mapConcurrently_ Gdb.continue ccGdbs
 
-          liftIO
-            $ T.tryWithTimeoutOn
-              T.PrintActionTime
-              "Waiting for captured UGNs"
-              (3 * 60_000_000)
-              goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "[MU] All UGNs captured"
+            -- Wait for clock control to stabilize
+            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+            liftIO
+              $ T.tryWithTimeoutOn T.PrintActionTime "Waiting for stable links" 60_000_000 goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[CC] All links stable"
 
-          liftIO $ putStrLn "Getting UGNs for all targets"
-          liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
-          ugnPairsTable <- liftIO $ zipWithConcurrently muGetUgns targets muGdbs
-          let
-            ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
-          liftIO $ do
-            putStrLn "Calculating IGNs for all targets"
-            Calc.printAllIgns ugnPairsTableV fpgaSetup
-            mapM_ print ugnPairsTableV
-          currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
-          let
-            startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-            metaChainConfig ::
-              Vec FpgaCount (Calc.DefaultGppeMetaPeConfig (Unsigned 64) FpgaCount 3 Padding)
-            metaChainConfig =
-              Calc.fullChainConfiguration gppeConfig fpgaSetup ugnPairsTableV startOffset
-            chainConfig :: Vec FpgaCount (Calc.CyclePeConfig (Unsigned 64) (Index (FpgaCount + 1)))
-            chainConfig =
-              Calc.metaPeConfigToCyclePeConfig (natToNum @MetacycleLength)
-                <$> metaChainConfig
-          liftIO $ do
-            putStrLn [i|Starting clock cycle: #{startOffset}|]
-            putStrLn [i|Cycles per write: #{natToNum @CyclesPerWrite :: Integer}|]
-            putStrLn [i|Cycles per group: #{natToNum @GroupCycles :: Integer}|]
-            putStrLn [i|Cycles per window: #{natToNum @WindowCycles :: Integer}|]
-            putStrLn [i|Cycles per active period: #{natToNum @ActiveCycles :: Integer}|]
-            putStrLn [i|Cycles of padding: #{natToNum @Padding :: Integer}|]
-            putStrLn [i|Cycles per metacycle: #{natToNum @MetacycleLength :: Integer}|]
-            putStrLn "Calculated the following configs for the switch processing elements:"
-            forM_ metaChainConfig print
-            forM_ chainConfig print
-          _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
-          liftIO $ do
-            let delayMicros = natToNum @StartDelay * 1_250_000
-            threadDelay delayMicros
-            putStrLn [i|Slept for: #{delayMicros}μs|]
-            newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
-            putStrLn [i|Clock is now: #{newCurrentTime}|]
+            -- Start the management unit CPUs and wait for elastic buffers to center
+            liftIO $ mapConcurrently_ Gdb.continue muGdbs
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Wait for elastic buffers to be centered"
+                60_000_000
+                goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[MU] All elastic buffers centered"
 
-          _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
+            -- Wait for UGN capture to complete
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Waiting for captured UGNs"
+                (3 * 60_000_000)
+                goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[MU] All UGNs captured"
 
-          bufferExit <- finalCheck muGdbs (toList chainConfig)
+            -- Use UGNs to calculate specialized 'calendar' configurations for each
+            -- switch processing element, and write them over GDB.
+            liftIO $ putStrLn "Getting UGNs for all targets"
+            liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
+            ugnPairsTable <- liftIO $ zipWithConcurrently muGetUgns targets muGdbs
+            let ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
+            liftIO $ do
+              putStrLn "Calculating IGNs for all targets"
+              Calc.printAllIgns ugnPairsTableV fpgaSetup
+              mapM_ print ugnPairsTableV
+            currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
+            let
+              startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
+              metaChainConfig ::
+                Vec FpgaCount (Calc.DefaultGppeMetaPeConfig (Unsigned 64) FpgaCount 3 Padding)
+              metaChainConfig =
+                Calc.fullChainConfiguration gppeConfig fpgaSetup ugnPairsTableV startOffset
+              chainConfig :: Vec FpgaCount (Calc.CyclePeConfig (Unsigned 64) (Index (FpgaCount + 1)))
+              chainConfig =
+                Calc.metaPeConfigToCyclePeConfig (natToNum @MetacycleLength)
+                  <$> metaChainConfig
+            liftIO $ do
+              putStrLn [i|Starting clock cycle: #{startOffset}|]
+              putStrLn [i|Cycles per write: #{natToNum @CyclesPerWrite :: Integer}|]
+              putStrLn [i|Cycles per group: #{natToNum @GroupCycles :: Integer}|]
+              putStrLn [i|Cycles per window: #{natToNum @WindowCycles :: Integer}|]
+              putStrLn [i|Cycles per active period: #{natToNum @ActiveCycles :: Integer}|]
+              putStrLn [i|Cycles of padding: #{natToNum @Padding :: Integer}|]
+              putStrLn [i|Cycles per metacycle: #{natToNum @MetacycleLength :: Integer}|]
+              putStrLn "Calculated the following configs for the switch processing elements:"
+              forM_ metaChainConfig print
+              forM_ chainConfig print
+            _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
+            liftIO $ do
+              let delayMicros = natToNum @StartDelay * 1_250_000
+              threadDelay delayMicros
+              putStrLn [i|Slept for: #{delayMicros}μs|]
+              newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+              putStrLn [i|Clock is now: #{newCurrentTime}|]
 
-          liftIO goDumpCcSamples
+            _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
-          pure
-            $ fromMaybe ExitSuccess
-            $ L.find (/= ExitSuccess) [gdbExitCodeCc, gdbExitCodeMu, bufferExit]
+            bufferExit <- finalCheck muGdbs (toList chainConfig)
+
+            liftIO goDumpCcSamples
+
+            pure
+              $ fromMaybe ExitSuccess
+              $ L.find (/= ExitSuccess) [gdbExitCodeBoot, gdbExitCodeCc, gdbExitCodeMu, bufferExit]

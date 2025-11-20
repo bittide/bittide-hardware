@@ -86,7 +86,11 @@ One may specifically run the software UGN demo test by making a
 ]
 ```
 
-At the time of writing, the clock control CPU stabilizes system. The driver running
+At the time of writing, the boot CPU is responsible for configuring the external
+clock boards. All other CPUs run in this 'Bittide' domain and so will not be running
+before the boot CPU finishes the boot process.
+
+The clock control CPU stabilizes system. The driver running
 on the host (`bittide-instances/src/Bittide/Instances/Hitl/Driver/SwitchDemo.hs`)
 then releases the reset of the management unit CPU. In turn, this CPU will center
 the elastic buffers and print out the UGNs captured using the hardware UGN capture
@@ -96,6 +100,7 @@ reset deasserted. It simply prints "Hello from C!".
 Tests are configured to run the following binaries on the system's CPUs:
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `switch-demo1-mu` (`firmware-binaries/demos/switch-demo1-mu`)
+- Boot CPU: `boot` (`firmware-binaries/demos/boot`)
 
 One may change this by either:
 1. Changing the driver function so that it loads different binaries onto the CPUs. This

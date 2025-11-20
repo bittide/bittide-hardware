@@ -8,6 +8,7 @@ module Bittide.Instances.Hitl.Dut.SwitchDemo where
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
+import Bittide.BootPe (BootPeInternalBusses, bootPe)
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
@@ -17,7 +18,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
-import Bittide.Jtag (jtagChain)
+import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (
   PeConfig (..),
   PrefixWidth,
@@ -62,7 +63,8 @@ type FifoSize = 5 -- = 2^5 = 32
 baud :: SNat Baud
 baud = SNat
 
-muWhoAmId, ccWhoAmId :: BitVector 32
+bootWhoAmId, ccWhoAmId, muWhoAmId :: BitVector 32
+bootWhoAmId = $(makeWhoAmIdTh "boot")
 muWhoAmId = $(makeWhoAmIdTh "mgmt")
 ccWhoAmId = $(makeWhoAmIdTh "swcc")
 
@@ -143,8 +145,8 @@ calendarConfig =
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-memoryMapMu, memoryMapCc :: MemoryMap
-(memoryMapMu, memoryMapCc) = (muMm, ccMm)
+memoryMapBoot, memoryMapCc, memoryMapMu :: MemoryMap
+(memoryMapBoot, memoryMapMu, memoryMapCc) = (bootMm, muMm, ccMm)
  where
   Circuit circuitFn =
     withBittideByteOrder
@@ -153,16 +155,18 @@ memoryMapMu, memoryMapCc :: MemoryMap
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
         (repeat resetGen)
-  ((SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _), _) =
+  ((SimOnly bootMm, SimOnly muMm, SimOnly ccMm, _, _, _, _, _, _, _), _) =
     circuitFn
       (
         ( ()
+        , ()
         , ()
         , pure (JtagIn 0 0 0)
         , pure maxBound
         , pure maxBound
         , pure maxBound
         , repeat (pure Nothing)
+        , pure low
         , pure low
         )
       ,
@@ -175,16 +179,29 @@ memoryMapMu, memoryMapCc :: MemoryMap
         , ()
         , ()
         , ()
-        , repeat $ ()
+        , repeat ()
+        , ()
+        , ((), (), ())
         )
       )
+
+bootConfig :: PeConfig BootPeInternalBusses
+bootConfig =
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv0
+    , initI = Undefined @(Div (64 * 1024) 4)
+    , initD = Undefined @(Div (32 * 1024) 4)
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
+    }
 
 muConfig :: SimpleManagementConfig 19
 muConfig =
   SimpleManagementConfig
     { peConfig =
         PeConfig
-          { cpu = Riscv32imc.vexRiscv0
+          { cpu = Riscv32imc.vexRiscv1
           , initI = Undefined @(Div (64 * 1024) 4)
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
@@ -201,7 +218,7 @@ ccConfig ::
   PeConfig (n + SwcccInternalBusses)
 ccConfig =
   PeConfig
-    { cpu = Riscv32imc.vexRiscv1
+    { cpu = Riscv32imc.vexRiscv2
     , initI = Undefined @(Div (64 * 1024) 4)
     , initD = Undefined @(Div (64 * 1024) 4)
     , iBusTimeout = d0
@@ -209,10 +226,11 @@ ccConfig =
     , includeIlaWb = False
     }
 
-uartLabels :: Vec 2 (Vec 2 Byte)
+uartLabels :: Vec 3 (Vec 2 Byte)
 uartLabels =
   fmap (fromIntegral . ord)
-    <$> ( $(listToVecTH "MU")
+    <$> ( $(listToVecTH "BT")
+            :> $(listToVecTH "MU")
             :> $(listToVecTH "CC")
             :> Nil
         )
@@ -226,14 +244,16 @@ switchDemoC ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "MU" ::: ConstBwd MM
+    ( "BOOT" ::: ConstBwd MM
     , "CC" ::: ConstBwd MM
+    , "MU" ::: ConstBwd MM
     , Jtag Bittide
     , CSignal Bittide (BitVector 64)
     , CSignal Bittide (BitVector LinkCount)
     , CSignal Bittide (BitVector LinkCount)
     , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     , CSignal Bittide Bit
+    , "MISO" ::: CSignal Basic125 Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
@@ -245,12 +265,24 @@ switchDemoC ::
     , "UART_TX" ::: CSignal Basic125 Bit
     , "SYNC_OUT" ::: CSignal Basic125 Bit
     , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
+    , "SPI_DONE" ::: CSignal Basic125 Bool
+    , ( "SCLK" ::: CSignal Basic125 Bool
+      , "MOSI" ::: CSignal Basic125 Bit
+      , "CSB" ::: CSignal Basic125 Bool
+      )
     )
 switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
-    [muJtag, ccJtag] <- jtagChain -< jtag
+  circuit $ \(bootMm, muMm, ccMm, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0, syncIn, miso) -> do
+    [bootJtag, muJtag, ccJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+
+    -- Start boot CPU
+    bootJtagRef <- unsafeJtagSynchronizer bitClk refClk -< bootJtag
+
+    (bootUartBytes0, spiDone, spiOut) <-
+      defaultRefClkRstEn (bootPe bootConfig bootWhoAmId) -< (bootMm, (bootJtagRef, miso))
+    -- Stop boot CPU
 
     -- Start management unit
     (Fwd lc, muWbAll) <-
@@ -295,6 +327,7 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
     (switchOut, calEntry) <-
       defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxs3, switchWb))
     ([Fwd peIn], txs) <- Vec.split -< switchOut
+    -- Stop internal links
 
     -- Start ASIC processing element
     -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
@@ -308,9 +341,11 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
     uartTxBytes <-
       defaultRefClkRstEn
         $ asciiDebugMux d1024 uartLabels
-        -< [muUartBytes, ccUartBytes]
+        -< [bootUartBytes1, muUartBytes, ccUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
+    bootUartBytes1 <-
+      dcFifoDf d5 refClk refRst refClk refRst -< bootUartBytes0
     muUartBytes <-
       dcFifoDf d5 bitClk bitRst refClk refRst -< muUartBytesBittide
     ccUartBytes <-
@@ -380,6 +415,8 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
          , uartTx
          , syncOut
          , ebStables
+         , spiDone
+         , spiOut
          )
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
