@@ -17,11 +17,9 @@ module Bittide.Instances.Hitl.SwitchDemo (
 ) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
-import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (
   sticky,
  )
@@ -30,7 +28,6 @@ import Bittide.Hitl (
   HitlTestGroup (..),
   paramForHwTargets,
  )
-import Bittide.Instances.Common (commonSpiConfig)
 import Bittide.Instances.Domains (
   Basic125,
   Bittide,
@@ -134,7 +131,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           :> "capture_fdi_dd"
           -- Important step 1 signals
           :> "dd_spiDone"
-          :> "dd_spiErr"
           -- Important step 2 signals
           :> "dd_handshakesDoneFree"
           -- Important step 3 signals
@@ -154,7 +150,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       spiDone
       captureFlag
       spiDone
-      spiErr
       (bundle transceivers.handshakesDoneFree)
       (bundle $ xpmCdcArraySingle bittideClk refClk <$> txStarts)
       (xpmCdcSingle bittideClk refClk allStable)
@@ -164,30 +159,12 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   captureFlag =
     riseEvery
       refClk
-      spiRst
+      refRst
       enableGen
       (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
-  -- Step 1, wait for SPI:
-  (_, _, spiState, spiOut) =
-    withClockResetEnable refClk spiRst enableGen
-      $ si539xSpi @Basic125 commonSpiConfig (SNat @(Microseconds 10)) (pure Nothing) miso
-
-  spiDone :: Signal Basic125 Bool
-  spiDone = dflipflop refClk $ (== Finished) <$> spiState
-
-  spiErr :: Signal Basic125 Bool
-  spiErr = dflipflop refClk $ isErr <$> spiState
-
   gthAllReset :: Reset Basic125
   gthAllReset = unsafeFromActiveLow spiDone
-
-  spiRst :: Reset Basic125
-  spiRst = refRst `orReset` unsafeFromActiveHigh spiErr
-
-  isErr :: ConfigState dom n -> Bool
-  isErr (Error _) = True
-  isErr _ = False
 
   transceivers :: Transceiver.Outputs LinkCount Bittide GthRx GthTxS Basic125
   transceivers =
@@ -265,9 +242,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   -- Connect everything together:
   transceiversFailedAfterUp :: Signal Basic125 Bool
   transceiversFailedAfterUp =
-    sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesDoneFree)
+    sticky refClk refRst (isFalling refClk refRst enableGen False handshakesDoneFree)
 
-  ( (_, _, jtagOut, _linkInBwd, _maskBwd, _l4ccBwd, _insBwd, _syncBwd)
+  ( (_, _, _, jtagOut, _linkInBwd, _maskBwd, _l4ccBwd, _insBwd, _syncBwd, _misoBwd)
     , ( callistoResult
         , switchDataOut
         , localCounter
@@ -278,6 +255,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , uartTx
         , syncOut
         , ebStables
+        , spiDone
+        , spiOut
         )
     ) =
       withBittideByteOrder
@@ -291,12 +270,14 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           (
             ( ()
             , ()
+            , ()
             , jtagIn
             , pure 0 -- link in
             , pure maxBound -- enable mask
             , linksSuitableForCc
             , transceivers.rxDatas
             , syncIn
+            , miso
             )
           ,
             ( pure ()
@@ -309,6 +290,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , pure ()
             , pure ()
             , repeat $ pure ()
+            , pure ()
+            , (pure (), pure (), pure ())
             )
           )
 

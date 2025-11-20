@@ -53,6 +53,7 @@ $( do
           , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
+          , ("SwitchDemoBoot", SwitchDemo.memoryMapBoot)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
           , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
           , ("SwitchDemoGppeMu", SwitchDemoGppe.memoryMapMu)
