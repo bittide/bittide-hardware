@@ -49,6 +49,7 @@ import qualified Data.List as L
 import qualified Language.Haskell.TH.Syntax as TH.Syntax
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
+import qualified Protocols.Vec as Vec
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -684,6 +685,7 @@ data TimeCmd = Capture | WaitForCmp
   deriving (Eq, Generic, Show, NFDataX, BitPack, BitPackC)
 deriveTypeDescription ''TimeCmd
 
+{- FOURMOLU_DISABLE -}
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.
 -}
@@ -704,13 +706,11 @@ timeWb = circuit $ \mmWb -> do
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdMeta, cmdWb1)
 
-{- FOURMOLU_DISABLE -}
   -- Registers
   Fwd (_, cmdActivity) <- MM.registerWbI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
   MM.registerWbI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
   Fwd (scratch, _) <- MM.registerWbI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
   MM.registerWbI_ freqCfg freq -< (freqWb, Fwd noWrite)
-{- FOURMOLU_ ENABLE -}
 
   -- Local circuit dependent declarations
   let
@@ -746,6 +746,7 @@ timeWb = circuit $ \mmWb -> do
       { MM.access = MM.ReadOnly
       , MM.description = "Frequency of the clock domain"
       }
+{- FOURMOLU_ENABLE -}
 
 andAck ::
   Signal dom Bool ->
@@ -757,6 +758,73 @@ andAck extraAck = Circuit go
   go (m2s, s2m0) = (s2m1, m2s)
    where
     s2m1 = (\wb ack -> wb{acknowledge = wb.acknowledge && ack}) <$> s2m0 <*> extraAck
+
+{- | Multi-manager, single subordinate interconnect. It is currently not configurable
+in its priority which means managers might starve. It will always prefer the
+manager with the lowest index.
+
+XXX: This arbiter does not support @LOCK@ cycles.
+-}
+arbiter ::
+  forall dom addrW a n.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , BitPack a
+  , NFDataX a
+  , KnownNat n
+  ) =>
+  Circuit
+    (Vec n (Wishbone dom 'Standard addrW a))
+    (Wishbone dom 'Standard addrW a)
+arbiter = Circuit goArbitrate0
+ where
+  -- Bundler / unbundler for 'goArbitrate1'
+  goArbitrate0 (bundle -> m2ss, s2m) = (unbundle s2ms, m2s)
+   where
+    (s2ms, m2s) = mealyB goArbitrate1 (Nothing @(Index n)) (m2ss, s2m)
+
+  -- Actual worker
+  goArbitrate1 current (m2ss, s2m) = (next, (s2ms, m2s))
+   where
+    candidate = findIndex (.busCycle) m2ss
+    selected = maybe candidate Just current
+    m2s = maybe emptyWishboneM2S (m2ss !!) selected
+
+    -- Always route the read data from the subordinate to all managers to prevent
+    -- muxing. Managers will only look at the read data when they get an
+    -- acknowledgement.
+    emptyS2Ms = repeat (emptyWishboneS2M @a){readData = s2m.readData}
+    s2ms = case selected of
+      Nothing -> emptyS2Ms
+      Just idx -> replace idx s2m emptyS2Ms
+
+    next =
+      case selected of
+        Just idx | not s2m.acknowledge -> Just idx
+        _ -> candidate
+
+-- | Like 'arbiter', but also handles memory maps.
+arbiterMm ::
+  forall dom addrW a n.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , BitPack a
+  , NFDataX a
+  , KnownNat n
+  ) =>
+  Circuit
+    ( Vec n (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW a)
+    )
+    ( MM.ConstBwd MM.MM
+    , Wishbone dom 'Standard addrW a
+    )
+arbiterMm = circuit $ \mmWbs -> do
+  (mms, wbs) <- Vec.unzip -< mmWbs
+  mm <- Circuit goDuplicate -< mms
+  wb <- arbiter -< wbs
+  idC -< (mm, wb)
+ where
+  goDuplicate (_, mm) = (repeat mm, ())
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit
@@ -785,7 +853,7 @@ readDnaPortE2Wb simDna = circuit $ \wb -> do
   idC -< Fwd (fromMaybe 0 <$> maybeDna)
  where
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
-  config = (registerConfig "maybe_dna"){access=MM.ReadOnly}
+  config = (registerConfig "maybe_dna"){access = MM.ReadOnly}
 
 {- | A Wishbone worker circuit that exposes the DNA value from an external DnaPortE2.
 Only one DnaPortE2 can be instantiated in a design, so this component takes in the
@@ -811,7 +879,7 @@ readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
   [maybeDnaWb] <- MM.deviceWb "Dna" -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
  where
-  config = (registerConfig "maybe_dna"){access=MM.ReadOnly}
+  config = (registerConfig "maybe_dna"){access = MM.ReadOnly}
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'
@@ -884,7 +952,7 @@ whoAmIC whoAmI = circuit $ \wb -> do
   [idWb] <- MM.deviceWb "WhoAmI" -< wb
   registerWbI_ config whoAmI -< (idWb, Fwd (pure Nothing))
  where
-  config = (registerConfig "identifier"){access=ReadOnly}
+  config = (registerConfig "identifier"){access = ReadOnly}
 
 {- | Constructs a @BitVector 32@ from a @String@, which must be exactly 4 characters
 long and consist only of printable ASCII characters.
@@ -894,12 +962,12 @@ makeWhoAmId str =
   if L.length str == 4 && all (\c -> isAscii c && isPrint c) str
     then wordForm
     else
-      error $
-        "whoAmId strings must be four characters long! Input '"
-          <> str
-          <> "' is "
-          <> show (L.length str)
-          <> " characters."
+      error
+        $ "whoAmId strings must be four characters long! Input '"
+        <> str
+        <> "' is "
+        <> show (L.length str)
+        <> " characters."
  where
   strVec :: Vec 4 Char
   strVec = (\(idx :: Index 4) -> str L.!! (fromIntegral idx)) <$> indicesI
@@ -919,6 +987,7 @@ data WishboneRequest addrW nBytes
   = ReadRequest (BitVector addrW) (BitVector nBytes)
   | WriteRequest (BitVector addrW) (BitVector nBytes) (Vec nBytes Byte)
   deriving (Generic, NFData, NFDataX, Show, ShowX, Eq)
+
 deriving instance
   (KnownNat nBytes, KnownNat addrW) => BitPack (WishboneRequest addrW nBytes)
 
@@ -932,8 +1001,9 @@ data WishboneResponse nBytes
 
 deriving instance (KnownNat nBytes) => BitPack (WishboneResponse nBytes)
 
--- | Receives a `Df` stream of `WishboneRequest` and acts as a Wishbone manager.
--- All responses to the master will be forwarded as a `Df` stream of `WishboneResponse`.
+{- | Receives a `Df` stream of `WishboneRequest` and acts as a Wishbone manager.
+All responses to the master will be forwarded as a `Df` stream of `WishboneResponse`.
+-}
 dfWishboneMaster ::
   forall dom addrW nBytes.
   ( HiddenClockResetEnable dom

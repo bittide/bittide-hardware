@@ -29,6 +29,7 @@ import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
 import qualified Tests.Wishbone
+import qualified Tests.Wishbone.Arbiter
 
 tests :: TestTree
 tests =
@@ -52,6 +53,7 @@ tests =
     , Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.WordAlign.tests
     , Tests.Wishbone.tests
+    , Tests.Wishbone.Arbiter.tests
     , Tests.Axi4.Generators.tests
     , Tests.Axi4.Properties.tests
     ]
