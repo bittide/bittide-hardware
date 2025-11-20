@@ -21,7 +21,7 @@ to manager.
 -}
 delayWishboneC ::
   forall dom aw a.
-  (HiddenClockResetEnable dom, 1 <= DomainPeriod dom, KnownNat aw, NFDataX a, BitPack a) =>
+  (HiddenClockResetEnable dom, KnownNat aw, NFDataX a, BitPack a) =>
   Circuit (Wishbone dom 'Standard aw a) (Wishbone dom 'Standard aw a)
 delayWishboneC = Circuit go
  where

@@ -303,7 +303,10 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
     )
    where
     wbAddr = unpack $ resize addr :: Index depth
-    addrLegal = addr < (natToNum @depth)
+    addrLegal =
+      case compareSNat (SNat @((2 ^ aw) - 1)) (SNat @depth) of
+        SNatLE -> True
+        _ -> addr < natToNum @depth
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
