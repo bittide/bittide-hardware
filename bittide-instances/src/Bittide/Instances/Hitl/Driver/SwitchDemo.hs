@@ -255,10 +255,8 @@ initOpenOcd hitlDir (_, d) targetIndex = do
   let
     gdbPortMU = 3333 + targetIndex * 2
     gdbPortCC = gdbPortMU + 1
-    tclPortMU = 6666 + targetIndex * 2
-    tclPortCC = tclPortMU + 1
-    telnetPortMU = 4444 + targetIndex * 2
-    telnetPortCC = telnetPortMU + 1
+    tclPort = 6666 + targetIndex
+    telnetPort = 4444 + targetIndex
     ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
     ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
   putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
@@ -273,10 +271,8 @@ initOpenOcd hitlDir (_, d) targetIndex = do
       , ("USB_DEVICE", d.usbAdapterLocation)
       , ("DEV_A_GDB", show gdbPortCC)
       , ("DEV_B_GDB", show gdbPortMU)
-      , ("DEV_A_TCL", show tclPortCC)
-      , ("DEV_B_TCL", show tclPortMU)
-      , ("DEV_A_TEL", show telnetPortCC)
-      , ("DEV_B_TEL", show telnetPortMU)
+      , ("TCL_PORT", show tclPort)
+      , ("TEL_PORT", show telnetPort)
       ]
   hSetBuffering ocd.stderrHandle LineBuffering
   T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
