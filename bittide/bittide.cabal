@@ -242,6 +242,7 @@ library
     Clash.Explicit.Reset.Extra
     Clash.Functor.Extra
     Clash.Protocols.Axi4.Extra
+    Clash.Protocols.Wishbone.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     Project.FilePath
@@ -285,6 +286,7 @@ test-suite unittests
     Tests.Axi4.Properties
     Tests.Axi4.Types
     Tests.Calendar
+    Tests.Clash.Protocols.Wishbone.Extra
     Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
     Tests.Counter
