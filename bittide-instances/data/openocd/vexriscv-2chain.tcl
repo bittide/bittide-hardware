@@ -11,27 +11,15 @@ if { $user_gdb_port_b == "" } {
   error "Required environment variable 'DEV_B_GDB' not set."
 }
 
-set user_tcl_port_a [env DEV_A_TCL]
-if { $user_tcl_port_a == "" } {
-  error "Required environment variable 'DEV_A_TCL' not set."
+set user_tcl_port [env TCL_PORT]
+if { $user_tcl_port == "" } {
+  error "Required environment variable 'TCL_PORT' not set."
 }
 
-set user_tcl_port_b [env DEV_B_TCL]
-if { $user_tcl_port_b == "" } {
-  error "Required environment variable 'DEV_B_TCL' not set."
+set user_tel_port [env TEL_PORT]
+if { $user_tel_port == "" } {
+  error "Required environment variable 'TEL_PORT' not set."
 }
-
-set user_tel_port_a [env DEV_A_TEL]
-if { $user_tel_port_a == "" } {
-  error "Required environment variable 'DEV_A_TEL' not set."
-}
-
-set user_tel_port_b [env DEV_B_TEL]
-if { $user_tel_port_b == "" } {
-  error "Required environment variable 'DEV_B_TEL' not set."
-}
-
-set git_top_level [string trim [exec git rev-parse --show-toplevel]]
 
 set _ENDIAN little
 set _TAP_TYPE 1234
@@ -46,16 +34,16 @@ if { [info exists CPUTAPID] } {
 
 set _CHIPNAME riscv
 
+# Define in physical chain order (these determine scan order)
 jtag newtap $_CHIPNAME chain0 -expected-id $_CPUTAPID -irlen 5
 jtag newtap $_CHIPNAME chain1 -expected-id $_CPUTAPID -irlen 5
 
-target create $_CHIPNAME.cpu1 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain1 -gdb-port $user_gdb_port_a
-tcl_port $user_tcl_port_a
-telnet_port $user_tel_port_a
+# Create targets linked to each TAP
+target create $_CHIPNAME.cpu0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain0 -gdb-port $user_gdb_port_a
+target create $_CHIPNAME.cpu1 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain1 -gdb-port $user_gdb_port_b
 
-target create $_CHIPNAME.cpu0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain0 -gdb-port $user_gdb_port_b
-tcl_port $user_tcl_port_b
-telnet_port $user_tel_port_b
+tcl port $user_tcl_port
+telnet port $user_tel_port
 
 poll_period 50
 
