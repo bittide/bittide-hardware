@@ -484,47 +484,47 @@ driver testName targets = do
         $ putStrLn
           [i|Boot GDB testing passed on #{gdbCountBoot} of #{L.length targets} targets|]
       liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) bootGdbs
-
-      Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
-        liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-        gdbExitCodesCc <- mapM (checkWhoAmI memoryMapCc "swcc") ccGdbs
-        (gdbCountCc, gdbExitCodeCc) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesCc
+      -- First start the boot CPUs and wait for them to finish clock configuration
+      let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
+      brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+        liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
-          $ putStrLn
-            [i|CC GDB testing passed on #{gdbCountCc} of #{L.length targets} targets|]
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+          $ T.tryWithTimeout
+            T.PrintActionTime
+            "Waiting for boot CPUs to finish clock configuration"
+            60_000_000
+          $ forConcurrently_ picocoms
+          $ \pico ->
+            waitForLine pico.stdoutHandle "[BT] Configured clocks"
 
-        Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-          liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muPorts targets
-          liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-          gdbExitCodesMu <- mapM (checkWhoAmI memoryMapMu "mgmt") muGdbs
-          (gdbCountMu, gdbExitCodeMu) <-
-            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesMu
+        Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+          liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
+          liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
+          gdbExitCodesCc <- mapM (checkWhoAmI memoryMapCc "swcc") ccGdbs
+          (gdbCountCc, gdbExitCodeCc) <-
+            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesCc
           liftIO
             $ putStrLn
-              [i|MU GDB testing passed on #{gdbCountMu} of #{L.length targets} targets|]
-          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+              [i|CC GDB testing passed on #{gdbCountCc} of #{L.length targets} targets|]
+          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
-          let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-          brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-            liftIO $ mapConcurrently_ Gdb.continue bootGdbs
+          Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+            liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muPorts targets
+            liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
+            gdbExitCodesMu <- mapM (checkWhoAmI memoryMapMu "mgmt") muGdbs
+            (gdbCountMu, gdbExitCodeMu) <-
+              L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesMu
             liftIO
-              $ T.tryWithTimeoutOn
-                T.PrintActionTime
-                "Waiting for boot CPUs to finish clock configuration"
-                60_000_000
-                goDumpCcSamples
-              $ forConcurrently_ picocoms
-              $ \pico ->
-                waitForLine pico.stdoutHandle "[BT] Configured clocks"
+              $ putStrLn
+                [i|MU GDB testing passed on #{gdbCountMu} of #{L.length targets} targets|]
+            liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+
             T.tryWithTimeout
               T.PrintActionTime
               "Wait for handshakes successes from all boards"
               30_000_000
               $ awaitHandshakes targets
+            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue ccGdbs
             liftIO
               $ T.tryWithTimeoutOn T.PrintActionTime "Waiting for stable links" 60_000_000 goDumpCcSamples
