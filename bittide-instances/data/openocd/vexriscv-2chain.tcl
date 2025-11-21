@@ -46,14 +46,17 @@ if { [info exists CPUTAPID] } {
 
 set _CHIPNAME riscv
 
+# Define in physical chain order (these determine scan order)
 jtag newtap $_CHIPNAME chain0 -expected-id $_CPUTAPID -irlen 5
 jtag newtap $_CHIPNAME chain1 -expected-id $_CPUTAPID -irlen 5
 
-target create $_CHIPNAME.cpu1 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain1 -gdb-port $user_gdb_port_a
+# Create targets linked to each TAP
+target create $_CHIPNAME.cpu0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain0 -gdb-port $user_gdb_port_a
+target create $_CHIPNAME.cpu1 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain1 -gdb-port $user_gdb_port_b
+
 tcl_port $user_tcl_port_a
 telnet_port $user_tel_port_a
 
-target create $_CHIPNAME.cpu0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain0 -gdb-port $user_gdb_port_b
 tcl_port $user_tcl_port_b
 telnet_port $user_tel_port_b
 

@@ -271,12 +271,12 @@ initOpenOcd hitlDir (_, d) targetIndex = do
       [ ("OPENOCD_STDOUT_LOG", ocdStdout)
       , ("OPENOCD_STDERR_LOG", ocdStderr)
       , ("USB_DEVICE", d.usbAdapterLocation)
-      , ("DEV_A_GDB", show gdbPortMU)
-      , ("DEV_B_GDB", show gdbPortCC)
-      , ("DEV_A_TCL", show tclPortMU)
-      , ("DEV_B_TCL", show tclPortCC)
-      , ("DEV_A_TEL", show telnetPortMU)
-      , ("DEV_B_TEL", show telnetPortCC)
+      , ("DEV_A_GDB", show gdbPortCC)
+      , ("DEV_B_GDB", show gdbPortMU)
+      , ("DEV_A_TCL", show tclPortCC)
+      , ("DEV_B_TCL", show tclPortMU)
+      , ("DEV_A_TEL", show telnetPortCC)
+      , ("DEV_B_TEL", show telnetPortMU)
       ]
   hSetBuffering ocd.stderrHandle LineBuffering
   T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
