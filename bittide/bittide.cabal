@@ -155,6 +155,7 @@ library
     array,
     base,
     binary,
+    bittide-cpus,
     bittide-extra,
     bytestring,
     cassava,
@@ -251,6 +252,9 @@ library
   other-modules:
     Paths_bittide
 
+  autogen-modules:
+    Paths_bittide
+
 test-suite doctests
   type: exitcode-stdio-1.0
   default-language: Haskell2010
@@ -264,7 +268,7 @@ test-suite doctests
   build-depends:
     base,
     bittide,
-    doctest-parallel >=0.3.0.1 && <0.4,
+    doctest-parallel >=0.3.0.1,
     filepath,
     word8,
 

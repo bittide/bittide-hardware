@@ -211,5 +211,5 @@ test-suite doctests
   build-depends:
     base,
     bittide-experiments,
-    doctest-parallel >=0.3.0.1 && <0.4,
+    doctest-parallel >=0.3.0.1,
     word8,

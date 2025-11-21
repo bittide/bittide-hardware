@@ -208,5 +208,5 @@ test-suite doctests
   build-depends:
     base,
     bittide-extra,
-    doctest-parallel >=0.3.0.1 && <0.4,
+    doctest-parallel >=0.3.0.1,
     filepath,
