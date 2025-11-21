@@ -19,7 +19,6 @@ import Clash.Debug
 import Clash.Functor.Extra ((<<$>>))
 import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
-import Data.Bifunctor
 import Data.Bool (bool)
 import Data.Char (isAscii, isPrint)
 import Data.Constraint.Nat.Extra
@@ -372,7 +371,7 @@ uartDf ::
 uartDf baud = Circuit go
  where
   go ((request, rxBit), _) =
-    ( (Ack <$> ack, pure ())
+    ( (Ack <$> ack, ())
     , (received, txBit)
     )
    where
@@ -488,62 +487,59 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
       ( Df dom (BitVector 8)
       , CSignal dom (Bool, Bool) -- (rxEmpty, txFull)
       )
-  wbToDf =
-    Circuit
-      $ bimap unbundle unbundle
-      . unbundle
-      . fmap go
-      . bundle
-      . bimap bundle bundle
+  wbToDf = Circuit go0
    where
-    go ((WishboneM2S{..}, rxData, (.fifoFull) -> txFull), (Ack txAck, _))
+    go0 ((m2s, dfDataIn, fifoMeta), (ackIn, _)) =
+      ((s2m, ack, ()), (dfOut, status))
+     where
+      (s2m, ack, dfOut, status) = unbundle (fmap go1 (bundle (m2s, dfDataIn, fifoMeta, ackIn)))
+
+    go1 (WishboneM2S{..}, rxData, (.fifoFull) -> txFull, Ack txAck)
       -- not in cycle
       | not (busCycle && strobe) =
-          ( ((emptyWishboneS2M @()){readData = invalidReq}, Ack False, ())
-          , (Nothing, status)
+          ( (emptyWishboneS2M @()){readData = invalidReq}
+          , Ack False
+          , Nothing
+          , status
           )
       -- illegal addr
       | not addrLegal =
-          ( ((emptyWishboneS2M @()){err = True, readData = invalidReq}, Ack False, ())
-          , (Nothing, status)
+          ( (emptyWishboneS2M @()){err = True, readData = invalidReq}
+          , Ack False
+          , Nothing
+          , status
           )
       -- read at 0
       | not writeEnable && internalAddr == 0 =
-          (
-            ( (emptyWishboneS2M @())
-                { acknowledge = True
-                , readData = resize $ fromMaybe 0 rxData
-                }
-            , Ack True
-            , ()
-            )
-          , (Nothing, status)
+          ( (emptyWishboneS2M @())
+              { acknowledge = True
+              , readData = resize $ fromMaybe 0 rxData
+              }
+          , Ack True
+          , Nothing
+          , status
           )
       -- write at 0
       | writeEnable && internalAddr == 0 =
-          (
-            ( (emptyWishboneS2M @())
-                { acknowledge = txAck
-                , readData = invalidReq
-                }
-            , Ack False
-            , ()
-            )
-          , (Just $ resize writeData, status)
+          ( (emptyWishboneS2M @())
+              { acknowledge = txAck
+              , readData = invalidReq
+              }
+          , Ack False
+          , Just $ resize writeData
+          , status
           )
       -- read at 1
       | not writeEnable && internalAddr == 1 =
-          (
-            ( (emptyWishboneS2M @())
-                { acknowledge = True
-                , readData = resize $ pack status
-                }
-            , Ack False
-            , ()
-            )
-          , (Nothing, status)
+          ( (emptyWishboneS2M @())
+              { acknowledge = True
+              , readData = resize $ pack status
+              }
+          , Ack False
+          , Nothing
+          , status
           )
-      | otherwise = ((emptyWishboneS2M{err = True}, Ack False, ()), (Nothing, status))
+      | otherwise = (emptyWishboneS2M{err = True}, Ack False, Nothing, status)
      where
       internalAddr = bitCoerce $ resize addr :: Index 2
       addrLegal = addr <= 1
@@ -1017,10 +1013,15 @@ dfWishboneMaster ::
     )
 dfWishboneMaster =
   forceResetSanityGeneric |> case cancelMulDiv @nBytes @8 of
-    Dict -> Circuit (second unbundle . unbundle . mealy go initState . bundle . second bundle)
+    Dict -> Circuit go0
      where
       initState = Nothing
-      go state ~(reqFwd, ~(wbS2M, Ack respBwd)) = (nextState, (Ack reqBwd, (wbM2S, respFwd)))
+
+      go0 (req, (s2m, ackIn)) = (ackOut, (m2s, resp))
+       where
+        (ackOut, m2s, resp) = mealyB go1 initState (req, s2m, ackIn)
+
+      go1 state ~(reqFwd, wbS2M, Ack respBwd) = (nextState, (Ack reqBwd, wbM2S, respFwd))
        where
         emptyM2S :: WishboneM2S addrW nBytes (Vec nBytes Byte)
         emptyM2S =

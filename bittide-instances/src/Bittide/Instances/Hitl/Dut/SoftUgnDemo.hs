@@ -116,12 +116,12 @@ memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
         , pure low
         )
       ,
-        ( pure ()
-        , repeat (pure ())
-        , pure ()
-        , pure ()
-        , pure ()
-        , repeat (pure ())
+        ( ()
+        , repeat ()
+        , ()
+        , ()
+        , ()
+        , repeat ()
         )
       )
 

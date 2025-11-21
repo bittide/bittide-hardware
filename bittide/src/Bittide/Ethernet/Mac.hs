@@ -61,7 +61,7 @@ macStatusInterfaceWb ::
 macStatusInterfaceWb SNat = case (cancelMulDiv @nBytes @8) of
   Dict -> withMemoryMap mm $ Circuit circuitGo
    where
-    circuitGo ((wbM2S, macStatus), _) = ((wbS2M, pure ()), ())
+    circuitGo ((wbM2S, macStatus), _) = ((wbS2M, ()), ())
      where
       (_, wbS2M) = unbundle $ wbToVec <$> counts <*> wbM2S
       pulses = fmap bitCoerce macStatus :: Signal dom (Vec (BitSize EthMacStatus) Bool)
@@ -145,7 +145,7 @@ ethMac1GFifoC
   txClkEna
   rxClkEna = Circuit go
    where
-    go ((axiTxM2S, gmiiRx), (axiRxS2M, _, _)) = ((axiTxS2M, pure ()), (axiRxM2S, gmiiTx, ethStatus))
+    go ((axiTxM2S, gmiiRx), (axiRxS2M, _, _)) = ((axiTxS2M, ()), (axiRxM2S, gmiiTx, ethStatus))
      where
       (axiTxS2M, axiRxM2S, gmiiTx, ethStatus) =
         ethMac1GFifo

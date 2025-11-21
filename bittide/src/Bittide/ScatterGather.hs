@@ -367,7 +367,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat _) = case (cancelMulDiv @nBytesCal
               (WishboneM2S awCal nBytesCal (BitVector (nBytesCal * 8)))
           )
         )
-      , Signal dom ()
+      , ()
       ) ->
       ( ( (SimOnly MemoryMap, Signal dom (WishboneS2M (BitVector 32)))
         , ( SimOnly MemoryMap

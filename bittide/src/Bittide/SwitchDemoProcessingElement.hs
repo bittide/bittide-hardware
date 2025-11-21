@@ -181,7 +181,7 @@ switchDemoPeWb ::
     )
 switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
  where
-  go ((localCounter, wbM2S, dna, linkIn), _) = ((pure (), wbS2M, pure (), pure ()), (linkOut, state))
+  go ((localCounter, wbM2S, dna, linkIn), _) = (((), wbS2M, (), ()), (linkOut, state))
    where
     readVec :: Vec (8 + bufferSize * 3 * 2 + 2) (Signal dom (BitVector 32))
     readVec =

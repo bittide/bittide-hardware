@@ -390,7 +390,7 @@ registerWbDf clk rst regConfig resetValue =
 
               (unbundle -> (busActivity, s2m)) = update <$> m2s0 <*> coerce ack
              in
-              ( (((), zeroWidthRegisterMeta @a Proxy regConfig, s2m), pure ())
+              ( (((), zeroWidthRegisterMeta @a Proxy regConfig, s2m), ())
               , (pure resetValue, busActivity)
               )
  where
@@ -422,15 +422,15 @@ registerWbDf clk rst regConfig resetValue =
     ( ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize (Bytes wordSize)))
       , Signal dom (Maybe a)
       )
-    , (Signal dom (), Signal dom Ack)
+    , ((), Signal dom Ack)
     ) ->
     ( ( ((), RegisterMeta aw, Signal dom (WishboneS2M (Bytes wordSize)))
-      , Signal dom ()
+      , ()
       )
     , (Signal dom a, Signal dom (Maybe (BusActivity a)))
     )
   go (((offset, _, wbM2S), aIn0), (_, coerce -> dfAck)) =
-    ((((), reg, wbS2M2), pure ()), (aOut, busActivity))
+    ((((), reg, wbS2M2), ()), (aOut, busActivity))
    where
     relativeOffset = goRelativeOffset . addr <$> wbM2S
     aOut = unpackC <$> packedOut

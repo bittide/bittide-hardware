@@ -11,7 +11,6 @@ import Bittide.Instances.Domains (Basic200)
 import Bittide.Instances.Hacks (reducePins)
 import Bittide.SharedTypes
 import Bittide.Switch
-import Data.Bifunctor
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.MemoryMap
@@ -66,13 +65,10 @@ switchExampleReducedPins ::
   Signal Basic200 Bit ->
   Signal Basic200 Bit
 switchExampleReducedPins clk rst =
-  withClock clk
-    $ reducePins
-      ( bundle
-          . second bundle
-          . bimap (bundle . first bundle) (first bundle)
-          . toSignals (unMemmap $ switchExample clk rst)
-          . bimap (first unbundle . unbundle) (first unbundle . unbundle)
-          . unbundle
-      )
+  withClock clk $ reducePins dut
+ where
+  dut (unbundle -> (unbundle -> linksIn, m2s)) = bundle (s2m, bundle linksOut, sels)
+   where
+    ((_, s2m), (linksOut, sels)) =
+      toSignals (unMemmap $ switchExample clk rst) ((linksIn, m2s), (repeat (), ()))
 {-# OPAQUE switchExampleReducedPins #-}

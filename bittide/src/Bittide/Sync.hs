@@ -80,7 +80,7 @@ syncInCounterC ::
     )
 syncInCounterC clk rst = Circuit go
  where
-  go (syncIn, _) = (pure (), (count, cyclesSince))
+  go (syncIn, _) = ((), (count, cyclesSince))
    where
     syncInFiltered =
       unsafeToActiveLow

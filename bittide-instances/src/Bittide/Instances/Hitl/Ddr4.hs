@@ -160,7 +160,7 @@ writeResponseFsm SNat clk rst = Circuit go
  where
   -- ACK continuously
   go ::
-    (Signal dom (S2M_WriteResponse ConfB ()), Signal dom ()) ->
+    (Signal dom (S2M_WriteResponse ConfB ()), ()) ->
     (Signal dom M2S_WriteResponse, Signal dom Bool)
   go (s2m, _) = (m2s, done)
    where
@@ -187,8 +187,8 @@ readAddressFsm SNat SNat clk rst chunk = Circuit go
   -- See `mkAddress` for which addresses are generated
   go ::
     (Signal dom Bool, Signal dom S2M_ReadAddress) ->
-    (Signal dom (), Signal dom (M2S_ReadAddress ConfAR ()))
-  go (start, s2m) = (pure (), m2s)
+    ((), Signal dom (M2S_ReadAddress ConfAR ()))
+  go (start, s2m) = ((), m2s)
    where
     busy = fmap not done .&&. unsafeToActiveLow rst .&&. start
     continue = fmap (._arready) s2m .&&. busy
@@ -230,7 +230,7 @@ readDataFsm SNat clk rst = Circuit go
   -- Check 0, 1, 2, ...
   go ::
     ( Signal dom (S2M_ReadData ConfR () (BitVector C_S_AXI_DATA_WIDTH))
-    , (Signal dom (), Signal dom ())
+    , ((), ())
     ) ->
     ( Signal dom M2S_ReadData
     , (Signal dom TestState, Signal dom DebugInfo)
@@ -470,8 +470,8 @@ ddr4Test refClkDiff c0_ddr4_dm_dbi_n c0_ddr4_dq c0_ddr4_dqs_t c0_ddr4_dqs_c =
           ( s2m_wa
           , s2m_wd
           , s2m_ra
-          , pure ()
-          , pure ()
+          , ()
+          , ()
           )
         )
 

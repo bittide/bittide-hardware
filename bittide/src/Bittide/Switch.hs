@@ -49,7 +49,7 @@ switchC ::
 switchC conf = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
    where
-    go (((), (streamsIn, calM2S)), _) = ((memMap, (repeat $ pure (), calS2M)), (streamsOut, cal))
+    go (((), (streamsIn, calM2S)), _) = ((memMap, (repeat (), calS2M)), (streamsOut, cal))
      where
       (streamsOut, calS2M, cal, memMap) = switch conf calM2S streamsIn
 
