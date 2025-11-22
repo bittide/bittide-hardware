@@ -53,7 +53,7 @@ sim :: IO ()
 sim =
   uartIO @Basic125B stdin stdout baud $ Circuit go
  where
-  go (uartRx, _) = (pure (), uartTx)
+  go (uartRx, _) = ((), uartTx)
    where
     (_, uartTx, _, _) =
       vexRiscEthernet
@@ -240,7 +240,7 @@ vexRiscEthernet sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
 
   ( ((SimOnly _mm, (_, _, jtagOut)))
     , (uartOut, gmiiOut, gpioOut)
-    ) = circFn (((), (uartIn, bridgeGmiiRx, jtagin)), (pure (), pure (), pure ()))
+    ) = circFn (((), (uartIn, bridgeGmiiRx, jtagin)), ((), (), ()))
 
 {- | Take a synchronous reset from one domain and convert it to an asynchronous reset.
 This inserts a register in the source domain to prevent glitching and then converts the domain.

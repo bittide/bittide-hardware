@@ -20,7 +20,7 @@ replicateCSignalI ::
   forall dom a n.
   (KnownNat n) =>
   Circuit (CSignal dom a) (Vec n (CSignal dom a))
-replicateCSignalI = applyC repeat (const $ pure ())
+replicateCSignalI = applyC repeat (const $ ())
 
 -- | Map a function over a 'Circuit' of 'CSignal's
 cSignalMap ::
@@ -28,4 +28,4 @@ cSignalMap ::
   (KnownDomain dom) =>
   (a -> b) ->
   Circuit (CSignal dom a) (CSignal dom b)
-cSignalMap fn = applyC (fmap fn) (const $ pure ())
+cSignalMap fn = applyC (fmap fn) (const $ ())

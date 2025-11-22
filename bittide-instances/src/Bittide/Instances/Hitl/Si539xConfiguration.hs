@@ -94,7 +94,7 @@ si539xConfigTest freeClkDiff skyClkDiff jtagIn miso _uartRx =
               -< (uartOutBytes, Fwd (pure 0))
           idC -< (uartTx, spiOut)
       )
-      ((jtagIn, miso), (pure (), (pure (), pure (), pure ())))
+      ((jtagIn, miso), ((), ((), (), ())))
 
 dut ::
   forall free sky.

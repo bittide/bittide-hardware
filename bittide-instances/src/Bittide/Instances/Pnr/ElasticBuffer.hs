@@ -37,6 +37,6 @@ elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underfl
     withBittideByteOrder
       $ toSignals
         (xilinxElasticBufferWb clkRead rstRead d5 clkWrite wdata)
-        (((), wbIn), (pure (), pure (), pure (), pure (), pure ()))
+        (((), wbIn), ((), (), (), (), ()))
 
 makeTopEntity 'elasticBufferWb

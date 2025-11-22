@@ -221,14 +221,14 @@ moreRealUart SNat SNat = Circuit go
     ( ( Signal dom (WishboneM2S addrW (Div (8 * nBytes + 7) 8) (BitVector (8 * nBytes)))
       , Signal dom Bit
       )
-    , (Signal dom (), Signal dom ())
+    , ((), ())
     ) ->
     ( ( Signal dom (WishboneS2M (BitVector (8 * nBytes)))
-      , Signal dom ()
+      , ()
       )
     , (Signal dom Bit, Signal dom (Bool, Bool))
     )
-  go ((m2s, rx), (_, _)) = ((s2m, pure ()), (tx, status))
+  go ((m2s, rx), (_, _)) = ((s2m, ()), (tx, status))
    where
     s2m = pure emptyWishboneS2M
     tx = pure low

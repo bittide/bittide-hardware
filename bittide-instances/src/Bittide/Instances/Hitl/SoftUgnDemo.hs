@@ -298,12 +298,12 @@ softUgnDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , syncIn
             )
           ,
-            ( pure ()
-            , repeat (pure ())
-            , pure ()
-            , pure ()
-            , pure ()
-            , repeat (pure ())
+            ( ()
+            , repeat ()
+            , ()
+            , ()
+            , ()
+            , repeat ()
             )
           )
 

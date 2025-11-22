@@ -255,7 +255,7 @@ si539xSpiWb minTargetPs =
       )
   si539xSpiDriverC minPs = Circuit go
    where
-    go ((regOp, miso), _) = ((pure (), pure ()), (readByte, busy, spiOut))
+    go ((regOp, miso), _) = (((), ()), (readByte, busy, spiOut))
      where
       (readByte, busy, spiOut) = si539xSpiDriver minPs regOp miso
 

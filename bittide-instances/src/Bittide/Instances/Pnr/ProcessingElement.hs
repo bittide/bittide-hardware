@@ -97,10 +97,10 @@ vexRiscUartHello ::
       ::: ( "USB_UART_TX" ::: Signal Basic200 Bit
           , "JTAG" ::: Signal Basic200 JtagIn
           )
-  , Signal Basic200 ()
+  , ()
   ) ->
   ( ""
-      ::: ( "" ::: Signal Basic200 ()
+      ::: ( "" ::: ()
           , "JTAG" ::: Signal Basic200 JtagOut
           )
   , "USB_UART_RX" ::: Signal Basic200 Bit
@@ -110,7 +110,7 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
         toSignals
           $ withClockResetEnable clk200 rst200 enableGen
           $ vexRiscvUartHelloC baudRate
-   in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
+   in case circuitFn (((), (uartTx, jtagIn)), ()) of
         ((_mm, a), b) -> (a, b)
  where
   (clk200, rst200_) = clockWizardDifferential diffClk noReset

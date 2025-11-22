@@ -80,10 +80,10 @@ sim =
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ Circuit go
  where
-  go (uartRx, _) = (pure (), uartTx)
+  go (uartRx, _) = ((), uartTx)
    where
     (_, (_, uartTx)) =
-      toSignals (vexRiscvTestC @Basic125) (((), (pure $ unpack 0, uartRx)), (pure (), pure ()))
+      toSignals (vexRiscvTestC @Basic125) (((), (pure $ unpack 0, uartRx)), ((), ()))
 
 {- | Wishbone accessible status register. Used to communicate the test status
 from the CPU to the outside world through VIOs.
@@ -206,7 +206,7 @@ vexRiscvTest diffClk jtagIn uartRx = (testStatusDone, testStatusSuccess, jtagOut
     withClockResetEnable clk reset enableGen
       $ toSignals
         (vexRiscvTestC @Basic125)
-        (((), (jtagIn, uartRx)), (pure (), pure ()))
+        (((), (jtagIn, uartRx)), ((), ()))
 
   reset = orReset clkStableRst (unsafeFromActiveLow testStarted)
 

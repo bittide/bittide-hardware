@@ -462,4 +462,4 @@ mkCalendar compName cfg m2s = case cancelMulDiv @nBytes @8 of
   Dict -> (entry, endOfMetacycle, s2m, metacycleCount, mm)
    where
     ~((mm, s2m), (entry, endOfMetacycle, metacycleCount)) =
-      toSignals (mkCalendarC compName cfg) (((), m2s), (pure (), pure (), pure ()))
+      toSignals (mkCalendarC compName cfg) (((), m2s), ((), (), ()))

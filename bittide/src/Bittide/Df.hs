@@ -10,7 +10,6 @@ import Protocols
 import Bittide.PacketStream (timeout)
 import Bittide.SharedTypes (Byte, Bytes)
 import Clash.Class.BitPackC (BitPackC, ByteOrder)
-import Data.Bifunctor
 import Data.Char (ord)
 import Data.Coerce (coerce)
 import Data.Functor ((<&>))
@@ -179,10 +178,19 @@ wbToDf name = circuit $ \(mm, wb) -> do
   -- this is true, as the circuit doesn't write to either register and the wishbone
   -- bus can only do one access at a time.
   replaceDfData :: Circuit (CSignal dom a, Df dom (BusActivity ())) (Df dom a)
-  replaceDfData = Circuit (first unbundle . unbundle . fmap go . bundle . first bundle)
+  replaceDfData = Circuit go0
    where
-    go :: ((a, Maybe (BusActivity ())), Ack) -> (((), Ack), Maybe a)
-    go ((a, busActivity), ack) = (((), ack), fmap (const a) busActivity)
+    go0 ::
+      ( (Signal dom a, Signal dom (Maybe (BusActivity ())))
+      , Signal dom Ack
+      ) ->
+      (((), Signal dom Ack), Signal dom (Maybe a))
+    go0 ((a, busActivity), ack) = (((), ack), maybeA)
+     where
+      maybeA = unbundle (fmap go1 (bundle (a, busActivity)))
+
+    go1 :: (a, Maybe (BusActivity ())) -> Maybe a
+    go1 (a, busActivity) = fmap (const a) busActivity
 
   cfgData =
     (MM.registerConfig "data")
@@ -201,11 +209,11 @@ This function is unsafe, because data can be lost when the input is @Just _@ and
 the receiving circuit tries to apply back pressure.
 -}
 unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)
-unsafeToDf = Circuit $ \(cSig, _) -> (pure (), cSig)
+unsafeToDf = Circuit $ \(cSig, _) -> ((), cSig)
 
 {- | Deconstructs a `Df` into its channels represented as `CSignal`s.
 This function is unsafe, because it allows losing or duplicating data if
 the receiving circuit does not respect the `Df` protocol.
 -}
 unsafeFromDf :: Circuit (Df dom a, CSignal dom Ack) (CSignal dom (Maybe a))
-unsafeFromDf = Circuit $ \((dfFwd, dfBwd), _) -> ((dfBwd, pure ()), dfFwd)
+unsafeFromDf = Circuit $ \((dfFwd, dfBwd), _) -> ((dfBwd, ()), dfFwd)
