@@ -15,8 +15,9 @@ import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Idle
 import Protocols.Wishbone
-import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, vexRiscv)
+import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag)
 
+import Bittide.Cpus.Riscv32imc (vexRiscv)
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 import Bittide.Wishbone

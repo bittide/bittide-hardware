@@ -225,7 +225,7 @@ test-suite doctests
   build-depends:
     base,
     clash-protocols-memmap,
-    doctest-parallel >=0.3.0.1 && <0.4,
+    doctest-parallel >=0.3.0.1,
     filepath,
     word8,
 
