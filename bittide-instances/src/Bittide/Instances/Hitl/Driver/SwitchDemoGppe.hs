@@ -87,9 +87,8 @@ initOpenOcd hitlDir (_, d) targetIndex = do
   putStrLn $ "Starting OpenOCD for target " <> d.deviceId
 
   let
-    gdbPortMU = 3333 + targetIndex * 3
-    gdbPortCC = gdbPortMU + 1
-    gdbPortGPPE = gdbPortMU + 2
+    baseGdbPort = 3333
+    gdbPort = baseGdbPort + targetIndex * 3
     tclPort = 6666 + targetIndex
     telnetPort = 4444 + targetIndex
     ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
@@ -100,25 +99,42 @@ initOpenOcd hitlDir (_, d) targetIndex = do
   putStrLn "Starting OpenOCD..."
   (ocd, ocdPh, ocdClean0) <-
     Ocd.startOpenOcdWithEnvAndArgs
-      ["-f", "sipeed.tcl", "-f", "vexriscv-3chain.tcl"]
+      ["-f", "sipeed.tcl", "-f", "ports.tcl", "-f", "vexriscv-3chain.tcl"]
       [ ("OPENOCD_STDOUT_LOG", ocdStdout)
       , ("OPENOCD_STDERR_LOG", ocdStderr)
       , ("USB_DEVICE", d.usbAdapterLocation)
-      , ("DEV_A_GDB", show gdbPortGPPE)
-      , ("DEV_B_GDB", show gdbPortCC)
-      , ("DEV_C_GDB", show gdbPortMU)
+      , ("GDB_PORT", show gdbPort)
       , ("TCL_PORT", show tclPort)
-      , ("TEL_PORT", show telnetPort)
+      , ("TELNET_PORT", show telnetPort)
       ]
   hSetBuffering ocd.stderrHandle LineBuffering
-  T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
-    $ expectLine ocd.stderrHandle Ocd.waitForHalt
+  output <-
+    T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
+      $ readUntilLine ocd.stderrHandle Ocd.initCompleteMarker
 
-  let
-    ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
-    ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
+  -- Parse the OpenOCD output to extract GDB ports based on JTAG IDs
+  -- Expect exactly 3 taps: MU (0x0514C001), CC (0x1514C001), GPPE (0x2514C001)
+  case Ocd.parseJtagIdsAndGdbPorts output of
+    Left err -> error $ "Failed to parse OpenOCD output: " <> err
+    Right
+      [ (0x0_514C001, _, gdbPortMU)
+        , (0x1_514C001, _, gdbPortCC)
+        , (0x2_514C001, _, gdbPortGPPE)
+        ] -> do
+        putStrLn
+          $ "Found GDB ports - MU: "
+          <> show gdbPortMU
+          <> ", CC: "
+          <> show gdbPortCC
+          <> ", GPPE: "
+          <> show gdbPortGPPE
 
-  return $ OcdInitData gdbPortMU gdbPortCC gdbPortGPPE ocd ocdClean1
+        let
+          ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
+          ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
+
+        return $ OcdInitData gdbPortMU gdbPortCC gdbPortGPPE ocd ocdClean1
+    Right other -> error $ "Unexpected JTAG configuration: " <> show other
 
 lookForWhoAmI :: MemoryMap -> Integer
 lookForWhoAmI mm = getPathAddress mm ["0", "WhoAmI", "identifier"]

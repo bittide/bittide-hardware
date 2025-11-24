@@ -17,7 +17,7 @@ import Protocols.Idle
 import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag)
 
-import Bittide.Cpus.Riscv32imc (vexRiscv)
+import Bittide.Cpus.Types (BittideCpu)
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 import Bittide.Wishbone
@@ -62,6 +62,8 @@ data PeConfig nBusses where
     -- ^ Indicates whether or not to include the Wishbone ILA component probes. Should be set
     -- to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
     -- given system should have this set to 'True' in order to avoid probe name conflicts.
+    , cpu :: forall dom. BittideCpu dom
+    -- ^ The CPU to use in this processing element.
     } ->
     PeConfig nBusses
 
@@ -93,9 +95,9 @@ processingElement ::
         (nBusses - PeInternalBusses)
         (MM.ConstBwd MM.MM, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
     )
-processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \(mm, jtagIn) -> do
+processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
-    rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
+    rvCircuit cpu dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
   iBus1 <-
     maybeIlaWb
       includeIlaWb
@@ -158,6 +160,7 @@ rvCircuit ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
+  BittideCpu dom ->
   DumpVcd ->
   Signal dom Bit ->
   Signal dom Bit ->
@@ -167,7 +170,7 @@ rvCircuit ::
     ( Wishbone dom 'Standard 30 (Bytes 4)
     , (MM.ConstBwd MM.MM, Wishbone dom 'Standard 30 (Bytes 4))
     )
-rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt =
+rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
   case (?busByteOrder, ?regByteOrder) of
     (BigEndian, LittleEndian) -> Circuit go
     (busByteOrder, regByteOrder) ->
@@ -189,7 +192,7 @@ rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt =
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
       CpuIn{timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
-    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock rv32Reset rvIn jtagIn
+    (cpuOut, jtagOut) = cpu dumpVcd hasClock rv32Reset rvIn jtagIn
     rv32Reset = MinReset.toMinCycles hasClock $ unsafeOrReset hasReset jtagReset
     jtagReset = unsafeFromActiveHigh (delay False (bitToBool . ndmreset <$> cpuOut))
 

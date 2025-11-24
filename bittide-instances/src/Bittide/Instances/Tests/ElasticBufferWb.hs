@@ -6,6 +6,7 @@ module Bittide.Instances.Tests.ElasticBufferWb where
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (ContentType (Vec), InitialContent (NonReloadable))
 import Bittide.ElasticBuffer
 import Bittide.ProcessingElement
@@ -80,7 +81,8 @@ dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enable
       elfPath = elfDir </> "elastic_buffer_wb_test"
     pure
       PeConfig
-        { initI =
+        { cpu = vexRiscv0
+        , initI =
             NonReloadable @IMemWords
               $ Vec
               $ unsafePerformIO

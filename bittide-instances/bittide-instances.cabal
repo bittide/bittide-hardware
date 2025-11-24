@@ -238,6 +238,7 @@ library
     base,
     binary,
     bittide,
+    bittide-cpus,
     bittide-experiments,
     bittide-extra,
     bytestring,
@@ -301,6 +302,7 @@ test-suite unittests
   other-modules:
     Df.ElasticBufferWb
     Df.WbToDf
+    Tests.Bittide.Instances.Hitl.Utils.OpenOcd
     Tests.ClockControlWb
     Wishbone.Axi
     Wishbone.CaptureUgn
@@ -317,6 +319,7 @@ test-suite unittests
     HUnit,
     base,
     bittide,
+    bittide-cpus,
     bittide-extra,
     bittide-instances,
     clash-bitpackc,

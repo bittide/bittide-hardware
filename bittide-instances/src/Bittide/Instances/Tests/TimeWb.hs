@@ -6,6 +6,7 @@ module Bittide.Instances.Tests.TimeWb where
 
 import Clash.Prelude
 
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam hiding (registerWb)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -17,11 +18,12 @@ import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap (ConstBwd, MM)
-import qualified Protocols.MemoryMap as MM
 import Protocols.MemoryMap.TypeDescription
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (NoDumpVcd))
+
+import qualified Protocols.MemoryMap as MM
 
 data TestStatus = Running | Success | Fail
   deriving (Show, Eq, Generic, NFDataX, BitPack, BitPackC)
@@ -55,7 +57,8 @@ dutCpu = withBittideByteOrder $ circuit $ \mm -> do
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "c_timer_wb"
     pure
       PeConfig
-        { initI =
+        { cpu = vexRiscv0
+        , initI =
             Reloadable @IMemWords
               $ Vec
               $ unsafePerformIO

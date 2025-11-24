@@ -18,6 +18,6 @@ if { $user_telnet_port == "" } {
 }
 
 bindto 0.0.0.0
-gdb_port $user_gdb_port
-tcl_port $user_tcl_port
-telnet_port $user_telnet_port
+gdb port $user_gdb_port
+tcl port $user_tcl_port
+telnet port $user_telnet_port

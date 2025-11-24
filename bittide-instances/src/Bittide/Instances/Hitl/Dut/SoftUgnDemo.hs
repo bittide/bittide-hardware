@@ -68,6 +68,7 @@ import Protocols.Wishbone
 import Protocols.Wishbone.Extra
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
 
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.Vec as Vec
 
@@ -132,7 +133,8 @@ ccConfig ::
   PeConfig (n + SwcccInternalBusses)
 ccConfig =
   PeConfig
-    { initI = Undefined @(Div (64 * 1024) 4)
+    { cpu = Riscv32imc.vexRiscv1
+    , initI = Undefined @(Div (64 * 1024) 4)
     , initD = Undefined @(Div (64 * 1024) 4)
     , iBusTimeout = d0
     , dBusTimeout = d0
@@ -188,7 +190,8 @@ managementUnit maybeDna =
  where
   peConfig =
     PeConfig
-      { initI = Undefined @(Div (64 * 1024) 4)
+      { cpu = Riscv32imc.vexRiscv0
+      , initI = Undefined @(Div (64 * 1024) 4)
       , initD = Undefined @(Div (64 * 1024) 4)
       , iBusTimeout = d0
       , dBusTimeout = d0
@@ -239,7 +242,8 @@ gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -
  where
   peConfig =
     PeConfig
-      { initI = Undefined @(Div (64 * 1024) 4)
+      { cpu = Riscv32imc.vexRiscv2
+      , initI = Undefined @(Div (64 * 1024) 4)
       , initD = Undefined @(Div (64 * 1024) 4)
       , iBusTimeout = d0
       , dBusTimeout = d0

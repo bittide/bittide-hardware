@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 module Bittide.Instances.Tests.SwitchCalendar where
 
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
   InitialContent (Reloadable),
@@ -78,7 +79,8 @@ dut =
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "switch_calendar_test"
     pure
       PeConfig
-        { initI =
+        { cpu = vexRiscv0
+        , initI =
             Reloadable @IMemWords
               $ Vec
               $ unsafePerformIO

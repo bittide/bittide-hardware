@@ -31,6 +31,7 @@ import Protocols.Wishbone
 import System.Environment (lookupEnv)
 import VexRiscv
 
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
   InitialContent (Reloadable, Undefined),
@@ -172,7 +173,8 @@ vexRiscvTestC =
         }
   peConfigRtl =
     PeConfig
-      { initI = Undefined @DMemWords
+      { cpu = vexRiscv0
+      , initI = Undefined @DMemWords
       , initD = Undefined @IMemWords
       , iBusTimeout = d0
       , dBusTimeout = d0

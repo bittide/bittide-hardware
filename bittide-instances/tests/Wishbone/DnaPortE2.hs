@@ -8,7 +8,6 @@ module Wishbone.DnaPortE2 where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
-import qualified Prelude as P
 
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
@@ -31,6 +30,9 @@ import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
+
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Prelude as P
 
 sim :: IO ()
 sim = putStr simResult
@@ -73,7 +75,8 @@ dut = withBittideByteOrder $ circuit $ \_unit -> do
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { initI = Reloadable (Vec iMem)
+        { cpu = Riscv32imc.vexRiscv0
+        , initI = Reloadable (Vec iMem)
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus

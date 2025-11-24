@@ -29,6 +29,8 @@ import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.SwitchDemoProcessingElement
 import Bittide.Wishbone
 
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+
 takeWhileInclusive :: (a -> Bool) -> [a] -> [a]
 takeWhileInclusive _ [] = []
 takeWhileInclusive p (x : xs) = x : if p x then takeWhileInclusive p xs else []
@@ -113,7 +115,8 @@ dut dnaA dnaB = withBittideByteOrder $ circuit $ do
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { initI = Reloadable (Vec iMem)
+        { cpu = Riscv32imc.vexRiscv0
+        , initI = Reloadable (Vec iMem)
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus

@@ -67,7 +67,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-vexriscv.git
-  tag: 30f2302a55333497f9cb2864fa7ae986f3e99850
+  tag: 7d20eed78fefe712be22de2511208b4e7c345bbc
   subdir:
     clash-vexriscv
 

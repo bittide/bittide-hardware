@@ -95,6 +95,7 @@ BUILD_CACHE_EXCLUDE_PATTERNS = (
 CLASH_CACHE_BUST = 0
 CLASH_KEY_PREFIX = f"clash-g{GLOBAL_CACHE_BUST}-l{CLASH_CACHE_BUST}-"
 CLASH_KEY_PATTERNS = CABAL_KEY_PATTERNS + (
+    "**/*.scala",
     "**/*.cabal",
     "**/*.hs",
     "**/*.hs-boot",
