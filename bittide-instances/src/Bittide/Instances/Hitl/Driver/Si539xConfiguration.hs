@@ -15,9 +15,8 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Driver.SwitchDemo (initGdb, initPicocom)
 import Bittide.Instances.Hitl.Utils.Program
-import Gdb (Gdb)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -27,10 +26,8 @@ import Control.Monad.IO.Class
 import System.Exit
 import System.FilePath
 import System.IO
-import System.Process (StdStream (CreatePipe, UseHandle))
 
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
@@ -68,56 +65,6 @@ initOpenOcd hitlDir (_, d) targetIndex = do
     ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
 
   return $ OcdInitData gdbPort ocd ocdClean1
-
-initGdb ::
-  FilePath ->
-  String ->
-  Gdb ->
-  Int ->
-  (HwTarget, DeviceInfo) ->
-  IO ()
-initGdb hitlDir binName gdb gdbPort (hwT, _d) = do
-  Gdb.setLogging gdb
-    $ hitlDir
-    </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
-  Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
-  Gdb.setTarget gdb gdbPort
-  Gdb.setTimeout gdb Nothing
-  Gdb.runCommand gdb "echo connected to target device"
-  pure ()
-
-initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
-initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
-  devNullHandle <- openFile "/dev/null" WriteMode
-
-  let
-    devPath = deviceInfo.serial
-    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
-    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
-
-  -- Note that script at `devPath` already logs to `stdoutPath` and
-  -- `stderrPath`. This is what we're after: debug logging. To prevent race
-  -- conditions, we need to know when picocom is ready so we also shortly
-  -- interested in stderr in this Haskell process.
-  (pico, cleanup) <-
-    Picocom.startWithLoggingAndEnv
-      ( Picocom.StdStreams
-          { Picocom.stdin = CreatePipe
-          , Picocom.stdout = CreatePipe
-          , Picocom.stderr = UseHandle devNullHandle
-          }
-      )
-      devPath
-      stdoutPath
-      stderrPath
-      []
-
-  hSetBuffering pico.stdoutHandle LineBuffering
-
-  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
-    $ waitForLine pico.stdoutHandle "Terminal ready"
-
-  pure (pico, cleanup)
 
 driverFunc ::
   String ->
