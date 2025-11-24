@@ -45,13 +45,26 @@ jobs:
   cachix:
     name: Populate Cachix cache
     runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0}
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-11-24
       options: --memory=11g
     steps:
     - uses: actions/checkout@v4
-    - run: nix develop --extra-experimental-features "nix-command flakes" --profile dev -c true
-    - run: cachix push bittide-hardware dev
+
+    - name: Generate flake inputs list
+      run: nix flake --extra-experimental-features "nix-command flakes" archive --json | jq -r '.path,(.inputs|to_entries[].value.path)' > flake_inputs
+
+    - name: Push flake inputs to Cachix
+      run: cachix push bittide-hardware < flake_inputs
+
+    - name: Generate dev profile
+      run: nix develop --extra-experimental-features "nix-command flakes" --profile dev -c true
+
+    - name: Push dev profile to Cachix
+      run: cachix push bittide-hardware dev
 
   license-check:
     runs-on: [self-hosted, compute]
