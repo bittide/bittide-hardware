@@ -113,7 +113,8 @@ object Riscv32imc extends App {
             version      = 1,
             idle         = 7
           ),
-          debugCd = ClockDomain.current
+          debugCd = ClockDomain.current,
+          jtagId = 0x10002FFF
         )
       )
     )
