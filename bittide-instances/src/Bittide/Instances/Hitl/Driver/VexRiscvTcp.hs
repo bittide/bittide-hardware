@@ -82,14 +82,8 @@ driverFunc _name [d@(_, dI)] = do
 
   D.assertProbe "probe_test_start" d
 
-  Ocd.withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
-    liftIO $ do
-      hSetBuffering ocd.stderrHandle LineBuffering
-      putStr "Waiting for OpenOCD to halt..."
-      expectLine ocd.stderrHandle Ocd.waitForHalt
-      putStrLn "  Done"
-
-      putStrLn "Starting Picocom..."
+  Ocd.withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \_ocd -> do
+    liftIO $ putStrLn "Starting Picocom..."
     Picocom.withPicocomWithLogging Picocom.defaultStdStreams dI.serial picoOutLog picoErrLog $ \pico -> do
       liftIO $ do
         hSetBuffering pico.stdinHandle LineBuffering

@@ -32,12 +32,4 @@ poll_period 50
 # Initialize all JTAG TAPs and targets.
 init
 
-echo "Halting processor"
-
-# Halts the CPU
-halt
-
-# If you also want to reset the CPU, use:
-# soft_reset_halt
-
 sleep 1000

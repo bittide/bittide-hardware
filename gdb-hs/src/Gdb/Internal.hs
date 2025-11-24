@@ -76,6 +76,9 @@ start = liftIO $ do
   hSetBuffering gdb.stdin LineBuffering
   hSetBuffering gdb.stdout LineBuffering
 
+  -- Halt the CPU so that we can load binaries right away
+  hPutStrLn gdb.stdin "monitor reset halt"
+
   pure gdb
 
 {- | Clean up a GDB process. GDB is asked nicely to quit and waited for. If it

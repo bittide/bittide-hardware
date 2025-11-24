@@ -110,10 +110,6 @@ initOpenOcd hitlDir (_, d) targetIndex = do
       , ("TCL_PORT", show tclPort)
       , ("TEL_PORT", show telnetPort)
       ]
-  hSetBuffering ocd.stderrHandle LineBuffering
-  T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
-    $ expectLine ocd.stderrHandle Ocd.waitForHalt
-
   let
     ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
     ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)

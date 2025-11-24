@@ -56,8 +56,4 @@ poll_period 50
 
 init
 
-echo "Halting processor"
-
-halt
-
 sleep 1000
