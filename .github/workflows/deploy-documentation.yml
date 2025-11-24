@@ -23,7 +23,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-11-05
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-11-24
       options: --memory=11g
     steps:
       - name: Checkout
