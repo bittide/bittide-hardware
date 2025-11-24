@@ -71,11 +71,10 @@ CABAL_CACHE_EXCLUDE_PATTERNS = ()
 
 DIST_NEWSTYLE_CACHE_BUST = 1
 DIST_NEWSTYLE_KEY_PREFIX = f"dist-newstyle-g{GLOBAL_CACHE_BUST}-l{DIST_NEWSTYLE_CACHE_BUST}-"
-DIST_NEWSTYLE_KEY_PATTERNS = (*CABAL_KEY_PATTERNS, "**/*.cabal", "**/*.hs")
+DIST_NEWSTYLE_KEY_PATTERNS = (*CABAL_KEY_PATTERNS, "**/*.cabal", "**/*.hs", "bittide-cpus/**")
 DIST_NEWSTYLE_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/dist-newstyle",
     f"{PWD}/_build/memory_maps",
-    f"{PWD}/clash-vexriscv/clash-vexriscv/build_out_dir/",
 )
 DIST_NEWSTYLE_CACHE_EXCLUDE_PATTERNS = CABAL_CACHE_INCLUDE_PATTERNS
 
@@ -83,7 +82,6 @@ BUILD_CACHE_BUST = 2
 BUILD_KEY_PREFIX = f"build-products-g{GLOBAL_CACHE_BUST}-l{BUILD_CACHE_BUST}-"
 BUILD_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/_build/",
-    f"{PWD}/clash-vexriscv/clash-vexriscv/build_out_dir/",
     f"{PWD}/dist-newstyle/",
     f"{PWD}/firmware-support/bittide-hal/src/shared_devices/",
     f"{PWD}/firmware-support/bittide-hal/src/types/",

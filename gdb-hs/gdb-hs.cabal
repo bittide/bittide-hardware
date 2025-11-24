@@ -165,5 +165,5 @@ test-suite doctests
   hs-source-dirs: tests
   build-depends:
     base,
-    doctest-parallel >=0.3.0.1 && <0.4,
+    doctest-parallel >=0.3.0.1,
     gdb-hs,
