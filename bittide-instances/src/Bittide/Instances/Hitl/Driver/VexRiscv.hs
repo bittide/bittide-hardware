@@ -79,7 +79,7 @@ driverFunc _name targets = do
     liftIO $ Ocd.withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
       -- make sure OpenOCD is started properly
       hSetBuffering ocd.stderrHandle LineBuffering
-      expectLine ocd.stderrHandle Ocd.waitForHalt
+      expectLine ocd.stderrHandle Ocd.waitForInitComplete
 
       putStrLn "Starting Picocom..."
       putStrLn $ "Logging output to '" <> hitlDir

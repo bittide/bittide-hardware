@@ -22,8 +22,3 @@ foreach tap $tap_list {
 }
 
 echo "Initialization complete"
-echo "Halting processor"
-
-halt
-
-sleep 1000
