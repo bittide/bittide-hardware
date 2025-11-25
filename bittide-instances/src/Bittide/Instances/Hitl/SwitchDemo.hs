@@ -40,7 +40,7 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Dut.SwitchDemo (circuitFnC)
+import Bittide.Instances.Hitl.Dut.SwitchDemo (switchDemoC)
 import Bittide.Instances.Hitl.Setup (LinkCount, allHwTargets, channelNames, clockPaths)
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle))
@@ -282,7 +282,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
     ) =
       withBittideByteOrder
         $ toSignals
-          ( circuitFnC
+          ( switchDemoC
               (refClk, handshakeRstFree, enableGen)
               (bittideClk, handshakeRstTx, enableGen)
               transceivers.rxClocks

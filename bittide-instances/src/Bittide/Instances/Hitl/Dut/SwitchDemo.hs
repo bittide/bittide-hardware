@@ -62,9 +62,9 @@ type FifoSize = 5 -- = 2^5 = 32
 baud :: SNat Baud
 baud = SNat
 
-ccWhoAmId, muWhoAmId :: BitVector 32
-ccWhoAmId = $(makeWhoAmIdTh "swcc")
+muWhoAmId, ccWhoAmId :: BitVector 32
 muWhoAmId = $(makeWhoAmIdTh "mgmt")
+ccWhoAmId = $(makeWhoAmIdTh "swcc")
 
 {- Internal busses:
     - Instruction memory
@@ -143,12 +143,12 @@ calendarConfig =
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-memoryMapCc, memoryMapMu :: MemoryMap
-(memoryMapCc, memoryMapMu) = (ccMm, muMm)
+memoryMapMu, memoryMapCc :: MemoryMap
+(memoryMapMu, memoryMapCc) = (muMm, ccMm)
  where
   Circuit circuitFn =
     withBittideByteOrder
-      $ circuitFnC
+      $ switchDemoC
         (clockGen, resetGen, enableGen)
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
@@ -209,11 +209,15 @@ ccConfig =
     , includeIlaWb = False
     }
 
-ccLabel, muLabel :: Vec 2 Byte
-ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
-muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
+uartLabels :: Vec 2 (Vec 2 Byte)
+uartLabels =
+  fmap (fromIntegral . ord)
+    <$> ( $(listToVecTH "MU")
+            :> $(listToVecTH "CC")
+            :> Nil
+        )
 
-circuitFnC ::
+switchDemoC ::
   ( ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
@@ -222,8 +226,8 @@ circuitFnC ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "CC" ::: ConstBwd MM
-    , "MU" ::: ConstBwd MM
+    ( "MU" ::: ConstBwd MM
+    , "CC" ::: ConstBwd MM
     , Jtag Bittide
     , CSignal Bittide (BitVector 64)
     , CSignal Bittide (BitVector LinkCount)
@@ -242,21 +246,15 @@ circuitFnC ::
     , "SYNC_OUT" ::: CSignal Basic125 Bit
     , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
     )
-circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
+switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
+  circuit $ \(muMm, ccMm, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
-    (muUartBytesBittide, _muUartStatus) <-
-      defaultBittideClkRstEn
-        $ uartInterfaceWb d16 d16 uartBytes
-        -< (muUartBus, Fwd (pure Nothing))
+    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
 
-    muUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst
-        -< muUartBytesBittide
-
+    -- Start management unit
     (Fwd lc, muWbAll) <-
-      defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtag, linkIn))
+      defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMm, (muJtag, linkIn))
 
     ( [ muWhoAmIWb
         , (peWbMM, peWb)
@@ -268,6 +266,16 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
       ) <-
       Vec.split -< muWbAll
 
+    defaultBittideClkRstEn (whoAmIC muWhoAmId) -< muWhoAmIWb
+    defaultBittideClkRstEn (readDnaPortE2WbWorker maybeDna) -< dnaWb
+
+    (muUartBytesBittide, _muUartStatus) <-
+      defaultBittideClkRstEn
+        $ uartInterfaceWb d16 d16 uartBytes
+        -< (muUartBus, Fwd (pure Nothing))
+    -- Stop management unit
+
+    -- Start internal links
     (ugnWbs, ebWbs) <- Vec.split -< restWbs
     (_relDatCount, _underflow, _overflow, ebStables, Fwd rxs1) <-
       unzip5Vec
@@ -288,32 +296,28 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
       defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxs3, switchWb))
     ([Fwd peIn], txs) <- Vec.split -< switchOut
 
+    -- Start ASIC processing element
     -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
     --      use it until the DNA is actually read out.
     (Fwd peOut, ps) <-
       defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
         -< (peWbMM, (Fwd lc, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
+    -- Stop ASIC processing element
 
-    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
-    defaultBittideClkRstEn (readDnaPortE2WbWorker maybeDna) -< dnaWb
-
-    defaultBittideClkRstEn (whoAmIC muWhoAmId) -< muWhoAmIWb
-
-    (ccUartBytesBittide, _uartStatus) <-
-      defaultBittideClkRstEn
-        $ uartInterfaceWb d16 d16 uartBytes
-        -< (ccUartBus, Fwd (pure Nothing))
-
-    ccUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst
-        -< ccUartBytesBittide
-
+    -- Start UART multiplexing
     uartTxBytes <-
       defaultRefClkRstEn
-        $ asciiDebugMux d1024 (ccLabel :> muLabel :> Nil)
-        -< [ccUartBytes, muUartBytes]
+        $ asciiDebugMux d1024 uartLabels
+        -< [muUartBytes, ccUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
+    muUartBytes <-
+      dcFifoDf d5 bitClk bitRst refClk refRst -< muUartBytesBittide
+    ccUartBytes <-
+      dcFifoDf d5 bitClk bitRst refClk refRst -< ccUartBytesBittide
+    -- Stop UART multiplexing
+
+    -- Start clock control
     ( syncOut
       , Fwd swCcOut0
       , [ ccWhoAmIBus
@@ -330,7 +334,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMM, (syncIn, ccJtag, mask, linksSuitableForCc))
+        -< (ccMm, (syncIn, ccJtag, mask, linksSuitableForCc))
 
     defaultBittideClkRstEn
       (wbStorage "SampleMemory")
@@ -338,6 +342,12 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
       -< ccSampleMemoryBus
 
     defaultBittideClkRstEn (whoAmIC ccWhoAmId) -< ccWhoAmIBus
+
+    (ccUartBytesBittide, _uartStatus) <-
+      defaultBittideClkRstEn
+        $ uartInterfaceWb d16 d16 uartBytes
+        -< (ccUartBus, Fwd (pure Nothing))
+    -- Stop clock control
 
     let swCcOut1 =
           if clashSimulation
