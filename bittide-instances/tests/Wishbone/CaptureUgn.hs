@@ -28,6 +28,7 @@ import Test.Tasty.TH
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.CaptureUgn
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -104,7 +105,8 @@ dut eb localCounter = withBittideByteOrder $ circuit $ do
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { initI = Reloadable (Vec iMem)
+        { cpu = Riscv32imc.vexRiscv0
+        , initI = Reloadable (Vec iMem)
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus

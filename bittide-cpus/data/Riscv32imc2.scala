@@ -13,7 +13,7 @@ import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
 import vexriscv.ip.{DataCacheConfig}
 import vexriscv.ip.fpu.FpuParameter
 
-object Riscv32imc extends App {
+object Riscv32imc2 extends App {
   def cpu() : VexRiscv = {
     val config = VexRiscvConfig(
       plugins = List(
@@ -113,7 +113,13 @@ object Riscv32imc extends App {
             version      = 1,
             idle         = 7
           ),
-          debugCd = ClockDomain.current
+          debugCd = ClockDomain.current,
+          // PART: (QB)ayLogic
+          // V:    version, we use this to enumerate different cores
+          // MMM:  manufacturer ID (0x00 = unknown), last bit set imposed by JTAG spec
+          //
+          //         VPARTMMM
+          jtagId = 0x2514C001
         )
       )
     )

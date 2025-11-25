@@ -6,6 +6,7 @@ module Bittide.Instances.Tests.DelayWishboneC where
 
 import Clash.Prelude hiding (unzip)
 
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -50,7 +51,8 @@ dutCpu = withBittideByteOrder $ circuit $ \mm -> do
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "delay_wishbone_c"
     pure
       PeConfig
-        { initI =
+        { cpu = vexRiscv0
+        , initI =
             Reloadable @IMemWords
               $ Vec
               $ unsafePerformIO

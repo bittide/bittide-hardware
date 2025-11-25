@@ -23,6 +23,7 @@ import Protocols.MemoryMap as MM
 import VexRiscv
 
 import Bittide.Axi4
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
@@ -163,7 +164,8 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
     pure
       $ PeConfig
-        { initI =
+        { cpu = vexRiscv0
+        , initI =
             Reloadable
               ( Vec
                   $ unsafePerformIO
@@ -182,7 +184,8 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
 
   peConfigRtl =
     PeConfig
-      { initI = Undefined @IMemWords
+      { cpu = vexRiscv0
+      , initI = Undefined @IMemWords
       , initD = Undefined @DMemWords
       , iBusTimeout = d0
       , dBusTimeout = d0

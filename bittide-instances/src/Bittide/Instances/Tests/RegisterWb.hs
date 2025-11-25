@@ -7,6 +7,8 @@ module Bittide.Instances.Tests.RegisterWb where
 import Clash.Prelude
 
 -- Local
+
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
   InitialContent (Reloadable),
@@ -430,7 +432,8 @@ dut =
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "registerwb_test"
     pure
       PeConfig
-        { initI =
+        { cpu = vexRiscv0
+        , initI =
             Reloadable @IMemWords
               $ Vec
               $ unsafePerformIO

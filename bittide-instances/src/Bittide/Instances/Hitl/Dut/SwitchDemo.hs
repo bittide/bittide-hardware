@@ -47,6 +47,7 @@ import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
 
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.Vec as Vec
 
@@ -183,7 +184,8 @@ muConfig =
   SimpleManagementConfig
     { peConfig =
         PeConfig
-          { initI = Undefined @(Div (64 * 1024) 4)
+          { cpu = Riscv32imc.vexRiscv0
+          , initI = Undefined @(Div (64 * 1024) 4)
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
@@ -199,7 +201,8 @@ ccConfig ::
   PeConfig (n + SwcccInternalBusses)
 ccConfig =
   PeConfig
-    { initI = Undefined @(Div (64 * 1024) 4)
+    { cpu = Riscv32imc.vexRiscv1
+    , initI = Undefined @(Div (64 * 1024) 4)
     , initD = Undefined @(Div (64 * 1024) 4)
     , iBusTimeout = d0
     , dBusTimeout = d0

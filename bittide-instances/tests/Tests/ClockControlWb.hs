@@ -9,6 +9,8 @@ module Tests.ClockControlWb where
 import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 
 -- external imports
+
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
@@ -151,7 +153,8 @@ dut =
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { initI = Reloadable (Vec iMem)
+        { cpu = vexRiscv0
+        , initI = Reloadable (Vec iMem)
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0
         , dBusTimeout = d0
