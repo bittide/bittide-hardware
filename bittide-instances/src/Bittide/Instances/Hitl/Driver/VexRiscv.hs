@@ -79,7 +79,7 @@ driverFunc _name targets = do
     liftIO $ Ocd.withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
       -- make sure OpenOCD is started properly
       hSetBuffering ocd.stderrHandle LineBuffering
-      expectLine ocd.stderrHandle Ocd.waitForHalt
+      expectLine ocd.stderrHandle Ocd.waitForInitComplete
 
       putStrLn "Starting Picocom..."
       putStrLn $ "Logging output to '" <> hitlDir
@@ -113,6 +113,7 @@ driverFunc _name targets = do
 
           -- program the FPGA
           Gdb.withGdb $ \gdb -> do
+            Gdb.interruptCommand gdb
             Gdb.setLogging gdb gdbOutLog
             Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "vexriscv-hello"
             Gdb.setTarget gdb gdbPort

@@ -21,11 +21,11 @@ import Text.Read (readMaybe)
 getStartPath :: IO FilePath
 getStartPath = getDataFileName "data/openocd/start.sh"
 
--- | Wait until we see "Halting processor", fail if we see an error.
-waitForHalt :: String -> Filter
-waitForHalt s
+-- | Wait until we see \"Initialization complete\", fail if we see an error.
+waitForInitComplete :: String -> Filter
+waitForInitComplete s
   | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-  | "Halting processor" `isPrefixOf` s = Stop Ok
+  | initCompleteMarker `isPrefixOf` s = Stop Ok
   | otherwise = Continue
 
 initCompleteMarker :: String
@@ -46,7 +46,7 @@ withOpenOcd ::
   m a
 withOpenOcd = withOpenOcdWithEnv []
 
-{- | Run an action with an openocd process initialzed according to the scripts
+{- | Run an action with an openocd process initialized according to the scripts
 located in the data/openocd directory.
 -}
 withOpenOcdWithEnv ::

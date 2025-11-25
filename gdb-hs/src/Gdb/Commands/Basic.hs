@@ -33,6 +33,14 @@ continue gdb =
   -- Note that we can't use 'readCommand' here, because this command won't return
   hPutStrLn gdb.stdin "continue"
 
+{- | Send the \"interrupt\" command to GDB. This is different from sending a
+SIGINT to the GDB process itself. Can be used to pause execution of the
+target program if the GDB prompt is already active.
+-}
+interruptCommand :: (HasCallStack) => Gdb -> IO ()
+interruptCommand gdb =
+  hPutStrLn gdb.stdin "interrupt"
+
 {- | Send @SIGINT@ to the GDB process. This will pause the execution of the
 program being debugged and return control to GDB.
 -}

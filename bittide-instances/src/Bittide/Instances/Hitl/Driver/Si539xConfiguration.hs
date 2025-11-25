@@ -61,7 +61,7 @@ initOpenOcd hitlDir (_, d) targetIndex = do
     Ocd.startOpenOcdWithEnv openocdEnv d.usbAdapterLocation gdbPort 6666 4444
   hSetBuffering ocd.stderrHandle LineBuffering
   T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
-    $ expectLine ocd.stderrHandle Ocd.waitForHalt
+    $ expectLine ocd.stderrHandle Ocd.waitForInitComplete
 
   let
     ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
