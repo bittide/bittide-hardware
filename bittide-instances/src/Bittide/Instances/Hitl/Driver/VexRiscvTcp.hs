@@ -86,7 +86,7 @@ driverFunc _name [d@(_, dI)] = do
     liftIO $ do
       hSetBuffering ocd.stderrHandle LineBuffering
       putStr "Waiting for OpenOCD to halt..."
-      expectLine ocd.stderrHandle Ocd.waitForHalt
+      expectLine ocd.stderrHandle Ocd.waitForInitComplete
       putStrLn "  Done"
 
       putStrLn "Starting Picocom..."
