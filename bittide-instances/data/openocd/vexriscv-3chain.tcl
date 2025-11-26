@@ -6,13 +6,13 @@ set _CHIPNAME riscv
 set _TAP_TYPE 1234
 
 jtag newtap $_CHIPNAME tap0 -irlen 5 -ignore-version
-target create $_CHIPNAME.tap0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap0
+target create $_CHIPNAME.tap0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap0 -defer-examine
 
 jtag newtap $_CHIPNAME tap1 -irlen 5 -ignore-version
-target create $_CHIPNAME.tap1 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap1
+target create $_CHIPNAME.tap1 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap1 -defer-examine
 
 jtag newtap $_CHIPNAME tap2 -irlen 5 -ignore-version
-target create $_CHIPNAME.tap2 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap2
+target create $_CHIPNAME.tap2 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap2 -defer-examine
 
 poll_period 50
 

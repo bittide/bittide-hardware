@@ -320,6 +320,7 @@ initGdb hitlDir binName gdb gdbPort (hwT, _d) = do
   Gdb.setLogging gdb
     $ hitlDir
     </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
+  Gdb.runCommand gdb ("monitor " <> show gdbPort <> " arp_examine")
   Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
   Gdb.setTarget gdb gdbPort
   Gdb.setTimeout gdb Nothing
