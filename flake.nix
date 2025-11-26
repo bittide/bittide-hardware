@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -55,13 +55,13 @@
             pkgs.gcc
             pkgs.llvmPackages.clang-unwrapped
 
-            (pkgs.haskell-language-server.override { supportedGhcVersions = [ "910" ]; })
-            pkgs.haskell.compiler.ghc910
+            pkgs.haskell-language-server
+            pkgs.ghc
             pkgs.pkg-config
-            pkgs.python3Full
+            pkgs.python3
             pkgs.python3Packages.matplotlib
             pkgs.python3Packages.scipy
-            pkgs.python3Packages.GitPython
+            pkgs.python3Packages.gitpython
             pkgs.python3Packages.pyaml
             pkgs.libz
             pkgs.sbt
@@ -79,7 +79,7 @@
             # Simulation report generation
             pkgs.dot2tex
             pkgs.texlive.combined.scheme-medium
-            pkgs.poppler_utils
+            pkgs.poppler-utils
 
             (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
@@ -92,7 +92,7 @@
 
             # CI scripts
             pkgs.python3Packages.docopt
-            pkgs.python3Packages.dateutil
+            pkgs.python3Packages.python-dateutil
             mc
             pkgs.pcre
             pkgs.getent
