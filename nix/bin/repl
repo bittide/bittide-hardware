@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# XXX: Repl is broken for bittide-cpus, so we don't include it here.
 exec cabal repl \
+  bittide-cpus \
   bittide-experiments \
   bittide-extra \
   bittide-instances \
