@@ -5,13 +5,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use bittide_hal::{
+    hals::soft_ugn_demo_mu::DeviceInstances, shared_devices::Uart, types::ValidEntry_16,
+};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
-use bittide_hal::{
-    hals::soft_ugn_demo_mu::DeviceInstances,
-    shared_devices::Uart,
-    types::ValidEntry_16,
-};
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]

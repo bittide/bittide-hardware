@@ -36,19 +36,22 @@ genIncrementingCalendar = iterateI f (ValidEntry 0 0)
 -- Padding is required to increase the duration of a metacycle, giving the CPU
 -- enough time to write to the gather memory and read from the scatter memory.
 -- The calendar for the scatter unit is delayed by one cycle.
-padding :: Unsigned 12
+padding :: Unsigned 16
 padding = 512
-incrementingCal :: Vec 16 (ValidEntry (Index 16) 12)
-incrementingCal = genIncrementingCalendar @16
-gatherCal :: Vec 17 (ValidEntry (Index 16) 12)
-gatherCal = incrementingCal :< ValidEntry maxBound (padding - 1 :: Unsigned 12)
-scatterCal :: Vec 18 (ValidEntry (Index 16) 12)
+
+incrementingCal :: Vec 16 (ValidEntry (Index 16) 16)
+incrementingCal = genIncrementingCalendar
+
+gatherCal :: Vec 17 (ValidEntry (Index 16) 16)
+gatherCal = incrementingCal :< ValidEntry maxBound (padding - 1 :: Unsigned 16)
+
+scatterCal :: Vec 18 (ValidEntry (Index 16) 16)
 scatterCal = (ValidEntry 0 0 :> incrementingCal) :< ValidEntry maxBound (padding - 2)
 
 scatterConfig :: forall n. (KnownNat n) => ScatterConfig 4 n
-scatterConfig = ScatterConfig SNat $ CalendarConfig d32 (SNat @12) scatterCal scatterCal
+scatterConfig = ScatterConfig SNat $ CalendarConfig d32 (SNat @16) scatterCal scatterCal
 gatherConfig :: forall n. (KnownNat n) => GatherConfig 4 n
-gatherConfig = GatherConfig SNat $ CalendarConfig d32 (SNat @12) gatherCal gatherCal
+gatherConfig = GatherConfig SNat $ CalendarConfig d32 (SNat @16) gatherCal gatherCal
 
 dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
 dutMM =
