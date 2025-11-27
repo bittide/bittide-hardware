@@ -11,8 +11,7 @@
  * GatherUnit - Handle for interfacing with a gather unit
  *
  * The gather unit collects data from local memory and sends it to other nodes
- * over the Bittide network. The gather memory is double-buffered and swaps
- * buffers at metacycle boundaries according to the calendar configuration.
+ * over the Bittide network.
  */
 typedef struct {
   volatile uint64_t *gather_memory;   ///< Pointer to gather memory base address
@@ -72,7 +71,7 @@ int gather_unit_read_slice(const GatherUnit *unit, uint64_t *dst,
  * Wait for the next metacycle boundary
  *
  * This function blocks until the end of the current metacycle. It is typically
- * used to synchronize operations with the gather unit's buffer swapping.
+ * used to synchronize operations with metacycle boundaries.
  *
  * @param unit Pointer to the GatherUnit
  */
