@@ -9,20 +9,18 @@ fn main() {
     standard_memmap_build("VexRiscv.json", "DataMemory", "InstructionMemory");
 
     // Use C headers from auto-generated bittide-hal-c
-    let hal_c_headers = bittide_hal_c::get_generated_dir();
+    let hal_c_headers = bittide_hal_c::generated_dir();
 
     // Include directory for the Bittide HAL
-    let hal_c_include = bittide_hal_c::get_manual_include_dir();
+    let hal_c_include = bittide_hal_c::manual_include_dir();
 
     // Source directory for the Bittide HAL
-    let hal_c_src = bittide_hal_c::get_manual_source_dir();
+    let hal_c_src = bittide_hal_c::manual_source_dir();
 
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
         .files(bittide_hal_c::manual_source_files())
-        // .file(hal_c_src.join("bittide_uart.c"))
-        // .file(hal_c_src.join("bittide_timer.c"))
         .compiler("clang")
         .include("src") // Add src directory for our custom stdint.h
         .include(&hal_c_headers)

@@ -39,7 +39,7 @@ fn main() {
     let (shared, deduped_hals) = match deduplicate(&ctx, &input_mapping, hals.iter()) {
         Ok(result) => result,
         Err(err) => {
-            println!("ERROR!! {:?}", err);
+            println!("ERROR while deduplicating!! {:?}", err);
             panic!("ERROR {:?}", err)
         }
     };
@@ -122,13 +122,9 @@ fn main() {
                 |file| {
                     writeln!(file, "{}", gen_imports()).unwrap();
 
-                    for ty in &refs.references {
-                        let name = &ctx.type_names[*ty];
-                        let mod_name = ident(IdentType::Module, &name.base);
-                        writeln!(file, "#include \"types/{}.h\"", mod_name).unwrap();
-                    }
+                    generate_type_ref_imports(&ctx, &refs, file);
+                    writeln!(file).unwrap();
 
-                    // writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
                     writeln!(file, "{}", code).unwrap();
                 },
             );
@@ -161,11 +157,8 @@ fn main() {
                 |file| {
                     writeln!(file, "{}", gen_imports()).unwrap();
 
-                    for ty in &refs.references {
-                        let name = &ctx.type_names[*ty];
-                        let mod_name = ident(IdentType::Module, &name.base);
-                        writeln!(file, "#include \"types/{}.h\"", mod_name).unwrap();
-                    }
+                    generate_type_ref_imports(&ctx, &refs, file);
+                    writeln!(file).unwrap();
 
                     write!(file, "{}", code).unwrap();
                 },
@@ -216,11 +209,7 @@ fn main() {
                 |file| {
                     writeln!(file, "{}", gen_imports()).unwrap();
 
-                    for ty in &refs.references {
-                        let name = &ctx.type_names[*ty];
-                        let mod_name = ident(IdentType::Module, &name.base);
-                        writeln!(file, "#include \"types/{}.h\"", mod_name).unwrap();
-                    }
+                    generate_type_ref_imports(&ctx, &refs, file);
                     writeln!(file).unwrap();
 
                     write!(file, "{}", code).unwrap();
@@ -244,6 +233,14 @@ fn main() {
                 },
             );
         }
+    }
+}
+
+fn generate_type_ref_imports(ctx: &IrCtx, refs: &backend_c::TypeReferences, file: &mut impl Write) {
+    for ty in &refs.references {
+        let name = &ctx.type_names[*ty];
+        let mod_name = ident(IdentType::Module, &name.base);
+        writeln!(file, "#include \"types/{}.h\"", mod_name).unwrap();
     }
 }
 

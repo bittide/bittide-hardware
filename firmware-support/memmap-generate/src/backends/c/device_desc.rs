@@ -166,7 +166,7 @@ fn generate_reg_get_func(
         );
         writeln!(
             code,
-            "inline bool {func_name}({dev_name} dev, size_t idx, {out_arg}) {{"
+            "static inline bool {func_name}({dev_name} dev, size_t idx, {out_arg}) {{"
         )
         .unwrap();
 
@@ -198,7 +198,7 @@ fn generate_reg_get_func(
 
         writeln!(
             code,
-            "inline void {func_name}_unchecked({dev_name} dev, size_t idx, {out_arg}) {{"
+            "static inline void {func_name}_unchecked({dev_name} dev, size_t idx, {out_arg}) {{"
         )
         .unwrap();
         write_type_to_addr(
@@ -218,7 +218,7 @@ fn generate_reg_get_func(
             IdentType::Method,
             format!("{dev_name}_get_{}", ctx.identifiers[reg.name]),
         );
-        writeln!(code, "inline void {func_name}({dev_name} dev) {{").unwrap();
+        writeln!(code, "static inline void {func_name}({dev_name} dev) {{").unwrap();
         writeln!(
             code,
             "  uint8_t scratch = *(volatile uint8_t*)(dev.base + {});",
@@ -244,7 +244,7 @@ fn generate_reg_get_func(
             reg.type_ref,
             &mut ret_ty,
         );
-        writeln!(code, "inline {ret_ty}{func_name}({dev_name} dev) {{").unwrap();
+        writeln!(code, "static inline {ret_ty}{func_name}({dev_name} dev) {{").unwrap();
         writeln!(
             code,
             "  return *(volatile {ret_ty}*)(dev.base + {});",
@@ -322,7 +322,7 @@ fn generate_reg_set_func(
         );
         writeln!(
             code,
-            "inline bool {func_name}({dev_name} dev, size_t idx, {val_arg}) {{"
+            "static inline bool {func_name}({dev_name} dev, size_t idx, {val_arg}) {{"
         )
         .unwrap();
 
@@ -354,7 +354,7 @@ fn generate_reg_set_func(
 
         writeln!(
             code,
-            "inline void {func_name}_unchecked({dev_name} dev, size_t idx, {val_arg}) {{"
+            "static inline void {func_name}_unchecked({dev_name} dev, size_t idx, {val_arg}) {{"
         )
         .unwrap();
         write_type_to_addr(
@@ -374,7 +374,7 @@ fn generate_reg_set_func(
             IdentType::Method,
             format!("{dev_name}_set_{}", ctx.identifiers[reg.name]),
         );
-        writeln!(code, "inline void {func_name}({dev_name} dev) {{").unwrap();
+        writeln!(code, "static inline void {func_name}({dev_name} dev) {{").unwrap();
         writeln!(
             code,
             "  *(volatile uint8_t*)(dev.base + {}) = 0;",
@@ -412,7 +412,7 @@ fn generate_reg_set_func(
         );
         writeln!(
             code,
-            "inline void {func_name}({dev_name} dev, {val_arg}) {{"
+            "static inline void {func_name}({dev_name} dev, {val_arg}) {{"
         )
         .unwrap();
         writeln!(

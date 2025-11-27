@@ -2,10 +2,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+/// This file contains helper functions for working with scatter units.
+///
+/// Because there are multiple different implementations of scatter units
+/// (due to slight differences in register types) this code would need to be
+/// generic.
+/// As C doesn't have generics, this file instead depends on the specific
+/// scatter unit header file to be included to use the correct interface.
+
 #ifndef BITTIDE_SCATTER_H
 #define BITTIDE_SCATTER_H
 
 #include <stdint.h>
+
+// All of those includes don't really do anything.. I guess it might help
+// with auto-completion though?
 
 #ifdef HAL_SCATTER_GATHER_PE_DEVICE_SCATTER_UNIT_H
 #include "hals/scatter_gather_pe/devices/scatter_unit.h"

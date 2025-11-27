@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "bittide_timer.h"
-// #include <cstdlib>
 
 // Time commands for the timer peripheral (internal use)
 #define TIME_CMD_CAPTURE 0

@@ -17,10 +17,6 @@ void c_main(void) {
     ScatterUnit scatter = hal.scatter_unit;
     GatherUnit gather = hal.gather_unit;
 
-    // uart_puts(uart, "Using MEM_SIZE = ");
-    // uart_putdec(uart, MEM_SIZE);
-    // uart_puts(uart, "\r\n");
-
     // Track error counts for each test
     uint32_t test_errors[3] = {0, 0, 0}; // 0: data transfer, 1: metacycle identical, 2: metacycle increment
 
