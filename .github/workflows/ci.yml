@@ -400,10 +400,15 @@ jobs:
       - run: cache pull cargo
       - run: cache pull build
 
-      - name: Running Tests
+      - name: Running Rust Tests
         run: |
           cargo test --all
         working-directory: firmware-support/
+
+      - name: Running C Native Tests
+        run: |
+          ./run_tests.sh
+        working-directory: firmware-support/bittide-hal-c/
 
   firmware-limit-checks:
     name: Firmware Limit Checks
