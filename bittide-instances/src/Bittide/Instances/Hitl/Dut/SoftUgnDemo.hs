@@ -268,10 +268,10 @@ softUgnDemoC ::
     , "MU" ::: ConstBwd MM
     , "GPPE" ::: ConstBwd MM
     , Jtag Bittide
-    , CSignal Bittide (BitVector LinkCount)
-    , CSignal Bittide (BitVector LinkCount)
+    , "MASK" ::: CSignal Bittide (BitVector LinkCount)
+    , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
-    , CSignal Bittide Bit
+    , "SYNC_IN" ::: CSignal Bittide Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))

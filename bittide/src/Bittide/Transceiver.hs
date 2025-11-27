@@ -79,6 +79,7 @@ Receive:
 module Bittide.Transceiver where
 
 import Clash.Explicit.Prelude
+import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
 import Bittide.ElasticBuffer (sticky)
@@ -95,6 +96,7 @@ import Clash.Prelude (withClock)
 import Control.Monad (when)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Proxy (Proxy (Proxy))
+import Data.Tuple (swap)
 import GHC.Stack (HasCallStack)
 
 import qualified Bittide.Transceiver.Cdc as Cdc
@@ -308,6 +310,34 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.stats'
   }
 
+data
+  Transceivers
+    (tx :: Domain)
+    (rx :: Domain)
+    (ref :: Domain)
+    (free :: Domain)
+    (txS :: Domain)
+    (rxS :: Domain)
+    (n :: Nat)
+
+instance Protocol (Transceivers tx rx ref free txS rxS n) where
+  type Fwd (Transceivers tx rx ref free txS rxS n) = Inputs tx rx ref free rxS n
+  type Bwd (Transceivers tx rx ref free txS rxS n) = Outputs n tx rx txS free
+
+instance Protocol (Inputs tx rx ref free rxS n) where
+  type Fwd (Inputs tx rx ref free rxS n) = Inputs tx rx ref free rxS n
+  type Bwd (Inputs tx rx ref free rxS n) = ()
+
+instance Protocol (Outputs n tx rx txS free) where
+  type Fwd (Outputs n tx rx txS free) = Outputs n tx rx txS free
+  type Bwd (Outputs n tx rx txS free) = ()
+
+toInOut ::
+  forall tx rx ref free txS rxS n.
+  Circuit (Transceivers tx rx ref free txS rxS n) () ->
+  Circuit (Inputs tx rx ref free rxS n) (Outputs n tx rx txS free)
+toInOut (Circuit f) = Circuit (swap . f)
+
 {-
 [NOTE: duplicate tx/rx domain]
 'gthCore' and the inside of 'transceiverPrbsN' have two extra domains, tx1 and rx1,
@@ -331,6 +361,28 @@ simOnlyHdlWorkaround :: (HasCallStack, NFDataX a) => a -> a
 simOnlyHdlWorkaround a
   | clashSimulation = a
   | otherwise = deepErrorX "simOnlyHdlWorkaround: not in simulation"
+
+transceiversPrbsNC ::
+  forall tx rx ref free txS rxS n m.
+  ( KnownNat n
+  , n ~ m + 1
+  , HasSynchronousReset tx
+  , HasDefinedInitialValues tx
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
+  ) =>
+  Config free ->
+  Circuit (Transceivers tx rx ref free txS rxS n) ()
+transceiversPrbsNC config = Circuit go
+ where
+  go :: (Inputs tx rx ref free rxS n, ()) -> (Outputs n tx rx txS free, ())
+  go (inputs, _) = (transceiverPrbsN config inputs, ())
 
 transceiverPrbsN ::
   forall tx rx ref free txS rxS n m.

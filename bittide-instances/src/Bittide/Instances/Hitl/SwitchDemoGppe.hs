@@ -50,7 +50,6 @@ import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Transceiver (transceiverPrbsN)
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
@@ -106,66 +105,20 @@ switchDemoGppeDut ::
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
 switchDemoGppeDut refClk refRst skyClk rxSims rxNs rxPs spiS2M jtagIn syncIn =
-  -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
-  seqX
-    (bundle (debugIla, bittidePeIla))
-    ( transceivers.txSims
-    , transceivers.txNs
-    , transceivers.txPs
-    , handshakesDoneFree
-    , frequencyAdjustments
-    , spiDone
-    , spiM2S
-    , jtagOut
-    , transceiversFailedAfterUp
-    , allStableFree
-    , uartTx
-    , syncOut
-    )
+  ( transceivers.txSims
+  , transceivers.txNs
+  , transceivers.txPs
+  , handshakesDoneFree
+  , frequencyAdjustments
+  , spiDone
+  , spiM2S
+  , jtagOut
+  , transceiversFailedAfterUp
+  , allStableFree
+  , uartTx
+  , syncOut
+  )
  where
-  debugIla :: Signal Basic125 ()
-  debugIla =
-    setName @"demoDebugIla"
-      ila
-      ( ilaConfig
-          $ "trigger_fdi_dd"
-          :> "capture_fdi_dd"
-          -- Important step 1 signals
-          :> "dd_spiDone"
-          :> "dd_spiErr"
-          -- Important step 2 signals
-          :> "dd_handshakesDoneFree"
-          -- Important step 3 signals
-          :> "dd_txStarts"
-          -- Important step 4 signals
-          -- Important step 5 signals
-          :> "dd_allStable"
-          -- Important step 6 signals
-          :> "dd_ebStables"
-          -- Other
-          :> "dd_transceiversFailedAfterUp"
-          :> Nil
-      )
-        { depth = D32768
-        }
-      refClk
-      (unsafeToActiveLow handshakeRstFree)
-      captureFlag
-      spiDone
-      spiErr
-      (bundle transceivers.handshakesDoneFree)
-      (bundle $ xpmCdcArraySingle bittideClk refClk <$> txStarts)
-      (xpmCdcSingle bittideClk refClk allStable)
-      (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebStables)
-      transceiversFailedAfterUp
-
-  captureFlag =
-    riseEvery
-      refClk
-      spiRst
-      enableGen
-      (SNat @(PeriodToCycles Basic125 (Milliseconds 2)))
-
   -- Step 1, wait for SPI:
   (_, _, spiState, spiM2S) =
     withClockResetEnable refClk spiRst enableGen
@@ -309,33 +262,6 @@ switchDemoGppeDut refClk refRst skyClk rxSims rxNs rxPs spiS2M jtagIn syncIn =
             )
           )
 
-  bittidePeIla :: Signal Basic125 ()
-  bittidePeIla =
-    setName @"bittidePeIla"
-      ila
-      ( ilaConfig
-          $ "trigger_fdi_pe"
-          :> "capture_fdi_pe"
-          :> "pe_tx_0"
-          :> "pe_tx_1"
-          :> "pe_tx_2"
-          :> "pe_tx_3"
-          :> "pe_tx_4"
-          :> "pe_tx_5"
-          :> "pe_tx_6"
-          :> Nil
-      )
-        { depth = D4096
-        }
-      refClk
-      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (0 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (1 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (2 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (3 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (4 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (5 :: Index LinkCount)))
-      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (6 :: Index LinkCount)))
-
   frequencyAdjustments :: Signal Bittide (FINC, FDEC)
   frequencyAdjustments =
     delay bittideClk enableGen minBound
@@ -370,19 +296,16 @@ switchDemoGppeTest ::
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
 switchDemoGppeTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncIn =
-  -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
-  seqX
-    testIla
-    ( txs
-    , txns
-    , txps
-    , unbundle swFincFdecs
-    , spiDone
-    , spiM2S
-    , jtagOut
-    , uartTx
-    , syncOut
-    )
+  ( txs
+  , txns
+  , txps
+  , unbundle swFincFdecs
+  , spiDone
+  , spiM2S
+  , jtagOut
+  , uartTx
+  , syncOut
+  )
  where
   boardClk :: Clock Ext200
   (boardClk, _) = Gth.ibufds_gte3 boardClkDiff
@@ -428,39 +351,6 @@ switchDemoGppeTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx s
 
   testSuccess :: Signal Basic125 Bool
   testSuccess = testDone .&&. fmap not transceiversFailedAfterUp
-
-  testIla :: Signal Basic125 ()
-  testIla =
-    setName @"demoTestIla"
-      ila
-      ( ilaConfig
-          $ "trigger_fdi_dt"
-          :> "capture_fdi_dt"
-          :> "dt_handshakesDone"
-          :> "dt_spiDone"
-          :> "dt_spiOut"
-          :> "dt_transceiversFailedAfterUp"
-          :> "dt_allStable"
-          :> Nil
-      )
-        { depth = D32768
-        }
-      refClk
-      handshakesDone
-      captureFlag
-      handshakesDone
-      spiDone
-      spiM2S
-      transceiversFailedAfterUp
-      allStable
-
-  captureFlag :: Signal Basic125 Bool
-  captureFlag =
-    riseEvery
-      refClk
-      testReset
-      enableGen
-      (SNat @(PeriodToCycles Basic125 (Milliseconds 2)))
 {-# OPAQUE switchDemoGppeTest #-}
 makeTopEntity 'switchDemoGppeTest
 
