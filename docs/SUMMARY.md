@@ -13,3 +13,7 @@ SPDX-License-Identifier: Apache-2.0
 - [Soft UGN Demo](sections/soft-ugn-demo.md)
 - [Switch Demo with ASIC](sections/switch-demo-asic.md)
 - [Switch Demo with GPPE](sections/switch-demo-gppe.md)
+- [Components](sections/components.md)
+  - [Calendar](sections/components/calendar.md)
+  - [Scatter Unit](sections/components/scatter-unit.md)
+  - [Gather Unit](sections/components/gather-unit.md)
