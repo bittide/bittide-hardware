@@ -25,12 +25,15 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI_,
  )
 import Protocols.MemoryMap.TypeDescription.TH
+import Protocols.Spi (Spi)
 import Protocols.Wishbone
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+
+import qualified Protocols.Spi as Spi
 
 -- | The Si539X chips use "Page"s to increase their address space.
 type Page = Byte
@@ -157,19 +160,14 @@ si539xSpiWb ::
   -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   Circuit
-    ( ( ConstBwd MM
-      , Wishbone dom 'Standard aw (Bytes 4)
-      )
-    , "MISO" ::: CSignal dom Bit
+    ( ConstBwd MM
+    , Wishbone dom 'Standard aw (Bytes 4)
     )
     ( "spiDone" ::: CSignal dom Bool
-    , ( "SCK" ::: CSignal dom Bool
-      , "MOSI" ::: CSignal dom Bit
-      , "SS" ::: CSignal dom Bool
-      )
+    , Spi dom
     )
 si539xSpiWb minTargetPs =
-  circuit $ \((mm, wb), miso) -> do
+  circuit $ \(mm, wb) -> do
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
     [wb0, wb1, wb2, wb3, wb4] <- deviceWb "Si539xSpi" -< (mm, wb)
@@ -197,12 +195,10 @@ si539xSpiWb minTargetPs =
     let maybeRegOp = orNothing <$> commit <*> regOp
     let reset = unsafeFromActiveHigh $ resetReg
 
-    (Fwd readData, _busy, spiOut) <-
-      withReset reset
-        $ si539xSpiDriverC minTargetPs
-        -< (Fwd maybeRegOp, miso)
+    (Fwd readData, _busy, spi) <-
+      withReset reset $ si539xSpiDriverC minTargetPs -< Fwd maybeRegOp
 
-    idC -< (spiDone, spiOut)
+    idC -< (spiDone, spi)
  where
   regOpConfig =
     (registerConfig "register_operation")
@@ -239,25 +235,23 @@ si539xSpiWb minTargetPs =
 
   defRegOp = RegisterOperation{page = 0, address = 0, write = Nothing}
 
-  si539xSpiDriverC ::
-    (HiddenClockResetEnable dom) =>
-    SNat minTargetPeriodPs ->
-    Circuit
-      ( CSignal dom (Maybe RegisterOperation)
-      , "MISO" ::: CSignal dom Bit
-      )
-      ( CSignal dom (Maybe Byte)
-      , CSignal dom Busy
-      , ( "SCK" ::: CSignal dom Bool
-        , "MOSI" ::: CSignal dom Bit
-        , "SS" ::: CSignal dom Bool
-        )
-      )
-  si539xSpiDriverC minPs = Circuit go
+si539xSpiDriverC ::
+  forall minTargetPeriodPs dom.
+  (HiddenClockResetEnable dom) =>
+  SNat minTargetPeriodPs ->
+  Circuit
+    ( CSignal dom (Maybe RegisterOperation)
+    )
+    ( CSignal dom (Maybe Byte)
+    , CSignal dom Busy
+    , Spi dom
+    )
+si539xSpiDriverC minPs = Circuit go
+ where
+  go (regOp, (_, _, s2m)) = ((), (readByte, busy, m2s))
    where
-    go ((regOp, miso), _) = (((), ()), (readByte, busy, spiOut))
-     where
-      (readByte, busy, spiOut) = si539xSpiDriver minPs regOp miso
+    (readByte, busy, m2s) =
+      si539xSpiDriver minPs regOp s2m
 
 {- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
 This component will first write and verify the initial configuration before becoming
@@ -279,24 +273,22 @@ si539xSpi ::
   SNat minTargetPeriodPs ->
   -- | Read or write operation for the @Si539X@ registers.
   Signal dom (Maybe RegisterOperation) ->
-  -- | MISO
-  "MISO" ::: Signal dom Bit ->
+  -- | SPI slave to master signals
+  Signal dom Spi.S2M ->
   -- |
   -- 1. Byte returned by read / write operation.
   -- 2. The SPI interface is 'Busy' and does not accept new operations.
-  -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
+  -- 3. ConfigState
+  -- 4. SPI master to slave signals
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
   , Signal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
-  , ( "SCK" ::: Signal dom Bool
-    , "MOSI" ::: Signal dom Bit
-    , "SS" ::: Signal dom Bool
-    )
+  , Signal dom Spi.M2S
   )
-si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
-  (configByte, configBusy, configState, spiOut)
+si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation s2m =
+  (configByte, configBusy, configState, spiM2S)
  where
-  (driverByte, driverBusy, spiOut) = withReset driverReset si539xSpiDriver minTargetPs spiOperation miso
+  (driverByte, driverBusy, spiM2S) = withReset driverReset si539xSpiDriver minTargetPs spiOperation s2m
   driverReset = forceReset $ holdTrue d3 $ flip fmap configState $ \case
     ResetDriver _ -> True
     _ -> False
@@ -382,29 +374,26 @@ si539xSpiDriver ::
   SNat minTargetPeriodPs ->
   -- | Read or write operation for the @Si539X@ registers.
   Signal dom (Maybe RegisterOperation) ->
-  -- | MISO
-  "MISO" ::: Signal dom Bit ->
+  -- | SPI slave to master signals
+  Signal dom Spi.S2M ->
   -- |
   -- 1. Byte returned by read / write operation.
   -- 2. The SPI interface is 'Busy' and does not accept new operations.
-  -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
+  -- 3. SPI master to slave signals
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
-  , ( "SCK" ::: Signal dom Bool
-    , "MOSI" ::: Signal dom Bit
-    , "SS" ::: Signal dom Bool
-    )
+  , Signal dom Spi.M2S
   )
-si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
+si539xSpiDriver SNat incomingOpS s2m = (fromSlave, decoderBusy, spiM2S)
  where
-  spiOut = (sck, mosi, ss)
   (sck, mosi, ss, spiBusyS, acknowledge, receivedData) =
     spiMaster
       SPIMode0
       (SNat @(Max 1 (DivRU (PeriodToCycles dom minTargetPeriodPs) 2)))
       d1
       spiWrite
-      miso
+      s2m.miso
+  spiM2S = Spi.M2S <$> sck <*> mosi <*> ss
   (spiWrite, decoderBusy, fromSlave) =
     mealyB go defDriverState (incomingOpS, spiBusyS, acknowledge, receivedData)
   defDriverState =

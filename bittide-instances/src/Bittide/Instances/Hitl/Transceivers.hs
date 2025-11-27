@@ -40,6 +40,7 @@ import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Protocols.Spi as Spi
 
 {- | Start value of the counters used in 'counter' and 'expectCounter'. This is
 a non-zero start value, as a regression test for a bug where the transceivers
@@ -83,7 +84,7 @@ goTransceiversUpTest ::
   "GTH_RX_N" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  "MISO" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
@@ -91,13 +92,9 @@ goTransceiversUpTest ::
   , "anyErrors" ::: Signal Basic125 Bool
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
-  , ""
-      ::: ( "SCLK" ::: Signal Basic125 Bool
-          , "MOSI" ::: Signal Basic125 Bit
-          , "CSB" ::: Signal Basic125 Bool
-          )
+  , "" ::: Signal Basic125 Spi.M2S
   )
-goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs miso =
+goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs spiS2M =
   ( transceivers.txSims
   , transceivers.txNs
   , transceivers.txPs
@@ -105,7 +102,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs miso =
   , expectCounterErrorSys
   , transceivers.stats
   , spiDone
-  , spiOut
+  , spiM2S
   )
  where
   allUp = and <$> bundle transceivers.linkUps
@@ -119,9 +116,13 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs miso =
   isErr (Error _) = True
   isErr _ = False
 
-  (_, _, spiState, spiOut) =
+  (_, _, spiState, spiM2S) =
     withClockResetEnable sysClk sysRst enableGen
-      $ si539xSpi testConfig6_200_on_0a_1ppb (SNat @(Microseconds 10)) (pure Nothing) miso
+      $ si539xSpi
+        testConfig6_200_on_0a_1ppb
+        (SNat @(Microseconds 10))
+        (pure Nothing)
+        spiS2M
 
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
@@ -174,20 +175,16 @@ transceiversUpTest ::
   "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  "MISO" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
-  , ""
-      ::: ( "SCLK" ::: Signal Basic125 Bool
-          , "MOSI" ::: Signal Basic125 Bit
-          , "CSB" ::: Signal Basic125 Bool
-          )
+  , "" ::: Signal Basic125 Spi.M2S
   )
-transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
-  (txs, txns, txps, syncOut, spiDone, spiOut)
+transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
+  (txs, txns, txps, syncOut, spiDone, spiM2S)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
 
@@ -200,8 +197,8 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
       $ unsafeFromActiveLow
       $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txs, txns, txps, allUp, anyErrors, _stats, spiDone, spiOut) =
-    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxs rxns rxps miso
+  (txs, txns, txps, allUp, anyErrors, _stats, spiDone, spiM2S) =
+    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allUp
   failAfterUpSticky = sticky sysClk testRst failAfterUp

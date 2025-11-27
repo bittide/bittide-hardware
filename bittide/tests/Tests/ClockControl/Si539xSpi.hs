@@ -12,10 +12,11 @@ import Clash.Signal.Internal (Signal ((:-)))
 import Bittide.ClockControl.Si5391A
 import Bittide.ClockControl.Si539xSpi
 import Bittide.SharedTypes
-
-import qualified Data.Map as Map
 import Test.Tasty
 import Test.Tasty.HUnit
+
+import qualified Data.Map as Map
+import qualified Protocols.Spi as Spi
 
 createDomain vXilinxSystem{vPeriod = hzToPeriod 1e6, vName = "Basic1"}
 
@@ -28,9 +29,10 @@ tests =
 topEntity :: Signal Basic1 (Bool, Bool)
 topEntity = bundle (masterBusy, configState .==. pure Finished)
  where
-  (_, masterBusy, configState, (sclk, mosi, ss)) =
+  (_, masterBusy, configState, m2s) =
     withClockResetEnable clockGen resetGen enableGen
-      $ si539xSpi testConfigA (SNat @50000) (pure Nothing) miso
+      $ si539xSpi testConfigA (SNat @50000) (pure Nothing) (Spi.S2M <$> miso)
+  (sclk, mosi, ss) = (m2s.sclk, m2s.mosi, m2s.cs)
   miso = si5391Mock sclk mosi ss
 
 si5391Mock ::

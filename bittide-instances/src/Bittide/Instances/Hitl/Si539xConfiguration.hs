@@ -19,6 +19,7 @@ import Clash.Explicit.Reset.Extra (Asserted (..), xpmResetSynchronizer)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
 import Protocols.MemoryMap
+import Protocols.Spi (Spi)
 import VexRiscv
 
 import Bittide.ClockControl.Si539xSpi
@@ -43,6 +44,7 @@ import Bittide.Instances.Domains
 
 import qualified Bittide.Instances.Hitl.Driver.Si539xConfiguration as D
 import qualified Clash.Cores.Xilinx.Extra as Gth
+import qualified Protocols.Spi as Spi
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -57,18 +59,14 @@ si539xConfigTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "JTAG" ::: Signal Basic125 JtagIn ->
-  "MISO" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
   ( "JTAG" ::: Signal Basic125 JtagOut
   , "USB_UART_RXD" ::: Signal Basic125 Bit
-  , ""
-      ::: ( "SCLK" ::: Signal Basic125 Bool
-          , "MOSI" ::: Signal Basic125 Bit
-          , "CSB" ::: Signal Basic125 Bool
-          )
+  , "" ::: Signal Basic125 Spi.M2S
   )
-si539xConfigTest freeClkDiff skyClkDiff jtagIn miso _uartRx =
-  testStart `hwSeqX` (jtagOut, uartTx, spiOut)
+si539xConfigTest freeClkDiff skyClkDiff jtagIn spiS2M _uartRx =
+  testStart `hwSeqX` (jtagOut, uartTx, spiM2S)
  where
   (freeClk, freeRst) = clockWizardDifferential freeClkDiff noReset
   (_, odivClk) = Gth.ibufds_gte3 skyClkDiff
@@ -82,20 +80,20 @@ si539xConfigTest freeClkDiff skyClkDiff jtagIn miso _uartRx =
   testSuccess = register freeClk testRst enableGen False (pure True)
   testRst = unsafeFromActiveLow testStart
 
-  ((jtagOut, _), (uartTx, spiOut)) =
+  (jtagOut, (uartTx, spiM2S)) =
     toSignals
-      ( circuit $ \(jtagIn, miso) -> do
+      ( circuit $ \jtag -> do
           mm <- ignoreMM
-          (uartOutBytes, _spiDone, spiOut) <-
-            dut freeClk freeRst skyClk -< (mm, (jtagIn, miso))
+          (uartOutBytes, _spiDone, spi) <-
+            dut freeClk freeRst skyClk -< (mm, jtag)
 
           (_uartInBytes, uartTx) <-
             withClockResetEnable freeClk freeRst enableGen
               $ uartDf baud
               -< (uartOutBytes, Fwd (pure 0))
-          idC -< (uartTx, spiOut)
+          idC -< (uartTx, spi)
       )
-      ((jtagIn, miso), ((), ((), (), ())))
+      (jtagIn, ((), spiS2M))
 
 dut ::
   forall free sky.
@@ -111,18 +109,13 @@ dut ::
   Clock sky ->
   Circuit
     ( "MM" ::: ConstBwd MM
-    , ( Jtag free
-      , "MISO" ::: CSignal free Bit
-      )
+    , Jtag free
     )
     ( "UART_BYTES" ::: Df free (BitVector 8)
     , "SPI_DONE" ::: CSignal free Bool
-    , ( "SCLK" ::: CSignal free Bool
-      , "MOSI" ::: CSignal free Bit
-      , "CSB" ::: CSignal free Bool
-      )
+    , Spi free
     )
-dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag, miso)) -> do
+dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, jtag) -> do
   [siBus, timeBus, uartBus, dcBus] <-
     withClockResetEnable freeClk freeRst enableGen
       $ processingElement NoDumpVcd peConfig
@@ -133,10 +126,10 @@ dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag, miso)
   -- met by the source of `spiDone`.
   let skyRst = xpmResetSynchronizer Asserted freeClk skyClk $ unsafeFromActiveLow spiDone
 
-  (Fwd spiDone, spiOut) <-
+  (Fwd spiDone, spi) <-
     withClockResetEnable freeClk freeRst enableGen
       $ si539xSpiWb (SNat @(Microseconds 10))
-      -< (siBus, miso)
+      -< siBus
   Fwd _localCounter <- withClockResetEnable freeClk freeRst enableGen timeWb -< timeBus
   (uartOut, _uartStatus) <-
     withClockResetEnable freeClk freeRst enableGen
@@ -145,7 +138,7 @@ dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag, miso)
   Fwd _domainDiff <-
     domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
 
-  idC -< (uartOut, Fwd spiDone, spiOut)
+  idC -< (uartOut, Fwd spiDone, spi)
  where
   peConfig =
     PeConfig
