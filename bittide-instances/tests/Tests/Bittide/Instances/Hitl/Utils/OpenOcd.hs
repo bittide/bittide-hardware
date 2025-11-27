@@ -5,7 +5,12 @@ module Tests.Bittide.Instances.Hitl.Utils.OpenOcd where
 
 import Prelude
 
-import Bittide.Instances.Hitl.Utils.OpenOcd (mergeGdbJtag, parseGdbPorts, parseJtagIds)
+import Bittide.Instances.Hitl.Utils.OpenOcd (
+  TapInfo (..),
+  mergeGdbJtag,
+  parseGdbPorts,
+  parseJtagIds,
+ )
 import Data.String.Interpolate (i)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -134,9 +139,9 @@ case_merge_gdb_jtag_success =
         Left err -> assertFailure $ "Unexpected merge error: " ++ err
         Right result -> do
           assertEqual "Should have 3 entries" 3 (length result)
-          let (jtagId0, tapId0, port0) = result !! 0
-          let (jtagId1, tapId1, port1) = result !! 1
-          let (jtagId2, tapId2, port2) = result !! 2
+          let TapInfo{jtagId = jtagId0, tapId = tapId0, gdbPort = port0} = result !! 0
+          let TapInfo{jtagId = jtagId1, tapId = tapId1, gdbPort = port1} = result !! 1
+          let TapInfo{jtagId = jtagId2, tapId = tapId2, gdbPort = port2} = result !! 2
           assertEqual "First JTAG ID" 0x0514C001 jtagId0
           assertEqual "First tap ID" 2 tapId0
           assertEqual "First port" 3335 port0

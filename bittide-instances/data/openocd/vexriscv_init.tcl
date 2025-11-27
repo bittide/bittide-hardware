@@ -5,8 +5,16 @@ set _ENDIAN little
 set _CHIPNAME riscv
 set _TAP_TYPE 1234
 
-jtag newtap $_CHIPNAME tap0 -irlen 5 -ignore-version
-target create $_CHIPNAME.tap0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap0
+
+set user_tap_count [env TAP_COUNT]
+if { $user_tap_count == "" } {
+  error "Required environment variable 'TAP_COUNT' is not set."
+}
+
+for {set i 0} {$i < $user_tap_count} {incr i} {
+  jtag newtap $_CHIPNAME tap$i -irlen 5 -ignore-version
+  target create $_CHIPNAME.tap$i riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap$i
+}
 
 poll_period 50
 

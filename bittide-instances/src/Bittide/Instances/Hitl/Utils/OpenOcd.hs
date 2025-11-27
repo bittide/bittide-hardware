@@ -4,8 +4,6 @@
 
 module Bittide.Instances.Hitl.Utils.OpenOcd where
 
-import Bittide.Instances.Hitl.Utils.Program
-import Project.Handle
 import Prelude
 
 import Control.Monad.Catch
@@ -13,10 +11,19 @@ import Control.Monad.IO.Class
 import Data.List (isInfixOf, isPrefixOf, sort, sortOn)
 import Data.Maybe (fromJust)
 import Numeric (readHex)
-import Paths_bittide_instances
+import System.FilePath ((</>))
+import System.IO (BufferMode (LineBuffering), hSetBuffering)
 import System.Posix.Env (getEnvironment)
 import System.Process
 import Text.Read (readMaybe)
+
+import Bittide.Hitl (DeviceInfo (..))
+import Bittide.Instances.Hitl.Utils.Program
+import Paths_bittide_instances
+import Project.Handle
+import Vivado.Tcl (HwTarget)
+
+import qualified System.Timeout.Extra as T
 
 getStartPath :: IO FilePath
 getStartPath = getDataFileName "data/openocd/start.sh"
@@ -30,6 +37,68 @@ waitForInitComplete s
 
 initCompleteMarker :: String
 initCompleteMarker = "Initialization complete"
+
+data OcdInitData = OcdInitData
+  { tapInfos :: [TapInfo]
+  -- ^ TapInfo for each detected tap
+  , handles :: ProcessHandles
+  -- ^ OpenOCD stdio handles
+  , cleanup :: IO ()
+  -- ^ Cleanup function
+  }
+
+initOpenOcd :: [JtagId] -> FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
+initOpenOcd expectedJtagIds hitlDir (_, d) targetIndex = do
+  putStrLn $ "Starting OpenOCD for target " <> d.deviceId
+
+  let
+    baseGdbPort = 3333
+    gdbPort = baseGdbPort + targetIndex * length expectedJtagIds
+    tclPort = 6666 + targetIndex
+    telnetPort = 4444 + targetIndex
+    ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
+    ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
+  putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
+  putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
+
+  putStrLn "Starting OpenOCD..."
+  (ocd, ocdPh, ocdClean0) <-
+    startOpenOcdWithEnvAndArgs
+      ["-f", "sipeed.tcl", "-f", "ports.tcl", "-f", "vexriscv_init.tcl"]
+      [ ("OPENOCD_STDOUT_LOG", ocdStdout)
+      , ("OPENOCD_STDERR_LOG", ocdStderr)
+      , ("USB_DEVICE", d.usbAdapterLocation)
+      , ("GDB_PORT", show gdbPort)
+      , ("TCL_PORT", show tclPort)
+      , ("TELNET_PORT", show telnetPort)
+      , ("TAP_COUNT", show (length expectedJtagIds))
+      ]
+  hSetBuffering ocd.stderrHandle LineBuffering
+  output <-
+    T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000 $
+      readUntilLine ocd.stderrHandle initCompleteMarker
+
+  -- Parse the OpenOCD output to extract GDB ports based on JTAG IDs
+  case parseJtagIdsAndGdbPorts output of
+    Left err -> error $ "Failed to parse OpenOCD output: " <> err
+    Right tapInfos -> do
+      let detectedJtagIds = map (.jtagId) tapInfos
+
+      -- Compare detected JTAG IDs with expected ones
+      if detectedJtagIds /= expectedJtagIds
+        then
+          error $
+            "JTAG ID mismatch! Expected: "
+              <> show expectedJtagIds
+              <> ", but detected: "
+              <> show detectedJtagIds
+        else do
+          putStrLn $ "JTAG IDs match expected configuration: " <> show detectedJtagIds
+
+          let
+            ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
+            ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
+          return $ OcdInitData tapInfos ocd ocdClean1
 
 withOpenOcd ::
   (MonadMask m, MonadIO m) =>
@@ -91,6 +160,7 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort =
       , ("GDB_PORT", show gdbPort)
       , ("TCL_PORT", show tclPort)
       , ("TELNET_PORT", show telnetPort)
+      , ("TAP_COUNT", "1")
       ]
         <> extraEnv
     )
@@ -125,22 +195,28 @@ startOpenOcdWithEnvAndArgs args extraEnv = do
 
   pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
 
+data TapInfo = TapInfo
+  { jtagId :: JtagId
+  , tapId :: TapId
+  , gdbPort :: GdbPort
+  }
+  deriving (Eq, Ord, Show)
+
 type JtagId = Int
 type TapId = Int
 type GdbPort = Int
 
 -- | Given the output of OpenOCD, parse the tap ids and gdb ports.
-parseJtagIdsAndGdbPorts :: [String] -> Either String [(JtagId, TapId, GdbPort)]
+parseJtagIdsAndGdbPorts :: [String] -> Either String [TapInfo]
 parseJtagIdsAndGdbPorts logLines = do
   gdbPorts <- parseGdbPorts logLines
   jtagIds <- parseJtagIds logLines
   mergeGdbJtag gdbPorts jtagIds
 
 {- | Merge the outputs of parseGdbPorts and parseJtagIds. Returns a list of
-@('JtagId', 'TapId', 'GdbPort')@ tuples. Errors if the tap numbers don't match
-perfectly between the two inputs
+@TapInfo@. Errors if the tap numbers don't match perfectly between the two inputs
 -}
-mergeGdbJtag :: [(Int, Int)] -> [(Int, Int)] -> Either String [(JtagId, TapId, GdbPort)]
+mergeGdbJtag :: [(TapId, GdbPort)] -> [(TapId, JtagId)] -> Either String [TapInfo]
 mergeGdbJtag gdbPorts jtagIds =
   if gdbTaps /= jtagTaps
     then
@@ -154,14 +230,13 @@ mergeGdbJtag gdbPorts jtagIds =
   gdbTaps = map fst sortedGdb
   jtagTaps = map fst sortedJtag
 
-  mergePair :: (Int, Int) -> (Int, Int) -> (JtagId, TapId, GdbPort)
-  mergePair (tapId, gdbPort) (_, jtagId) = do
-    (fromIntegral jtagId, fromIntegral tapId, fromIntegral gdbPort)
+  mergePair :: (TapId, GdbPort) -> (TapId, JtagId) -> TapInfo
+  mergePair (tapId, gdbPort) (_, jtagId) = TapInfo{jtagId, tapId, gdbPort}
 
 {- | Parse OpenOCD log output to extract tap numbers and their associated GDB ports
 Returns a list of (tap number, GDB port) tuples
 -}
-parseGdbPorts :: [String] -> Either String [(Int, Int)]
+parseGdbPorts :: [String] -> Either String [(TapId, GdbPort)]
 parseGdbPorts logLines = mapM parseLine relevantLines
  where
   relevantLines = filter isGdbServerLine logLines
@@ -169,7 +244,7 @@ parseGdbPorts logLines = mapM parseLine relevantLines
   isGdbServerLine :: String -> Bool
   isGdbServerLine line = "starting gdb server on" `isInfixOf` line
 
-  parseLine :: String -> Either String (Int, Int)
+  parseLine :: String -> Either String (TapId, GdbPort)
   parseLine line = do
     -- Extract tap number from "[riscv.tapN]"
     tapNum <- extractTapNumber line
@@ -177,7 +252,7 @@ parseGdbPorts logLines = mapM parseLine relevantLines
     port <- extractPort line
     return (tapNum, port)
 
-  extractTapNumber :: String -> Either String Int
+  extractTapNumber :: String -> Either String TapId
   extractTapNumber line =
     case dropWhile (/= '[') line of
       ('[' : 'r' : 'i' : 's' : 'c' : 'v' : '.' : 't' : 'a' : 'p' : rest) ->
@@ -189,7 +264,7 @@ parseGdbPorts logLines = mapM parseLine relevantLines
           _ -> Left $ "No tap number found in: " ++ line
       _ -> Left $ "No tap prefix found in: " ++ line
 
-  extractPort :: String -> Either String Int
+  extractPort :: String -> Either String GdbPort
   extractPort line =
     case words line of
       ws ->
@@ -203,7 +278,7 @@ parseGdbPorts logLines = mapM parseLine relevantLines
 {- | Parse OpenOCD log output to extract JTAG IDs for each tap
 Returns a list of (tap number, JTAG ID) tuples
 -}
-parseJtagIds :: [String] -> Either String [(Int, Int)]
+parseJtagIds :: [String] -> Either String [(TapId, JtagId)]
 parseJtagIds logLines = mapM parseLine relevantLines
  where
   relevantLines = filter isJtagIdLine logLines
@@ -211,7 +286,7 @@ parseJtagIds logLines = mapM parseLine relevantLines
   isJtagIdLine :: String -> Bool
   isJtagIdLine line = "JTAG_ID:" `isPrefixOf` line
 
-  parseLine :: String -> Either String (Int, Int)
+  parseLine :: String -> Either String (TapId, JtagId)
   parseLine line = do
     -- Extract tap number from "riscv.tapN:"
     tapNum <- extractTapNumber line
@@ -219,7 +294,7 @@ parseJtagIds logLines = mapM parseLine relevantLines
     jtagId <- extractJtagId line
     return (tapNum, jtagId)
 
-  extractTapNumber :: String -> Either String Int
+  extractTapNumber :: String -> Either String TapId
   extractTapNumber line =
     case dropWhile (/= 'r') line of
       ('r' : 'i' : 's' : 'c' : 'v' : '.' : 't' : 'a' : 'p' : rest) ->
@@ -231,7 +306,7 @@ parseJtagIds logLines = mapM parseLine relevantLines
           _ -> Left $ "No tap number found in: " ++ line
       _ -> Left $ "No tap prefix found in: " ++ line
 
-  extractJtagId :: String -> Either String Int
+  extractJtagId :: String -> Either String JtagId
   extractJtagId line =
     case words line of
       ws ->
