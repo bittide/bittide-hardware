@@ -32,6 +32,7 @@ import Data.Maybe (isJust)
 import System.FilePath ((</>))
 
 import qualified Clash.Cores.Xilinx.Extra as Gth
+import qualified Protocols.Spi as Spi
 
 data TestState = Busy | Fail | Success
 data Test
@@ -63,7 +64,7 @@ goFincFdecTests ::
   Reset Basic200 ->
   Clock Ext200 ->
   Signal Basic200 Test ->
-  "MISO" ::: Signal Basic200 Bit -> -- SPI
+  Signal Basic200 Spi.S2M ->
   ""
     ::: ( Signal Basic200 TestState
         , -- Freq increase / freq decrease request to clock board
@@ -72,11 +73,7 @@ goFincFdecTests ::
                 , "FDEC" ::: Signal Basic200 Bool
                 )
         , -- SPI to clock board:
-          ""
-            ::: ( "SCLK" ::: Signal Basic200 Bool
-                , "MOSI" ::: Signal Basic200 Bit
-                , "CSB" ::: Signal Basic200 Bool
-                )
+          "" ::: Signal Basic200 Spi.M2S
         , -- Debug signals:
           ""
             ::: ( "SPI_BUSY" ::: Signal Basic200 Bool
@@ -86,18 +83,18 @@ goFincFdecTests ::
                 , "COUNTER" ::: Signal Basic200 (Signed 32)
                 )
         )
-goFincFdecTests clk rst clkControlled testSelect miso =
-  (testResult, fIncDec, spiOut, debugSignals)
+goFincFdecTests clk rst clkControlled testSelect spiS2M =
+  (testResult, fIncDec, spiM2S, debugSignals)
  where
   debugSignals = (spiBusy, pack <$> spiState, siClkLocked, counterActive, counter)
 
-  (_, spiBusy, spiState@(fmap (== Finished) -> siClkLocked), spiOut) =
+  (_, spiBusy, spiState@(fmap (== Finished) -> siClkLocked), spiM2S) =
     withClockResetEnable clk rst enableGen
       $ si539xSpi
         commonSpiConfig
         (SNat @(Microseconds 1))
         (pure Nothing)
-        miso
+        spiS2M
 
   rstTest = unsafeFromActiveLow siClkLocked
   rstControlled = convertReset clk clkControlled rst
@@ -171,7 +168,7 @@ fincFdecTests ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   -- Pins from clock board:
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
-  "MISO" ::: Signal Basic200 Bit -> -- SPI
+  Signal Basic200 Spi.S2M ->
   ""
     ::: ( ""
             ::: ( "done" ::: Signal Basic200 Bool
@@ -183,14 +180,10 @@ fincFdecTests ::
                 , "FDEC" ::: Signal Basic200 Bool
                 )
         , -- SPI to clock board:
-          ""
-            ::: ( "SCLK" ::: Signal Basic200 Bool
-                , "MOSI" ::: Signal Basic200 Bit
-                , "CSB" ::: Signal Basic200 Bool
-                )
+          "" ::: Signal Basic200 Spi.M2S
         )
-fincFdecTests diffClk controlledDiffClock spiIn =
-  ((testDone, testSuccess), fIncDec, spiOut)
+fincFdecTests diffClk controlledDiffClock spiS2M =
+  ((testDone, testSuccess), fIncDec, spiM2S)
  where
   (_, odivClk) = Gth.ibufds_gte3 controlledDiffClock
   clkControlled = Gth.bufgGt d0 odivClk noReset
@@ -200,8 +193,8 @@ fincFdecTests diffClk controlledDiffClock spiIn =
   started = isJust <$> testInput
   testRst = orReset clkStableRst (unsafeFromActiveLow started)
 
-  (testResult, fIncDec, spiOut, _debugSignals) =
-    goFincFdecTests clk testRst clkControlled (fromJustX <$> testInput) spiIn
+  (testResult, fIncDec, spiM2S, _debugSignals) =
+    goFincFdecTests clk testRst clkControlled (fromJustX <$> testInput) spiS2M
 
   (testDone, testSuccess) = unbundle $ testStateToDoneSuccess <$> testResult
 

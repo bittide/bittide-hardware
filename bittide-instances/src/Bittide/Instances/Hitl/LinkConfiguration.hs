@@ -16,10 +16,7 @@ module Bittide.Instances.Hitl.LinkConfiguration (
 ) where
 
 import Clash.Explicit.Prelude
-import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
-
-import qualified Data.Map.Strict as Map (fromList)
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
@@ -42,9 +39,12 @@ import System.FilePath ((</>))
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.Gth as Gth
+import qualified Clash.Explicit.Prelude as E
+import qualified Data.Map.Strict as Map
+import qualified Protocols.Spi as Spi
 
 {- | Checks whether the received index matches with the corresponding
-entry in 'Bittide.Instances.Hitl.Setup.fpgaSetup' and sychronizes
+entry in 'Bittide.Instances.Hitl.Setup.fpgaSetup' and synchronizes
 to the right clock domain accordingly.
 -}
 checkData ::
@@ -115,7 +115,7 @@ transceiversStartAndObserve ::
   "GTH_RX" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  "MISO" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
@@ -123,13 +123,9 @@ transceiversStartAndObserve ::
   , "success" ::: Signal Basic125 Bool
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
-  , ""
-      ::: ( "SCLK" ::: Signal Basic125 Bool
-          , "MOSI" ::: Signal Basic125 Bit
-          , "CSB" ::: Signal Basic125 Bool
-          )
+  , "" ::: Signal Basic125 Spi.M2S
   )
-transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs miso =
+transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
   ( transceivers.txSims
   , transceivers.txNs
   , transceivers.txPs
@@ -137,7 +133,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs miso =
   , success
   , transceivers.stats
   , spiDone
-  , spiOut
+  , spiM2S
   )
  where
   allReady = and <$> bundle transceivers.linkReadys
@@ -151,13 +147,13 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs miso =
     Error{} -> True
     _ -> False
 
-  (_, _, spiState, spiOut) =
+  (_, _, spiState, spiM2S) =
     withClockResetEnable sysClk sysRst enableGen
       $ si539xSpi
         testConfig6_200_on_0a_1ppb
         (SNat @(Microseconds 10))
         (pure Nothing)
-        miso
+        spiS2M
 
   -- Transceiver setup
   transceivers =
@@ -214,20 +210,16 @@ linkConfigurationTest ::
   "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  "MISO" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
-  , ""
-      ::: ( "SCLK" ::: Signal Basic125 Bool
-          , "MOSI" ::: Signal Basic125 Bit
-          , "CSB" ::: Signal Basic125 Bool
-          )
+  , "" ::: Signal Basic125 Spi.M2S
   )
-linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
-  (txSims, txns, txps, syncOut, spiDone, spiOut)
+linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
+  (txSims, txns, txps, syncOut, spiDone, spiM2S)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -250,8 +242,8 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
       `orReset` syncInRst
       `orReset` unsafeFromActiveLow startTest
 
-  (txSims, txns, txps, allReady, success, _stats, spiDone, spiOut) =
-    transceiversStartAndObserve refClk sysClk testRst myIndex rxs rxns rxps miso
+  (txSims, txns, txps, allReady, success, _stats, spiDone, spiM2S) =
+    transceiversStartAndObserve refClk sysClk testRst myIndex rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allReady
   failAfterUpSticky = sticky sysClk testRst failAfterUp

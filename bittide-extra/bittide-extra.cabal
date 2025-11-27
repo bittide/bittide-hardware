@@ -171,6 +171,7 @@ library
     Project.Handle
     Protocols.Df.Extra
     Protocols.Extra
+    Protocols.Spi
     Protocols.Wishbone.Extra
     System.Timeout.Extra
 

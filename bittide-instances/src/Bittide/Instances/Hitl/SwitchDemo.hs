@@ -61,6 +61,7 @@ import Clash.Cores.UART.Extra
 import qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
+import qualified Protocols.Spi as Spi
 
 {- | Reset logic:
 
@@ -87,7 +88,7 @@ switchDemoDut ::
   "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  "MISO" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   "JTAG_IN" ::: Signal Bittide JtagIn ->
   "SYNC_IN" ::: Signal Bittide Bit ->
   ( "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
@@ -96,18 +97,14 @@ switchDemoDut ::
   , "handshakesDone" ::: Signal Basic125 Bool
   , "FINC_FDEC" ::: Signal Bittide (FINC, FDEC)
   , "spiDone" ::: Signal Basic125 Bool
-  , ""
-      ::: ( "SCLK" ::: Signal Basic125 Bool
-          , "MOSI" ::: Signal Basic125 Bit
-          , "CSB" ::: Signal Basic125 Bool
-          )
+  , "" ::: Signal Basic125 Spi.M2S
   , "JTAG_OUT" ::: Signal Bittide JtagOut
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
   , "ALL_STABLE" ::: Signal Basic125 Bool
   , "UART_TX" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
+switchDemoDut refClk refRst skyClk rxSims rxNs rxPs spiS2M jtagIn syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
   seqX
     (bundle (debugIla, bittidePeIla))
@@ -117,7 +114,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
     , handshakesDoneFree
     , frequencyAdjustments
     , spiDone
-    , spiOut
+    , spiM2S
     , jtagOut
     , transceiversFailedAfterUp
     , allStableFree
@@ -169,9 +166,13 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
   -- Step 1, wait for SPI:
-  (_, _, spiState, spiOut) =
+  (_, _, spiState, spiM2S) =
     withClockResetEnable refClk spiRst enableGen
-      $ si539xSpi @Basic125 commonSpiConfig (SNat @(Microseconds 10)) (pure Nothing) miso
+      $ si539xSpi @Basic125
+        commonSpiConfig
+        (SNat @(Microseconds 10))
+        (pure Nothing)
+        spiS2M
 
   spiDone :: Signal Basic125 Bool
   spiDone = dflipflop refClk $ (== Finished) <$> spiState
@@ -416,7 +417,7 @@ switchDemoTest ::
   "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  "MISO" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   "JTAG" ::: Signal Bittide JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
   "SYNC_IN" ::: Signal Bittide Bit ->
@@ -428,16 +429,12 @@ switchDemoTest ::
           , "FDEC" ::: Signal Bittide Bool
           )
   , "spiDone" ::: Signal Basic125 Bool
-  , ""
-      ::: ( "SCLK" ::: Signal Basic125 Bool
-          , "MOSI" ::: Signal Basic125 Bit
-          , "CSB" ::: Signal Basic125 Bool
-          )
+  , "" ::: Signal Basic125 Spi.M2S
   , "JTAG" ::: Signal Bittide JtagOut
   , "USB_UART_RXD" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn =
+switchDemoTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
   seqX
     testIla
@@ -446,7 +443,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
     , txps
     , unbundle swFincFdecs
     , spiDone
-    , spiOut
+    , spiM2S
     , jtagOut
     , uartTx
     , syncOut
@@ -480,13 +477,13 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
     , handshakesDone :: Signal Basic125 Bool
     , swFincFdecs :: Signal Bittide (Bool, Bool)
     , spiDone :: Signal Basic125 Bool
-    , spiOut :: (Signal Basic125 Bool, Signal Basic125 Bit, Signal Basic125 Bool)
+    , spiM2S :: Signal Basic125 Spi.M2S
     , jtagOut :: Signal Bittide JtagOut
     , transceiversFailedAfterUp :: Signal Basic125 Bool
     , allStable :: Signal Basic125 Bool
     , uartTx :: Signal Basic125 Bit
     , syncOut :: Signal Basic125 Bit
-    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps miso jtagIn syncIn
+    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps spiS2M jtagIn syncIn
 
   testDone :: Signal Basic125 Bool
   testDone = allStable .||. transceiversFailedAfterUp
@@ -515,7 +512,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
       captureFlag
       handshakesDone
       spiDone
-      (bundle spiOut)
+      spiM2S
       transceiversFailedAfterUp
       allStable
 
