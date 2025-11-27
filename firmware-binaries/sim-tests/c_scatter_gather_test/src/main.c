@@ -36,7 +36,7 @@ void c_main(void) {
   // Metacycle 1: Write to gather memory
   gather_unit_wait_for_new_metacycle(gather);
   if (!gather_unit_write_slice(gather, source, 0, MEM_SIZE)) {
-    uart_puts(uart, "ERROR: gather_unit_write_slice failed\n");
+    uart_puts(uart, "[ERROR] gather_unit_write_slice failed\n");
     while (1) {
     }
   }
@@ -44,7 +44,7 @@ void c_main(void) {
   // Metacycle 2: Read from scatter memory
   scatter_unit_wait_for_new_metacycle(scatter);
   if (!scatter_unit_read_slice(scatter, destination, 0, MEM_SIZE)) {
-    uart_puts(uart, "ERROR: scatter_unit_read_slice failed\n");
+    uart_puts(uart, "[ERROR] scatter_unit_read_slice failed\n");
     while (1) {
     }
   }
