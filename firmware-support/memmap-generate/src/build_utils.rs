@@ -8,7 +8,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{generate_c_header, memory_x_from_memmap, parse};
+use crate::memory_x_from_memmap;
 
 /// Standard build script setup for RISC-V targets.
 ///
@@ -87,43 +87,4 @@ pub fn standard_static_memory_build(source_file: &str) {
 
     setup_riscv_linker(&out_dir);
     println!("cargo:rerun-if-changed={}", source_file);
-}
-
-#[allow(clippy::needless_doctest_main)]
-/// Generates a C header file from a JSON memory map file.
-///
-/// The header file will contain `#define` macros for device base addresses
-/// and register offsets, suitable for use in C firmware code.
-///
-/// # Arguments
-/// * `memmap_json_name` - Name of the JSON file in the memory maps directory (e.g., `"VexRiscv.json"`)
-/// * `output_path` - Path where the header file should be written (e.g., `"src/memmap.h"`)
-/// * `header_name` - Name to use for the header guard (e.g., `"vexriscv_memmap"`)
-///
-/// # Example
-/// ```no_run
-/// use memmap_generate::build_utils::generate_c_header_from_memmap;
-///
-/// fn main() {
-///     generate_c_header_from_memmap("VexRiscv.json", "src/memmap.h", "vexriscv_memmap");
-/// }
-/// ```
-pub fn generate_c_header_from_memmap(
-    memmap_json_name: &str,
-    output_path: impl AsRef<Path>,
-    header_name: &str,
-) {
-    let memmap_path = memmap_dir().join(memmap_json_name);
-    let memmap_source = fs::read_to_string(&memmap_path)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", memmap_path.display()));
-
-    let memmap =
-        parse(&memmap_source).unwrap_or_else(|e| panic!("Failed to parse memory map: {e}"));
-
-    let header_content = generate_c_header(&memmap, header_name);
-
-    fs::write(output_path.as_ref(), header_content)
-        .unwrap_or_else(|e| panic!("Failed to write header file: {e}"));
-
-    println!("cargo:rerun-if-changed={}", memmap_path.display());
 }
