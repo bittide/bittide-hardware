@@ -159,12 +159,12 @@ driver testName targets = do
             liftIO
               $ T.tryWithTimeoutOn
                 T.PrintActionTime
-                "Waiting for GPPE hello"
-                (5_000_000)
+                "Waiting for UGN discovery protocol to complete"
+                (600_000_000)
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico.stdoutHandle "[PE] Hello from C!"
+                waitForLine pico.stdoutHandle "[PE] UGN discovery protocol complete!"
 
             liftIO goDumpCcSamples
 
