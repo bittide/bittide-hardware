@@ -22,7 +22,6 @@
   outputs = { self, nixpkgs, flake-utils, rust-overlay, pre-commit-hooks, mdbook-drawio-flake }: flake-utils.lib.eachDefaultSystem (
     system:
       let
-        overlays = [ (import rust-overlay) ];
         verilog-ethernet = import ./nix/verilog-ethernet.nix {
           inherit pkgs;
         };
@@ -32,12 +31,28 @@
         mc = import ./nix/mc.nix {
           inherit pkgs;
         };
+
+        hls-overlay = final: prev: {
+          haskell-language-server =
+            (prev.haskell-language-server.override { supportedGhcVersions = [ "910" ]; })
+            .overrideDerivation (old: {
+              src = pkgs.fetchFromGitHub {
+                owner = "haskell";
+                repo = "haskell-language-server";
+                rev = "88ccebe0649f7c41be97d49a986bbfd4185982f6";
+                sha256 = "sha256-hR4MtfespgqAEa/vWXNsIOcEcLQNIVaEAHqZJbTaV/g=";
+              };
+            });
+        };
+        overlays = [ (import rust-overlay) hls-overlay ];
+
         pkgs = import nixpkgs {
           inherit system overlays;
           config = {
             allowUnfree = true;
           };
         };
+
         git-hooks-config = import ./nix/git-hooks.nix { inherit pkgs; };
         # Import your local git hooks configuration
         preCommitHook = pre-commit-hooks.lib.${system}.run {
@@ -55,7 +70,7 @@
             pkgs.gcc
             pkgs.llvmPackages.clang-unwrapped
 
-            (pkgs.haskell-language-server.override { supportedGhcVersions = [ "910" ]; })
+            pkgs.haskell-language-server
             pkgs.haskell.compiler.ghc910
             pkgs.pkg-config
             pkgs.python3Full
