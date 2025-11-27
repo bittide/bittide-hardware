@@ -32,7 +32,7 @@ fn main() {
         .compile("c_main");
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/main.c");
+    println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed={}", hal_c_headers.display());
     println!("cargo:rerun-if-changed={}", hal_c_include.display());
     println!("cargo:rerun-if-changed={}", hal_c_src.display());
