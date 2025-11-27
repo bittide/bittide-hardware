@@ -5,14 +5,97 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::{hals::soft_ugn_demo_mu::DeviceInstances, shared_devices::Transceivers};
+use bittide_hal::{
+    hals::soft_ugn_demo_mu::DeviceInstances,
+    shared_devices::{Transceivers, Uart},
+    types::ValidEntry_16,
+};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
-
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
 use riscv_rt::entry;
+
+// Perform wrapping addition of two u16 values with a specified maximum bound.
+// Useful for correctly computing calendar entries for the gather calendar taking into
+// account the read-latency.
+fn wrapping_add_with_maxbound(a: u16, b: u16, max_bound: u16) -> u16 {
+    let sum = a as u32 + b as u32;
+    if sum <= max_bound as u32 {
+        sum as u16
+    } else {
+        (sum - (max_bound as u32 + 1)) as u16
+    }
+}
+/// Initialize scatter and gather calendars with incrementing counter entries.
+/// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
+fn initialize_calendars(uart: &mut Uart) {
+    const NUM_ENTRIES: usize = 4000;
+
+    // Initialize all scatter calendars
+    let scatter_calendars = [
+        &INSTANCES.scatter_calendar,
+        &INSTANCES.scatter_calendar_1,
+        &INSTANCES.scatter_calendar_2,
+        &INSTANCES.scatter_calendar_3,
+        &INSTANCES.scatter_calendar_4,
+        &INSTANCES.scatter_calendar_5,
+        &INSTANCES.scatter_calendar_6,
+    ];
+
+    // Initialize all gather calendars
+    let gather_calendars = [
+        &INSTANCES.gather_calendar,
+        &INSTANCES.gather_calendar_1,
+        &INSTANCES.gather_calendar_2,
+        &INSTANCES.gather_calendar_3,
+        &INSTANCES.gather_calendar_4,
+        &INSTANCES.gather_calendar_5,
+        &INSTANCES.gather_calendar_6,
+    ];
+
+    uwriteln!(
+        uart,
+        "  Initializing {} calendars",
+        scatter_calendars.len() + gather_calendars.len()
+    )
+    .unwrap();
+    // Write entries to all calendars
+    for n in 0..NUM_ENTRIES {
+        let scatter_entry = ValidEntry_16 {
+            ve_entry: n as u16,
+            ve_repeat: 0,
+        };
+
+        // Take into account 1 cycle read latency for gather calendar
+        let gather_entry = ValidEntry_16 {
+            ve_entry: wrapping_add_with_maxbound(n as u16, 1, (NUM_ENTRIES - 1) as u16),
+            ve_repeat: 0,
+        };
+
+        for calendar in scatter_calendars.iter() {
+            calendar.set_shadow_entry(scatter_entry);
+            calendar.set_write_addr(n as u16);
+        }
+
+        for calendar in gather_calendars.iter() {
+            calendar.set_shadow_entry(gather_entry);
+            calendar.set_write_addr(n as u16);
+        }
+    }
+
+    // Finalize all calendars
+    for calendar in scatter_calendars.iter() {
+        calendar.set_shadow_depth_index((NUM_ENTRIES - 1) as u16);
+        calendar.set_swap_active(true);
+    }
+
+    for calendar in gather_calendars.iter() {
+        calendar.set_shadow_depth_index((NUM_ENTRIES - 1) as u16);
+        calendar.set_swap_active(true);
+    }
+}
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
@@ -82,6 +165,11 @@ fn main() -> ! {
         }
     }
     uwriteln!(uart, "All UGNs captured").unwrap();
+
+    // Initialize scatter/gather calendars with incrementing counters
+    uwriteln!(uart, "Initializing scatter/gather calendars").unwrap();
+    initialize_calendars(&mut uart);
+    uwriteln!(uart, "All calendars initialized").unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {}
