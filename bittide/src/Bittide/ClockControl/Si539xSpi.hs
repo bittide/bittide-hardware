@@ -235,6 +235,35 @@ si539xSpiWb minTargetPs =
 
   defRegOp = RegisterOperation{page = 0, address = 0, write = Nothing}
 
+-- | Like 'si539xSpi', but packed as a 'Circuit'.
+si539xSpiC ::
+  forall preambleEntries configEntries postambleEntries minTargetPeriodPs dom.
+  ( HiddenClockResetEnable dom
+  , KnownNat preambleEntries
+  , 1 <= preambleEntries
+  , KnownNat configEntries
+  , KnownNat postambleEntries
+  , 1 <= (preambleEntries + configEntries + postambleEntries)
+  ) =>
+  -- | Initial configuration for the @Si539x@ chip.
+  Si539xRegisterMap preambleEntries configEntries postambleEntries ->
+  -- | Minimum period of the SPI clock frequency for the SPI clock divider.
+  SNat minTargetPeriodPs ->
+  Circuit
+    ( CSignal dom (Maybe RegisterOperation)
+    )
+    ( CSignal dom (Maybe Byte)
+    , CSignal dom Busy
+    , CSignal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
+    , Spi dom
+    )
+si539xSpiC config minPs = Circuit go
+ where
+  go (regOp, (_, _, _, s2m)) = ((), (readByte, busy, state, spiM2S))
+   where
+    (readByte, busy, state, spiM2S) =
+      si539xSpi config minPs regOp s2m
+
 {- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
 This component will first write and verify the initial configuration before becoming
 available for external circuitry. For an interface that does not initially configure the
