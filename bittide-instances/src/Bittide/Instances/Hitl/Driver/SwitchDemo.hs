@@ -65,17 +65,6 @@ import qualified Data.Map.Strict as M
 import qualified Gdb
 import qualified System.Timeout.Extra as T
 
-data OcdInitData = OcdInitData
-  { muPort :: Int
-  -- ^ Management unit GDB port
-  , ccPort :: Int
-  -- ^ Clock control GDB port
-  , handles :: ProcessHandles
-  -- ^ OpenOCD stdio handles
-  , cleanup :: IO ()
-  -- ^ Cleanup function
-  }
-
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
 type StartDelay = 10 -- seconds
@@ -247,57 +236,6 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
 
   sampleMemoryBase = getPathAddress @Integer memoryMapCc ["0", "SampleMemory", "data"]
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
-
-initOpenOcd :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
-initOpenOcd hitlDir (_, d) targetIndex = do
-  putStrLn $ "Starting OpenOCD for target " <> d.deviceId
-
-  let
-    baseGdbPort = 3333
-    gdbPort = baseGdbPort + targetIndex * 2
-    tclPort = 6666 + targetIndex
-    telnetPort = 4444 + targetIndex
-    ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
-    ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
-  putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
-  putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
-
-  putStrLn "Starting OpenOCD..."
-  (ocd, ocdPh, ocdClean0) <-
-    Ocd.startOpenOcdWithEnvAndArgs
-      ["-f", "sipeed.tcl", "-f", "ports.tcl", "-f", "vexriscv-2chain.tcl"]
-      [ ("OPENOCD_STDOUT_LOG", ocdStdout)
-      , ("OPENOCD_STDERR_LOG", ocdStderr)
-      , ("USB_DEVICE", d.usbAdapterLocation)
-      , ("GDB_PORT", show gdbPort)
-      , ("TCL_PORT", show tclPort)
-      , ("TELNET_PORT", show telnetPort)
-      ]
-  hSetBuffering ocd.stderrHandle LineBuffering
-  output <-
-    T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
-      $ readUntilLine ocd.stderrHandle Ocd.initCompleteMarker
-
-  -- Parse the OpenOCD output to extract GDB ports based on JTAG IDs
-  -- Expect exactly 2 taps: MU (0x0514C001), CC (0x1514C001)
-  case Ocd.parseJtagIdsAndGdbPorts output of
-    Left err -> error $ "Failed to parse OpenOCD output: " <> err
-    Right
-      [ (0x0_514C001, _, gdbPortMU)
-        , (0x1_514C001, _, gdbPortCC)
-        ] -> do
-        putStrLn
-          $ "Found GDB ports - MU: "
-          <> show gdbPortMU
-          <> ", CC: "
-          <> show gdbPortCC
-
-        let
-          ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
-          ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
-
-        return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
-    Right other -> error $ "Unexpected JTAG configuration: " <> show other
 
 initGdb ::
   FilePath ->
@@ -491,11 +429,29 @@ driver testName targets = do
     "Wait for handshakes successes from all boards"
     30_000_000
     $ awaitHandshakes targets
-  let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
+  let
+    -- Expected JTAG IDs for MU and CC TAPs in that order
+    expectedJtagIds = [0x0514C001, 0x1514C001]
+    openOcdStarts = liftIO <$> L.zipWith (Ocd.initOpenOcd expectedJtagIds hitlDir) targets [0 ..]
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
-      muPorts = (.muPort) <$> initOcdsData
-      ccPorts = (.ccPort) <$> initOcdsData
+      allTapInfos = (.tapInfos) <$> initOcdsData
+
+      muTapInfos, ccTapInfos :: [Ocd.TapInfo]
+      (muTapInfos, ccTapInfos)
+        | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
+        , [mus, ccs] <- L.transpose allTapInfos =
+            (mus, ccs)
+        | otherwise =
+            error
+              $ "Unexpected number of OpenOCD taps initialized. Expected: "
+              <> show (L.length expectedJtagIds)
+              <> ", but got: "
+              <> show (L.length <$> allTapInfos)
+
+      muPorts = (.gdbPort) <$> muTapInfos
+      ccPorts = (.gdbPort) <$> ccTapInfos
+
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
       liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."

@@ -10,10 +10,8 @@ import Clash.Prelude
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl (DeviceInfo (deviceId))
 import Bittide.Instances.Hitl.Driver.SwitchDemo (
-  OcdInitData (ccPort, cleanup),
   dumpCcSamples,
   initGdb,
-  initOpenOcd,
   initPicocom,
  )
 import Bittide.Instances.Hitl.Setup (FpgaCount)
@@ -31,6 +29,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
+import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
@@ -54,10 +53,27 @@ driverFunc testName targets = do
   T.tryWithTimeout T.PrintActionTime "Wait for handshakes" 30_000_000
     $ awaitHandshakes targets
 
-  let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
+  let
+    -- Expected JTAG IDs for MU and CC TAPs in that order
+    expectedJtagIds = [0x0514C001, 0x1514C001]
+    openOcdStarts = liftIO <$> L.zipWith (Ocd.initOpenOcd expectedJtagIds hitlDir) targets [0 ..]
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
-      ccPorts = (.ccPort) <$> initOcdsData
+      allTapInfos = (.tapInfos) <$> initOcdsData
+
+      _muTapInfos, ccTapInfos :: [Ocd.TapInfo]
+      (_muTapInfos, ccTapInfos)
+        | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
+        , [mus, ccs] <- L.transpose allTapInfos =
+            (mus, ccs)
+        | otherwise =
+            error
+              $ "Unexpected number of OpenOCD taps initialized. Expected: "
+              <> show (L.length expectedJtagIds)
+              <> ", but got: "
+              <> show (L.length <$> allTapInfos)
+
+      ccPorts = (.gdbPort) <$> ccTapInfos
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
