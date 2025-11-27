@@ -92,13 +92,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: EOL whitespace
+      - name: Check formatting issues
         run: |
-          .github/scripts/check_eol_whitespace.sh
-
-      - name: Enforce EOF newline
-        run: |
-          .github/scripts/check_missing_eof_newline.sh
+          # TODO: Replace (quick) scripts below with git hooks
+          format
 
       - name: Check that all self-hosted jobs run in a docker container
         run: |
@@ -107,16 +104,6 @@ jobs:
       - name: Check that the 'all' job depends on all other jobs
         run: |
           .github/scripts/all_check.py
-
-      - name: Check that all cabal files are formatted correctly
-        run: |
-          .github/scripts/cabal-gild.sh
-          git diff --exit-code
-
-      - name: Check that all Haskell files are formatted correctly
-        run: |
-          .github/scripts/fourmolu.sh
-          git diff --exit-code
 
       - name: Check that we don't introduce accidental infinite loops in type checkers
         run: .github/scripts/check_fconstraint_solver_iterations.sh
