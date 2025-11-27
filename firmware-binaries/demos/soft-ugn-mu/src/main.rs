@@ -12,7 +12,6 @@ use bittide_hal::{
 };
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
-
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
