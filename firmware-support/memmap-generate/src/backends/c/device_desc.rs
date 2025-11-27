@@ -11,7 +11,7 @@ use crate::{
     },
     input_language::RegisterAccess,
     ir::{
-        monomorph::{MonomorphVariant, MonomorphVariants},
+        monomorph::{MonomorphVariants, TypeRefVariant},
         types::{DeviceDescription, IrCtx, RegisterDescription, TypeRef},
     },
     storage::Handle,
@@ -25,6 +25,7 @@ pub fn generate_device_desc<'ir>(
     // should we generate header and source separately?
     let mut refs = TypeReferences {
         references: BTreeSet::new(),
+        tuples: BTreeSet::new(),
     };
     let desc = &ctx.device_descs[handle];
     let name = &ctx.identifiers[desc.name];
@@ -439,7 +440,7 @@ enum ValueType {
 fn write_type_to_addr(
     ctx: &IrCtx,
     varis: &MonomorphVariants,
-    variant: Option<&MonomorphVariant>,
+    variant: Option<&TypeRefVariant>,
     refs: &mut TypeReferences,
     (base_addr, base_ty): (&str, ValueType),
     (destination_var, dest_ty): (&str, ValueType),

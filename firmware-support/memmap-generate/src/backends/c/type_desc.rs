@@ -5,14 +5,14 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use crate::backends::c::{generate_variable_binding, VariableRefType};
-use crate::ir::types::TypeConstructor;
+use crate::backends::c::{generate_variable_binding, tuple_name, VariableRefType};
+use crate::ir::types::{TypeConstructor, TypeRef};
 use crate::storage::HandleRange;
 use crate::{
     backends::c::{ident, mono_variant_name, IdentType, TypeReferences},
     input_language::TypeName,
     ir::{
-        monomorph::{MonomorphVariant, MonomorphVariants},
+        monomorph::{MonomorphVariants, TypeRefVariant},
         types::{IrCtx, TypeDefinition, TypeDescription},
     },
     storage::Handle,
@@ -29,6 +29,7 @@ pub fn generate_type_desc<'ir>(
     let mut code = String::new();
     let mut refs = TypeReferences {
         references: BTreeSet::new(),
+        tuples: BTreeSet::new(),
     };
     let desc = &ctx.type_descs[handle];
     let type_name = &ctx.type_names[desc.name];
@@ -42,6 +43,35 @@ pub fn generate_type_desc<'ir>(
     }
 
     (&type_name.base, code, refs)
+}
+
+pub fn generate_tuple_definition(
+    ctx: &IrCtx,
+    varis: &MonomorphVariants,
+    elements: &[Handle<TypeRef>],
+    refs: &mut TypeReferences,
+    code: &mut String,
+) {
+    let name = tuple_name(ctx, varis, elements.iter().copied());
+
+    writeln!(code, "typedef struct {name} {{").unwrap();
+
+    for (i, elem) in elements.iter().enumerate() {
+        write!(code, "  ").unwrap();
+        generate_variable_binding(
+            ctx,
+            varis,
+            None,
+            refs,
+            &format!("_{i}"),
+            VariableRefType::NoRef,
+            *elem,
+            code,
+        );
+        writeln!(code, ";").unwrap();
+    }
+
+    writeln!(code, "}} {name};").unwrap();
 }
 
 fn generate_tag_type(ctx: &IrCtx, name: &TypeName, desc: &TypeDescription, code: &mut String) {
@@ -84,12 +114,12 @@ fn generate_tag_type(ctx: &IrCtx, name: &TypeName, desc: &TypeDescription, code:
 fn generate_type_definition(
     ctx: &IrCtx,
     varis: &MonomorphVariants,
-    var_handle: Handle<MonomorphVariant>,
+    var_handle: Handle<TypeRefVariant>,
     refs: &mut TypeReferences,
     desc: &TypeDescription,
     code: &mut String,
 ) {
-    let variant = &varis.variants[var_handle];
+    let variant = &varis.type_ref_variants[var_handle];
     let raw_name = &ctx.type_names[desc.name];
     let ty_name = mono_variant_name(ctx, variant);
 

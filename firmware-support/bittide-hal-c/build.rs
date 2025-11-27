@@ -7,7 +7,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use memmap_generate::backends::c::{self as backend_c, ident, IdentType};
+use memmap_generate::backends::c::type_desc::generate_tuple_definition;
+use memmap_generate::backends::c::{self as backend_c, ident, IdentType, TypeReferences};
 use memmap_generate::build_utils::memmap_dir;
 use memmap_generate::input_language as mm_inp;
 use memmap_generate::ir::deduplicate::{deduplicate, deduplicate_type_names};
@@ -128,6 +129,21 @@ fn main() {
                     writeln!(file, "{}", code).unwrap();
                 },
             );
+        }
+
+        if !varis.tuple_variant.is_empty() {
+            let mut tuple_file = File::create(types_path.join("tuples.h")).unwrap();
+            let mut refs = TypeReferences::default();
+            let mut code = String::new();
+
+            for var in varis.tuple_variant.values() {
+                generate_tuple_definition(&ctx, &varis, &var.elements, &mut refs, &mut code);
+            }
+
+            with_guard(&mut tuple_file, "TYPES_TUPLES_H", |file| {
+                generate_type_ref_imports(&ctx, &refs, file);
+                writeln!(file, "{}", code).unwrap();
+            });
         }
     }
 

@@ -9,13 +9,12 @@ use std::fmt::Write;
 use crate::{
     input_language::TypeName,
     ir::{
-        monomorph::{MonomorphVariant, MonomorphVariants},
+        monomorph::{MonomorphVariants, TypeRefVariant},
         types::{IrCtx, TypeRef},
     },
     storage::{Handle, HandleRange},
 };
 
-pub mod c_header;
 pub mod device_desc;
 pub mod device_instances;
 pub mod type_desc;
@@ -55,7 +54,7 @@ pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> String {
 #[derive(Default)]
 pub struct TypeReferences {
     pub references: BTreeSet<Handle<TypeName>>,
-    // todo tuples??
+    pub tuples: BTreeSet<HandleRange<TypeRef>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -83,7 +82,7 @@ impl VariableRefType {
 fn generate_variable_binding(
     ctx: &IrCtx,
     varis: &MonomorphVariants,
-    variant: Option<&MonomorphVariant>,
+    variant: Option<&TypeRefVariant>,
     refs: &mut TypeReferences,
     variable_name: &str,
     ref_type: VariableRefType,
@@ -160,14 +159,14 @@ fn generate_variable_binding(
         TypeRef::Reference { name, args: _ } => {
             refs.references.insert(*name);
             let mono_ref = if let Some(var) = variant {
-                var.monomorph_substitutions.get(&handle)
+                var.monomorph_type_ref_substitutions.get(&handle)
             } else {
                 None
             };
             let mono_ref = mono_ref.or_else(|| varis.type_refs.get(&handle));
 
             if let Some(mono_ref) = mono_ref.copied() {
-                let mono_variant = &varis.variants[mono_ref];
+                let mono_variant = &varis.type_ref_variants[mono_ref];
                 let name = mono_variant_name(ctx, mono_variant);
                 let any_args = mono_variant
                     .argument_mono_values
@@ -181,12 +180,15 @@ fn generate_variable_binding(
                 panic!("all types should have monomorph variants")
             }
         }
-        TypeRef::Tuple(handle_range) => write!(
-            code,
-            "{} {before_var}{variable_name}",
-            tuple_name(ctx, varis, *handle_range)
-        )
-        .unwrap(),
+        TypeRef::Tuple(handle_range) => {
+            refs.tuples.insert(*handle_range);
+            write!(
+                code,
+                "{} {before_var}{variable_name}",
+                tuple_name(ctx, varis, handle_range.handles())
+            )
+            .unwrap()
+        }
         TypeRef::Variable(_) => {
             panic!("type level variable found, these are not supported in C")
         }
@@ -194,7 +196,7 @@ fn generate_variable_binding(
     }
 }
 
-fn lookup_sub(variant: Option<&MonomorphVariant>, handle: Handle<TypeRef>) -> Handle<TypeRef> {
+fn lookup_sub(variant: Option<&TypeRefVariant>, handle: Handle<TypeRef>) -> Handle<TypeRef> {
     let mut handle = handle;
     let subs = if let Some(var) = variant {
         &var.variable_substitutions
@@ -215,8 +217,12 @@ fn po2_type(n: u64) -> u64 {
     }
 }
 
-fn tuple_name(ctx: &IrCtx, _varis: &MonomorphVariants, elems: HandleRange<TypeRef>) -> String {
-    let n = elems.len;
+fn tuple_name(
+    ctx: &IrCtx,
+    _varis: &MonomorphVariants,
+    elems: impl ExactSizeIterator<Item = Handle<TypeRef>>,
+) -> String {
+    let n = elems.len();
 
     if n == 0 {
         return "unit".to_string();
@@ -224,14 +230,14 @@ fn tuple_name(ctx: &IrCtx, _varis: &MonomorphVariants, elems: HandleRange<TypeRe
 
     let mut name = format!("tuple{n}");
 
-    for elem in elems.handles() {
+    for elem in elems {
         name.push('_');
         name.push_str(&type_to_ident(ctx, elem));
     }
     name
 }
 
-fn mono_variant_name(ctx: &IrCtx, var: &MonomorphVariant) -> String {
+fn mono_variant_name(ctx: &IrCtx, var: &TypeRefVariant) -> String {
     let desc = &ctx.type_descs[var.original_type_desc];
     let ty_name = &ctx.type_names[desc.name];
     let args = var
