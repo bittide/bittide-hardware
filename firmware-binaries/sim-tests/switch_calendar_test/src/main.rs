@@ -7,7 +7,7 @@
 #![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
 
-use bittide_hal::{manual_additions::switch_calendar::EntryType, types::ValidEntry_12};
+use bittide_hal::{manual_additions::switch_calendar::EntryType, types::ValidEntry_16};
 use ufmt::{uDebug, uwrite, uwriteln};
 
 #[cfg(not(test))]
@@ -52,17 +52,17 @@ fn main() -> ! {
     active_entry1.reverse();
 
     let cal_active = [
-        ValidEntry_12 {
+        ValidEntry_16 {
             ve_entry: active_entry0,
             ve_repeat: 8,
         },
-        ValidEntry_12 {
+        ValidEntry_16 {
             ve_entry: active_entry1,
             ve_repeat: 16,
         },
     ];
 
-    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| ValidEntry_12 {
+    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| ValidEntry_16 {
         ve_entry: core::array::from_fn(|_j| i as u8),
         ve_repeat: i as u16,
     });
