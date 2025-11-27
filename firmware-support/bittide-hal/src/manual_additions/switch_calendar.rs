@@ -9,9 +9,9 @@ peripheral access code for the `Calendar` device.
 
 use crate as bittide_hal;
 
-use bittide_hal::{hals::switch_c::devices::switch_calendar::SwitchCalendar, types::ValidEntry_12};
+use bittide_hal::{hals::switch_c::devices::switch_calendar::SwitchCalendar, types::ValidEntry_16};
 
-pub type EntryType = ValidEntry_12<[u8; 16]>;
+pub type EntryType = ValidEntry_16<[u8; 16]>;
 
 impl SwitchCalendar {
     /// Reads entry n from the shadow calendar.
