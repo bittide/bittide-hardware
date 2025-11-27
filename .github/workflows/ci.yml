@@ -79,6 +79,7 @@ jobs:
   lint:
     name: Basic linting
     runs-on: [self-hosted, compute]
+    needs: [build]
 
     defaults:
       run:
@@ -91,6 +92,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - run: cache clean
+      - run: cache pull cabal
+      - run: cache pull build
 
       - name: Check formatting issues
         run: |
@@ -108,8 +113,6 @@ jobs:
       - name: Check that we don't introduce accidental infinite loops in type checkers
         run: .github/scripts/check_fconstraint_solver_iterations.sh
 
-      - run: cache clean
-      - run: cache pull cabal --missing-ok --write-cache-found
       - name: Update Cabal index info
         run: |
           if [[ $(cat cache_found) == 0 ]]; then
