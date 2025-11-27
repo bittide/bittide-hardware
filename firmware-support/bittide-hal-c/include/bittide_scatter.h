@@ -57,23 +57,19 @@ int scatter_unit_read_slice(
 );
 
 /**
- * Write a slice of data to scatter memory
+ * Read a slice of data from scatter memory with wrapping
  *
- * Writes data to the scatter memory buffer. This function performs bounds
- * checking to prevent writing beyond the allocated memory region.
+ * This function reads data from the scatter memory, wrapping around to the
+ * beginning of the memory if the read operation exceeds the memory boundary.
  *
  * @param unit Pointer to the ScatterUnit
- * @param src Source buffer containing data to write (must contain at least len words)
- * @param offset Offset in scatter memory (in uint64_t words) to start writing to
- * @param len Number of uint64_t words to write
- * @return 0 on success, -1 if bounds check fails or parameters are invalid
+ * @param dst Destination buffer for the read data
+ * @param offset Offset in scatter memory (in uint64_t words) to start reading
+ * from
+ * @param len Number of uint64_t words to read
  */
-int scatter_unit_write_slice(
-    const ScatterUnit* unit,
-    const uint64_t* src,
-    uint32_t offset,
-    uint32_t len
-);
+void scatter_unit_read_slice_wrapping(const ScatterUnit *unit, uint64_t *dst,
+                                      uint32_t offset, uint32_t len);
 
 /**
  * Wait for the next metacycle boundary

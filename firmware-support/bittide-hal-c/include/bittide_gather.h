@@ -57,24 +57,19 @@ int gather_unit_write_slice(
 );
 
 /**
- * Read a slice of data from gather memory
+ * Write a slice of data to gather memory with wrapping
  *
- * Reads data from the gather memory buffer. This function performs bounds
- * checking to prevent reading beyond the allocated memory region.
+ * This function writes data to the gather memory, wrapping around to the
+ * beginning of the memory if the write operation exceeds the memory boundary.
  *
  * @param unit Pointer to the GatherUnit
- * @param dst Destination buffer for the read data (must be at least len words)
- * @param offset Offset in gather memory (in uint64_t words) to start reading from
- * @param len Number of uint64_t words to read
- * @return 0 on success, -1 if bounds check fails or parameters are invalid
+ * @param src Source buffer containing data to write
+ * @param offset Offset in gather memory (in uint64_t words) to start writing to
+ * @param len Number of uint64_t words to write
  */
-int gather_unit_read_slice(
-    const GatherUnit* unit,
-    uint64_t* dst,
-    uint32_t offset,
-    uint32_t len
-);
-
+void gather_unit_write_slice_wrapping(const GatherUnit *unit,
+                                      const uint64_t *src, uint32_t offset,
+                                      uint32_t len);
 /**
  * Wait for the next metacycle boundary
  *

@@ -43,28 +43,20 @@ int gather_unit_write_slice(
     return 0;
 }
 
-int gather_unit_read_slice(
-    const GatherUnit* unit,
-    uint64_t* dst,
-    uint32_t offset,
-    uint32_t len
-) {
-    // Validate parameters
-    if (unit == 0 || dst == 0) {
-        return -1;
-    }
+void gather_unit_write_slice_wrapping(const GatherUnit *unit,
+                                      const uint64_t *src, uint32_t offset,
+                                      uint32_t len) {
+  if (offset + len <= unit->memory_len) {
+    // No wrapping needed
+    gather_unit_write_slice(unit, src, offset, len);
+  } else {
+    // Wrapping needed
+    uint32_t first_part_len = unit->memory_len - offset;
+    uint32_t second_part_len = len - first_part_len;
 
-    // Check bounds to prevent buffer overrun
-    if (offset + len > unit->memory_len) {
-        return -1;
-    }
-
-    // Perform the read
-    for (uint32_t i = 0; i < len; i++) {
-        dst[i] = unit->gather_memory[offset + i];
-    }
-
-    return 0;
+    gather_unit_write_slice(unit, src, offset, first_part_len);
+    gather_unit_write_slice(unit, src + first_part_len, 0, second_part_len);
+  }
 }
 
 void gather_unit_wait_for_new_metacycle(const GatherUnit* unit) {
