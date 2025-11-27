@@ -5,14 +5,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::{
-    index,
-    soft_ugn_demo_mu::{types::ValidEntry, DeviceInstances},
-    Index,
-};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
-
+use bittide_hal::{
+    hals::soft_ugn_demo_mu::DeviceInstances,
+    shared_devices::Uart,
+    types::ValidEntry_16,
+};
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
@@ -20,13 +19,13 @@ use riscv_rt::entry;
 
 /// Initialize scatter and gather calendars with incrementing counter entries.
 /// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
-fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
+fn initialize_calendars(uart: &mut Uart) {
     const NUM_ENTRIES: usize = 4000;
 
     // Prepare calendar entries: incrementing counter 0-999 where each entry repeats 100 times
-    let calendar_entries: [ValidEntry<Index![4000]>; NUM_ENTRIES] =
-        core::array::from_fn(|i| ValidEntry {
-            ve_entry: index!(i as u16, n = 4000),
+    let calendar_entries: [ValidEntry_16<u16>; NUM_ENTRIES] =
+        core::array::from_fn(|i| ValidEntry_16 {
+            ve_entry: i as u16,
             ve_repeat: 0,
         });
 
@@ -45,9 +44,9 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
         uwriteln!(uart, "  Initializing scatter calendar {}", i).unwrap();
         for (n, entry) in calendar_entries.iter().enumerate() {
             calendar.set_shadow_entry(*entry);
-            calendar.set_write_addr(index!(n as u16, n = 4096));
+            calendar.set_write_addr(n as u16);
         }
-        calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 4096));
+        calendar.set_shadow_depth_index((calendar_entries.len() - 1) as u16);
         calendar.set_swap_active(true);
     }
 
@@ -66,9 +65,9 @@ fn initialize_calendars(uart: &mut bittide_hal::shared::devices::Uart) {
         uwriteln!(uart, "  Initializing gather calendar {}", i).unwrap();
         for (n, entry) in calendar_entries.iter().enumerate() {
             calendar.set_shadow_entry(*entry);
-            calendar.set_write_addr(index!(n as u16, n = 4096));
+            calendar.set_write_addr(n as u16);
         }
-        calendar.set_shadow_depth_index(index!((calendar_entries.len() - 1) as u16, n = 4096));
+        calendar.set_shadow_depth_index((calendar_entries.len() - 1) as u16);
         calendar.set_swap_active(true);
     }
 }
