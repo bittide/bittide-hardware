@@ -27,6 +27,12 @@ typedef enum {
     WAIT_ALREADY_PASSED = 1 // Requested instant already passed
 } WaitResult;
 
+/// Result from comparison operations (same as WaitResult)
+typedef enum {
+    COMPARE_LESS = 0,
+    COMPARE_GREATER_EQUAL = 1
+} CompareResult;
+
 /// Timer device structure (populated with memory-mapped register pointers)
 typedef struct {
     volatile uint8_t*  command;
@@ -111,5 +117,10 @@ void timer_wait(const Timer* timer, Duration duration);
 WaitResult timer_wait_until(const Timer* timer, Instant target);
 void timer_wait_stall(const Timer* timer, Duration duration);
 WaitResult timer_wait_until_stall(const Timer* timer, Instant target);
+
+// Timer Comparison Functions
+CompareResult timer_compare_cycles(const Timer* timer, uint64_t target_cycles);
+CompareResult timer_compare(const Timer* timer, Instant target);
+CompareResult get_compare_result(const Timer* timer);
 
 #endif // BITTIDE_TIMER_H

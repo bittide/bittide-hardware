@@ -43,28 +43,19 @@ int scatter_unit_read_slice(
     return 0;
 }
 
-int scatter_unit_write_slice(
-    const ScatterUnit* unit,
-    const uint64_t* src,
-    uint32_t offset,
-    uint32_t len
-) {
-    // Validate parameters
-    if (unit == 0 || src == 0) {
-        return -1;
-    }
+void scatter_unit_read_slice_wrapping(const ScatterUnit *unit, uint64_t *dst,
+                                      uint32_t offset, uint32_t len) {
+  if (offset + len <= unit->memory_len) {
+    // No wrapping needed
+    scatter_unit_read_slice(unit, dst, offset, len);
+  } else {
+    // Wrapping needed
+    uint32_t first_part_len = unit->memory_len - offset;
+    uint32_t second_part_len = len - first_part_len;
 
-    // Check bounds to prevent buffer overrun
-    if (offset + len > unit->memory_len) {
-        return -1;
-    }
-
-    // Perform the write
-    for (uint32_t i = 0; i < len; i++) {
-        unit->scatter_memory[offset + i] = src[i];
-    }
-
-    return 0;
+    scatter_unit_read_slice(unit, dst, offset, first_part_len);
+    scatter_unit_read_slice(unit, dst + first_part_len, 0, second_part_len);
+  }
 }
 
 void scatter_unit_wait_for_new_metacycle(const ScatterUnit* unit) {

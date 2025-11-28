@@ -56,6 +56,7 @@ are swapped at the beginning of each metacycle. Reading the buffer is done by su
 a read address. Furthermore this component offers ports to control the incorporated 'calendar'.
 -}
 scatterUnit ::
+  forall dom memDepth frameWidth nBytes addrW.
   ( HiddenClockResetEnable dom
   , KnownNat memDepth
   , 1 <= memDepth
@@ -87,8 +88,9 @@ scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle, me
  where
   (writeAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "scatter" calConfig wbIn
   writeOp = curry Just <$> writeAddr <*> linkIn
-  readOut = doubleBufferedRamU bufSelect readAddr writeOp
-  bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
+  readOut = blockRamU @memDepth NoClearOnReset SNat readAddr writeOp
+
+-- bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
 
 {- | Double buffered memory component that can be written to by a generic write operation. The
 write address of the incoming frame is determined by the incorporated 'calendar'. The
@@ -130,8 +132,9 @@ gatherUnit ::
 gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle, metacycleCount, mm)
  where
   (readAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "gather" calConfig wbIn
-  bramOut = doubleBufferedRamByteAddressableU bufSelect readAddr writeOp byteEnables
-  bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
+  bramOut = blockRamByteAddressableU readAddr writeOp byteEnables
+
+-- bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
 
 {- | Wishbone interface for the 'scatterUnit' and 'gatherUnit'. It makes the scatter and gather
 unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.

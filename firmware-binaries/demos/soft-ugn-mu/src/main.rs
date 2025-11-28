@@ -5,14 +5,70 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::soft_ugn_demo_mu::DeviceInstances;
+use bittide_hal::{
+    hals::soft_ugn_demo_mu::DeviceInstances, shared_devices::Uart, types::ValidEntry_16,
+};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
-
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
 use riscv_rt::entry;
+
+/// Initialize scatter and gather calendars with incrementing counter entries.
+/// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
+fn initialize_calendars(uart: &mut Uart) {
+    const NUM_ENTRIES: usize = 4000;
+
+    // Prepare calendar entries: incrementing counter 0-999 where each entry repeats 100 times
+    let calendar_entries: [ValidEntry_16<u16>; NUM_ENTRIES] =
+        core::array::from_fn(|i| ValidEntry_16 {
+            ve_entry: i as u16,
+            ve_repeat: 0,
+        });
+
+    // Initialize all scatter calendars
+    let scatter_calendars = [
+        &INSTANCES.scatter_calendar,
+        &INSTANCES.scatter_calendar_1,
+        &INSTANCES.scatter_calendar_2,
+        &INSTANCES.scatter_calendar_3,
+        &INSTANCES.scatter_calendar_4,
+        &INSTANCES.scatter_calendar_5,
+        &INSTANCES.scatter_calendar_6,
+    ];
+
+    for (i, calendar) in scatter_calendars.iter().enumerate() {
+        uwriteln!(uart, "  Initializing scatter calendar {}", i).unwrap();
+        for (n, entry) in calendar_entries.iter().enumerate() {
+            calendar.set_shadow_entry(*entry);
+            calendar.set_write_addr(n as u16);
+        }
+        calendar.set_shadow_depth_index((calendar_entries.len() - 1) as u16);
+        calendar.set_swap_active(true);
+    }
+
+    // Initialize all gather calendars
+    let gather_calendars = [
+        &INSTANCES.gather_calendar,
+        &INSTANCES.gather_calendar_1,
+        &INSTANCES.gather_calendar_2,
+        &INSTANCES.gather_calendar_3,
+        &INSTANCES.gather_calendar_4,
+        &INSTANCES.gather_calendar_5,
+        &INSTANCES.gather_calendar_6,
+    ];
+
+    for (i, calendar) in gather_calendars.iter().enumerate() {
+        uwriteln!(uart, "  Initializing gather calendar {}", i).unwrap();
+        for (n, entry) in calendar_entries.iter().enumerate() {
+            calendar.set_shadow_entry(*entry);
+            calendar.set_write_addr(n as u16);
+        }
+        calendar.set_shadow_depth_index((calendar_entries.len() - 1) as u16);
+        calendar.set_swap_active(true);
+    }
+}
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
@@ -74,6 +130,11 @@ fn main() -> ! {
         }
     }
     uwriteln!(uart, "All UGNs captured").unwrap();
+
+    // Initialize scatter/gather calendars with incrementing counters
+    uwriteln!(uart, "Initializing scatter/gather calendars").unwrap();
+    initialize_calendars(&mut uart);
+    uwriteln!(uart, "All calendars initialized").unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {}

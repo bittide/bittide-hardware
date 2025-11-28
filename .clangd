@@ -1,0 +1,10 @@
+// SPDX-FileCopyrightText: 2025 Google LLC
+// SPDX-License-Identifier: Apache-2.0
+CompileFlags:
+  Add:
+    - -I/home/lucas/repos/bittide-hardware-2/firmware-support/bittide-hal-c/include
+    - -I/home/lucas/repos/bittide-hardware-2/firmware-support/bittide-hal-c/generated
+    - -I/home/lucas/repos/bittide-hardware-2/firmware-support/bittide-hal/target/c-headers
+    - -I/home/lucas/repos/bittide-hardware-2/firmware-binaries/demos
+    - -I/home/lucas/repos/bittide-hardware-2/firmware-binaries/examples
+    - -std=c11

@@ -24,8 +24,13 @@ fn main() {
     cc::Build::new()
         .file("src/main.c")
         .file(hal_c_src.join("bittide_dna.c"))
+        .file("src/peripherals.c")
         .file(hal_c_src.join("bittide_uart.c"))
         .file(hal_c_src.join("bittide_timer.c"))
+        .file(hal_c_src.join("bittide_scatter.c"))
+        .file(hal_c_src.join("bittide_gather.c"))
+        .file(hal_c_src.join("priority_queue.c"))
+        .file(hal_c_src.join("bittide_ugn.c"))
         .compiler("clang")
         .include("src")
         .include(hal_c_headers)
@@ -44,6 +49,8 @@ fn main() {
     println!(
         "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_dna.h"
     );
+    println!("cargo:rerun-if-changed=src/peripherals.c");
+    println!("cargo:rerun-if-changed=src/peripherals.h");
     println!(
         "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_uart.h"
     );
@@ -51,6 +58,24 @@ fn main() {
         "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_timer.h"
     );
     println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_dna.c");
+    println!(
+        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_scatter.h"
+    );
+    println!(
+        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_gather.h"
+    );
+    println!(
+        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/priority_queue.h"
+    );
+    println!(
+        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/include/bittide_ugn.h"
+    );
     println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_uart.c");
     println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_timer.c");
+    println!(
+        "cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_scatter.c"
+    );
+    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_gather.c");
+    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/priority_queue.c");
+    println!("cargo:rerun-if-changed=../../../firmware-support/bittide-hal-c/src/bittide_ugn.c");
 }
