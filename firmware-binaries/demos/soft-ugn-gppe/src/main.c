@@ -4,6 +4,7 @@
 
 #include "bittide_timer.h"
 #include "bittide_ugn.h"
+#include "bittide_dna.h"
 #include "messages.h"
 #include "peripherals.h"
 #include "priority_queue.h"
@@ -45,22 +46,22 @@ int c_main(void) {
   Peripherals peripherals;
   peripherals_init(&peripherals);
 
-//   dna_t dna_value;
-//   dna_read(DNA_MAYBE_DNA, dna_value);
+  dna_t dna_value;
+  dna_read(DNA_MAYBE_DNA, dna_value);
 
-//   uart_puts(&uart, "DNA: ");
-//   uart_putdna(&uart, dna_value);
-//   uart_puts(&uart, "\n");
+  uart_puts(&peripherals.uart, "DNA: ");
+  uart_putdna(&peripherals.uart, dna_value);
+  uart_puts(&peripherals.uart, "\n");
 
-//   uart_puts(&uart, "Running on RISC-V\n");
-//   uart_puts(&uart, "Hello from C!\n");
+  uart_puts(&peripherals.uart, "Running on RISC-V\n");
+  uart_puts(&peripherals.uart, "Hello from C!\n");
 
   // Verify assumptions
   ASSERT_PERIODS_COPRIME(&peripherals, SEND_PERIOD, RECEIVE_PERIOD);
 
   // Initialize UGN protocol context
   // TODO: Get actual node ID from hardware or configuration
-  uint32_t node_id = peripherals.dna[0]; // Example: use first 32 bits of DNA as node ID
+  uint32_t node_id = dna_value[0]; // Example: use first 32 bits of DNA as node ID
 
   // Allocate UGN edge lists
   UgnEdge incoming_link_ugn_list[NUM_PORTS];

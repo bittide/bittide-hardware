@@ -9,7 +9,6 @@
 #include "bittide_scatter.h"
 #include "bittide_gather.h"
 #include "bittide_timer.h"
-#include "bittide_dna.h"
 
 // Number of scatter/gather unit pairs available
 #define NUM_PORTS 7
@@ -20,7 +19,6 @@ typedef struct {
     Timer timer;
     ScatterUnit scatter_units[NUM_PORTS];
     GatherUnit gather_units[NUM_PORTS];
-    dna_t dna;
 } Peripherals;
 
 // Initialize all peripherals from memory map
