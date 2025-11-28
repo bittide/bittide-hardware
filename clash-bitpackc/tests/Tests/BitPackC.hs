@@ -11,6 +11,7 @@ import Clash.Explicit.Prelude
 import Clash.Class.BitPackC
 
 import Control.Monad (forM_)
+import Data.Proxy
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -268,14 +269,14 @@ case_myProductByteOrder = do
   let bytesLe = packC LittleEndian val
 
   bytesLe `idx` 0 @?= 0 -- tag
-  bytesLe `idx` 2 @?= 0xCD
-  bytesLe `idx` 3 @?= 0xAB
+  bytesLe `idx` 1 @?= 0xCD
+  bytesLe `idx` 2 @?= 0xAB
 
   let bytesBe = packC BigEndian val
 
   bytesBe `idx` 0 @?= 0 -- tag
-  bytesBe `idx` 2 @?= 0xAB
-  bytesBe `idx` 3 @?= 0xCD
+  bytesBe `idx` 1 @?= 0xAB
+  bytesBe `idx` 2 @?= 0xCD
 
   let bytesNoPayload = packC LittleEndian MySumSecondCase
   bytesNoPayload `idx` 0 @?= 1 -- tag
@@ -327,6 +328,24 @@ case_eitherI255I65535 = do
   mapM_
     (packUnpackIdentity @(Either (Index 255) (Index 65535)))
     ([Left x | x <- [minBound ..]] <> [Right x | x <- [minBound ..]])
+
+case_indexMaxBoundExeededError :: Assertion
+case_indexMaxBoundExeededError = do
+  -- we can't test maxBounds of byte-multiple sizes because
+  -- the test would overflow when trying to construct a value larger than
+  -- what can fit in the amount of bytes.
+  testNat (Proxy @1)
+  testNat (Proxy @20)
+  testNat (Proxy @254)
+  testNat (Proxy @203898924)
+ where
+  testNat :: forall n. (KnownNat n, 1 <= n) => Proxy n -> Assertion
+  testNat Proxy = do
+    let maxVal = maxBound :: Index n
+    let maxBv = pack $ packC LittleEndian maxVal
+    let oneLargerBv = maxBv + 1
+    let oneLarger = unpack oneLargerBv
+    maybeUnpackC @(Index n) LittleEndian oneLarger @?= Nothing
 
 tests :: TestTree
 tests = $(testGroupGenerator)
