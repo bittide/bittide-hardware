@@ -16,7 +16,8 @@ void peripherals_init(Peripherals* peripherals) {
         TIMER_FREQUENCY,
         TIMER_CMP_RESULT
     );
-    // dna_read(DNA_MAYBE_DNA, peripherals->dna);
+    // dna_t dna_value;
+    dna_read(DNA_MAYBE_DNA, peripherals->dna);
 
     // Initialize scatter units (ports 0-6)
     peripherals->scatter_units[0] = scatter_unit_init(
