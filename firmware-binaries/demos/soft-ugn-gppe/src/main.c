@@ -60,7 +60,7 @@ int c_main(void) {
 
   // Initialize UGN protocol context
   // TODO: Get actual node ID from hardware or configuration
-  uint32_t node_id = peripherals.dna[0]; // Example: use first 32 bits of DNA as node ID
+  uint32_t node_id = 0xDEADFACE; // peripherals.dna[0]; // Example: use first 32 bits of DNA as node ID
 
   // Allocate UGN edge lists
   UgnEdge incoming_link_ugn_list[NUM_PORTS];

@@ -20,7 +20,7 @@ typedef struct {
     Timer timer;
     ScatterUnit scatter_units[NUM_PORTS];
     GatherUnit gather_units[NUM_PORTS];
-    dna_t dna;
+    // dna_t dna;
 } Peripherals;
 
 // Initialize all peripherals from memory map
