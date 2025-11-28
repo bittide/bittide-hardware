@@ -2,12 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include "bittide_dna.h"
 #include "bittide_timer.h"
 #include "bittide_ugn.h"
-#include "bittide_dna.h"
 #include "messages.h"
 #include "peripherals.h"
 #include "priority_queue.h"
+#include "softugndemogppe_memmap.h"
 #include <stdbool.h>
 #include <stdint.h>
 
