@@ -26,7 +26,6 @@ import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.Dut.SwitchDemoGppe as SwitchDemoGppe
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
-import qualified Bittide.Instances.Tests.DelayWishboneC as DelayWishboneC
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
@@ -43,8 +42,7 @@ $( do
     -- Add new memory maps here  --
     -------------------------------
     let memoryMaps =
-          [ ("DelayWishboneC", DelayWishboneC.delayMm)
-          , ("Ethernet", vexRiscvEthernetMM)
+          [ ("Ethernet", vexRiscvEthernetMM)
           , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
           , ("Freeze", freezeMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)
