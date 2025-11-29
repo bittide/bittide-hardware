@@ -351,7 +351,7 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
     uartTxBytes <-
       defaultRefClkRstEn
         $ asciiDebugMux d1024 uartLabels
-        -< [ccUartBytes, muUartBytes, gppeUartBytes]
+        -< [muUartBytes, ccUartBytes, gppeUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
     muUartBytes <-

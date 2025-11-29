@@ -189,6 +189,7 @@ library
     Bittide.Arithmetic.Time
     Bittide.Axi4
     Bittide.Axi4.Internal
+    Bittide.BootPe
     Bittide.Calculator
     Bittide.Calendar
     Bittide.CaptureUgn
