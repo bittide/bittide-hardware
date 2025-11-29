@@ -230,6 +230,7 @@ library
     Bittide.Transceiver.Comma
     Bittide.Transceiver.Prbs
     Bittide.Transceiver.ResetManager
+    Bittide.Transceiver.Wishbone
     Bittide.Transceiver.WordAlign
     Bittide.Wishbone
     Clash.Cores.Extra
