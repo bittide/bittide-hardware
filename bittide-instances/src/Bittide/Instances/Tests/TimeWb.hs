@@ -29,9 +29,6 @@ data TestStatus = Running | Success | Fail
   deriving (Show, Eq, Generic, NFDataX, BitPack, BitPackC)
 deriveTypeDescription ''TestStatus
 
-whoAmID :: BitVector 32
-whoAmID = $(makeWhoAmIdTh "time")
-
 -- | Memory map for the C timer test
 timeWbMm :: MM.MemoryMap
 timeWbMm = mm

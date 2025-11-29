@@ -20,15 +20,12 @@ import Clash.Functor.Extra ((<<$>>))
 import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
 import Data.Bool (bool)
-import Data.Char (isAscii, isPrint)
 import Data.Constraint.Nat.Extra
 import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import GHC.Stack (HasCallStack)
-import Language.Haskell.TH
 import Protocols
 import Protocols.Idle (forceResetSanityGeneric)
-import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
   registerConfig,
@@ -45,7 +42,6 @@ import Bittide.SharedTypes
 -- qualified imports
 
 import qualified Data.List as L
-import qualified Language.Haskell.TH.Syntax as TH.Syntax
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
 import qualified Protocols.Vec as Vec
@@ -927,56 +923,6 @@ wbAlwaysAckWith ::
   WishboneM2S addrW nBytes (Bytes nBytes) ->
   WishboneS2M (Bytes nBytes)
 wbAlwaysAckWith dat _ = (emptyWishboneS2M @(Bytes nBytes)){acknowledge = True, readData = dat}
-
-{- | Identifier component with a 32 bit identifier.
-
-So far used to form four character long device IDs for each CPU in a multi-CPU
-system, which can be used to confirm that the correct device is programmed.
--}
-whoAmIC ::
-  forall dom addrW.
-  ( HasCallStack
-  , KnownDomain dom
-  , HiddenClockResetEnable dom
-  , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
-  BitVector 32 ->
-  Circuit (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4)) ()
-whoAmIC whoAmI = circuit $ \wb -> do
-  [idWb] <- MM.deviceWb "WhoAmI" -< wb
-  registerWbI_ config whoAmI -< (idWb, Fwd (pure Nothing))
- where
-  config = (registerConfig "identifier"){access = ReadOnly}
-
-{- | Constructs a @BitVector 32@ from a @String@, which must be exactly 4 characters
-long and consist only of printable ASCII characters.
--}
-makeWhoAmId :: String -> BitVector 32
-makeWhoAmId str =
-  if L.length str == 4 && all (\c -> isAscii c && isPrint c) str
-    then wordForm
-    else
-      error
-        $ "whoAmId strings must be four characters long! Input '"
-        <> str
-        <> "' is "
-        <> show (L.length str)
-        <> " characters."
- where
-  strVec :: Vec 4 Char
-  strVec = (\(idx :: Index 4) -> str L.!! (fromIntegral idx)) <$> indicesI
-  byteVec :: Vec 4 (Unsigned 8)
-  byteVec = fromIntegral . fromEnum <$> strVec
-  wordForm :: BitVector 32
-  wordForm = pack $ reverse byteVec
-
-{- | Helper function for lifting @makeWhoAmId@ when Clash complains about unsynthesizable
-operations.
--}
-makeWhoAmIdTh :: String -> Q Exp
-makeWhoAmIdTh = TH.Syntax.lift . makeWhoAmId
 
 -- | Simple type for wishbone requests supporting byte enables.
 data WishboneRequest addrW nBytes
