@@ -19,7 +19,7 @@ module Bittide.Instances.Hitl.Dut.SwitchDemoGppe (
   -- Memory maps
   memoryMapMu,
   memoryMapCc,
-  memoryMapPe,
+  memoryMapGppe,
 ) where
 
 import Clash.Explicit.Prelude
@@ -95,8 +95,8 @@ muWhoAmId = $(makeWhoAmIdTh "mgmt")
 ccWhoAmId = $(makeWhoAmIdTh "swcc")
 gppeWhoAmId = $(makeWhoAmIdTh "gppe")
 
-memoryMapMu, memoryMapCc, memoryMapPe :: MemoryMap
-(memoryMapMu, memoryMapCc, memoryMapPe) = (muMm, ccMm, gppeMm)
+memoryMapMu, memoryMapCc, memoryMapGppe :: MemoryMap
+(memoryMapMu, memoryMapCc, memoryMapGppe) = (muMm, ccMm, gppeMm)
  where
   Circuit circuitFn =
     withBittideByteOrder

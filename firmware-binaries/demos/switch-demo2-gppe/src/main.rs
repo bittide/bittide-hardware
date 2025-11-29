@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::hals::switch_demo_gppe_pe as hal;
+use bittide_hal::hals::switch_demo_gppe_gppe as hal;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
