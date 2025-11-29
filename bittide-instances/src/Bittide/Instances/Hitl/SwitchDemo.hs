@@ -124,9 +124,7 @@ switchDemoDutC refClk refRst = circuit $ \(jtag, gths) -> do
 
     tInputs =
       Transceiver.CInputs
-        { clock = refClk
-        , reset = gthAllReset
-        , channelResets = repeat noReset
+        { channelResets = repeat noReset
         , txDatas
         , txStarts
         , rxReadys
@@ -134,6 +132,8 @@ switchDemoDutC refClk refRst = circuit $ \(jtag, gths) -> do
 
   Fwd tOutputs <-
     Transceiver.transceiverPrbsNC @Bittide @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
+      refClk
+      gthAllReset
       Transceiver.defConfig
       -< (Fwd tInputs, gths)
 
