@@ -12,12 +12,14 @@ on the topic.
 -}
 module Bittide.Instances.Hitl.Dut.SwitchDemoGppe (
   switchDemoGppeC,
-  memoryMapCc,
+  -- WhoAmI IDs
+  muWhoAmId,
+  ccWhoAmId,
+  gppeWhoAmId,
+  -- Memory maps
   memoryMapMu,
+  memoryMapCc,
   memoryMapPe,
-  ccWhoAmID,
-  muWhoAmID,
-  gppeWhoAmID,
 ) where
 
 import Clash.Explicit.Prelude
@@ -88,15 +90,13 @@ baud = SNat
     - `timeWb`
 -}
 
-ccWhoAmID :: BitVector 32
-ccWhoAmID = $(makeWhoAmIdTh "swcc")
-muWhoAmID :: BitVector 32
-muWhoAmID = $(makeWhoAmIdTh "mgmt")
-gppeWhoAmID :: BitVector 32
-gppeWhoAmID = $(makeWhoAmIdTh "gppe")
+muWhoAmId, ccWhoAmId, gppeWhoAmId :: BitVector 32
+muWhoAmId = $(makeWhoAmIdTh "mgmt")
+ccWhoAmId = $(makeWhoAmIdTh "swcc")
+gppeWhoAmId = $(makeWhoAmIdTh "gppe")
 
-memoryMapCc, memoryMapMu, memoryMapPe :: MemoryMap
-(memoryMapCc, memoryMapMu, memoryMapPe) = (ccMm, muMm, gppeMm)
+memoryMapMu, memoryMapCc, memoryMapPe :: MemoryMap
+(memoryMapMu, memoryMapCc, memoryMapPe) = (muMm, ccMm, gppeMm)
  where
   Circuit circuitFn =
     withBittideByteOrder
@@ -105,7 +105,7 @@ memoryMapCc, memoryMapMu, memoryMapPe :: MemoryMap
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
         (repeat resetGen)
-  ((SimOnly ccMm, SimOnly muMm, SimOnly gppeMm, _, _, _, _), _) =
+  ((SimOnly muMm, SimOnly ccMm, SimOnly gppeMm, _, _, _, _), _) =
     circuitFn
       (
         ( ()
@@ -144,8 +144,8 @@ ccConfig =
 uartLabels :: Vec 3 (Vec 2 Byte)
 uartLabels =
   fmap (fromIntegral . ord)
-    <$> ( $(listToVecTH "CC")
-            :> $(listToVecTH "MU")
+    <$> ( $(listToVecTH "MU")
+            :> $(listToVecTH "CC")
             :> $(listToVecTH "PE")
             :> Nil
         )
@@ -187,7 +187,7 @@ managementUnit maybeDna =
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaWb
-    whoAmIC muWhoAmID -< whoAmIWb
+    whoAmIC muWhoAmId -< whoAmIWb
 
     -- Output
     idC -< (cnt, wbs1, uartOut)
@@ -233,7 +233,7 @@ gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) ->
   -- Peripherals
   _cnt <- timeWb -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d2 d1 uartBytes -< (uartWb, Fwd (pure Nothing))
-  whoAmIC gppeWhoAmID -< whoAmIWb
+  whoAmIC gppeWhoAmId -< whoAmIWb
   readDnaPortE2WbWorker maybeDna -< dnaWb
 
   -- Output
@@ -294,8 +294,8 @@ switchDemoGppeC ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "CC" ::: ConstBwd MM
-    , "MU" ::: ConstBwd MM
+    ( "MU" ::: ConstBwd MM
+    , "CC" ::: ConstBwd MM
     , "GPPE" ::: ConstBwd MM
     , Jtag Bittide
     , CSignal Bittide (BitVector LinkCount)
@@ -310,7 +310,7 @@ switchDemoGppeC ::
     , Sync Bittide Basic125
     )
 switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(muMM, ccMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
@@ -384,7 +384,7 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
 
-    defaultBittideClkRstEn (whoAmIC ccWhoAmID) -< ccWhoAmIBus
+    defaultBittideClkRstEn (whoAmIC ccWhoAmId) -< ccWhoAmIBus
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn
