@@ -11,13 +11,15 @@ For more details, see [QBayLogic's presentation](https://docs.google.com/present
 on the topic.
 -}
 module Bittide.Instances.Hitl.Dut.SoftUgnDemo (
-  ccWhoAmID,
-  gppeWhoAmID,
-  memoryMapCc,
-  memoryMapMu,
-  memoryMapGppe,
-  muWhoAmID,
   softUgnDemoC,
+  -- WhoAmI IDs
+  muWhoAmId,
+  ccWhoAmId,
+  gppeWhoAmId,
+  -- Memory maps
+  memoryMapMu,
+  memoryMapCc,
+  memoryMapGppe,
 ) where
 
 import Clash.Explicit.Prelude
@@ -82,12 +84,10 @@ type Baud = 921_600
 baud :: SNat Baud
 baud = SNat
 
-ccWhoAmID :: BitVector 32
-ccWhoAmID = $(makeWhoAmIdTh "swcc")
-muWhoAmID :: BitVector 32
-muWhoAmID = $(makeWhoAmIdTh "mgmt")
-gppeWhoAmID :: BitVector 32
-gppeWhoAmID = $(makeWhoAmIdTh "gppe")
+muWhoAmId, ccWhoAmId, gppeWhoAmId :: BitVector 32
+muWhoAmId = $(makeWhoAmIdTh "mgmt")
+ccWhoAmId = $(makeWhoAmIdTh "swcc")
+gppeWhoAmId = $(makeWhoAmIdTh "gppe")
 
 {- Internal busses:
     - Instruction memory
@@ -95,8 +95,8 @@ gppeWhoAmID = $(makeWhoAmIdTh "gppe")
     - `timeWb`
 -}
 
-memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
-(memoryMapCc, memoryMapMu, memoryMapGppe) = (ccMm, muMm, gppeMm)
+memoryMapMu, memoryMapCc, memoryMapGppe :: MemoryMap
+(memoryMapMu, memoryMapCc, memoryMapGppe) = (muMm, ccMm, gppeMm)
  where
   Circuit circuitFn =
     withBittideByteOrder
@@ -105,7 +105,7 @@ memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
         (repeat resetGen)
-  ((SimOnly ccMm, SimOnly muMm, SimOnly gppeMm, _, _, _, _), _) =
+  ((SimOnly muMm, SimOnly ccMm, SimOnly gppeMm, _, _, _, _), _) =
     circuitFn
       (
         ( ()
@@ -141,10 +141,14 @@ ccConfig =
     , includeIlaWb = False
     }
 
-ccLabel, muLabel, gppeLabel :: Vec 2 Byte
-ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
-muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
-gppeLabel = fromIntegral (ord 'P') :> fromIntegral (ord 'E') :> Nil
+uartLabels :: Vec 3 (Vec 2 Byte)
+uartLabels =
+  fmap (fromIntegral . ord)
+    <$> ( $(listToVecTH "MU")
+            :> $(listToVecTH "CC")
+            :> $(listToVecTH "PE")
+            :> Nil
+        )
 
 type NmuInternalBusses = 4 + PeInternalBusses
 type NmuExternalBusses = (LinkCount * PeripheralsPerLink) + LinkCount
@@ -183,7 +187,7 @@ managementUnit maybeDna =
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaWb
-    whoAmIC muWhoAmID -< whoAmIWb
+    whoAmIC muWhoAmId -< whoAmIWb
 
     -- Output
     idC -< (cnt, wbs1, uartOut)
@@ -234,7 +238,7 @@ gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -
   -- Peripherals
   _cnt <- timeWb -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
-  whoAmIC gppeWhoAmID -< whoAmIWB
+  whoAmIC gppeWhoAmId -< whoAmIWB
   readDnaPortE2WbWorker maybeDna -< dnaWb
 
   -- Output
@@ -264,8 +268,8 @@ softUgnDemoC ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "CC" ::: ConstBwd MM
-    , "MU" ::: ConstBwd MM
+    ( "MU" ::: ConstBwd MM
+    , "CC" ::: ConstBwd MM
     , "GPPE" ::: ConstBwd MM
     , Jtag Bittide
     , "MASK" ::: CSignal Bittide (BitVector LinkCount)
@@ -280,14 +284,14 @@ softUgnDemoC ::
     , Sync Bittide Basic125
     )
 softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
 
     -- Start management unit
     (Fwd lc, muWbAll, muUartBytesBittide) <-
-      defaultBittideClkRstEn managementUnit maybeDna -< (muMM, muJtag)
+      defaultBittideClkRstEn managementUnit maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muSgWbs) <- Vec.split -< muWbs1
     -- Stop management unit
@@ -313,12 +317,14 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
     -- Start UART multiplexing
     uartTxBytes <-
       defaultRefClkRstEn
-        $ asciiDebugMux d1024 (ccLabel :> muLabel :> gppeLabel :> Nil)
-        -< [ccUartBytes, muUartBytes, gppeUartBytes]
+        $ asciiDebugMux d1024 uartLabels
+        -< [muUartBytes, ccUartBytes, gppeUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
     muUartBytes <-
       dcFifoDf d5 bitClk bitRst refClk refRst -< muUartBytesBittide
+    ccUartBytes <-
+      dcFifoDf d5 bitClk bitRst refClk refRst -< ccUartBytesBittide
     gppeUartBytes <-
       dcFifoDf d5 bitClk bitRst refClk refRst -< gppeUartBytesBittide
     -- Stop UART multiplexing
@@ -340,23 +346,19 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMM, (ccJtag, mask, linksSuitableForCc))
+        -< (ccMm, (ccJtag, mask, linksSuitableForCc))
 
     defaultBittideClkRstEn
       (wbStorage "SampleMemory")
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
 
-    defaultBittideClkRstEn (whoAmIC ccWhoAmID) -< ccWhoAmIBus
+    defaultBittideClkRstEn (whoAmIC ccWhoAmId) -< ccWhoAmIBus
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-
-    ccUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst
-        -< ccUartBytesBittide
     -- Stop Clock control
 
     let swCcOut1 =

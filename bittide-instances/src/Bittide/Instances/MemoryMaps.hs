@@ -57,7 +57,7 @@ $( do
           , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
           , ("SwitchDemoGppeMu", SwitchDemoGppe.memoryMapMu)
           , ("SwitchDemoGppeCc", SwitchDemoGppe.memoryMapCc)
-          , ("SwitchDemoGppePe", SwitchDemoGppe.memoryMapPe)
+          , ("SwitchDemoGppeGppe", SwitchDemoGppe.memoryMapGppe)
           , ("TimeWb", TimeWb.timeWbMm)
           , ("WbToDfTest", WbToDf.dutMM)
           , ("VexRiscv", vexRiscvTestMM)
