@@ -18,12 +18,12 @@ import Bittide.Instances.Hitl.Driver.SwitchDemo (
   showHex32,
  )
 import Bittide.Instances.Hitl.Dut.SoftUgnDemo (
-  ccWhoAmID,
-  gppeWhoAmID,
+  ccWhoAmId,
+  gppeWhoAmId,
   memoryMapCc,
   memoryMapGppe,
   memoryMapMu,
-  muWhoAmID,
+  muWhoAmId,
  )
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver
@@ -84,8 +84,8 @@ gppeConfig = Calc.defaultGppeCalcConfig
 lookForWhoAmI :: MemoryMap -> Integer
 lookForWhoAmI mm = getPathAddress mm ["0", "WhoAmI", "identifier"]
 
-readWhoAmID :: Integer -> Gdb -> IO (Either [Int] String)
-readWhoAmID addr gdb = do
+readWhoAmId :: Integer -> Gdb -> IO (Either [Int] String)
+readWhoAmId addr gdb = do
   bytes <- fmap (fmap fromIntegral) $ Gdb.readBytes @4 gdb addr
   let chars = chr <$> bytes
   return
@@ -99,7 +99,7 @@ whether the target CPU reports the expected @whoAmID@.
 gdbCheck :: BitVector 32 -> Integer -> [(String, Integer)] -> Gdb -> VivadoM ExitCode
 gdbCheck expectedBE expectedAddr altAddrs gdb = do
   let expectedIdent = whoAmIdToString expectedBE
-  maybeId <- liftIO $ readWhoAmID expectedAddr gdb
+  maybeId <- liftIO $ readWhoAmId expectedAddr gdb
   case maybeId of
     Right ident -> do
       liftIO $ putStrLn [i|Read whoAmID: '#{ident}', expected '#{expectedIdent}'|]
@@ -120,7 +120,7 @@ gdbCheck expectedBE expectedAddr altAddrs gdb = do
 
   altAddrCmp :: (String, Integer) -> IO ()
   altAddrCmp (name, addr) = do
-    maybeId <- readWhoAmID addr gdb
+    maybeId <- readWhoAmId addr gdb
     case maybeId of
       Right ident -> putStrLn [i|Address for #{name} gives ID '#{ident}'|]
       Left ints -> putStrLn [i|Address for #{name} gives malformed ID. Raw: #{ints}|]
@@ -182,7 +182,7 @@ driver testName targets = do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
       liftIO $ putStrLn "Checking for MMIO access to SWCC CPUs over GDB..."
       liftIO $ putStrLn [i|Using address #{showHex32 ccWAIAddr}|]
-      gdbExitCodes0 <- mapM (gdbCheck ccWhoAmID ccWAIAddr [muAlt, peAlt]) ccGdbs
+      gdbExitCodes0 <- mapM (gdbCheck ccWhoAmId ccWAIAddr [muAlt, peAlt]) ccGdbs
       (gdbCount0, gdbExitCode0) <-
         L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
       liftIO
@@ -194,7 +194,7 @@ driver testName targets = do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muPorts targets
         liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
         liftIO $ putStrLn [i|Using address #{showHex32 muWAIAddr}|]
-        gdbExitCodes1 <- mapM (gdbCheck muWhoAmID muWAIAddr [ccAlt, peAlt]) muGdbs
+        gdbExitCodes1 <- mapM (gdbCheck muWhoAmId muWAIAddr [ccAlt, peAlt]) muGdbs
         (gdbCount1, gdbExitCode1) <-
           L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
         liftIO
@@ -207,7 +207,7 @@ driver testName targets = do
             $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppePorts targets
           liftIO $ putStrLn "Checking for MMIO access to GPPE CPUs over GDB..."
           liftIO $ putStrLn [i|Using address #{showHex32 peWAIAddr}|]
-          gdbExitCodes2 <- mapM (gdbCheck gppeWhoAmID peWAIAddr [ccAlt, muAlt]) gppeGdbs
+          gdbExitCodes2 <- mapM (gdbCheck gppeWhoAmId peWAIAddr [ccAlt, muAlt]) gppeGdbs
           (gdbCount2, gdbExitCode2) <-
             L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes2
           liftIO
