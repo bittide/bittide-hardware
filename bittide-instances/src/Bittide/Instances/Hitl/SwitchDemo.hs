@@ -41,7 +41,7 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Dut.SwitchDemo (circuitFnC)
+import Bittide.Instances.Hitl.Dut.SwitchDemo (switchDemoC)
 import Bittide.Instances.Hitl.Setup (LinkCount, allHwTargets, channelNames, clockPaths)
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Sync (Sync)
@@ -139,13 +139,13 @@ switchDemoDutC refClk refRst = circuit $ \(jtag, gths) -> do
 
   (Fwd callistoResult, Fwd switchDataOut, Fwd localCounter, uartTx, Fwd ebStables, sync) <-
     withBittideByteOrder
-      $ circuitFnC
+      $ switchDemoC
         (refClk, handshakeRstFree, enableGen)
         (bittideClk, handshakeRstTx, enableGen)
         tOutputs.rxClocks
         (unsafeFromActiveLow <$> tOutputs.handshakesDone)
-      -< ( ccMm
-         , muMm
+      -< ( muMm
+         , ccMm
          , jtag
          , Fwd 0
          , Fwd (pure maxBound)
