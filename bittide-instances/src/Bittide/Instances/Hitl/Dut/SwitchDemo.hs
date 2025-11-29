@@ -26,7 +26,8 @@ import Bittide.ProcessingElement (
  )
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
-import Bittide.SwitchDemoProcessingElement (SimplePeState, switchDemoPeWb)
+import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
+import Bittide.Sync (Sync)
 import Bittide.Wishbone (
   makeWhoAmIdTh,
   readDnaPortE2WbWorker,
@@ -153,7 +154,7 @@ memoryMapCc, memoryMapMu :: MemoryMap
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
         (repeat resetGen)
-  ((SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _), _) =
+  ((SimOnly ccMm, SimOnly muMm, _, _, _, _, _), _) =
     circuitFn
       (
         ( ()
@@ -163,19 +164,14 @@ memoryMapCc, memoryMapMu :: MemoryMap
         , pure maxBound
         , pure maxBound
         , repeat (pure Nothing)
-        , pure low
         )
       ,
         ( ()
         , repeat ()
         , ()
         , ()
-        , ()
-        , ()
-        , ()
-        , ()
-        , ()
-        , repeat $ ()
+        , repeat ()
+        , pure low
         )
       )
 
@@ -229,21 +225,16 @@ circuitFnC ::
     , CSignal Bittide (BitVector LinkCount)
     , CSignal Bittide (BitVector LinkCount)
     , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
-    , CSignal Bittide Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
-    , "PE_STATE" ::: CSignal Bittide (SimplePeState FpgaCount)
-    , "PE_IN" ::: CSignal Bittide (BitVector 64)
-    , "PE_OUT" ::: CSignal Bittide (BitVector 64)
-    , "CAL_ENTRY" ::: CSignal Bittide (Vec (LinkCount + 1) (Index (LinkCount + 2)))
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "SYNC_OUT" ::: CSignal Basic125 Bit
     , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
+    , Sync Bittide Basic125
     )
 circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
+  circuit $ \(ccMM, muMM, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     (muUartBytesBittide, _muUartStatus) <-
@@ -284,13 +275,13 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
     rxs2 <- defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
 
     rxs3 <- Vec.append -< ([Fwd peOut], rxs2)
-    (switchOut, calEntry) <-
+    (switchOut, _calEntry) <-
       defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxs3, switchWb))
     ([Fwd peIn], txs) <- Vec.split -< switchOut
 
     -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
     --      use it until the DNA is actually read out.
-    (Fwd peOut, ps) <-
+    (Fwd peOut, _peState) <-
       defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
         -< (peWbMM, (Fwd lc, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
 
@@ -314,7 +305,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< [ccUartBytes, muUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
-    ( syncOut
+    ( sync
       , Fwd swCcOut0
       , [ ccWhoAmIBus
           , ccUartBus
@@ -330,7 +321,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMM, (syncIn, ccJtag, mask, linksSuitableForCc))
+        -< (ccMM, (ccJtag, mask, linksSuitableForCc))
 
     defaultBittideClkRstEn
       (wbStorage "SampleMemory")
@@ -359,18 +350,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
                         }
             else swCcOut0
 
-    idC
-      -< ( Fwd swCcOut1
-         , txs
-         , Fwd lc
-         , ps
-         , Fwd peIn
-         , Fwd peOut
-         , calEntry
-         , uartTx
-         , syncOut
-         , ebStables
-         )
+    idC -< (Fwd swCcOut1, txs, Fwd lc, uartTx, ebStables, sync)
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   defaultBittideClkRstEn = withClockResetEnable bitClk bitRst bitEna

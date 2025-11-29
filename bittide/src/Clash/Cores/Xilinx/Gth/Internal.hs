@@ -5,6 +5,7 @@
 module Clash.Cores.Xilinx.Gth.Internal where
 
 import Clash.Explicit.Prelude
+import Protocols
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
   ClockPort (..),
@@ -22,6 +23,33 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
 
 type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
+
+data
+  Gths
+    (gthRx :: Domain)
+    (gthRxS :: Domain)
+    (gthTx :: Domain)
+    (gthTxS :: Domain)
+    (ref :: Domain)
+    (n :: Nat)
+
+instance Protocol (Gths gthRx gthRxS gthTx gthTxS ref n) where
+  type
+    Fwd (Gths gthRx gthRxS gthTx gthTxS ref n) =
+      ( "GTH_REF" ::: Clock ref
+      , "GTH_RX_S" ::: SimWires gthRx n
+      , "GTH_RX_NS" ::: Wires gthRxS n
+      , "GTH_RX_PS" ::: Wires gthRxS n
+      , "CHANNEL_NAMES" ::: Vec n String
+      , "CLOCK_PATHS" ::: Vec n String
+      )
+
+  type
+    Bwd (Gths gthRx gthRxS gthTx gthTxS ref n) =
+      ( "GTH_TX_S" ::: SimWires gthTx n
+      , "GTH_TX_NS" ::: Wires gthTxS n
+      , "GTH_TX_PS" ::: Wires gthTxS n
+      )
 
 {- | Data wires from/to transceivers. No logic should be inserted on these
 wires. Should be considered asynchronous to one another - even though their

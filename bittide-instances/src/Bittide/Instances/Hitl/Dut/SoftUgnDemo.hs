@@ -47,6 +47,7 @@ import Bittide.ProcessingElement (
  )
 import Bittide.ScatterGather
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
+import Bittide.Sync (Sync)
 import Bittide.Wishbone (
   makeWhoAmIdTh,
   readDnaPortE2WbWorker,
@@ -104,7 +105,7 @@ memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
         (repeat resetGen)
-  ((SimOnly ccMm, SimOnly muMm, SimOnly gppeMm, _, _, _, _, _), _) =
+  ((SimOnly ccMm, SimOnly muMm, SimOnly gppeMm, _, _, _, _), _) =
     circuitFn
       (
         ( ()
@@ -114,15 +115,14 @@ memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
         , pure maxBound
         , pure maxBound
         , repeat (pure Nothing)
-        , pure low
         )
       ,
         ( ()
         , repeat ()
         , ()
         , ()
-        , ()
         , repeat ()
+        , pure low
         )
       )
 
@@ -268,20 +268,19 @@ softUgnDemoC ::
     , "MU" ::: ConstBwd MM
     , "GPPE" ::: ConstBwd MM
     , Jtag Bittide
-    , CSignal Bittide (BitVector LinkCount)
-    , CSignal Bittide (BitVector LinkCount)
+    , "MASK" ::: CSignal Bittide (BitVector LinkCount)
+    , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
-    , CSignal Bittide Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "SYNC_OUT" ::: CSignal Basic125 Bit
     , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
+    , Sync Bittide Basic125
     )
 softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
+  circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
@@ -325,7 +324,7 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
     -- Stop UART multiplexing
 
     -- Start Clock control
-    ( syncOut
+    ( sync
       , Fwd swCcOut0
       , [ ccWhoAmIBus
           , ccUartBus
@@ -341,7 +340,7 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMM, (syncIn, ccJtag, mask, linksSuitableForCc))
+        -< (ccMM, (ccJtag, mask, linksSuitableForCc))
 
     defaultBittideClkRstEn
       (wbStorage "SampleMemory")
@@ -385,8 +384,8 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
          , txs
          , Fwd lc
          , uartTx
-         , syncOut
          , ebStables
+         , sync
          )
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r

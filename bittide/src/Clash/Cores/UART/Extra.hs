@@ -10,12 +10,12 @@ module Clash.Cores.UART.Extra (
 ) where
 
 import Clash.Prelude
+import Protocols
 
 import Clash.Cores.UART
 import Data.Char
 import Data.Maybe
 import GHC.IO
-import Protocols
 import Protocols.Df hiding (catMaybes, pure, sample)
 import System.IO
 
@@ -23,6 +23,12 @@ import Bittide.Df
 import Bittide.Wishbone
 
 import qualified Protocols.Df as Df
+
+data Uart (dom :: Domain)
+
+instance Protocol (Uart dom) where
+  type Fwd (Uart dom) = "UART_TX" ::: CSignal dom Bit
+  type Bwd (Uart dom) = "UART_RX" ::: CSignal dom Bit
 
 -- | The maximum baud rate for a given domain, useful for simulation purposes
 type MaxBaudRate dom = Div (DomainToHz dom) 16

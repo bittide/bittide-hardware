@@ -57,6 +57,20 @@ import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 type SyncOutGeneratorHalfPeriod = Milliseconds 5
 
+data Sync (domIn :: Domain) (domOut :: Domain)
+
+instance Protocol (Sync domIn domOut) where
+  type Fwd (Sync domIn domOut) = "SYNC_OUT" ::: Signal domOut Bit
+  type Bwd (Sync domIn domOut) = "SYNC_IN" ::: Signal domIn Bit
+
+toSync :: Circuit (CSignal domOut Bit) (CSignal domIn Bit, Sync domIn domOut)
+toSync = Circuit go
+ where
+  go ::
+    (Signal domOut Bit, ((), Signal domIn Bit)) ->
+    ((), (Signal domIn Bit, Signal domOut Bit))
+  go (syncOut, (_, syncIn)) = ((), (syncIn, syncOut))
+
 {- | Count the number of SYNC_IN pulses. Also count the number of cycles since
 the last SYNC_IN pulse. Note that this component will silently overflow.
 

@@ -235,23 +235,34 @@ si539xSpiWb minTargetPs =
 
   defRegOp = RegisterOperation{page = 0, address = 0, write = Nothing}
 
-si539xSpiDriverC ::
-  forall minTargetPeriodPs dom.
-  (HiddenClockResetEnable dom) =>
+-- | Like 'si539xSpi', but packed as a 'Circuit'.
+si539xSpiC ::
+  forall dom preambleEntries configEntries postambleEntries minTargetPeriodPs.
+  ( HiddenClockResetEnable dom
+  , KnownNat preambleEntries
+  , 1 <= preambleEntries
+  , KnownNat configEntries
+  , KnownNat postambleEntries
+  , 1 <= (preambleEntries + configEntries + postambleEntries)
+  ) =>
+  -- | Initial configuration for the @Si539x@ chip.
+  Si539xRegisterMap preambleEntries configEntries postambleEntries ->
+  -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   Circuit
     ( CSignal dom (Maybe RegisterOperation)
     )
     ( CSignal dom (Maybe Byte)
     , CSignal dom Busy
+    , CSignal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
     , Spi dom
     )
-si539xSpiDriverC minPs = Circuit go
+si539xSpiC config minPs = Circuit go
  where
-  go (regOp, (_, _, s2m)) = ((), (readByte, busy, m2s))
+  go (regOp, (_, _, _, s2m)) = ((), (readByte, busy, state, spiM2S))
    where
-    (readByte, busy, m2s) =
-      si539xSpiDriver minPs regOp s2m
+    (readByte, busy, state, spiM2S) =
+      si539xSpi config minPs regOp s2m
 
 {- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
 This component will first write and verify the initial configuration before becoming
@@ -362,6 +373,25 @@ data DriverState dom = DriverState
   -- ^ After communication, slave select must be high for at least 95ns.
   }
   deriving (Generic, NFDataX)
+
+-- | Like 'si539xSpiDriver', but packed as a 'Circuit'.
+si539xSpiDriverC ::
+  forall minTargetPeriodPs dom.
+  (HiddenClockResetEnable dom) =>
+  SNat minTargetPeriodPs ->
+  Circuit
+    ( CSignal dom (Maybe RegisterOperation)
+    )
+    ( CSignal dom (Maybe Byte)
+    , CSignal dom Busy
+    , Spi dom
+    )
+si539xSpiDriverC minPs = Circuit go
+ where
+  go (regOp, (_, _, s2m)) = ((), (readByte, busy, m2s))
+   where
+    (readByte, busy, m2s) =
+      si539xSpiDriver minPs regOp s2m
 
 {- | Circuitry that controls an SPI core based on a state machine that ensures communication
 transactions with an @Si539x@ chip are executed correctly. It makes sure communication

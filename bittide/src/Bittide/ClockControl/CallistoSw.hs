@@ -24,7 +24,7 @@ import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes
-import Bittide.Sync (syncInCounterC, syncOutGenerateWbC)
+import Bittide.Sync (Sync, syncInCounterC, syncOutGenerateWbC, toSync)
 import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
 
@@ -71,13 +71,12 @@ callistoSwClockControlC ::
   PeConfig (otherWb + SwcccInternalBusses) ->
   Circuit
     ( ConstBwd MM
-    , ( "SYNC_IN" ::: CSignal dom Bit
-      , Jtag dom
+    , ( Jtag dom
       , CSignal dom (BitVector nLinks) -- link mask
       , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
       )
     )
-    ( "SYNC_OUT" ::: CSignal free Bit
+    ( Sync dom free
     , CSignal dom (CallistoResult nLinks)
     , Vec
         otherWb
@@ -86,7 +85,7 @@ callistoSwClockControlC ::
         )
     )
 callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
-  circuit $ \(mm, (syncIn, jtag, Fwd linkMask, Fwd linksOk)) -> do
+  circuit $ \(mm, (jtag, Fwd linkMask, Fwd linksOk)) -> do
     allWishbone <- processingElement dumpVcd peConfig -< (mm, jtag)
     ( [ clockControlBus
         , timeWbBus
@@ -109,6 +108,8 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
          , cyclesSinceLastPulse
          )
 
+    (syncIn, sync) <- toSync -< syncOut
+
     (pulseCounter, cyclesSinceLastPulse) <- syncInCounterC hasClock hasReset -< syncIn
 
     localCounter <- timeWb -< timeWbBus
@@ -127,4 +128,4 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
           <*> clockControlData.allStable
           <*> clockControlData.allSettled
 
-    idC -< (syncOut, Fwd callistoCResult, wbRest)
+    idC -< (sync, Fwd callistoCResult, wbRest)
