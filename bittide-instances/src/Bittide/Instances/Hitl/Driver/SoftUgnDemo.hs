@@ -11,21 +11,10 @@ import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Driver.SwitchDemo (
   dumpCcSamples,
-  foldExitCodes,
-  gdbCheck,
-  getPathAddress,
   initGdb,
   initPicocom,
-  showHex32,
  )
-import Bittide.Instances.Hitl.Dut.SoftUgnDemo (
-  ccWhoAmId,
-  gppeWhoAmId,
-  memoryMapCc,
-  memoryMapGppe,
-  memoryMapMu,
-  muWhoAmId,
- )
+import Bittide.Instances.Hitl.Dut.SoftUgnDemo ()
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
@@ -33,8 +22,6 @@ import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class
-import Data.Maybe (fromMaybe)
-import Data.String.Interpolate (i)
 import Data.Vector.Internal.Check (HasCallStack)
 import Project.FilePath
 import Project.Handle
@@ -107,49 +94,18 @@ driver testName targets = do
       muPorts = (.gdbPort) <$> muTapInfos
       ccPorts = (.gdbPort) <$> ccTapInfos
       gppePorts = (.gdbPort) <$> gppeTapInfos
-      muWhoAmIAddr = getPathAddress memoryMapMu ["0", "WhoAmI", "identifier"]
-      ccWhoAmIAddr = getPathAddress memoryMapCc ["0", "WhoAmI", "identifier"]
-      peWhoAmIAddr = getPathAddress memoryMapGppe ["0", "WhoAmI", "identifier"]
-      -- When the `gdbCheck` fails, check these alternative addresses for debugging
-      ccAlt = ("CC", ccWhoAmIAddr)
-      muAlt = ("MU", muWhoAmIAddr)
-      peAlt = ("PE", peWhoAmIAddr)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
-      liftIO $ putStrLn "Checking for MMIO access to SWCC CPUs over GDB..."
-      liftIO $ putStrLn [i|Using address #{showHex32 ccWhoAmIAddr}|]
-      gdbExitCodesCc <- mapM (gdbCheck ccWhoAmId ccWhoAmIAddr [muAlt, peAlt]) ccGdbs
-      (gdbCountCc, gdbExitCodeCc) <-
-        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesCc
-      liftIO
-        $ putStrLn
-          [i|CC GDB testing passed on #{gdbCountCc} of #{L.length targets} targets|]
       liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muPorts targets
-        liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        liftIO $ putStrLn [i|Using address #{showHex32 muWhoAmIAddr}|]
-        gdbExitCodesMu <- mapM (gdbCheck muWhoAmId muWhoAmIAddr [ccAlt, peAlt]) muGdbs
-        (gdbCountMu, gdbExitCodeMu) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesMu
-        liftIO
-          $ putStrLn
-            [i|MU GDB testing passed on #{gdbCountMu} of #{L.length targets} targets|]
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
         Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
           liftIO
             $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppePorts targets
-          liftIO $ putStrLn "Checking for MMIO access to GPPE CPUs over GDB..."
-          liftIO $ putStrLn [i|Using address #{showHex32 peWhoAmIAddr}|]
-          gdbExitCodesGppe <- mapM (gdbCheck gppeWhoAmId peWhoAmIAddr [ccAlt, muAlt]) gppeGdbs
-          (gdbCountGppe, gdbExitCodeGppe) <-
-            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesGppe
-          liftIO
-            $ putStrLn
-              [i|GPPE GDB testing passed on #{gdbCountGppe} of #{L.length targets} targets|]
           liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gppeGdbs
 
           let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
@@ -198,6 +154,4 @@ driver testName targets = do
 
             liftIO goDumpCcSamples
 
-            pure
-              $ fromMaybe ExitSuccess
-              $ L.find (/= ExitSuccess) [gdbExitCodeCc, gdbExitCodeMu, gdbExitCodeGppe]
+            pure ExitSuccess

@@ -29,13 +29,11 @@ import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (
-  makeWhoAmIdTh,
   readDnaPortE2WbWorker,
   timeWb,
   uartBytes,
   uartDf,
   uartInterfaceWb,
-  whoAmIC,
  )
 
 import Clash.Class.BitPackC (ByteOrder)
@@ -62,10 +60,6 @@ type FifoSize = 5 -- = 2^5 = 32
 
 baud :: SNat Baud
 baud = SNat
-
-muWhoAmId, ccWhoAmId :: BitVector 32
-muWhoAmId = $(makeWhoAmIdTh "mgmt")
-ccWhoAmId = $(makeWhoAmIdTh "swcc")
 
 {- Internal busses:
     - Instruction memory
@@ -175,7 +169,7 @@ memoryMapMu, memoryMapCc :: MemoryMap
         )
       )
 
-muConfig :: SimpleManagementConfig 19
+muConfig :: SimpleManagementConfig 18
 muConfig =
   SimpleManagementConfig
     { peConfig =
@@ -247,8 +241,7 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
     (Fwd lc, muWbAll) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMm, (muJtag, linkIn))
 
-    ( [ muWhoAmIWb
-        , (peWbMM, peWb)
+    ( [ (peWbMM, peWb)
         , (switchWbMM, switchWb)
         , dnaWb
         , muUartBus
@@ -257,7 +250,6 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
       ) <-
       Vec.split -< muWbAll
 
-    defaultBittideClkRstEn (whoAmIC muWhoAmId) -< muWhoAmIWb
     defaultBittideClkRstEn (readDnaPortE2WbWorker maybeDna) -< dnaWb
 
     (muUartBytesBittide, _muUartStatus) <-
@@ -311,8 +303,7 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
     -- Start clock control
     ( sync
       , Fwd swCcOut0
-      , [ ccWhoAmIBus
-          , ccUartBus
+      , [ ccUartBus
           , ccSampleMemoryBus
           ]
       ) <-
@@ -331,8 +322,6 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
       (wbStorage "SampleMemory")
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
-
-    defaultBittideClkRstEn (whoAmIC ccWhoAmId) -< ccWhoAmIBus
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn

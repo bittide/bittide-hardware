@@ -15,9 +15,9 @@ import VexRiscv
 
 import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.ProcessingElement
-import Bittide.Wishbone (timeWb, uartBytes, uartInterfaceWb, whoAmIC)
+import Bittide.Wishbone (timeWb, uartBytes, uartInterfaceWb)
 
-type BootPeInternalBusses = 6
+type BootPeInternalBusses = 5
 
 bootPe ::
   forall dom.
@@ -28,8 +28,6 @@ bootPe ::
   , ?regByteOrder :: ByteOrder
   ) =>
   PeConfig BootPeInternalBusses ->
-  -- | WhoAmI identifier
-  BitVector 32 ->
   Circuit
     ( ConstBwd MM
     , Jtag dom
@@ -38,11 +36,10 @@ bootPe ::
     , "SPI_DONE" ::: CSignal dom Bool
     , Spi dom
     )
-bootPe peConfig bootWhoAmId = circuit $ \(mm, jtag) -> do
-  [timeBus, whoAmIBus, uartBus, siBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
+bootPe peConfig = circuit $ \(mm, jtag) -> do
+  [timeBus, uartBus, siBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
 
   Fwd _localCounter <- timeWb -< timeBus
-  whoAmIC bootWhoAmId -< whoAmIBus
   (uartOut, _uartStatus) <-
     uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
   (spiDone, spiOut) <- si539xSpiWb (SNat @(Microseconds 10)) -< siBus

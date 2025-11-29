@@ -1,74 +1,115 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
--- Don't warn about partial functions: this is a test, so we'll see it fail.
-{-# OPTIONS_GHC -Wno-x-partial #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Tests.DelayWishboneC where
+module Tests.DelayWishboneC (tests) where
 
-import Clash.Prelude
+import Clash.Explicit.Prelude
 
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
-import Bittide.Wishbone (makeWhoAmIdTh, whoAmIC)
-
+import Bittide.DoubleBufferedRam (
+  ContentType (Vec),
+  InitialContent (NonReloadable),
+  wbStorage,
+ )
+import Clash.Prelude (withClockResetEnable)
+import Data.Map (Map)
+import Data.Maybe (fromMaybe)
+import Hedgehog (Gen, Property)
+import Hedgehog.Internal.Property (property)
 import Protocols
-import Protocols.MemoryMap (ConstBwd, MM)
+import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
+import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
-import Protocols.Wishbone.Extra
-import Test.Tasty
-import Test.Tasty.HUnit
-import Test.Tasty.TH
-import Tests.Wishbone (wbRead)
+import Protocols.Wishbone.Extra (delayWishboneC)
+import Protocols.Wishbone.Standard.Hedgehog (
+  WishboneMasterRequest (Read, Write),
+  wishbonePropWithModel,
+ )
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.Hedgehog (testPropertyNamed)
 
-import qualified Data.List as L
+import qualified Data.Map as Map
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
 
-whoAmID :: BitVector 32
-whoAmID = $(makeWhoAmIdTh "helo")
-
-simSimple :: IO ()
-simSimple = mapM_ (putStrLn . show) simResult
-
--- | Calculate how many cycles a given WishboneM2S transaction will take
-
---- through the delayWishboneC component.
-m2sToCycles :: WishboneM2S aw sw a -> Int
-m2sToCycles m2s
-  | not (m2s.lock || m2s.busCycle || m2s.strobe || m2s.writeEnable) = 1
-  | otherwise = 3
-
-simResult :: [WishboneS2M (Bytes 4)]
-simResult = simulateN len (dutSimpleFn @System) input
- where
-  input = [wbRead 0x0000_0000, emptyWishboneM2S]
-  len = L.foldl (\acc m2s -> acc + m2sToCycles m2s) 0 input
-
-dutSimple ::
-  (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
-  Circuit (ConstBwd MM, Wishbone dom 'Standard 0 (Bytes 4)) ()
-dutSimple = withBittideByteOrder $ circuit $ \(mm, wb) -> do
-  wbDelayed <- delayWishboneC -< wb
-  whoAmIC whoAmID -< (mm, wbDelayed)
-
-dutSimpleFn ::
-  (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
-  Signal dom (WishboneM2S 0 4 (Bytes 4)) ->
-  Signal dom (WishboneS2M (Bytes 4))
-dutSimpleFn m2s = let ((_, s2m), _) = circFn (((), m2s), ()) in s2m
- where
-  Circuit circFn = dutSimple
-
-case_test_wishboneDelayC :: Assertion
-case_test_wishboneDelayC = assertEqual msg readResult.readData whoAmID
- where
-  topEntityInput = [wbRead 0x0000_0000, emptyWishboneM2S]
-  simulateLength = L.foldl (\acc m2s -> acc + m2sToCycles m2s) 0 topEntityInput
-  simOut = simulateN simulateLength (dutSimpleFn @System) topEntityInput
-  readResult = simOut L.!! ((m2sToCycles $ L.head topEntityInput) - 1)
-  msg =
-    "Simulation result "
-      <> show readResult.readData
-      <> " not equal to expected data "
-      <> show whoAmID
+type AddressWidth = 4
 
 tests :: TestTree
-tests = $(testGroupGenerator)
+tests =
+  testGroup
+    "Tests.DelayWishboneC"
+    [ testPropertyNamed
+        "delayWishboneC preserves wishbone transactions"
+        "delayWishboneC"
+        prop_delayWishboneC
+    ]
+
+mergeWithMask :: BitVector 32 -> BitVector 32 -> BitVector 4 -> BitVector 32
+mergeWithMask (unpack -> old) (unpack -> new) (unpack -> mask) =
+  pack (mux @(Vec 4) @(BitVector 8) mask new old)
+
+{- | Test that delayWishboneC correctly delays Wishbone transactions
+without data corruption. The test connects the delay circuit to a wishbone
+storage backend and verifies that read/write operations work correctly.
+-}
+prop_delayWishboneC :: Property
+prop_delayWishboneC = property $ do
+  withClockResetEnable clk rst ena
+    $ wishbonePropWithModel
+      @System
+      defExpectOptions{eoSampleMax = 10_000, eoResetCycles = 0}
+      model
+      dut
+      genInputs
+      Map.empty
+ where
+  clk = clockGen
+  rst = noReset
+  ena = enableGen
+
+  -- Behavioral model: track memory state
+  model ::
+    WishboneMasterRequest AddressWidth (BitVector 32) ->
+    WishboneS2M (BitVector 32) ->
+    Map (BitVector AddressWidth) (BitVector 32) ->
+    Either String (Map (BitVector AddressWidth) (BitVector 32))
+  model _ resp _mem | resp.err = Left "Unexpected bus error"
+  --
+  model (Read addr _mask) resp mem
+    | resp.acknowledge =
+        let expected = fromMaybe 0 (Map.lookup addr mem)
+         in if resp.readData == expected then Right mem else Left "Data mismatch"
+  --
+  model (Write addr mask dat) resp mem
+    | resp.acknowledge =
+        let
+          old = fromMaybe 0 (Map.lookup addr mem)
+          new = mergeWithMask old dat mask
+         in
+          Right (Map.insert addr new mem)
+  --
+  model _ _ mem = Right mem
+
+  -- Generate wishbone requests
+  genInputs :: Gen [WishboneMasterRequest AddressWidth (BitVector 32)]
+  genInputs = Gen.list (Range.linear 0 32) $ do
+    Gen.choice
+      [ Read <$> genBoundedIntegral <*> genBoundedIntegral
+      , Write <$> genBoundedIntegral <*> genBoundedIntegral <*> genBoundedIntegral
+      ]
+
+  genBoundedIntegral :: forall a. (Integral a, Bounded a) => Gen a
+  genBoundedIntegral = Gen.integral Range.constantBounded
+
+  dut :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
+  dut =
+    withClockResetEnable clk rst ena
+      $ delayWishboneC
+      |> dutMem
+
+  dutMem :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
+  dutMem =
+    withClockResetEnable clk rst ena
+      $ unMemmap
+      $ wbStorage "test" (NonReloadable (Vec (repeat @(2 ^ AddressWidth) 0)))
