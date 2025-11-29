@@ -27,6 +27,7 @@ import Bittide.ProcessingElement (
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
+import Bittide.Sync (Sync)
 import Bittide.Wishbone (
   makeWhoAmIdTh,
   readDnaPortE2WbWorker,
@@ -153,7 +154,7 @@ memoryMapCc, memoryMapMu :: MemoryMap
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
         (repeat resetGen)
-  ((SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _), _) =
+  ((SimOnly ccMm, SimOnly muMm, _, _, _, _, _), _) =
     circuitFn
       (
         ( ()
@@ -163,15 +164,14 @@ memoryMapCc, memoryMapMu :: MemoryMap
         , pure maxBound
         , pure maxBound
         , repeat (pure Nothing)
-        , pure low
         )
       ,
         ( ()
         , repeat ()
         , ()
         , ()
-        , ()
-        , repeat $ ()
+        , repeat ()
+        , pure low
         )
       )
 
@@ -225,17 +225,16 @@ circuitFnC ::
     , CSignal Bittide (BitVector LinkCount)
     , CSignal Bittide (BitVector LinkCount)
     , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
-    , CSignal Bittide Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "SYNC_OUT" ::: CSignal Basic125 Bit
     , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
+    , Sync Bittide Basic125
     )
 circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
+  circuit $ \(ccMM, muMM, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     (muUartBytesBittide, _muUartStatus) <-
@@ -306,7 +305,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< [ccUartBytes, muUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
-    ( syncOut
+    ( sync
       , Fwd swCcOut0
       , [ ccWhoAmIBus
           , ccUartBus
@@ -322,7 +321,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMM, (syncIn, ccJtag, mask, linksSuitableForCc))
+        -< (ccMM, (ccJtag, mask, linksSuitableForCc))
 
     defaultBittideClkRstEn
       (wbStorage "SampleMemory")
@@ -351,7 +350,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
                         }
             else swCcOut0
 
-    idC -< (Fwd swCcOut1, txs, Fwd lc, uartTx, syncOut, ebStables)
+    idC -< (Fwd swCcOut1, txs, Fwd lc, uartTx, ebStables, sync)
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   defaultBittideClkRstEn = withClockResetEnable bitClk bitRst bitEna

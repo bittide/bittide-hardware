@@ -96,7 +96,6 @@ import Clash.Prelude (withClock)
 import Control.Monad (when)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Proxy (Proxy (Proxy))
-import Data.Tuple (swap)
 import GHC.Stack (HasCallStack)
 
 import qualified Bittide.Transceiver.Cdc as Cdc
@@ -231,6 +230,25 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.rxReady'
   }
 
+data CInputs tx rx free n = CInputs
+  { clock :: Clock free
+  -- ^ See 'Input.clock'
+  , reset :: Reset free
+  -- ^ See 'Input.reset'
+  , channelResets :: Vec n (Reset free)
+  -- ^ Resets for each individual link
+  , txDatas :: Vec n (Signal tx (BitVector 64))
+  -- ^ See 'Input.txData'
+  , txStarts :: Vec n (Signal tx Bool)
+  -- ^ See 'Input.txStart'
+  , rxReadys :: Vec n (Signal rx Bool)
+  -- ^ See 'Input.rxReady'
+  }
+
+instance Protocol (CInputs tx rx free n) where
+  type Fwd (CInputs tx rx free n) = CInputs tx rx free n
+  type Bwd (CInputs tx rx free n) = ()
+
 data Output tx rx tx1 rx1 txS free = Output
   { txOutClock :: Clock tx1
   -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
@@ -310,6 +328,42 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.stats'
   }
 
+{- | Careful: the domains for the rx side of each transceiver are different, even if their
+types say otherwise.
+-}
+data COutputs n tx rx free = COutputs
+  { txClock :: Clock tx
+  -- ^ See 'Output.txClock'
+  , txReset :: Reset tx
+  -- ^ See 'Output.txReset'
+  , txReadys :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txReady'
+  , txSamplings :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txSampling'
+  , handshakesDoneTx :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.handshakeDoneTx'
+  , rxClocks :: Vec n (Clock rx)
+  -- ^ See 'Output.rxClock'
+  , rxResets :: Vec n (Reset rx)
+  -- ^ See 'Output.rxReset'
+  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  -- ^ See 'Output.rxData'
+  , handshakesDone :: Vec n (Signal rx Bool)
+  -- ^ See 'Output.handshakeDone'
+  , linkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkUp'
+  , linkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkReady'
+  , handshakesDoneFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.handshakeDoneFree'
+  , stats :: Vec n (Signal free ResetManager.Statistics)
+  -- ^ See 'Output.stats'
+  }
+
+instance Protocol (COutputs n tx rx free) where
+  type Fwd (COutputs n tx rx free) = COutputs n tx rx free
+  type Bwd (COutputs n tx rx free) = ()
+
 data
   Transceivers
     (tx :: Domain)
@@ -331,12 +385,6 @@ instance Protocol (Inputs tx rx ref free rxS n) where
 instance Protocol (Outputs n tx rx txS free) where
   type Fwd (Outputs n tx rx txS free) = Outputs n tx rx txS free
   type Bwd (Outputs n tx rx txS free) = ()
-
-toInOut ::
-  forall tx rx ref free txS rxS n.
-  Circuit (Transceivers tx rx ref free txS rxS n) () ->
-  Circuit (Inputs tx rx ref free rxS n) (Outputs n tx rx txS free)
-toInOut (Circuit f) = Circuit (swap . f)
 
 {-
 [NOTE: duplicate tx/rx domain]
@@ -362,7 +410,27 @@ simOnlyHdlWorkaround a
   | clashSimulation = a
   | otherwise = deepErrorX "simOnlyHdlWorkaround: not in simulation"
 
-transceiversPrbsNC ::
+outputsToCOutputs ::
+  Outputs n tx rx txS free ->
+  COutputs n tx rx free
+outputsToCOutputs outputs =
+  COutputs
+    { txClock = outputs.txClock
+    , txReset = outputs.txReset
+    , txReadys = outputs.txReadys
+    , txSamplings = outputs.txSamplings
+    , handshakesDoneTx = outputs.handshakesDoneTx
+    , rxClocks = outputs.rxClocks
+    , rxResets = outputs.rxResets
+    , rxDatas = outputs.rxDatas
+    , handshakesDone = outputs.handshakesDone
+    , linkUps = outputs.linkUps
+    , linkReadys = outputs.linkReadys
+    , handshakesDoneFree = outputs.handshakesDoneFree
+    , stats = outputs.stats
+    }
+
+transceiverPrbsNC ::
   forall tx rx ref free txS rxS n m.
   ( KnownNat n
   , n ~ m + 1
@@ -378,11 +446,51 @@ transceiversPrbsNC ::
   , KnownDomain free
   ) =>
   Config free ->
-  Circuit (Transceivers tx rx ref free txS rxS n) ()
-transceiversPrbsNC config = Circuit go
+  Circuit
+    ( CInputs tx rx free n
+    , Gth.Gths rx rxS tx txS ref n
+    )
+    ( COutputs n tx rx free
+    )
+transceiverPrbsNC config = Circuit go
  where
-  go :: (Inputs tx rx ref free rxS n, ()) -> (Outputs n tx rx txS free, ())
-  go (inputs, _) = (transceiverPrbsN config inputs, ())
+  go ::
+    ( ( CInputs tx rx free n
+      , ( Clock ref
+        , Gth.SimWires rx n
+        , Gth.Wires rxS n
+        , Gth.Wires rxS n
+        , Vec n String
+        , Vec n String
+        )
+      )
+    , ()
+    ) ->
+    ( ((), (Gth.SimWires tx n, Gth.Wires txS n, Gth.Wires txS n))
+    , COutputs n tx rx free
+    )
+  go ((cInputs, (refClock, rxSims, rxNs, rxPs, channelNames, clockPaths)), _) =
+    (((), (txSims, txNs, txPs)), cOutputs)
+   where
+    cOutputs = outputsToCOutputs outputs
+
+    outputs@Outputs{txPs, txNs, txSims} =
+      transceiverPrbsN
+        config
+        Inputs
+          { clock = cInputs.clock
+          , reset = cInputs.reset
+          , channelResets = cInputs.channelResets
+          , refClock
+          , channelNames
+          , clockPaths
+          , rxSims
+          , rxNs
+          , rxPs
+          , txDatas = cInputs.txDatas
+          , txStarts = cInputs.txStarts
+          , rxReadys = cInputs.rxReadys
+          }
 
 transceiverPrbsN ::
   forall tx rx ref free txS rxS n m.

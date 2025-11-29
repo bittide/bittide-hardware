@@ -11,17 +11,18 @@ For more details, see [QBayLogic's presentation](https://docs.google.com/present
 on the topic.
 -}
 module Bittide.Instances.Hitl.SwitchDemo (
-  switchDemoDut,
+  switchDemoDutC,
   switchDemoTest,
   tests,
 ) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
+import Protocols
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
-import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
+import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpiC)
 import Bittide.ElasticBuffer (
   sticky,
  )
@@ -43,15 +44,16 @@ import Bittide.Instances.Domains (
 import Bittide.Instances.Hitl.Dut.SwitchDemo (circuitFnC)
 import Bittide.Instances.Hitl.Setup (LinkCount, allHwTargets, channelNames, clockPaths)
 import Bittide.SharedTypes (withBittideByteOrder)
-import Bittide.Transceiver (transceiverPrbsN)
+import Bittide.Sync (Sync)
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Protocols
+import Protocols.MemoryMap (ignoreMM)
+import Protocols.Spi (Spi)
 import System.FilePath ((</>))
-import VexRiscv (JtagIn (..), JtagOut (..))
+import VexRiscv (Jtag, JtagIn (..), JtagOut (..))
 #ifdef SIM_BAUD_RATE
 import Clash.Cores.UART.Extra
 #endif
@@ -79,193 +81,155 @@ SW (MU):
 
   1. Wait for all UGNs to be captured
 -}
-switchDemoDut ::
+switchDemoDutC ::
   "REFCLK" ::: Clock Basic125 ->
   "TEST_RST" ::: Reset Basic125 ->
-  "SKYCLK" ::: Clock Ext200 ->
-  "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  Signal Basic125 Spi.S2M ->
-  "JTAG_IN" ::: Signal Bittide JtagIn ->
-  "SYNC_IN" ::: Signal Bittide Bit ->
-  ( "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
-  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
-  , "handshakesDone" ::: Signal Basic125 Bool
-  , "FINC_FDEC" ::: Signal Bittide (FINC, FDEC)
-  , "spiDone" ::: Signal Basic125 Bool
-  , "" ::: Signal Basic125 Spi.M2S
-  , "JTAG_OUT" ::: Signal Bittide JtagOut
-  , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
-  , "ALL_STABLE" ::: Signal Basic125 Bool
-  , "UART_TX" ::: Signal Basic125 Bit
-  , "SYNC_OUT" ::: Signal Basic125 Bit
-  )
-switchDemoDut refClk refRst skyClk rxSims rxNs rxPs spiS2M jtagIn syncIn =
-  ( transceivers.txSims
-  , transceivers.txNs
-  , transceivers.txPs
-  , handshakesDoneFree
-  , frequencyAdjustments
-  , spiDone
-  , spiM2S
-  , jtagOut
-  , transceiversFailedAfterUp
-  , allStableFree
-  , uartTx
-  , syncOut
-  )
- where
-  -- Step 1, wait for SPI:
-  (_, _, spiState, spiM2S) =
+  Circuit
+    ( Jtag Bittide
+    , Gth.Gths GthRx GthRxS Bittide GthTxS Ext200 LinkCount
+    )
+    ( Spi Basic125
+    , Sync Bittide Basic125
+    , "UART_TX" ::: CSignal Basic125 Bit
+    , "handshakesDone" ::: CSignal Basic125 Bool
+    , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
+    , "spiDone" ::: CSignal Basic125 Bool
+    , "transceiversFailedAfterUp" ::: CSignal Basic125 Bool
+    , "ALL_STABLE" ::: CSignal Basic125 Bool
+    )
+switchDemoDutC refClk refRst = circuit $ \(jtag, gths) -> do
+  (_spiReadBytes, _spiBusy, Fwd spiState, spi) <-
     withClockResetEnable refClk spiRst enableGen
-      $ si539xSpi @Basic125
+      $ si539xSpiC @Basic125
         commonSpiConfig
         (SNat @(Microseconds 10))
-        (pure Nothing)
-        spiS2M
+      -< (Fwd (pure Nothing))
 
-  spiDone :: Signal Basic125 Bool
-  spiDone = dflipflop refClk $ (== Finished) <$> spiState
+  let
+    spiDone :: Signal Basic125 Bool
+    spiDone = dflipflop refClk $ (== Finished) <$> spiState
 
-  spiErr :: Signal Basic125 Bool
-  spiErr = dflipflop refClk $ isErr <$> spiState
+    spiErr :: Signal Basic125 Bool
+    spiErr = dflipflop refClk $ isErr <$> spiState
 
-  gthAllReset :: Reset Basic125
-  gthAllReset = unsafeFromActiveLow spiDone
+    gthAllReset :: Reset Basic125
+    gthAllReset = unsafeFromActiveLow spiDone
 
-  spiRst :: Reset Basic125
-  spiRst = refRst `orReset` unsafeFromActiveHigh spiErr
+    spiRst :: Reset Basic125
+    spiRst = refRst `orReset` unsafeFromActiveHigh spiErr
 
-  isErr :: ConfigState dom n -> Bool
-  isErr (Error _) = True
-  isErr _ = False
+    isErr :: ConfigState dom n -> Bool
+    isErr (Error _) = True
+    isErr _ = False
 
-  transceivers :: Transceiver.Outputs LinkCount Bittide GthRx GthTxS Basic125
-  transceivers =
-    transceiverPrbsN
-      @Bittide
-      @GthRx
-      @Ext200
-      @Basic125
-      @GthTxS
-      @GthRxS
-      Transceiver.defConfig
-      Transceiver.Inputs
+    tInputs =
+      Transceiver.CInputs
         { clock = refClk
         , reset = gthAllReset
-        , refClock = skyClk
-        , channelNames
-        , clockPaths
-        , rxSims
-        , rxNs
-        , rxPs
         , channelResets = repeat noReset
         , txDatas
         , txStarts
         , rxReadys
         }
 
-  bittideClk :: Clock Bittide
-  bittideClk = transceivers.txClock
+  Fwd tOutputs <-
+    Transceiver.transceiverPrbsNC @Bittide @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
+      Transceiver.defConfig
+      -< (Fwd tInputs, gths)
 
-  bittideRst :: Reset Bittide
-  bittideRst = transceivers.txReset
+  (Fwd callistoResult, Fwd switchDataOut, Fwd localCounter, uartTx, Fwd ebStables, sync) <-
+    withBittideByteOrder
+      $ circuitFnC
+        (refClk, handshakeRstFree, enableGen)
+        (bittideClk, handshakeRstTx, enableGen)
+        tOutputs.rxClocks
+        (unsafeFromActiveLow <$> tOutputs.handshakesDone)
+      -< ( ccMm
+         , muMm
+         , jtag
+         , Fwd 0
+         , Fwd (pure maxBound)
+         , Fwd linksSuitableForCc
+         , Fwd tOutputs.rxDatas
+         )
 
-  linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
-  linksSuitableForCc = fmap pack (bundle transceivers.handshakesDoneTx)
+  ccMm <- ignoreMM
+  muMm <- ignoreMM
 
-  handshakesDoneFree :: Signal Basic125 Bool
-  handshakesDoneFree = and <$> bundle transceivers.handshakesDoneFree
+  let
+    bittideClk :: Clock Bittide
+    bittideClk = tOutputs.txClock
 
-  handshakesDoneTx :: Signal Bittide Bool
-  handshakesDoneTx = and <$> bundle transceivers.handshakesDoneTx
+    bittideRst :: Reset Bittide
+    bittideRst = tOutputs.txReset
 
-  -- Step 3, send local counter for one cycle, connect to switch after:
-  txSamplingsDelayed :: Vec 7 (Signal Bittide Bool)
-  txSamplingsDelayed =
-    register bittideClk handshakeRstTx enableGen False <$> transceivers.txSamplings
+    linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
+    linksSuitableForCc = fmap pack (bundle tOutputs.handshakesDoneTx)
 
-  txDatas :: Vec 7 (Signal Bittide (BitVector 64))
-  txDatas = mux <$> txSamplingsDelayed <*> switchDataOut <*> repeat (pack <$> localCounter)
+    handshakesDoneFree :: Signal Basic125 Bool
+    handshakesDoneFree = and <$> bundle tOutputs.handshakesDoneFree
 
-  txStarts :: Vec 7 (Signal Bittide Bool)
-  txStarts = ebStables
+    handshakesDoneTx :: Signal Bittide Bool
+    handshakesDoneTx = and <$> bundle tOutputs.handshakesDoneTx
 
-  -- Step 4, deassert CC CPU reset, deassert Bittide domain reset:
-  handshakeRstFree :: Reset Basic125
-  handshakeRstFree = unsafeFromActiveLow handshakesDoneFree
+    -- Step 3, send local counter for one cycle, connect to switch after:
+    txSamplingsDelayed :: Vec 7 (Signal Bittide Bool)
+    txSamplingsDelayed =
+      register bittideClk handshakeRstTx enableGen False <$> tOutputs.txSamplings
 
-  handshakeRstTx :: Reset Bittide
-  handshakeRstTx = unsafeFromActiveLow handshakesDoneTx
+    txDatas :: Vec 7 (Signal Bittide (BitVector 64))
+    txDatas = mux <$> txSamplingsDelayed <*> switchDataOut <*> repeat (pack <$> localCounter)
 
-  -- Step 5, wait for stable buffers:
-  allStable :: Signal Bittide Bool
-  allStable = callistoResult.allStable
+    txStarts :: Vec 7 (Signal Bittide Bool)
+    txStarts = ebStables
 
-  allStableSticky :: Signal Bittide Bool
-  allStableSticky = sticky bittideClk bittideRst allStable
+    -- Step 4, deassert CC CPU reset, deassert Bittide domain reset:
+    handshakeRstFree :: Reset Basic125
+    handshakeRstFree = unsafeFromActiveLow handshakesDoneFree
 
-  allStableFree :: Signal Basic125 Bool
-  allStableFree = xpmCdcSingle bittideClk refClk allStableSticky
+    handshakeRstTx :: Reset Bittide
+    handshakeRstTx = unsafeFromActiveLow handshakesDoneTx
 
-  -- Step 6, wait for elastic buffer initialization
-  --         (=> signal we're ready to receive data):
-  rxReadys :: Vec 7 (Signal GthRx Bool)
-  rxReadys = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebStables
+    -- Step 5, wait for stable buffers:
+    allStable :: Signal Bittide Bool
+    allStable = callistoResult.allStable
 
-  -- Connect everything together:
-  transceiversFailedAfterUp :: Signal Basic125 Bool
-  transceiversFailedAfterUp =
-    sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesDoneFree)
+    allStableSticky :: Signal Bittide Bool
+    allStableSticky = sticky bittideClk bittideRst allStable
 
-  ( (_, _, jtagOut, _linkInBwd, _maskBwd, _l4ccBwd, _insBwd, _syncBwd)
-    , ( callistoResult
-        , switchDataOut
-        , localCounter
-        , uartTx
-        , syncOut
-        , ebStables
-        )
-    ) =
-      withBittideByteOrder
-        $ toSignals
-          ( circuitFnC
-              (refClk, handshakeRstFree, enableGen)
-              (bittideClk, handshakeRstTx, enableGen)
-              transceivers.rxClocks
-              (unsafeFromActiveLow <$> transceivers.handshakesDone)
-          )
-          (
-            ( ()
-            , ()
-            , jtagIn
-            , pure 0 -- link in
-            , pure maxBound -- enable mask
-            , linksSuitableForCc
-            , transceivers.rxDatas
-            , syncIn
-            )
-          ,
-            ( ()
-            , repeat ()
-            , ()
-            , ()
-            , ()
-            , repeat ()
-            )
-          )
+    allStableFree :: Signal Basic125 Bool
+    allStableFree = xpmCdcSingle bittideClk refClk allStableSticky
 
-  frequencyAdjustments :: Signal Bittide (FINC, FDEC)
-  frequencyAdjustments =
-    delay bittideClk enableGen minBound
-      $ speedChangeToStickyPins
-        bittideClk
-        bittideRst
-        enableGen
-        (SNat @Si539xHoldTime)
-        callistoResult.maybeSpeedChange
+    -- Step 6, wait for elastic buffer initialization
+    --         (=> signal we're ready to receive data):
+    rxReadys :: Vec 7 (Signal GthRx Bool)
+    rxReadys = xpmCdcArraySingle bittideClk <$> tOutputs.rxClocks <*> ebStables
+
+    -- Connect everything together:
+    transceiversFailedAfterUp :: Signal Basic125 Bool
+    transceiversFailedAfterUp =
+      sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesDoneFree)
+
+    frequencyAdjustments :: Signal Bittide (FINC, FDEC)
+    frequencyAdjustments =
+      delay bittideClk enableGen minBound
+        $ speedChangeToStickyPins
+          bittideClk
+          bittideRst
+          enableGen
+          (SNat @Si539xHoldTime)
+          callistoResult.maybeSpeedChange
+
+  idC
+    -< ( spi
+       , sync
+       , uartTx
+       , Fwd handshakesDoneFree
+       , Fwd frequencyAdjustments
+       , Fwd spiDone
+       , Fwd transceiversFailedAfterUp
+       , Fwd allStableFree
+       )
 
 switchDemoTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
@@ -324,19 +288,22 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncI
   testReset :: Reset Basic125
   testReset = unsafeFromActiveLow testStart `orReset` refRst
 
-  ( txs :: Gth.SimWires Bittide LinkCount
-    , txns :: Gth.Wires GthTxS LinkCount
-    , txps :: Gth.Wires GthTxS LinkCount
-    , handshakesDone :: Signal Basic125 Bool
-    , swFincFdecs :: Signal Bittide (Bool, Bool)
-    , spiDone :: Signal Basic125 Bool
-    , spiM2S :: Signal Basic125 Spi.M2S
-    , jtagOut :: Signal Bittide JtagOut
-    , transceiversFailedAfterUp :: Signal Basic125 Bool
-    , allStable :: Signal Basic125 Bool
-    , uartTx :: Signal Basic125 Bit
-    , syncOut :: Signal Basic125 Bit
-    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps spiS2M jtagIn syncIn
+  ( (jtagOut, (txs, txns, txps))
+    , ( spiM2S
+        , syncOut
+        , uartTx
+        , handshakesDone
+        , swFincFdecs
+        , spiDone
+        , transceiversFailedAfterUp
+        , allStable
+        )
+    ) =
+      toSignals
+        (switchDemoDutC refClk testReset)
+        ( (jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
+        , (spiS2M, syncIn, (), (), (), (), (), ())
+        )
 
   testDone :: Signal Basic125 Bool
   testDone = allStable .||. transceiversFailedAfterUp

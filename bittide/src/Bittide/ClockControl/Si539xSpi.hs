@@ -237,7 +237,7 @@ si539xSpiWb minTargetPs =
 
 -- | Like 'si539xSpi', but packed as a 'Circuit'.
 si539xSpiC ::
-  forall preambleEntries configEntries postambleEntries minTargetPeriodPs dom.
+  forall dom preambleEntries configEntries postambleEntries minTargetPeriodPs.
   ( HiddenClockResetEnable dom
   , KnownNat preambleEntries
   , 1 <= preambleEntries
