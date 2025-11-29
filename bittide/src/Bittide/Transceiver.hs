@@ -231,11 +231,7 @@ data Inputs tx rx ref free rxS n = Inputs
   }
 
 data CInputs tx rx free n = CInputs
-  { clock :: Clock free
-  -- ^ See 'Input.clock'
-  , reset :: Reset free
-  -- ^ See 'Input.reset'
-  , channelResets :: Vec n (Reset free)
+  { channelResets :: Vec n (Reset free)
   -- ^ Resets for each individual link
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
@@ -445,6 +441,8 @@ transceiverPrbsNC ::
   , KnownDomain ref
   , KnownDomain free
   ) =>
+  Clock free ->
+  Reset free ->
   Config free ->
   Circuit
     ( CInputs tx rx free n
@@ -452,7 +450,7 @@ transceiverPrbsNC ::
     )
     ( COutputs n tx rx free
     )
-transceiverPrbsNC config = Circuit go
+transceiverPrbsNC clock reset config = Circuit go
  where
   go ::
     ( ( CInputs tx rx free n
@@ -478,8 +476,8 @@ transceiverPrbsNC config = Circuit go
       transceiverPrbsN
         config
         Inputs
-          { clock = cInputs.clock
-          , reset = cInputs.reset
+          { clock
+          , reset
           , channelResets = cInputs.channelResets
           , refClock
           , channelNames
