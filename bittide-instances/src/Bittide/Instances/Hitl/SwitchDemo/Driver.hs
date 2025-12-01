@@ -247,7 +247,6 @@ initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
   Gdb.setLogging gdb
     $ hitlDir
     </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
-  Gdb.arpExamine gdb ("riscv.tap" <> show tapInfo.tapId)
   Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
   Gdb.setTarget gdb tapInfo.gdbPort
   Gdb.setTimeout gdb Nothing
