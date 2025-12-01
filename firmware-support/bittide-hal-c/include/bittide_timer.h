@@ -13,26 +13,26 @@
 
 /// A representation of an absolute time value in microseconds
 typedef struct {
-    uint64_t micros;
+  uint64_t micros;
 } Instant;
 
 /// A representation of a relative time in microseconds
 typedef struct {
-    uint64_t micros;
+  uint64_t micros;
 } Duration;
 
 /// Result from wait operations
 typedef enum {
-    WAIT_SUCCESS = 0,       // Wait was successful
-    WAIT_ALREADY_PASSED = 1 // Requested instant already passed
+  WAIT_SUCCESS = 0,       // Wait was successful
+  WAIT_ALREADY_PASSED = 1 // Requested instant already passed
 } WaitResult;
 
 /// Timer device structure (populated with memory-mapped register pointers)
 typedef struct {
-    volatile uint8_t*  command;
-    volatile uint64_t* scratchpad;
-    volatile uint64_t* frequency;
-    volatile uint8_t*  cmp_result;
+  volatile uint8_t *command;
+  volatile uint64_t *scratchpad;
+  volatile uint64_t *frequency;
+  volatile uint8_t *cmp_result;
 } Timer;
 
 // ============================================================================
@@ -45,10 +45,10 @@ Duration duration_from_secs(uint64_t secs);
 Duration duration_from_mins(uint64_t mins);
 Duration duration_from_hours(uint64_t hours);
 
-uint64_t duration_micros(const Duration* d);
-uint64_t duration_millis(const Duration* d);
-uint64_t duration_secs(const Duration* d);
-uint64_t duration_cycles(const Duration* d, uint64_t frequency);
+uint64_t duration_micros(const Duration *d);
+uint64_t duration_millis(const Duration *d);
+uint64_t duration_secs(const Duration *d);
+uint64_t duration_cycles(const Duration *d, uint64_t frequency);
 
 Duration duration_add(Duration a, Duration b);
 Duration duration_sub(Duration a, Duration b);
@@ -66,10 +66,10 @@ Instant instant_from_secs(uint64_t secs);
 Instant instant_from_mins(uint64_t mins);
 Instant instant_from_hours(uint64_t hours);
 
-uint64_t instant_micros(const Instant* i);
-uint64_t instant_millis(const Instant* i);
-uint64_t instant_secs(const Instant* i);
-uint64_t instant_get_cycles(const Instant* i, uint64_t frequency);
+uint64_t instant_micros(const Instant *i);
+uint64_t instant_millis(const Instant *i);
+uint64_t instant_secs(const Instant *i);
+uint64_t instant_get_cycles(const Instant *i, uint64_t frequency);
 
 Instant instant_add(Instant i, Duration d);
 Instant instant_sub_duration(Instant i, Duration d);
@@ -89,27 +89,24 @@ uint64_t instant_to_cycles(Instant i, uint64_t frequency);
 // Timer Function Declarations
 // ============================================================================
 
-Timer timer_init(
-    volatile uint8_t*  command,
-    volatile uint64_t* scratchpad,
-    volatile uint64_t* frequency,
-    volatile uint8_t*  cmp_result
-);
+Timer timer_init(volatile uint8_t *command, volatile uint64_t *scratchpad,
+                 volatile uint64_t *frequency, volatile uint8_t *cmp_result);
 
-uint64_t timer_frequency(const Timer* timer);
+uint64_t timer_frequency(const Timer *timer);
 
 // Cycle-based API (Low-level)
-uint64_t timer_now_cycles(const Timer* timer);
-void timer_wait_cycles(const Timer* timer, uint64_t cycles);
-WaitResult timer_wait_until_cycles(const Timer* timer, uint64_t target_cycles);
-void timer_wait_cycles_stall(const Timer* timer, uint64_t cycles);
-WaitResult timer_wait_until_cycles_stall(const Timer* timer, uint64_t target_cycles);
+uint64_t timer_now_cycles(const Timer *timer);
+void timer_wait_cycles(const Timer *timer, uint64_t cycles);
+WaitResult timer_wait_until_cycles(const Timer *timer, uint64_t target_cycles);
+void timer_wait_cycles_stall(const Timer *timer, uint64_t cycles);
+WaitResult timer_wait_until_cycles_stall(const Timer *timer,
+                                         uint64_t target_cycles);
 
 // Microsecond-based API (High-level)
-Instant timer_now(const Timer* timer);
-void timer_wait(const Timer* timer, Duration duration);
-WaitResult timer_wait_until(const Timer* timer, Instant target);
-void timer_wait_stall(const Timer* timer, Duration duration);
-WaitResult timer_wait_until_stall(const Timer* timer, Instant target);
+Instant timer_now(const Timer *timer);
+void timer_wait(const Timer *timer, Duration duration);
+WaitResult timer_wait_until(const Timer *timer, Instant target);
+void timer_wait_stall(const Timer *timer, Duration duration);
+WaitResult timer_wait_until_stall(const Timer *timer, Instant target);
 
 #endif // BITTIDE_TIMER_H

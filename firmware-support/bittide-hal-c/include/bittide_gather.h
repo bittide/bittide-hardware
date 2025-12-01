@@ -15,10 +15,11 @@
  * buffers at metacycle boundaries according to the calendar configuration.
  */
 typedef struct {
-    volatile uint64_t* gather_memory;       ///< Pointer to gather memory base address
-    volatile uint32_t* metacycle_count;     ///< Pointer to metacycle count register
-    volatile uint32_t* metacycle_register;  ///< Pointer to metacycle synchronization register
-    uint32_t memory_len;                    ///< Length of gather memory in uint64_t words
+  volatile uint64_t *gather_memory;   ///< Pointer to gather memory base address
+  volatile uint32_t *metacycle_count; ///< Pointer to metacycle count register
+  volatile uint32_t
+      *metacycle_register; ///< Pointer to metacycle synchronization register
+  uint32_t memory_len;     ///< Length of gather memory in uint64_t words
 } GatherUnit;
 
 /**
@@ -30,12 +31,10 @@ typedef struct {
  * @param memory_len Length of the gather memory in uint64_t words
  * @return Initialized GatherUnit struct
  */
-GatherUnit gather_unit_init(
-    volatile uint64_t* gather_memory,
-    volatile uint32_t* metacycle_count,
-    volatile uint32_t* metacycle_register,
-    uint32_t memory_len
-);
+GatherUnit gather_unit_init(volatile uint64_t *gather_memory,
+                            volatile uint32_t *metacycle_count,
+                            volatile uint32_t *metacycle_register,
+                            uint32_t memory_len);
 
 /**
  * Write a slice of data to gather memory
@@ -44,17 +43,14 @@ GatherUnit gather_unit_init(
  * checking to prevent writing beyond the allocated memory region.
  *
  * @param unit Pointer to the GatherUnit
- * @param src Source buffer containing data to write (must contain at least len words)
+ * @param src Source buffer containing data to write (must contain at least len
+ * words)
  * @param offset Offset in gather memory (in uint64_t words) to start writing to
  * @param len Number of uint64_t words to write
  * @return 0 on success, -1 if bounds check fails or parameters are invalid
  */
-int gather_unit_write_slice(
-    const GatherUnit* unit,
-    const uint64_t* src,
-    uint32_t offset,
-    uint32_t len
-);
+int gather_unit_write_slice(const GatherUnit *unit, const uint64_t *src,
+                            uint32_t offset, uint32_t len);
 
 /**
  * Read a slice of data from gather memory
@@ -64,16 +60,13 @@ int gather_unit_write_slice(
  *
  * @param unit Pointer to the GatherUnit
  * @param dst Destination buffer for the read data (must be at least len words)
- * @param offset Offset in gather memory (in uint64_t words) to start reading from
+ * @param offset Offset in gather memory (in uint64_t words) to start reading
+ * from
  * @param len Number of uint64_t words to read
  * @return 0 on success, -1 if bounds check fails or parameters are invalid
  */
-int gather_unit_read_slice(
-    const GatherUnit* unit,
-    uint64_t* dst,
-    uint32_t offset,
-    uint32_t len
-);
+int gather_unit_read_slice(const GatherUnit *unit, uint64_t *dst,
+                           uint32_t offset, uint32_t len);
 
 /**
  * Wait for the next metacycle boundary
@@ -83,7 +76,7 @@ int gather_unit_read_slice(
  *
  * @param unit Pointer to the GatherUnit
  */
-void gather_unit_wait_for_new_metacycle(const GatherUnit* unit);
+void gather_unit_wait_for_new_metacycle(const GatherUnit *unit);
 
 /**
  * Get the current metacycle count
@@ -91,6 +84,6 @@ void gather_unit_wait_for_new_metacycle(const GatherUnit* unit);
  * @param unit Pointer to the GatherUnit
  * @return Current metacycle count
  */
-uint32_t gather_unit_metacycle_count(const GatherUnit* unit);
+uint32_t gather_unit_metacycle_count(const GatherUnit *unit);
 
 #endif // BITTIDE_GATHER_H
