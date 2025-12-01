@@ -108,7 +108,7 @@ dut ::
   Reset free ->
   Clock sky ->
   Circuit
-    ( "MM" ::: ConstBwd MM
+    ( "Mm" ::: ConstBwd Mm
     , Jtag free
     )
     ( "UART_BYTES" ::: Df free (BitVector 8)

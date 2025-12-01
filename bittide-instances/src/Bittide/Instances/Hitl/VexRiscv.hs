@@ -19,7 +19,7 @@ import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, getMMAny)
+import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -54,7 +54,7 @@ import Project.FilePath (
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
-import qualified Protocols.MemoryMap as MM
+import qualified Protocols.MemoryMap as Mm
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, Show)
@@ -100,7 +100,7 @@ statusRegister ::
   , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
-    (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
+    (ConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4))
     (CSignal dom TestStatus)
 statusRegister = circuit $ \(mm, wb) -> do
   [statusWb] <- deviceWb "StatusRegister" -< (mm, wb)
@@ -114,7 +114,7 @@ statusRegister = circuit $ \(mm, wb) -> do
       , description = "Set test status"
       }
 
-vexRiscvTestMM :: MM.MemoryMap
+vexRiscvTestMM :: Mm.MemoryMap
 vexRiscvTestMM =
   getMMAny
     $ withClockResetEnable clockGen resetGen enableGen
@@ -128,7 +128,7 @@ vexRiscvTestC ::
   , ValidBaud dom Baud
   ) =>
   Circuit
-    (ConstBwd MM, (Jtag dom, CSignal dom UartRx))
+    (ConstBwd Mm, (Jtag dom, CSignal dom UartRx))
     (CSignal dom TestStatus, CSignal dom UartTx)
 vexRiscvTestC =
   withBittideByteOrder

@@ -11,7 +11,7 @@ import Clash.Prelude
 import Clash.Class.BitPackC (ByteOrder, Bytes)
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.MemoryMap (Access (..), ConstBwd, MM)
+import Protocols.MemoryMap (Access (..), ConstBwd, Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -33,7 +33,7 @@ metaPeConfig ::
   ) =>
   SNat bufferSize ->
   Circuit
-    ( ConstBwd MM
+    ( ConstBwd Mm
     , Wishbone dom 'Standard aw (Bytes 4)
     )
     ()

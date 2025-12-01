@@ -27,9 +27,9 @@ import Clash.Cores.Xilinx.Ila (Depth (D4096))
 import qualified VexRiscv.Reset as MinReset
 
 import qualified Data.ByteString as BS
-import qualified Protocols.MemoryMap as MM (
+import qualified Protocols.MemoryMap as Mm (
   ConstBwd,
-  MM,
+  Mm,
   constBwd,
   withDeviceTag,
   withTag,
@@ -90,10 +90,10 @@ processingElement ::
   DumpVcd ->
   PeConfig nBusses ->
   Circuit
-    (MM.ConstBwd MM.MM, Jtag dom)
+    (Mm.ConstBwd Mm.Mm, Jtag dom)
     ( Vec
         (nBusses - PeInternalBusses)
-        (MM.ConstBwd MM.MM, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
+        (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
     )
 processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
@@ -118,20 +118,20 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
         onTransactionWb
       -< dBus0
   (pfxs, wbs) <- Vec.unzip <| singleMasterInterconnectC -< (mmDbus, dBus1)
-  idleSink <| (Vec.vecCircuits $ fmap MM.constBwd prefixes) -< pfxs
+  idleSink <| (Vec.vecCircuits $ fmap Mm.constBwd prefixes) -< pfxs
   ([(mmI, iMemBus), dMemBus], extBusses) <- Vec.split -< wbs
 
   -- Instruction and data memory are never accessed explicitly by developers,
   -- only implicitly by the CPU itself. We therefore don't need to generate HAL
   -- code. We instruct the generator to skip them by adding a "no-generate" tag.
-  MM.withTag "no-generate"
-    $ MM.withDeviceTag "no-generate"
+  Mm.withTag "no-generate"
+    $ Mm.withDeviceTag "no-generate"
     $ wbStorage "DataMemory" initD
     -< dMemBus
 
   iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
-  MM.withTag "no-generate"
-    $ MM.withDeviceTag "no-generate"
+  Mm.withTag "no-generate"
+    $ Mm.withDeviceTag "no-generate"
     $ wbStorageDPC "InstructionMemory" initI
     -< (mmI, (iBus2, iMemBus))
 
@@ -166,9 +166,9 @@ rvCircuit ::
   Signal dom Bit ->
   Signal dom Bit ->
   Circuit
-    (MM.ConstBwd MM.MM, Jtag dom)
+    (Mm.ConstBwd Mm.Mm, Jtag dom)
     ( Wishbone dom 'Standard 30 (Bytes 4)
-    , (MM.ConstBwd MM.MM, Wishbone dom 'Standard 30 (Bytes 4))
+    , (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard 30 (Bytes 4))
     )
 rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
   case (?busByteOrder, ?regByteOrder) of

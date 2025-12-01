@@ -21,7 +21,7 @@ switchExample ::
   Clock Basic200 ->
   Reset Basic200 ->
   Circuit
-    ( ConstBwd MM
+    ( ConstBwd Mm
     , ( Vec 16 (CSignal Basic200 (BitVector 64))
       , Wishbone Basic200 'Standard 27 (Bytes 4) -- calendar interface
       )

@@ -42,8 +42,8 @@ import Bittide.SharedTypes
 -- qualified imports
 
 import qualified Data.List as L
-import qualified Protocols.MemoryMap as MM
-import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
+import qualified Protocols.MemoryMap as Mm
+import qualified Protocols.MemoryMap.Registers.WishboneStandard as Mm
 import qualified Protocols.Vec as Vec
 import qualified Protocols.Wishbone as Wishbone
 
@@ -70,11 +70,11 @@ singleMasterInterconnectC ::
   , NFDataX a
   ) =>
   Circuit
-    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW a)
+    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
     ( Vec
         nSlaves
-        ( MM.ConstBwd (Unsigned pfxWidth)
-        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (addrW - pfxWidth) a)
+        ( Mm.ConstBwd (Unsigned pfxWidth)
+        , (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard (addrW - pfxWidth) a)
         )
     )
 singleMasterInterconnectC = Circuit go
@@ -83,9 +83,9 @@ singleMasterInterconnectC = Circuit go
     ( ((), Signal dom (WishboneM2S addrW (Div (BitSize a + 7) 8) a))
     , Vec
         nSlaves
-        (Unsigned pfxWidth, (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a)))
+        (Unsigned pfxWidth, (SimOnly Mm.MemoryMap, Signal dom (WishboneS2M a)))
     ) ->
-    ( (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a))
+    ( (SimOnly Mm.MemoryMap, Signal dom (WishboneS2M a))
     , Vec
         nSlaves
         ((), ((), Signal dom (WishboneM2S (addrW - pfxWidth) (Div (BitSize a + 7) 8) a)))
@@ -100,10 +100,10 @@ singleMasterInterconnectC = Circuit go
     relAddrs = L.map prefixToAddr (toList prefixes)
     comps = L.zip relAddrs ((.tree) . unSimOnly <$> toList slaveMms)
     unSimOnly (SimOnly n) = n
-    deviceDefs = MM.mergeDeviceDefs ((.deviceDefs) . unSimOnly <$> toList slaveMms)
+    deviceDefs = Mm.mergeDeviceDefs ((.deviceDefs) . unSimOnly <$> toList slaveMms)
     memMap =
-      MM.MemoryMap
-        { tree = MM.Interconnect MM.locCaller comps
+      Mm.MemoryMap
+        { tree = Mm.Interconnect Mm.locCaller comps
         , deviceDefs = deviceDefs
         }
     (s2m, m2ss) = toSignals (singleMasterInterconnect prefixes) (m2s, s2ms)
@@ -423,54 +423,54 @@ uartInterfaceWb ::
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    ((MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes)), uartIn)
+    ((Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes)), uartIn)
     (uartOut, CSignal dom (Bool, Bool))
 uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
   (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
   (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
-  MM.constBwd memMap -< mm
+  Mm.constBwd memMap -< mm
   idC -< (uartTx, uartStatus)
  where
   memMap =
     SimOnly
-      $ MM.MemoryMap
-        { tree = MM.DeviceInstance MM.locCaller "Uart"
-        , deviceDefs = MM.deviceSingleton deviceDef
+      $ Mm.MemoryMap
+        { tree = Mm.DeviceInstance Mm.locCaller "Uart"
+        , deviceDefs = Mm.deviceSingleton deviceDef
         }
 
   deviceDef =
-    MM.DeviceDefinition
+    Mm.DeviceDefinition
       { registers =
-          [ MM.NamedLoc
-              { name = MM.Name "data" ""
-              , loc = MM.locHere
+          [ Mm.NamedLoc
+              { name = Mm.Name "data" ""
+              , loc = Mm.locHere
               , value =
-                  MM.Register
+                  Mm.Register
                     { reset = Nothing
-                    , fieldType = MM.regType @(Bytes 1)
+                    , fieldType = Mm.regType @(Bytes 1)
                     , address = 0
-                    , access = MM.ReadWrite
+                    , access = Mm.ReadWrite
                     , tags = []
                     }
               }
-          , MM.NamedLoc
-              { name = MM.Name "status" ""
-              , loc = MM.locHere
+          , Mm.NamedLoc
+              { name = Mm.Name "status" ""
+              , loc = Mm.locHere
               , value =
-                  MM.Register
+                  Mm.Register
                     { reset = Nothing
-                    , fieldType = MM.regType @(Bytes 1)
+                    , fieldType = Mm.regType @(Bytes 1)
                     , address = 4
-                    , access = MM.ReadOnly
+                    , access = Mm.ReadOnly
                     , tags = []
                     }
               }
           ]
       , deviceName =
-          MM.Name "Uart" "Wishbone accessible UART interface with configurable FIFO buffers."
-      , definitionLoc = MM.locHere
+          Mm.Name "Uart" "Wishbone accessible UART interface with configurable FIFO buffers."
+      , definitionLoc = Mm.locHere
       , tags = []
       }
 
@@ -691,25 +691,25 @@ timeWb ::
   , 1 <= DomainPeriod dom
   ) =>
   Circuit
-    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4))
+    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (Unsigned 64))
 timeWb = circuit $ \mmWb -> do
-  [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- MM.deviceWb "Timer" -< mmWb
+  [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- Mm.deviceWb "Timer" -< mmWb
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdMeta, cmdWb1)
 
   -- Registers
-  Fwd (_, cmdActivity) <- MM.registerWbI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
-  MM.registerWbI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
-  Fwd (scratch, _) <- MM.registerWbI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
-  MM.registerWbI_ freqCfg freq -< (freqWb, Fwd noWrite)
+  Fwd (_, cmdActivity) <- Mm.registerWbI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
+  Mm.registerWbI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
+  Fwd (scratch, _) <- Mm.registerWbI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
+  Mm.registerWbI_ freqCfg freq -< (freqWb, Fwd noWrite)
 
   -- Local circuit dependent declarations
   let
-    scratchWrite = orNothing <$> (cmdActivity .== Just (MM.BusWrite Capture)) <*> count
+    scratchWrite = orNothing <$> (cmdActivity .== Just (Mm.BusWrite Capture)) <*> count
     cmpResult = count .>=. scratch
-    cmpResultWrite = orNothing <$> (cmdActivity ./= Just (MM.BusWrite WaitForCmp)) <*> cmpResult
-    cmdWaitAck = (cmdActivity ./= Just (MM.BusWrite WaitForCmp)) .||. cmpResult
+    cmpResultWrite = orNothing <$> (cmdActivity ./= Just (Mm.BusWrite WaitForCmp)) <*> cmpResult
+    cmdWaitAck = (cmdActivity ./= Just (Mm.BusWrite WaitForCmp)) .||. cmpResult
   idC -< Fwd count
  where
   -- Independent declarations
@@ -719,24 +719,24 @@ timeWb = circuit $ \mmWb -> do
 
   -- Register configurations
   cmdCfg =
-    (MM.registerConfig "command")
-      { MM.access = MM.WriteOnly
-      , MM.description = "Control register"
+    (Mm.registerConfig "command")
+      { Mm.access = Mm.WriteOnly
+      , Mm.description = "Control register"
       }
   cmpCfg =
-    (MM.registerConfig "cmp_result")
-      { MM.access = MM.ReadOnly
-      , MM.description = "Comparison result"
+    (Mm.registerConfig "cmp_result")
+      { Mm.access = Mm.ReadOnly
+      , Mm.description = "Comparison result"
       }
   scratchCfg =
-    (MM.registerConfig "scratchpad")
-      { MM.access = MM.ReadWrite
-      , MM.description = "Scratch pad"
+    (Mm.registerConfig "scratchpad")
+      { Mm.access = Mm.ReadWrite
+      , Mm.description = "Scratch pad"
       }
   freqCfg =
-    (MM.registerConfig "frequency")
-      { MM.access = MM.ReadOnly
-      , MM.description = "Frequency of the clock domain"
+    (Mm.registerConfig "frequency")
+      { Mm.access = Mm.ReadOnly
+      , Mm.description = "Frequency of the clock domain"
       }
 {- FOURMOLU_ENABLE -}
 
@@ -805,9 +805,9 @@ arbiterMm ::
   , KnownNat n
   ) =>
   Circuit
-    ( Vec n (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW a)
+    ( Vec n (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
     )
-    ( MM.ConstBwd MM.MM
+    ( Mm.ConstBwd Mm.Mm
     , Wishbone dom 'Standard addrW a
     )
 arbiterMm = circuit $ \mmWbs -> do
@@ -835,17 +835,17 @@ readDnaPortE2Wb ::
   -- | Simulation DNA value
   BitVector 96 ->
   Circuit
-    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = circuit $ \wb -> do
-  [maybeDnaWb] <- MM.deviceWb "Dna" -< wb
+  [maybeDnaWb] <- Mm.deviceWb "Dna" -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
   -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
   --      use it until the DNA is actually read out.
   idC -< Fwd (fromMaybe 0 <$> maybeDna)
  where
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
-  config = (registerConfig "maybe_dna"){access = MM.ReadOnly}
+  config = (registerConfig "maybe_dna"){access = Mm.ReadOnly}
 
 {- | A Wishbone worker circuit that exposes the DNA value from an external DnaPortE2.
 Only one DnaPortE2 can be instantiated in a design, so this component takes in the
@@ -865,13 +865,13 @@ readDnaPortE2WbWorker ::
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
-    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     ()
 readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
-  [maybeDnaWb] <- MM.deviceWb "Dna" -< wb
+  [maybeDnaWb] <- Mm.deviceWb "Dna" -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
  where
-  config = (registerConfig "maybe_dna"){access = MM.ReadOnly}
+  config = (registerConfig "maybe_dna"){access = Mm.ReadOnly}
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'

@@ -46,7 +46,7 @@ import qualified Protocols.Axi4.ReadData as Axi
 import qualified Protocols.Axi4.WriteAddress as Axi
 import qualified Protocols.Axi4.WriteData as Axi
 import qualified Protocols.Axi4.WriteResponse as Axi
-import qualified Protocols.MemoryMap as MM
+import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Wishbone.Standard.Hedgehog as WB
 import qualified Prelude as P
 
@@ -360,7 +360,7 @@ prop_wishboneS2Axi4 = property $ do
     subordinate :: Circuit (Wishbone System 'Standard 32 (BitVector 32)) ()
     subordinate =
       withClockResetEnable clockGen resetGen enableGen
-        $ MM.unMemmap
+        $ Mm.unMemmap
         $ wbStorage "prop_wishboneS2Axi4_subordinate" (NonReloadable $ Vec $ replicate d5 0)
 
     samples = WB.sampleUnfiltered eOpts manager subordinate

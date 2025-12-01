@@ -40,7 +40,7 @@ import Clash.Class.BitPackC (Bytes)
 import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import GHC.Stack (withFrozenCallStack)
 import GHC.Stack.Types (HasCallStack)
-import Protocols.MemoryMap (ConstBwd, ConstFwd, MM)
+import Protocols.MemoryMap (ConstBwd, ConstFwd, Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard.Internal
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
@@ -74,7 +74,7 @@ deviceWb ::
   -- | Device name
   String ->
   Circuit
-    ( ConstBwd MM
+    ( ConstBwd Mm
     , Wishbone dom 'Standard aw (Bytes wordSize)
     )
     ( Vec n (RegisterWb dom aw wordSize)
