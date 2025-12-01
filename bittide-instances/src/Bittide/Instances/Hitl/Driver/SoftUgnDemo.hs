@@ -9,13 +9,13 @@ import Clash.Prelude
 
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Driver.SwitchDemo (
+import Bittide.Instances.Hitl.Dut.SoftUgnDemo ()
+import Bittide.Instances.Hitl.Setup (FpgaCount)
+import Bittide.Instances.Hitl.SwitchDemo.Driver (
   dumpCcSamples,
   initGdb,
   initPicocom,
  )
-import Bittide.Instances.Hitl.Dut.SoftUgnDemo ()
-import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -96,16 +96,16 @@ driver testName targets = do
       gppePorts = (.gdbPort) <$> gppeTapInfos
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muPorts targets
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
         Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
           liftIO
-            $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppePorts targets
+            $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppeTapInfos targets
           liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gppeGdbs
 
           let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]

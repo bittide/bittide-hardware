@@ -13,7 +13,7 @@ if { $user_tap_count == "" } {
 
 for {set i 0} {$i < $user_tap_count} {incr i} {
   jtag newtap $_CHIPNAME tap$i -irlen 5 -ignore-version
-  target create $_CHIPNAME.tap$i riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap$i
+  target create $_CHIPNAME.tap$i riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap$i -defer-examine
 }
 
 poll_period 50

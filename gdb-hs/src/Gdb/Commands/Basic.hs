@@ -33,6 +33,10 @@ continue gdb =
   -- Note that we can't use 'readCommand' here, because this command won't return
   hPutStrLn gdb.stdin "continue"
 
+-- | Call @monitor $tap_name$ arp_examine@
+arpExamine :: (HasCallStack) => Gdb -> String -> IO ()
+arpExamine gdb targetName = runCommand gdb [i|monitor #{targetName} arp_examine|]
+
 {- | Send the \"interrupt\" command to GDB. This is different from sending a
 SIGINT to the GDB process itself. Can be used to pause execution of the
 target program if the GDB prompt is already active.

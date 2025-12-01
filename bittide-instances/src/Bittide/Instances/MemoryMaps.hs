@@ -22,10 +22,9 @@ import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
 import qualified Bittide.Instances.Hitl.Dut.SoftUgnDemo as SoftUgnDemo
-import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.Dut.SwitchDemoGppe as SwitchDemoGppe
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
-import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
+import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as SwitchDemo
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
@@ -49,10 +48,10 @@ $( do
           , ("RegisterWb", RegisterWb.memoryMap)
           , ("ScatterGatherPe", ScatterGather.dutMM)
           , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
-          , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
-          , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
-          , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
+          , ("SwitchDemoBoot", SwitchDemo.boot)
+          , ("SwitchDemoMu", SwitchDemo.mu)
+          , ("SwitchDemoCc", SwitchDemo.cc)
           , ("SwitchDemoGppeMu", SwitchDemoGppe.memoryMapMu)
           , ("SwitchDemoGppeCc", SwitchDemoGppe.memoryMapCc)
           , ("SwitchDemoGppeGppe", SwitchDemoGppe.memoryMapGppe)

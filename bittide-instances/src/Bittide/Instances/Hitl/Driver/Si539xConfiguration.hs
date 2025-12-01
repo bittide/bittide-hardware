@@ -15,7 +15,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Driver.SwitchDemo (initGdb, initPicocom)
+import Bittide.Instances.Hitl.SwitchDemo.Driver (initGdb, initPicocom)
 import Bittide.Instances.Hitl.Utils.Program
 import "bittide-extra" Control.Exception.Extra (brackets)
 
@@ -72,7 +72,7 @@ driverFunc _name targets = do
         gdbPorts = (.gdbPort) <$> peTapInfos
 
       Gdb.withGdbs (L.length targets) $ \gdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-board") gdbs gdbPorts targets
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-board") gdbs peTapInfos targets
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gdbs
 
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
