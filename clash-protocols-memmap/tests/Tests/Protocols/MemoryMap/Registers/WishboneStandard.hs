@@ -108,7 +108,7 @@ deviceExample ::
   Clock dom ->
   Reset dom ->
   Circuit
-    (ConstBwd Mm, Wishbone dom 'Standard aw (Bytes wordSize))
+    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
   [float, double, u32, readOnly, writeOnly, prio, prioPreferCircuit, delayed, delayedError] <-

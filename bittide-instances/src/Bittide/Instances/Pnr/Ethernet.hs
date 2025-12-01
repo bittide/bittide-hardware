@@ -20,6 +20,7 @@ import Clash.Explicit.Testbench
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap as Mm
+import qualified Protocols.ToConst as ToConst
 import VexRiscv
 
 import Bittide.Axi4
@@ -87,7 +88,7 @@ vexRiscGmiiC ::
   Clock tx ->
   Reset tx ->
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , ( CSignal logic Bit
       , CSignal rx Gmii
       , Jtag logic
@@ -114,14 +115,14 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
     macStatIf -< (mmMac, (macWb, macStatus))
     gpioDf <- idleSource
     gpioOut <- gpio -< (gpioWb, gpioDf)
-    constBwd todoMM -< mmGpio
+    ToConst.toBwd todoMM -< mmGpio
     (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
     axiRx1 <- axiRxPipe -< axiRx0
     axiTx0 <- wbToAxi4StreamTx' -< wbAxiTx
     axiTx1 <- axiTxPipe -< axiTx0
     _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
-    constBwd todoMM -< mmAxiRx
-    constBwd todoMM -< mmAxiTx
+    ToConst.toBwd todoMM -< mmAxiRx
+    ToConst.toBwd todoMM -< mmAxiTx
 
     idC -< (uartRx, gmiiTx, gpioOut)
  where

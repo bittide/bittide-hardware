@@ -46,7 +46,7 @@ vexRiscvUartHelloC ::
   ) =>
   SNat baud ->
   Circuit
-    (ConstBwd Mm, (CSignal dom Bit, Jtag dom))
+    (ToConstBwd Mm, (CSignal dom Bit, Jtag dom))
     (CSignal dom Bit)
 vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jtag)) -> do
   [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)

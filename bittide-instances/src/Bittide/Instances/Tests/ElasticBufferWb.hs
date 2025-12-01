@@ -42,7 +42,7 @@ results over UART.
 dut ::
   (HasCallStack) =>
   Circuit
-    (ConstBwd Mm)
+    (ToConstBwd Mm)
     ( Df XilinxSystem (BitVector 8) -- UART output
     )
 dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do

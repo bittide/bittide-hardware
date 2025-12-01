@@ -11,7 +11,7 @@ import Bittide.SharedTypes (Bytes)
 import Bittide.Shutter (shutter)
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, Mm)
+import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
@@ -39,7 +39,7 @@ freeze ::
   Clock dom ->
   Reset dom ->
   Circuit
-    ( ( ConstBwd Mm
+    ( ( ToConstBwd Mm
       , Wishbone dom 'Standard aw (Bytes 4)
       )
     , "domain_diff_counters" ::: CSignal dom (Vec nLinks (Signed 32))

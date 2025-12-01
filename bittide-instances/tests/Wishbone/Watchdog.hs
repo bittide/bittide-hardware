@@ -25,6 +25,7 @@ import Data.Maybe
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
+import qualified Protocols.ToConst as ToConst
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
@@ -75,8 +76,8 @@ dut = withBittideByteOrder
     idleSink
       <| (watchDogWb @_ @_ @4 "50 us" (SNat @(PeriodToCycles Basic200 (Microseconds 50))))
       -< idleBusB
-    constBwd todoMM -< mmIdleA
-    constBwd todoMM -< mmIdleB
+    ToConst.toBwd todoMM -< mmIdleA
+    ToConst.toBwd todoMM -< mmIdleB
 
     timeBus1 <- watchDogWb @_ @_ @4 "" d0 -< timeBus0
     _localCounter <- timeWb -< (mmTime, timeBus1)

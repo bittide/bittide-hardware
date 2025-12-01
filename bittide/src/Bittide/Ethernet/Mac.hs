@@ -56,7 +56,7 @@ macStatusInterfaceWb ::
   -- | Number of bits of the counters
   SNat counterWidth ->
   Circuit
-    (ConstBwd Mm, (Wishbone dom 'Standard aw (Bytes nBytes), CSignal dom EthMacStatus))
+    (ToConstBwd Mm, (Wishbone dom 'Standard aw (Bytes nBytes), CSignal dom EthMacStatus))
     ()
 macStatusInterfaceWb SNat = case (cancelMulDiv @nBytes @8) of
   Dict -> withMemoryMap mm $ Circuit circuitGo

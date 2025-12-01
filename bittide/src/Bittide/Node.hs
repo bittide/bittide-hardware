@@ -12,7 +12,6 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.MemoryMap (
-  ConstBwd,
   MemoryMap (..),
   MemoryMapTree (WithName),
   Mm,
@@ -69,14 +68,14 @@ node ::
   ) =>
   Config linkCount gppes metaPeBufferWidth ->
   Circuit
-    ( ConstBwd Mm
-    , Vec gppes (ConstBwd Mm)
+    ( ToConstBwd Mm
+    , Vec gppes (ToConstBwd Mm)
     , Jtag dom
     , Vec linkCount (CSignal dom (Maybe (BitVector 64)))
     )
     ( Vec linkCount (CSignal dom (BitVector 64))
     , CSignal dom (Unsigned 64)
-    , (ConstBwd Mm, NmuWishbone dom linkCount gppes)
+    , (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     , Vec gppes (CSignal dom (BitVector 64))
     , Vec gppes (CSignal dom (BitVector 64))
     , Vec gppes (Df dom Byte)
@@ -178,13 +177,13 @@ gppeC ::
   Integer ->
   Circuit
     ( -- \| GPPE memory map
-      ConstBwd Mm
+      ToConstBwd Mm
     , -- \| Incoming link from switch
       CSignal dom (BitVector 64)
     , -- \| Scatter unit calendar memory map and Wishbone bus
-      (ConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+      (ToConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
     , -- \| Gather unit calendar memory map and Wishbone bus
-      (ConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+      (ToConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
     , -- \| JTAG connection
       Jtag dom
     )
@@ -273,27 +272,27 @@ managementUnitC ::
   ) =>
   ManagementConfig linkCount gppes ->
   Circuit
-    (ConstBwd Mm, CSignal dom (BitVector 64), Jtag dom)
+    (ToConstBwd Mm, CSignal dom (BitVector 64), Jtag dom)
     ( -- \| Node management unit link output
       CSignal dom (BitVector 64)
     , -- \| Node management unit local counter
       CSignal dom (Unsigned 64)
     , -- \| Switch memory map and Wishbone bus
-      (ConstBwd Mm, NmuWishbone dom linkCount gppes)
+      (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     , -- \| External connection memory map and Wishbone bus
-      (ConstBwd Mm, NmuWishbone dom linkCount gppes)
+      (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     , -- \| 'captureUgn's memory maps and Wishbone busses
       Vec
         linkCount
-        (ConstBwd Mm, NmuWishbone dom linkCount gppes)
+        (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     , -- \| GPPE scatter unit memory maps and Wishbone busses
       Vec
         gppes
-        (ConstBwd Mm, NmuWishbone dom linkCount gppes)
+        (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     , -- \| GPPE gather unit memory maps and Wishbone busses
       Vec
         gppes
-        (ConstBwd Mm, NmuWishbone dom linkCount gppes)
+        (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     )
 managementUnitC (ManagementConfig{scatterConfig, gatherConfig, peConfig, dumpVcd}) =
   circuit $ \(mm, Fwd linkIn, jtag) -> do
@@ -338,8 +337,8 @@ withNamesSG ::
   (HasCallStack) =>
   String ->
   String ->
-  Circuit ((ConstBwd Mm, a), (ConstBwd Mm, b)) c ->
-  Circuit ((ConstBwd Mm, a), (ConstBwd Mm, b)) c
+  Circuit ((ToConstBwd Mm, a), (ToConstBwd Mm, b)) c ->
+  Circuit ((ToConstBwd Mm, a), (ToConstBwd Mm, b)) c
 withNamesSG nameA nameB (Circuit f) = Circuit go
  where
   go ((((), fwdA), ((), fwdB)), bwdC) = (((SimOnly mmA', bwdA), (SimOnly mmB', bwdB)), fwdC)

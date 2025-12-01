@@ -138,7 +138,7 @@ prop_wb = property $ do
   genAddr = Gen.integral (Range.constant 0 maxBound)
 
   dutMm ::
-    Circuit (ConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
+    Circuit (ToConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
   dutMm = withByteOrderings endian endian $ circuit $ \(mm, wb) -> do
     freeze @4 @32 clk rst
       -< ( (mm, wb)

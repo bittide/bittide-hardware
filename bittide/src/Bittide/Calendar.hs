@@ -339,7 +339,7 @@ mkCalendarC ::
   -- | Calendar configuration for 'calendar'.
   CalendarConfig addrW a ->
   Circuit
-    (ConstBwd Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     (CSignal dom a, CSignal dom Bool, CSignal dom (Unsigned 32))
 mkCalendarC
   compName

@@ -9,7 +9,7 @@ import Clash.Prelude
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.MemoryMap (ConstBwd, Mm)
+import Protocols.MemoryMap (Mm)
 import Protocols.Spi (Spi)
 import VexRiscv
 
@@ -29,7 +29,7 @@ bootPe ::
   ) =>
   PeConfig BootPeInternalBusses ->
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , Jtag dom
     )
     ( "UART_BYTES" ::: Df dom (BitVector 8)

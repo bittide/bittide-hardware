@@ -216,8 +216,8 @@ scatterUnitWbC ::
   ScatterConfig nBytesCal awCal ->
   Signal dom (BitVector 64) ->
   Circuit
-    ( (ConstBwd Mm, Wishbone dom 'Standard awSu (Bytes 4))
-    , (ConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    ( (ToConstBwd Mm, Wishbone dom 'Standard awSu (Bytes 4))
+    , (ToConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     ()
 scatterUnitWbC conf@(ScatterConfig memDepthSnat _) linkIn = case cancelMulDiv @nBytesCal @8 of
@@ -350,8 +350,8 @@ gatherUnitWbC ::
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
   Circuit
-    ( (ConstBwd Mm, Wishbone dom 'Standard awGu (Bytes 4))
-    , (ConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    ( (ToConstBwd Mm, Wishbone dom 'Standard awGu (Bytes 4))
+    , (ToConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     (CSignal dom (BitVector 64))
 gatherUnitWbC conf@(GatherConfig memDepthSnat _) = case (cancelMulDiv @nBytesCal @8) of

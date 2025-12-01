@@ -160,7 +160,7 @@ wbToDf ::
   ) =>
   String ->
   Circuit
-    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     (Df dom a)
 wbToDf name = circuit $ \(mm, wb) -> do
   [wbData, wbCommit] <- Mm.deviceWb name -< (mm, wb)

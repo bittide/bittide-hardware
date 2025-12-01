@@ -60,7 +60,7 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Char (ord)
 import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap (ConstBwd, MemoryMap, Mm)
+import Protocols.MemoryMap (MemoryMap, Mm)
 import Protocols.Wishbone
 import Protocols.Wishbone.Extra
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
@@ -156,11 +156,11 @@ managementUnit ::
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
-    (Mm.ConstBwd Mm.Mm, Jtag dom)
+    (ToConstBwd Mm.Mm, Jtag dom)
     ( CSignal dom (Unsigned 64)
     , Vec
         NmuExternalBusses
-        ( Mm.ConstBwd Mm.Mm
+        ( ToConstBwd Mm.Mm
         , Wishbone dom 'Standard NmuRemBusWidth (Bytes 4)
         )
     , Df dom (BitVector 8)
@@ -196,8 +196,8 @@ gppe ::
   Signal dom (Maybe (BitVector 96)) ->
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
-    ( ConstBwd Mm
-    , Vec (2 * LinkCount) (ConstBwd Mm, Wishbone dom 'Standard NmuRemBusWidth (Bytes 4))
+    ( ToConstBwd Mm
+    , Vec (2 * LinkCount) (ToConstBwd Mm, Wishbone dom 'Standard NmuRemBusWidth (Bytes 4))
     , Jtag dom
     )
     ( Vec LinkCount (CSignal dom (BitVector 64))
@@ -255,9 +255,9 @@ softUgnDemoC ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "MU" ::: ConstBwd Mm
-    , "CC" ::: ConstBwd Mm
-    , "GPPE" ::: ConstBwd Mm
+    ( "MU" ::: ToConstBwd Mm
+    , "CC" ::: ToConstBwd Mm
+    , "GPPE" ::: ToConstBwd Mm
     , Jtag Bittide
     , "MASK" ::: CSignal Bittide (BitVector LinkCount)
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)

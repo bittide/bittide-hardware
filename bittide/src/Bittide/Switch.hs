@@ -13,7 +13,7 @@ import Clash.Class.BitPackC
 import Data.Constraint.Nat.Extra
 import Data.Constraint.Nat.Lemmas
 import Protocols
-import Protocols.MemoryMap (ConstBwd, Mm)
+import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
@@ -38,7 +38,7 @@ switchC ::
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , ( Vec links (CSignal dom (BitVector frameWidth))
       , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
       )
