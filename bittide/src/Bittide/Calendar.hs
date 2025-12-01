@@ -339,7 +339,7 @@ mkCalendarC ::
   -- | Calendar configuration for 'calendar'.
   CalendarConfig addrW a ->
   Circuit
-    (ConstBwd MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ConstBwd Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     (CSignal dom a, CSignal dom Bool, CSignal dom (Unsigned 32))
 mkCalendarC
   compName
@@ -456,7 +456,7 @@ mkCalendar ::
   , Signal dom Bool
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom (Unsigned 32)
-  , MM
+  , Mm
   )
 mkCalendar compName cfg m2s = case cancelMulDiv @nBytes @8 of
   Dict -> (entry, endOfMetacycle, s2m, metacycleCount, mm)

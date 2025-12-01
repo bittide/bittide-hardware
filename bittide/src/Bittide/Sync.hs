@@ -47,7 +47,7 @@ import Clash.Cores.Xilinx.Xpm (xpmCdcSingle, xpmCdcSyncRst)
 import Clash.Cores.Xilinx.Xpm.Cdc.SyncRst (Asserted (..))
 import Clash.Explicit.Signal.Extra (changepoints)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (ConstBwd, MM)
+import Protocols.MemoryMap (ConstBwd, Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   deviceWb,
   registerConfig,
@@ -145,7 +145,7 @@ syncOutGenerateWbC ::
   Clock counterDom ->
   Reset counterDom ->
   Circuit
-    (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
+    (ConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4))
     (CSignal counterDom Bit)
 syncOutGenerateWbC clk rst counterClk counterRst = circuit $ \(mm, wb) -> do
   [activeWb] <- deviceWb "SyncOutGenerator" -< (mm, wb)

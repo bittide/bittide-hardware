@@ -19,7 +19,7 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Explicit.Testbench
 import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap as MM
+import Protocols.MemoryMap as Mm
 import VexRiscv
 
 import Bittide.Axi4
@@ -87,7 +87,7 @@ vexRiscGmiiC ::
   Clock tx ->
   Reset tx ->
   Circuit
-    ( ConstBwd MM
+    ( ConstBwd Mm
     , ( CSignal logic Bit
       , CSignal rx Gmii
       , Jtag logic
@@ -195,7 +195,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
 type IMemWords = DivRU (280 * 1024) 4
 type DMemWords = DivRU (88 * 1024) 4
 
-vexRiscvEthernetMM :: MM.MemoryMap
+vexRiscvEthernetMM :: Mm.MemoryMap
 vexRiscvEthernetMM =
   getMMAny
     $ vexRiscGmiiC @Basic125B @Basic125A @Basic125A @32

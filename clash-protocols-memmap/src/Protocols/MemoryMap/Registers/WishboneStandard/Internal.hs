@@ -22,9 +22,9 @@ import Protocols.MemoryMap (
   ConstBwd,
   ConstFwd,
   DeviceDefinition (DeviceDefinition, definitionLoc, deviceName, registers, tags),
-  MM,
   MemoryMap (MemoryMap, deviceDefs, tree),
   MemoryMapTree (DeviceInstance),
+  Mm,
   Name (..),
   NamedLoc (..),
   Register (..),
@@ -212,7 +212,7 @@ deviceWithOffsetsWb ::
   -- | Device name
   String ->
   Circuit
-    ( ConstBwd MM
+    ( ConstBwd Mm
     , Wishbone dom 'Standard aw (Bytes wordSize)
     )
     ( Vec n (RegisterWithOffsetWb dom aw wordSize)

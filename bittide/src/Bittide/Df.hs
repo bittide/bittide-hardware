@@ -32,8 +32,8 @@ import Protocols.PacketStream.Routing (packetArbiterC)
 import Protocols.Vec (vecCircuits)
 import Protocols.Wishbone
 
-import qualified Protocols.MemoryMap as MM
-import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
+import qualified Protocols.MemoryMap as Mm
+import qualified Protocols.MemoryMap.Registers.WishboneStandard as Mm
 
 {- | Muxes multiple 'Df' streams of bytes into a single 'Df' stream of bytes,
 interleaving the streams from the different sources on newline characters. As
@@ -160,10 +160,10 @@ wbToDf ::
   ) =>
   String ->
   Circuit
-    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     (Df dom a)
 wbToDf name = circuit $ \(mm, wb) -> do
-  [wbData, wbCommit] <- MM.deviceWb name -< (mm, wb)
+  [wbData, wbCommit] <- Mm.deviceWb name -< (mm, wb)
 
   (dat, _0) <- registerWb hasClock hasReset cfgData (unpack 0) -< (wbData, Fwd noWrite)
   (_1, df) <- registerWbDf hasClock hasReset cfgCommit () -< (wbCommit, Fwd noWrite)
@@ -193,15 +193,15 @@ wbToDf name = circuit $ \(mm, wb) -> do
     go1 (a, busActivity) = fmap (const a) busActivity
 
   cfgData =
-    (MM.registerConfig "data")
-      { MM.access = MM.WriteOnly
-      , MM.description = "Data register for " <> name
+    (Mm.registerConfig "data")
+      { Mm.access = Mm.WriteOnly
+      , Mm.description = "Data register for " <> name
       }
 
   cfgCommit =
-    (MM.registerConfig "commit")
-      { MM.access = MM.WriteOnly
-      , MM.description = "Commit register for " <> name
+    (Mm.registerConfig "commit")
+      { Mm.access = Mm.WriteOnly
+      , Mm.description = "Commit register for " <> name
       }
 
 {- | Takes an input that features no back pressure mechanism and turn it into `Df`.

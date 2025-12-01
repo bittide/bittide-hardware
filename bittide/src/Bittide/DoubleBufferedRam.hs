@@ -21,9 +21,9 @@ import Protocols.MemoryMap (
   Access (ReadWrite),
   ConstBwd,
   DeviceDefinition (..),
-  MM,
   MemoryMap (..),
   MemoryMapTree (DeviceInstance),
+  Mm,
   Name (..),
   NamedLoc (..),
   Register (..),
@@ -125,7 +125,7 @@ wbStorageDPC ::
   String ->
   InitialContent depth (Bytes 4) ->
   Circuit
-    ( ConstBwd MM
+    ( ConstBwd Mm
     , (Wishbone dom 'Standard awA (Bytes 4), Wishbone dom 'Standard awB (Bytes 4))
     )
     ()
@@ -234,7 +234,7 @@ wbStorage ::
   ) =>
   String ->
   InitialContent depth (Bytes 4) ->
-  Circuit (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4)) ()
+  Circuit (ConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4)) ()
 wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
   ((SimOnly memMap, wbStorage' initContent m2s), ())
  where

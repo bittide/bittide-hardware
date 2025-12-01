@@ -12,7 +12,7 @@ import Bittide.Transceiver.ResetManager (emptyStatistics)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, MM)
+import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -52,7 +52,7 @@ transceiverPrbsNWb ::
   Reset free ->
   Config free ->
   Circuit
-    ( (ConstBwd MM, Wishbone free 'Standard aw (Bytes 4))
+    ( (ConstBwd Mm, Wishbone free 'Standard aw (Bytes 4))
     , Gth.Gths rx rxS tx txS ref n
     , CSignal tx (Vec n (BitVector 64))
     )

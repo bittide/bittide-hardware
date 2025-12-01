@@ -15,7 +15,7 @@ import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap as MM
+import Protocols.MemoryMap as Mm
 import System.Environment (lookupEnv)
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
@@ -32,7 +32,7 @@ import Project.FilePath
 baudRate :: SNat 921600
 baudRate = SNat
 
-vexRiscvUartHelloMM :: MM.MemoryMap
+vexRiscvUartHelloMM :: Mm.MemoryMap
 vexRiscvUartHelloMM =
   getMMAny
     $ withClockResetEnable clockGen resetGen enableGen
@@ -46,7 +46,7 @@ vexRiscvUartHelloC ::
   ) =>
   SNat baud ->
   Circuit
-    (ConstBwd MM, (CSignal dom Bit, Jtag dom))
+    (ConstBwd Mm, (CSignal dom Bit, Jtag dom))
     (CSignal dom Bit)
 vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jtag)) -> do
   [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)

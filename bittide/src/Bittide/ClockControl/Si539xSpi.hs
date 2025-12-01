@@ -16,7 +16,7 @@ import Clash.Cores.SPI
 import Clash.Cores.Xilinx.DcFifo
 
 import Protocols
-import Protocols.MemoryMap (Access (..), ConstBwd, MM)
+import Protocols.MemoryMap (Access (..), ConstBwd, Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -160,7 +160,7 @@ si539xSpiWb ::
   -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   Circuit
-    ( ConstBwd MM
+    ( ConstBwd Mm
     , Wishbone dom 'Standard aw (Bytes 4)
     )
     ( "spiDone" ::: CSignal dom Bool
