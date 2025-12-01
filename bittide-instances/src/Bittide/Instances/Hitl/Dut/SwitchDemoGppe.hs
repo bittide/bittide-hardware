@@ -12,10 +12,6 @@ on the topic.
 -}
 module Bittide.Instances.Hitl.Dut.SwitchDemoGppe (
   switchDemoGppeC,
-  -- WhoAmI IDs
-  muWhoAmId,
-  ccWhoAmId,
-  gppeWhoAmId,
   -- Memory maps
   memoryMapMu,
   memoryMapCc,
@@ -52,13 +48,11 @@ import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (
-  makeWhoAmIdTh,
   readDnaPortE2WbWorker,
   timeWb,
   uartBytes,
   uartDf,
   uartInterfaceWb,
-  whoAmIC,
  )
 
 import Clash.Class.BitPackC (ByteOrder)
@@ -89,11 +83,6 @@ baud = SNat
     - Data memory
     - `timeWb`
 -}
-
-muWhoAmId, ccWhoAmId, gppeWhoAmId :: BitVector 32
-muWhoAmId = $(makeWhoAmIdTh "mgmt")
-ccWhoAmId = $(makeWhoAmIdTh "swcc")
-gppeWhoAmId = $(makeWhoAmIdTh "gppe")
 
 memoryMapMu, memoryMapCc, memoryMapGppe :: MemoryMap
 (memoryMapMu, memoryMapCc, memoryMapGppe) = (muMm, ccMm, gppeMm)
@@ -180,14 +169,13 @@ managementUnit maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     wbs0 <- processingElement NoDumpVcd peConfig -< (mm, jtag)
-    ([wbTime, uartWb, dnaWb, whoAmIWb], wbs1) <- Vec.split -< wbs0
+    ([wbTime, uartWb, dnaWb], wbs1) <- Vec.split -< wbs0
 
     -- Peripherals
     cnt <- timeWb -< wbTime
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaWb
-    whoAmIC muWhoAmId -< whoAmIWb
 
     -- Output
     idC -< (cnt, wbs1, uartOut)
@@ -217,7 +205,7 @@ gppe ::
     )
 gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Core and interconnect
-  [wbScat, wbGath, wbTime, uartWb, whoAmIWb, dnaWb] <-
+  [wbScat, wbGath, wbTime, uartWb, dnaWb] <-
     processingElement NoDumpVcd peConfig -< (mm, jtag)
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
@@ -233,7 +221,6 @@ gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) ->
   -- Peripherals
   _cnt <- timeWb -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d2 d1 uartBytes -< (uartWb, Fwd (pure Nothing))
-  whoAmIC gppeWhoAmId -< whoAmIWb
   readDnaPortE2WbWorker maybeDna -< dnaWb
 
   -- Output
@@ -363,8 +350,7 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
     -- Start Clock control
     ( sync
       , Fwd swCcOut0
-      , [ ccWhoAmIBus
-          , ccUartBus
+      , [ ccUartBus
           , ccSampleMemoryBus
           ]
       ) <-
@@ -383,8 +369,6 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
       (wbStorage "SampleMemory")
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
-
-    defaultBittideClkRstEn (whoAmIC ccWhoAmId) -< ccWhoAmIBus
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn

@@ -12,10 +12,6 @@ on the topic.
 -}
 module Bittide.Instances.Hitl.Dut.SoftUgnDemo (
   softUgnDemoC,
-  -- WhoAmI IDs
-  muWhoAmId,
-  ccWhoAmId,
-  gppeWhoAmId,
   -- Memory maps
   memoryMapMu,
   memoryMapCc,
@@ -51,13 +47,11 @@ import Bittide.ScatterGather
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (
-  makeWhoAmIdTh,
   readDnaPortE2WbWorker,
   timeWb,
   uartBytes,
   uartDf,
   uartInterfaceWb,
-  whoAmIC,
  )
 
 import Clash.Class.BitPackC (ByteOrder)
@@ -83,11 +77,6 @@ type Baud = 921_600
 
 baud :: SNat Baud
 baud = SNat
-
-muWhoAmId, ccWhoAmId, gppeWhoAmId :: BitVector 32
-muWhoAmId = $(makeWhoAmIdTh "mgmt")
-ccWhoAmId = $(makeWhoAmIdTh "swcc")
-gppeWhoAmId = $(makeWhoAmIdTh "gppe")
 
 {- Internal busses:
     - Instruction memory
@@ -180,14 +169,13 @@ managementUnit maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     wbs0 <- processingElement NoDumpVcd peConfig -< (mm, jtag)
-    ([wbTime, uartWb, dnaWb, whoAmIWb], wbs1) <- Vec.split -< wbs0
+    ([wbTime, uartWb, dnaWb], wbs1) <- Vec.split -< wbs0
 
     -- Peripherals
     cnt <- timeWb -< wbTime
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaWb
-    whoAmIC muWhoAmId -< whoAmIWb
 
     -- Output
     idC -< (cnt, wbs1, uartOut)
@@ -219,7 +207,7 @@ gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -
   -- Core and interconnect
   (wbScats, wbs0) <- Vec.split <| processingElement NoDumpVcd peConfig -< (mm, jtag)
   (wbGus, wbs1) <- Vec.split -< wbs0
-  [wbTime, uartWb, whoAmIWB, dnaWb] <- idC -< wbs1
+  [wbTime, uartWb, dnaWb] <- idC -< wbs1
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
@@ -238,7 +226,6 @@ gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -
   -- Peripherals
   _cnt <- timeWb -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
-  whoAmIC gppeWhoAmId -< whoAmIWB
   readDnaPortE2WbWorker maybeDna -< dnaWb
 
   -- Output
@@ -332,8 +319,7 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
     -- Start Clock control
     ( sync
       , Fwd swCcOut0
-      , [ ccWhoAmIBus
-          , ccUartBus
+      , [ ccUartBus
           , ccSampleMemoryBus
           ]
       ) <-
@@ -352,8 +338,6 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
       (wbStorage "SampleMemory")
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
-
-    defaultBittideClkRstEn (whoAmIC ccWhoAmId) -< ccWhoAmIBus
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn

@@ -20,7 +20,6 @@ members = [
   "sim-tests/registerwb_test",
   "sim-tests/capture_ugn_test",
   "sim-tests/clock-control-wb",
-  "sim-tests/delay_wishbone_c",
   "sim-tests/dna_port_e2_test",
   "sim-tests/elastic_buffer_wb_test",
   "sim-tests/wb_to_df_test",

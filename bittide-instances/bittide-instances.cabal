@@ -216,7 +216,6 @@ library
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
-    Bittide.Instances.Tests.DelayWishboneC
     Bittide.Instances.Tests.ElasticBufferWb
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.ScatterGather
@@ -306,7 +305,6 @@ test-suite unittests
     Tests.ClockControlWb
     Wishbone.Axi
     Wishbone.CaptureUgn
-    Wishbone.DelayWishboneC
     Wishbone.DnaPortE2
     Wishbone.RegisterWb
     Wishbone.ScatterGather
