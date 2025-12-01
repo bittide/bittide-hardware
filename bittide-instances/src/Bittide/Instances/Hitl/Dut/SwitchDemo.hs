@@ -174,7 +174,7 @@ muConfig =
   SimpleManagementConfig
     { peConfig =
         PeConfig
-          { cpu = Riscv32imc.vexRiscv0
+          { cpu = Riscv32imc.vexRiscv1
           , initI = Undefined @(Div (64 * 1024) 4)
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
@@ -191,7 +191,7 @@ ccConfig ::
   PeConfig (n + SwcccInternalBusses)
 ccConfig =
   PeConfig
-    { cpu = Riscv32imc.vexRiscv1
+    { cpu = Riscv32imc.vexRiscv2
     , initI = Undefined @(Div (64 * 1024) 4)
     , initD = Undefined @(Div (64 * 1024) 4)
     , iBusTimeout = d0
