@@ -19,6 +19,9 @@
     check-yaml.enable = true;
     check-toml.enable = true;
     check-json.enable = true;
+    clang-format.enable = true;
+    clang-format.types_or = [ "c" "c++"];
+
 
     # Enable a formatter for Haskell
     cabal-gild.enable = true;

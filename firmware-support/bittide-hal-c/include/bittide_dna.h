@@ -14,6 +14,6 @@
 /// Fetch the DNA value from the device, retrying until successful.
 /// @param dna_register Pointer to the DNA memory-mapped register
 /// @param out Pointer to output array that will receive the 96-bit DNA value
-void dna_read(volatile uint8_t* dna_register, dna_t out);
+void dna_read(volatile uint8_t *dna_register, dna_t out);
 
 #endif // BITTIDE_DNA_H
