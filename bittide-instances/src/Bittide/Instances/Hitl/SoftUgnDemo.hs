@@ -120,8 +120,8 @@ softUgnDemoDutC refClk refRst = circuit $ \(jtag, gths) -> do
         (bittideClk, handshakeRstTx, enableGen)
         tOutputs.rxClocks
         (unsafeFromActiveLow <$> tOutputs.handshakesDone)
-      -< ( ccMm
-         , muMm
+      -< ( muMm
+         , ccMm
          , gppeMm
          , jtag
          , Fwd (pure maxBound)

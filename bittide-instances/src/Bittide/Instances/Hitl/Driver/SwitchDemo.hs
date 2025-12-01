@@ -13,7 +13,12 @@ import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
 import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Dut.SwitchDemo (memoryMapCc, memoryMapMu)
+import Bittide.Instances.Hitl.Dut.SwitchDemo (
+  ccWhoAmId,
+  memoryMapCc,
+  memoryMapMu,
+  muWhoAmId,
+ )
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
@@ -24,7 +29,7 @@ import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
-import Data.Char (ord)
+import Data.Char (chr, isAscii, isPrint)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -287,19 +292,47 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
   pure (pico, cleanup)
 
-ccGdbCheck :: Gdb -> VivadoM ExitCode
-ccGdbCheck gdb = do
-  let whoAmIReg = getPathAddress memoryMapCc ["0", "WhoAmI", "identifier"]
-  bytes <- Gdb.readBytes @4 gdb whoAmIReg
-  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
-  pure $ if bytesAsInts == L.map ord "swcc" then ExitSuccess else ExitFailure 1
+{- | Given an expected @whoAmId@ and a GDB process connected to a target CPU, check
+whether the target CPU reports the expected @whoAmId@. If not, check at the alternative
+addresses and print what they return for debugging purposes.
+-}
+gdbCheck :: BitVector 32 -> Integer -> [(String, Integer)] -> Gdb -> VivadoM ExitCode
+gdbCheck expectedBE expectedAddr altAddrs gdb = do
+  let expectedIdent = whoAmIdToString expectedBE
+  maybeId <- liftIO $ readWhoAmId expectedAddr
+  case maybeId of
+    Right ident -> do
+      liftIO $ putStrLn [i|Read whoAmID: '#{ident}', expected '#{expectedIdent}'|]
+      if ident == expectedIdent
+        then return ExitSuccess
+        else do
+          liftIO $ forM_ altAddrs altAddrCmp
+          return $ ExitFailure 1
+    Left malformed -> do
+      liftIO $ putStrLn [i|Read malformed ID: #{malformed}. Attempting alternatives...|]
+      liftIO $ forM_ altAddrs altAddrCmp
+      return $ ExitFailure 1
+ where
+  readWhoAmId :: Integer -> IO (Either [Int] String)
+  readWhoAmId addr = do
+    bytes <- fmap (fmap fromIntegral) $ Gdb.readBytes @4 gdb addr
+    let chars = chr <$> bytes
+    return
+      $ if all (\c -> isAscii c && isPrint c) chars
+        then Right $ V.toList chars
+        else Left $ V.toList bytes
 
-muGdbCheck :: Gdb -> VivadoM ExitCode
-muGdbCheck gdb = do
-  let whoAmIReg = getPathAddress memoryMapMu ["0", "WhoAmI", "identifier"]
-  bytes <- Gdb.readBytes @4 gdb whoAmIReg
-  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
-  pure $ if bytesAsInts == L.map ord "mgmt" then ExitSuccess else ExitFailure 1
+  whoAmIdToString :: BitVector 32 -> String
+  whoAmIdToString whoAmID = L.map (chr . fromIntegral) $ V.toList expectedLE
+   where
+    expectedLE = reverse $ bitCoerce @_ @(Vec 4 (BitVector 8)) whoAmID
+
+  altAddrCmp :: (String, Integer) -> IO ()
+  altAddrCmp (name, addr) = do
+    maybeId <- readWhoAmId addr
+    case maybeId of
+      Right ident -> putStrLn [i|Address for #{name} gives ID '#{ident}'|]
+      Left ints -> putStrLn [i|Address for #{name} gives malformed ID. Raw: #{ints}|]
 
 foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
 foldExitCodes prev code = do
@@ -451,27 +484,32 @@ driver testName targets = do
 
       muPorts = (.gdbPort) <$> muTapInfos
       ccPorts = (.gdbPort) <$> ccTapInfos
+      muWhoAmIAddr = getPathAddress memoryMapMu ["0", "WhoAmI", "identifier"]
+      ccWhoAmIAddr = getPathAddress memoryMapCc ["0", "WhoAmI", "identifier"]
+      -- When the `gdbCheck` fails, check these alternative addresses for debugging
+      muAlt = ("MU", muWhoAmIAddr)
+      ccAlt = ("CC", ccWhoAmIAddr)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
       liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-      gdbExitCodes0 <- mapM ccGdbCheck ccGdbs
-      (gdbCount0, gdbExitCode0) <-
-        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
+      gdbExitCodesCc <- mapM (gdbCheck ccWhoAmId ccWhoAmIAddr [muAlt]) ccGdbs
+      (gdbCountCc, gdbExitCodeCc) <-
+        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesCc
       liftIO
         $ putStrLn
-          [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
+          [i|CC GDB testing passed on #{gdbCountCc} of #{L.length targets} targets|]
       liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muPorts targets
         liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        gdbExitCodes1 <- mapM muGdbCheck muGdbs
-        (gdbCount1, gdbExitCode1) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
+        gdbExitCodesMu <- mapM (gdbCheck muWhoAmId muWhoAmIAddr [ccAlt]) muGdbs
+        (gdbCountMu, gdbExitCodeMu) <-
+          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesMu
         liftIO
           $ putStrLn
-            [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
+            [i|MU GDB testing passed on #{gdbCountMu} of #{L.length targets} targets|]
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
@@ -552,4 +590,4 @@ driver testName targets = do
 
           pure
             $ fromMaybe ExitSuccess
-            $ L.find (/= ExitSuccess) [gdbExitCode0, gdbExitCode1, bufferExit]
+            $ L.find (/= ExitSuccess) [gdbExitCodeCc, gdbExitCodeMu, bufferExit]

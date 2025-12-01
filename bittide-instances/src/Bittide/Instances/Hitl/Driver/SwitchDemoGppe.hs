@@ -12,18 +12,19 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.Driver.SwitchDemo (
   dumpCcSamples,
   foldExitCodes,
+  gdbCheck,
   getPathAddress,
   initGdb,
   initPicocom,
   showHex32,
  )
 import Bittide.Instances.Hitl.Dut.SwitchDemoGppe (
-  ccWhoAmID,
-  gppeWhoAmID,
+  ccWhoAmId,
+  gppeWhoAmId,
   memoryMapCc,
+  memoryMapGppe,
   memoryMapMu,
-  memoryMapPe,
-  muWhoAmID,
+  muWhoAmId,
  )
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver
@@ -32,23 +33,18 @@ import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class
-import Data.Char (chr, isAscii, isPrint)
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import Data.Vector.Internal.Check (HasCallStack)
-import Gdb (Gdb)
 import Project.FilePath
 import Project.Handle
-import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
-import qualified Bittide.Calculator as Calc
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
@@ -65,65 +61,6 @@ data OcdInitData = OcdInitData
   , cleanup :: IO ()
   -- ^ Cleanup function
   }
-
-data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
-
-type StartDelay = 10 -- seconds
-
-type Padding = Calc.WindowCycles FpgaCount 3
-type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
-type CyclesPerWrite = Calc.CalCyclesPerWrite GppeConfig
-type GroupCycles = Calc.CalGroupCycles GppeConfig
-type WindowCycles = Calc.CalWindowCycles GppeConfig
-type ActiveCycles = Calc.CalActiveCycles GppeConfig
-type MetacycleLength = Calc.CalMetacycleLength GppeConfig
-
-gppeConfig :: GppeConfig
-gppeConfig = Calc.defaultGppeCalcConfig
-
-lookForWhoAmI :: MemoryMap -> Integer
-lookForWhoAmI mm = getPathAddress mm ["0", "WhoAmI", "identifier"]
-
-readWhoAmID :: Integer -> Gdb -> IO (Either [Int] String)
-readWhoAmID addr gdb = do
-  bytes <- fmap (fmap fromIntegral) $ Gdb.readBytes @4 gdb addr
-  let chars = chr <$> bytes
-  return
-    $ if all (\c -> isAscii c && isPrint c) chars
-      then Right $ V.toList chars
-      else Left $ V.toList bytes
-
-{- | Given an expected @whoAmID@ and a GDB process connected to a target CPU, check
-whether the target CPU reports the expected @whoAmID@.
--}
-gdbCheck :: BitVector 32 -> Integer -> [(String, Integer)] -> Gdb -> VivadoM ExitCode
-gdbCheck expectedBE expectedAddr altAddrs gdb = do
-  let expectedIdent = whoAmIdToString expectedBE
-  maybeId <- liftIO $ readWhoAmID expectedAddr gdb
-  case maybeId of
-    Right ident -> do
-      liftIO $ putStrLn [i|Read whoAmID: '#{ident}', expected '#{expectedIdent}'|]
-      if ident == expectedIdent
-        then return ExitSuccess
-        else do
-          liftIO $ forM_ altAddrs altAddrCmp
-          return $ ExitFailure 1
-    Left malformed -> do
-      liftIO $ putStrLn [i|Read malformed ID: #{malformed}. Attempting alternatives...|]
-      liftIO $ forM_ altAddrs altAddrCmp
-      return $ ExitFailure 1
- where
-  whoAmIdToString :: BitVector 32 -> String
-  whoAmIdToString whoAmID = L.map (chr . fromIntegral) $ V.toList expectedLE
-   where
-    expectedLE = reverse $ bitCoerce @_ @(Vec 4 (BitVector 8)) whoAmID
-
-  altAddrCmp :: (String, Integer) -> IO ()
-  altAddrCmp (name, addr) = do
-    maybeId <- readWhoAmID addr gdb
-    case maybeId of
-      Right ident -> putStrLn [i|Address for #{name} gives ID '#{ident}'|]
-      Left ints -> putStrLn [i|Address for #{name} gives malformed ID. Raw: #{ints}|]
 
 driver ::
   (HasCallStack) =>
@@ -170,49 +107,49 @@ driver testName targets = do
       muPorts = (.gdbPort) <$> muTapInfos
       ccPorts = (.gdbPort) <$> ccTapInfos
       gppePorts = (.gdbPort) <$> gppeTapInfos
-
-      ccWAIAddr = lookForWhoAmI memoryMapCc
-      muWAIAddr = lookForWhoAmI memoryMapMu
-      peWAIAddr = lookForWhoAmI memoryMapPe
-      ccAlt = ("CC", ccWAIAddr)
-      muAlt = ("MU", muWAIAddr)
-      peAlt = ("PE", peWAIAddr)
+      muWhoAmIAddr = getPathAddress memoryMapMu ["0", "WhoAmI", "identifier"]
+      ccWhoAmIAddr = getPathAddress memoryMapCc ["0", "WhoAmI", "identifier"]
+      peWhoAmIAddr = getPathAddress memoryMapGppe ["0", "WhoAmI", "identifier"]
+      -- When the `gdbCheck` fails, check these alternative addresses for debugging
+      ccAlt = ("CC", ccWhoAmIAddr)
+      muAlt = ("MU", muWhoAmIAddr)
+      peAlt = ("PE", peWhoAmIAddr)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
       liftIO $ putStrLn "Checking for MMIO access to SWCC CPUs over GDB..."
-      liftIO $ putStrLn [i|Using address #{showHex32 ccWAIAddr}|]
-      gdbExitCodes0 <- mapM (gdbCheck ccWhoAmID ccWAIAddr [muAlt, peAlt]) ccGdbs
-      (gdbCount0, gdbExitCode0) <-
-        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
+      liftIO $ putStrLn [i|Using address #{showHex32 ccWhoAmIAddr}|]
+      gdbExitCodesCc <- mapM (gdbCheck ccWhoAmId ccWhoAmIAddr [muAlt, peAlt]) ccGdbs
+      (gdbCountCc, gdbExitCodeCc) <-
+        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesCc
       liftIO
         $ putStrLn
-          [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
+          [i|CC GDB testing passed on #{gdbCountCc} of #{L.length targets} targets|]
       liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo2-mu") muGdbs muPorts targets
         liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        liftIO $ putStrLn [i|Using address #{showHex32 muWAIAddr}|]
-        gdbExitCodes1 <- mapM (gdbCheck muWhoAmID muWAIAddr [ccAlt, peAlt]) muGdbs
-        (gdbCount1, gdbExitCode1) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
+        liftIO $ putStrLn [i|Using address #{showHex32 muWhoAmIAddr}|]
+        gdbExitCodesMu <- mapM (gdbCheck muWhoAmId muWhoAmIAddr [ccAlt, peAlt]) muGdbs
+        (gdbCountMu, gdbExitCodeMu) <-
+          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesMu
         liftIO
           $ putStrLn
-            [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
+            [i|MU GDB testing passed on #{gdbCountMu} of #{L.length targets} targets|]
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
         Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
           liftIO
             $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo2-gppe") gppeGdbs gppePorts targets
           liftIO $ putStrLn "Checking for MMIO access to GPPE CPUs over GDB..."
-          liftIO $ putStrLn [i|Using address #{showHex32 peWAIAddr}|]
-          gdbExitCodes2 <- mapM (gdbCheck gppeWhoAmID peWAIAddr [ccAlt, muAlt]) gppeGdbs
-          (gdbCount2, gdbExitCode2) <-
-            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes2
+          liftIO $ putStrLn [i|Using address #{showHex32 peWhoAmIAddr}|]
+          gdbExitCodesGppe <- mapM (gdbCheck gppeWhoAmId peWhoAmIAddr [ccAlt, muAlt]) gppeGdbs
+          (gdbCountGppe, gdbExitCodeGppe) <-
+            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodesGppe
           liftIO
             $ putStrLn
-              [i|GPPE GDB testing passed on #{gdbCount2} of #{L.length targets} targets|]
+              [i|GPPE GDB testing passed on #{gdbCountGppe} of #{L.length targets} targets|]
           liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gppeGdbs
 
           let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
@@ -263,4 +200,4 @@ driver testName targets = do
 
             pure
               $ fromMaybe ExitSuccess
-              $ L.find (/= ExitSuccess) [gdbExitCode0, gdbExitCode1, gdbExitCode2]
+              $ L.find (/= ExitSuccess) [gdbExitCodeCc, gdbExitCodeMu, gdbExitCodeGppe]
