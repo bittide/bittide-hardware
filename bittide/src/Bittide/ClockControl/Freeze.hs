@@ -4,12 +4,13 @@
 
 module Bittide.ClockControl.Freeze where
 
+import Clash.Explicit.Prelude
+import Protocols
+
 import Bittide.SharedTypes (Bytes)
 import Bittide.Shutter (shutter)
 import Clash.Class.BitPackC (ByteOrder)
-import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
-import Protocols
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
@@ -19,7 +20,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWb_,
  )
-import Protocols.Wishbone
+import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 {- | Component that can freeze a bunch of incoming signals related to clock
 control measurements. This makes sure the clock control algorithm works on

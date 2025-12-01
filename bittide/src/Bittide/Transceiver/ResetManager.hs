@@ -9,8 +9,10 @@ module Bittide.Transceiver.ResetManager where
 import Clash.Explicit.Prelude
 
 import Bittide.Arithmetic.Time (IndexMs)
+import Clash.Class.BitPackC (BitPackC)
 import Clash.Class.Counter (countSucc)
 import Data.Bifunctor (Bifunctor (first))
+import Protocols.MemoryMap.TypeDescription (deriveTypeDescription)
 
 -- | See 'Config.txTimeoutMs'
 type MaxTxTimeoutMs = Index 128
@@ -39,7 +41,18 @@ data Statistics = Statistics
   -- causes. Examples include 8b/10b decoding errors, disconnected cables, or
   -- instable clocks.
   }
-  deriving (Generic, NFDataX)
+  deriving (Generic, NFDataX, BitPackC)
+
+deriveTypeDescription ''Statistics
+
+emptyStatistics :: Statistics
+emptyStatistics =
+  Statistics
+    { txRetries = 0
+    , rxRetries = 0
+    , rxFullRetries = 0
+    , failAfterUps = 0
+    }
 
 {- | Configuration for 'resetManager'
 
