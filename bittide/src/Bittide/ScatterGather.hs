@@ -81,7 +81,7 @@ scatterUnit ::
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom Bool
   , Signal dom (Unsigned 32)
-  , MM
+  , Mm
   )
 scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle, metacycleCount, mm)
  where
@@ -125,7 +125,7 @@ gatherUnit ::
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom Bool
   , Signal dom (Unsigned 32)
-  , MM
+  , Mm
   )
 gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle, metacycleCount, mm)
  where
@@ -218,8 +218,8 @@ scatterUnitWbC ::
   ScatterConfig nBytesCal awCal ->
   Signal dom (BitVector 64) ->
   Circuit
-    ( (ConstBwd MM, Wishbone dom 'Standard awSu (Bytes 4))
-    , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    ( (ConstBwd Mm, Wishbone dom 'Standard awSu (Bytes 4))
+    , (ConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     ()
 scatterUnitWbC conf@(ScatterConfig memDepthSnat _) linkIn = case cancelMulDiv @nBytesCal @8 of
@@ -319,7 +319,7 @@ scatterUnitWb ::
   -- |
   -- 1. Wishbone (slave -> master) port scatter memory
   -- 2. Wishbone (slave -> master) port 'calendar'
-  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)), MM)
+  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)), Mm)
 scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
   (delayControls wbOutSu, wbOutCal, mm)
  where
@@ -352,8 +352,8 @@ gatherUnitWbC ::
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
   Circuit
-    ( (ConstBwd MM, Wishbone dom 'Standard awGu (Bytes 4))
-    , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    ( (ConstBwd Mm, Wishbone dom 'Standard awGu (Bytes 4))
+    , (ConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     (CSignal dom (BitVector 64))
 gatherUnitWbC conf@(GatherConfig memDepthSnat _) = case (cancelMulDiv @nBytesCal @8) of
@@ -470,7 +470,7 @@ gatherUnitWb ::
   ( Signal dom (BitVector 64)
   , Signal dom (WishboneS2M (Bytes 4))
   , Signal dom (WishboneS2M (Bytes nBytesCal))
-  , MM
+  , Mm
   )
 gatherUnitWb (GatherConfig _memDepth calConfig) wbInCal wbInGu =
   (linkOut, delayControls wbOutGu, wbOutCal, mm)

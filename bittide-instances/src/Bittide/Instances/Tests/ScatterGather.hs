@@ -60,7 +60,7 @@ dutMM =
 dutWithBinary ::
   (HasCallStack, HiddenClockResetEnable dom) =>
   String ->
-  Circuit (ConstBwd MM) (Df dom (BitVector 8))
+  Circuit (ConstBwd Mm) (Df dom (BitVector 8))
 dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [ uartBus

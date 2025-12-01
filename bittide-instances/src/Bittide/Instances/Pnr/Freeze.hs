@@ -23,7 +23,7 @@ freezeExample ::
   Clock dom ->
   Reset dom ->
   Circuit
-    (ConstBwd MM, Wishbone dom 'Standard 4 (Bytes 4))
+    (ConstBwd Mm, Wishbone dom 'Standard 4 (Bytes 4))
     ()
 freezeExample clk rst =
   withBittideByteOrder

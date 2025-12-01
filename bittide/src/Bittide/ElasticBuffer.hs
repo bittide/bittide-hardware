@@ -14,7 +14,7 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
 import Clash.Prelude
 import GHC.Stack
 import Protocols (Ack (..), CSignal, Circuit (..), applyC)
-import Protocols.MemoryMap (Access (..), ConstBwd, MM)
+import Protocols.MemoryMap (Access (..), ConstBwd, Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
   busActivityWrite,
@@ -170,7 +170,7 @@ xilinxElasticBufferWb ::
   Clock writeDom ->
   Signal writeDom a ->
   Circuit
-    (ConstBwd MM, Wishbone readDom 'Standard addrW (Bytes 4))
+    (ConstBwd Mm, Wishbone readDom 'Standard addrW (Bytes 4))
     ( CSignal readDom (RelDataCount n)
     , CSignal readDom Underflow
     , CSignal readDom Overflow

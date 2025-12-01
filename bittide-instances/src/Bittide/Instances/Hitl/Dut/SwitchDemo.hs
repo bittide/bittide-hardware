@@ -42,12 +42,12 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Char (ord)
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
+import Protocols.MemoryMap (ConstBwd, MemoryMap, Mm)
 import Protocols.Wishbone
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
-import qualified Protocols.MemoryMap as MM
+import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
 #ifdef SIM_BAUD_RATE
@@ -91,11 +91,11 @@ simpleManagementUnitC ::
   ) =>
   SimpleManagementConfig nodeBusses ->
   Circuit
-    (MM.ConstBwd MM.MM, (Jtag bitDom, CSignal bitDom (BitVector 64)))
+    (Mm.ConstBwd Mm.Mm, (Jtag bitDom, CSignal bitDom (BitVector 64)))
     ( CSignal bitDom (Unsigned 64)
     , Vec
         nodeBusses
-        ( MM.ConstBwd MM.MM
+        ( Mm.ConstBwd Mm.Mm
         , Wishbone bitDom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4)
         )
     )
@@ -216,8 +216,8 @@ switchDemoC ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "MU" ::: ConstBwd MM
-    , "CC" ::: ConstBwd MM
+    ( "MU" ::: ConstBwd Mm
+    , "CC" ::: ConstBwd Mm
     , Jtag Bittide
     , CSignal Bittide (BitVector 64)
     , CSignal Bittide (BitVector LinkCount)

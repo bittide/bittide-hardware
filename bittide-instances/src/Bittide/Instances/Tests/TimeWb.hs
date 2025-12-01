@@ -17,20 +17,20 @@ import Project.FilePath
 import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
 import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap (ConstBwd, MM)
+import Protocols.MemoryMap (ConstBwd, Mm)
 import Protocols.MemoryMap.TypeDescription
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (NoDumpVcd))
 
-import qualified Protocols.MemoryMap as MM
+import qualified Protocols.MemoryMap as Mm
 
 data TestStatus = Running | Success | Fail
   deriving (Show, Eq, Generic, NFDataX, BitPack, BitPackC)
 deriveTypeDescription ''TestStatus
 
 -- | Memory map for the C timer test
-timeWbMm :: MM.MemoryMap
+timeWbMm :: Mm.MemoryMap
 timeWbMm = mm
  where
   Circuit circFn =
@@ -40,7 +40,7 @@ timeWbMm = mm
 -- | DUT for C timer test - VexRiscv with UART and Timer peripherals
 dutCpu ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
-  Circuit (ConstBwd MM) (Df dom (BitVector 8))
+  Circuit (ConstBwd Mm) (Df dom (BitVector 8))
 dutCpu = withBittideByteOrder $ circuit $ \mm -> do
   (uartRx, jtag) <- idleSource
   [uartBus, (mmTime, timeBus)] <-

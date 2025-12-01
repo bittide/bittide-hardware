@@ -17,7 +17,7 @@ import Clash.Cores.Xilinx.Xpm (xpmCdcGray)
 import Clash.Functor.Extra ((<<$>>))
 import Clash.Sized.Extra (concatUnsigneds, unsignedToSigned)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, MM)
+import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -122,7 +122,7 @@ domainDiffCountersWbC ::
   Clock dst ->
   Reset dst ->
   Circuit
-    (ConstBwd MM, Wishbone dst 'Standard addrW (Bytes 4))
+    (ConstBwd Mm, Wishbone dst 'Standard addrW (Bytes 4))
     (CSignal dst (Vec n (Signed 32, Active)))
 domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
   [enableWb, countersWb, activesWb] <- deviceWb "DomainDiffCounters" -< bus
