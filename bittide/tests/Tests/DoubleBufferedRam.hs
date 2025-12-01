@@ -40,7 +40,6 @@ import Tests.Shared
 import qualified Clash.Sized.Vector as V
 import qualified Data.IntMap as I
 import qualified Data.List as L
-import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Hedgehog.Range as Range
@@ -52,14 +51,6 @@ tests =
   testGroup
     "Tests.DoubleBufferedRam"
     [ testPropertyNamed
-        "Reading the buffer."
-        "readDoubleBufferedRam"
-        readDoubleBufferedRam
-    , testPropertyNamed
-        "Writing and reading back buffers."
-        "readWriteDoubleBufferedRam"
-        readWriteDoubleBufferedRam
-    , testPropertyNamed
         "Byte addressable blockRam matches behavioral model."
         "readWriteByteAddressableBlockram"
         readWriteByteAddressableBlockram
@@ -67,14 +58,6 @@ tests =
         "Byte addressable blockRam with always high byteEnables behaves like blockRam"
         "byteAddressableBlockRamAsBlockRam"
         byteAddressableBlockRamAsBlockRam
-    , testPropertyNamed
-        "Byte addressable double buffered blockRam matches behavioral model."
-        "doubleBufferedRamByteAddressable0"
-        doubleBufferedRamByteAddressable0
-    , testPropertyNamed
-        "Byte addressable double buffered blockRam with always high byteEnables behaves like 'doubleBufferedRam'"
-        "doubleBufferedRamByteAddressable1"
-        doubleBufferedRamByteAddressable1
     , testPropertyNamed
         "Byte addressable register can be written to and read from with byte enables."
         "readWriteRegisterByteAddressable"
@@ -116,82 +99,6 @@ tests =
         "wbStorageProtocolsModel"
         wbStorageProtocolsModel
     ]
-
-genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
-genRamContents memDepth = genSomeVec (Range.singleton $ fromIntegral (memDepth - 1))
-
--- | This test checks if we can read the initial values of the double buffered Ram.
-readDoubleBufferedRam :: Property
-readDoubleBufferedRam = property $ do
-  ramDepth <- forAll . Gen.int $ Range.constant 1 31
-  ramContents <-
-    forAll
-      $ genRamContents ramDepth
-      $ genUnsigned @64 Range.constantBounded
-  case ramContents of
-    SomeVec SNat (contentsSingle :: Vec (n + 1) (Unsigned 64)) -> do
-      simLength <- forAll $ Gen.int (Range.constant 1 100)
-      let
-        contentsDouble = concatMap (replicate d2) contentsSingle
-        simRange = Range.singleton simLength
-      switchSignal <- forAll $ Gen.list simRange (Gen.element [A, B])
-      readAddresses <- forAll . Gen.list simRange . genIndex $ Range.constantBounded
-      let
-        topEntity (unbundle -> (switch, readAddr)) =
-          withClockResetEnable @System
-            clockGen
-            resetGen
-            enableGen
-            $ doubleBufferedRam @_ @(n + 1)
-              (Vec contentsDouble)
-              switch
-              readAddr
-              (pure Nothing)
-        topEntityInput = P.zip switchSignal readAddresses
-        simOut = P.drop 1 $ simulateN simLength topEntity topEntityInput
-        expectedOut = fmap (contentsSingle !!) readAddresses
-      simOut === P.init expectedOut
-
--- | This test checks if we can write new values to the double buffered 'blockRam' and read them.
-readWriteDoubleBufferedRam :: Property
-readWriteDoubleBufferedRam = property $ do
-  ramDepth <- forAll $ Gen.enum 1 31
-  ramContents <-
-    forAll
-      $ genRamContents ramDepth
-      $ genUnsigned @64 Range.constantBounded
-  let minSimLength = 2 * ramDepth
-  simLength <- forAll $ Gen.int (Range.constant minSimLength 100)
-  case ramContents of
-    SomeVec SNat (contentsSingle :: Vec (n + 1) (Unsigned 64)) -> do
-      let
-        contentsDouble = concatMap (replicate d2) contentsSingle
-        topEntity (unbundle -> (switch, readAddr, writePort)) =
-          withClockResetEnable
-            @System
-            clockGen
-            resetGen
-            enableGen
-            $ doubleBufferedRam @_ @(n + 1)
-              (Vec contentsDouble)
-              switch
-              readAddr
-              writePort
-      let
-        addresses = cycle $ fmap fromIntegral [0 .. ramDepth - 1]
-        switchSignal = cycle $ L.replicate ramDepth A <> L.replicate ramDepth B
-      writeEntries <-
-        forAll
-          ( Gen.list (Range.singleton simLength)
-              $ genUnsigned Range.constantBounded
-          )
-      let
-        topEntityInput =
-          L.zip3 switchSignal addresses
-            $ fmap Just (P.zip addresses writeEntries)
-        simOut = simulateN @System simLength topEntity topEntityInput
-        expected = toList contentsSingle <> L.take (simLength - ramDepth - 1) writeEntries
-      Set.fromList simOut === Set.fromList expected
 
 data BitvecVec where
   BitvecVec ::
@@ -298,91 +205,6 @@ byteAddressableBlockRamAsBlockRam = property $ do
         (fstOut, sndOut) = L.unzip simOut
       footnote . fromString $ "simOut: " <> showX simOut
       fstOut === sndOut
-
-{- | This test checks if we can write new values to the byte addressable double buffered
-'blockRam' ('doubleBufferedRamByteAddressable') and read them.
--}
-doubleBufferedRamByteAddressable0 :: Property
-doubleBufferedRamByteAddressable0 = property $ do
-  ramDepth <- forAll $ Gen.enum 1 31
-  nrOfBits <- forAll $ Gen.enum 1 31
-  simLength <- forAll $ Gen.int $ Range.constant 2 100
-  ramContents <- forAll $ genBlockRamContents ramDepth nrOfBits
-  case ramContents of
-    BitvecVec SNat SNat (contentsSingle :: Vec memDepth (BitVector bits)) -> do
-      let
-        contentsDouble = concatMap (replicate d2) contentsSingle
-        simRange = Range.singleton simLength
-        topEntity (unbundle -> (switch, readAddr, writePort, byteSelect)) =
-          withClockResetEnable @System clockGen resetGen enableGen
-            $ doubleBufferedRamByteAddressable
-              (Vec contentsDouble)
-              switch
-              readAddr
-              writePort
-              byteSelect
-      writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
-      readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
-      writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
-      byteSelectSignal <- forAll $ Gen.list simRange genDefinedBitVector
-      switchSignal <- forAll $ Gen.list simRange (Gen.element [A, B])
-      let
-        topEntityInput =
-          L.zip4
-            switchSignal
-            readAddresses
-            (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries)
-            byteSelectSignal
-        simOut = simulateN @System simLength topEntity topEntityInput
-        (_, expectedOut) =
-          L.mapAccumL
-            byteAddressableDoubleBufferedRamBehavior
-            (L.head topEntityInput, contentsSingle, contentsSingle)
-            $ L.drop 1 topEntityInput
-      -- TODO: Due to some unexpected mismatch between the expected behavior of either
-      -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
-      -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
-      -- An issue has been made regarding this.
-      L.drop 2 simOut === L.drop 1 expectedOut
-
-{- | This test checks if 'doubleBufferedRamByteAddressable' behaves the same as
-'doubleBufferedRam' when the byteEnables are always high.
--}
-doubleBufferedRamByteAddressable1 :: Property
-doubleBufferedRamByteAddressable1 = property $ do
-  ramDepth <- forAll $ Gen.enum 1 31
-  nrOfBits <- forAll $ Gen.enum 1 31
-  simLength <- forAll $ Gen.int $ Range.constant 2 100
-  ramContents <- forAll $ genBlockRamContents ramDepth nrOfBits
-  case ramContents of
-    BitvecVec SNat SNat (contentsSingle :: Vec memDepth (BitVector bits)) -> do
-      let
-        contentsDouble = concatMap (replicate d2) contentsSingle
-        simRange = Range.singleton simLength
-        topEntity (unbundle -> (switch, readAddr, writePort)) =
-          withClockResetEnable @System clockGen resetGen enableGen
-            $ bundle
-              ( doubleBufferedRamByteAddressable
-                  (Vec contentsDouble)
-                  switch
-                  readAddr
-                  writePort
-                  (pure maxBound)
-              , doubleBufferedRam (Vec contentsDouble) switch readAddr writePort
-              )
-      writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
-      readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
-      writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
-      switchSignal <- forAll $ Gen.list simRange (Gen.element [A, B])
-      let
-        topEntityInput =
-          L.zip3
-            switchSignal
-            readAddresses
-            (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries)
-        simOut = simulateN @System simLength topEntity topEntityInput
-        (duvOut, refOut) = L.unzip simOut
-      duvOut === refOut
 
 {- | This test checks that we can generate a 'registerByteAddressable' that stores a
 configurable amount of bytes and selectively update its contents on a per byte basis.
@@ -692,60 +514,6 @@ byteAddressableRamBehavior state input = (state', ram !! readAddr)
 
   ram1 = if writeTrue then replace writeAddr newEntry ram else ram
   state' = (input, ram1)
-
-{- | Model for 'byteAddressableDoubleBufferedRamBehavior', it stores the inputs in its
-state for a one cycle delay and updates the Ram based on the the write operation and
-byte enables. Furthermore it contains read-before-write behavior based on the readAddr.
-The only addition compared to byteAddressableRam is the fact that there's two buffers
-(one read only, one write only), that can be swapped.
--}
-byteAddressableDoubleBufferedRamBehavior ::
-  forall bits memDepth nBytes.
-  ( KnownNat memDepth
-  , 1 <= memDepth
-  , KnownNat nBytes
-  , 1 <= nBytes
-  , nBytes ~ Regs (BitVector bits) 8
-  , KnownNat bits
-  , 1 <= bits
-  ) =>
-  ( (AorB, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
-  , Vec memDepth (BitVector bits)
-  , Vec memDepth (BitVector bits)
-  ) ->
-  (AorB, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes) ->
-  ( ( (AorB, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
-    , Vec memDepth (BitVector bits)
-    , Vec memDepth (BitVector bits)
-    )
-  , BitVector bits
-  )
-byteAddressableDoubleBufferedRamBehavior state input = (state', out)
- where
-  ((switchBuffers, readAddr, writeOp, byteEnable), bufA0, bufB0) = state
-  (out, bufA1, bufB1)
-    | switchBuffers == B = (bufA0 !! readAddr, bufA0, updateEntry bufB0 writeOp)
-    | otherwise = (bufB0 !! readAddr, updateEntry bufA0 writeOp, bufB0)
-
-  updateEntry buf op
-    | isJust writeOp = replace writeAddr newEntry buf
-    | otherwise = buf
-   where
-    newEntry = getNewEntry (buf !! writeAddr) writeData0
-    (writeAddr, writeData0) = fromMaybe (0, 0) op
-
-  getNewEntry old new =
-    getDataBe @8
-      . RegisterBank
-      $ zipWith
-        (\sel (a, b) -> if sel then b else a)
-        (unpack byteEnable)
-      $ zip oldData newData
-   where
-    RegisterBank oldData = getRegsBe old
-    RegisterBank newData = getRegsBe new
-
-  state' = (input, bufA1, bufB1)
 
 {- | Version of 'Bittide.DoubleBufferedRam.registerWb' which performs wishbone
   spec validation.

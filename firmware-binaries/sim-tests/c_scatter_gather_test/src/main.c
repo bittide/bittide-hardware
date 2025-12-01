@@ -34,52 +34,35 @@ void c_main(void) {
       (volatile uint64_t *)GATHER_UNIT_GATHER_MEMORY,
       GATHER_UNIT_METACYCLE_COUNT, GATHER_UNIT_METACYCLE_REGISTER, MEM_SIZE);
 
-  // Create source array with incrementing values [0, 1, 2, ..., 31]
-  uint64_t source[MEM_SIZE * 2];
-  uint64_t destination[MEM_SIZE * 2];
+  // Create source array with incrementing values [0, 1, 2, ..., 15]
+  uint64_t source[MEM_SIZE];
+  uint64_t destination[MEM_SIZE];
 
-  for (uint32_t i = 0; i < MEM_SIZE * 2; i++) {
+  for (uint32_t i = 0; i < MEM_SIZE; i++) {
     source[i] = i;
     destination[i] = 0xDEADBEEF;
   }
 
   // ===== TIME-CRITICAL SECTION: No UART =====
-  // Metacycle 1: Write first half to gather memory
+  // Metacycle 1: Write to gather memory
   gather_unit_wait_for_new_metacycle(&gather);
   if (gather_unit_write_slice(&gather, source, 0, MEM_SIZE) != 0) {
-    uart_puts(&uart, "ERROR: gather_unit_write_slice failed (first half)\r\n");
+    uart_puts(&uart, "ERROR: gather_unit_write_slice failed\n");
     while (1) {
     }
   }
 
-  // Metacycle 2: Write second half to gather memory
-  gather_unit_wait_for_new_metacycle(&gather);
-  if (gather_unit_write_slice(&gather, &source[MEM_SIZE], 0, MEM_SIZE) != 0) {
-    uart_puts(&uart, "ERROR: gather_unit_write_slice failed (second half)\r\n");
-    while (1) {
-    }
-  }
-
-  // Metacycle 3: Read first half from scatter memory
+  // Metacycle 2: Read from scatter memory
   scatter_unit_wait_for_new_metacycle(&scatter);
   if (scatter_unit_read_slice(&scatter, destination, 0, MEM_SIZE) != 0) {
-    uart_puts(&uart, "ERROR: scatter_unit_read_slice failed (first half)\r\n");
-    while (1) {
-    }
-  }
-
-  // Metacycle 4: Read second half from scatter memory
-  scatter_unit_wait_for_new_metacycle(&scatter);
-  if (scatter_unit_read_slice(&scatter, &destination[MEM_SIZE], 0, MEM_SIZE) !=
-      0) {
-    uart_puts(&uart, "ERROR: scatter_unit_read_slice failed (second half)\r\n");
+    uart_puts(&uart, "ERROR: scatter_unit_read_slice failed\n");
     while (1) {
     }
   }
   // ===== END TIME-CRITICAL SECTION =====
 
   // Now verify and report results
-  for (uint32_t i = 0; i < MEM_SIZE * 2; i++) {
+  for (uint32_t i = 0; i < MEM_SIZE; i++) {
     if (source[i] != destination[i]) {
       test_errors[0]++;
     }
@@ -89,17 +72,17 @@ void c_main(void) {
     uart_puts(&uart, "Data test FAILED: ");
     uart_putdec(&uart, test_errors[0]);
     uart_puts(&uart, "/");
-    uart_putdec(&uart, MEM_SIZE * 2);
-    uart_puts(&uart, " mismatches\r\n");
+    uart_putdec(&uart, MEM_SIZE);
+    uart_puts(&uart, " mismatches\n");
     uart_puts(&uart, "First mismatch at index ");
-    for (uint32_t i = 0; i < MEM_SIZE * 2; i++) {
+    for (uint32_t i = 0; i < MEM_SIZE; i++) {
       if (source[i] != destination[i]) {
         uart_putdec(&uart, i);
         uart_puts(&uart, ": expected ");
         uart_puthex64(&uart, source[i]);
         uart_puts(&uart, ", got ");
         uart_puthex64(&uart, destination[i]);
-        uart_puts(&uart, "\r\n");
+        uart_puts(&uart, "\n");
         break;
       }
     }
@@ -136,20 +119,20 @@ void c_main(void) {
   if (test_errors[1] != 0) {
     uart_puts(&uart, "Metacycle identical test FAILED: ");
     uart_putdec(&uart, test_errors[1]);
-    uart_puts(&uart, " mismatches\r\n");
+    uart_puts(&uart, " mismatches\n");
     uart_puts(&uart, "Scatter readings: ");
     for (uint32_t i = 0; i < 5; i++) {
       uart_putdec(&uart, scatter_mc_readings[i]);
       if (i < 4)
         uart_puts(&uart, " ");
     }
-    uart_puts(&uart, "\r\nGather readings:  ");
+    uart_puts(&uart, "\nGather readings:  ");
     for (uint32_t i = 0; i < 5; i++) {
       uart_putdec(&uart, gather_mc_readings[i]);
       if (i < 4)
         uart_puts(&uart, " ");
     }
-    uart_puts(&uart, "\r\n");
+    uart_puts(&uart, "\n");
   }
 
   // Check that readings increment by 1 each time
@@ -162,21 +145,21 @@ void c_main(void) {
   if (test_errors[2] != 0) {
     uart_puts(&uart, "Metacycle increment test FAILED: ");
     uart_putdec(&uart, test_errors[2]);
-    uart_puts(&uart, " errors\r\n");
+    uart_puts(&uart, " errors\n");
     uart_puts(&uart, "Readings: ");
     for (uint32_t i = 0; i < 5; i++) {
       uart_putdec(&uart, scatter_mc_readings[i]);
       if (i < 4)
         uart_puts(&uart, " -> ");
     }
-    uart_puts(&uart, "\r\n");
+    uart_puts(&uart, "\n");
   }
 
   // Final result
   if (test_errors[0] == 0 && test_errors[1] == 0 && test_errors[2] == 0) {
-    uart_puts(&uart, "Scatter/Gather HAL tests PASSED\r\n");
+    uart_puts(&uart, "Scatter/Gather HAL tests PASSED\n");
   } else {
-    uart_puts(&uart, "Scatter/Gather HAL tests FAILED\r\n");
+    uart_puts(&uart, "Scatter/Gather HAL tests FAILED\n");
   }
 
   while (1) {

@@ -11,9 +11,7 @@
  * ScatterUnit - Handle for interfacing with a scatter unit
  *
  * The scatter unit receives data from other nodes over the Bittide network
- * and stores it in local memory. The scatter memory is double-buffered and
- * swaps buffers at metacycle boundaries according to the calendar
- * configuration.
+ * and stores it in local memory.
  */
 typedef struct {
   volatile uint64_t *scatter_memory; ///< Pointer to scatter memory base address
@@ -74,7 +72,7 @@ int scatter_unit_write_slice(const ScatterUnit *unit, const uint64_t *src,
  * Wait for the next metacycle boundary
  *
  * This function blocks until the end of the current metacycle. It is typically
- * used to synchronize operations with the scatter unit's buffer swapping.
+ * used to synchronize operations with metacycle boundaries.
  *
  * @param unit Pointer to the ScatterUnit
  */
