@@ -2,7 +2,10 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Clash.Protocols.Wishbone.Extra (xpmCdcHandshakeWb) where
+module Clash.Protocols.Wishbone.Extra (
+  xpmCdcHandshakeWb,
+  xpmCdcHandshakeWbMm,
+) where
 
 import Clash.Prelude
 import Protocols
@@ -10,6 +13,7 @@ import Protocols.Wishbone
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (xpmCdcHandshakeDf)
 import Data.Maybe (fromMaybe, isJust)
+import Protocols.MemoryMap (Mm)
 
 data HandshakeWbManagerState
   = -- | Reset state; waiting to forward first request.
@@ -176,3 +180,24 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
     state
       | ackIn = HwsForwarding
       | otherwise = HwsResponding s2mIn
+
+-- | Like 'xpmCdcHandshakeWb', but also handles memory maps.
+xpmCdcHandshakeWbMm ::
+  forall mgr sub aw a.
+  ( KnownDomain mgr
+  , KnownDomain sub
+  , KnownNat aw
+  , NFDataX a
+  , ShowX a
+  , BitPack a
+  ) =>
+  Clock mgr ->
+  Reset mgr ->
+  Clock sub ->
+  Reset sub ->
+  Circuit
+    (ToConstBwd Mm, Wishbone mgr 'Standard aw a)
+    (ToConstBwd Mm, Wishbone sub 'Standard aw a)
+xpmCdcHandshakeWbMm clkM rstM clkS rstS = circuit $ \(mm, wbIn) -> do
+  wbOut <- xpmCdcHandshakeWb clkM rstM clkS rstS -< wbIn
+  idC -< (mm, wbOut)
