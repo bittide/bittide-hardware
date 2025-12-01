@@ -48,6 +48,7 @@ import Bittide.ProcessingElement (
 import Bittide.ScatterGather
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
+import Bittide.Sync (Sync)
 import Bittide.Wishbone (
   makeWhoAmIdTh,
   readDnaPortE2WbWorker,
@@ -104,7 +105,7 @@ memoryMapCc, memoryMapMu, memoryMapPe :: MemoryMap
         (clockGen, resetGen, enableGen)
         (repeat clockGen)
         (repeat resetGen)
-  ((SimOnly ccMm, SimOnly muMm, SimOnly gppeMm, _, _, _, _, _), _) =
+  ((SimOnly ccMm, SimOnly muMm, SimOnly gppeMm, _, _, _, _), _) =
     circuitFn
       (
         ( ()
@@ -114,15 +115,14 @@ memoryMapCc, memoryMapMu, memoryMapPe :: MemoryMap
         , pure maxBound
         , pure maxBound
         , repeat (pure Nothing)
-        , pure low
         )
       ,
         ( ()
         , repeat ()
         , ()
         , ()
-        , ()
         , repeat ()
+        , pure low
         )
       )
 
@@ -301,17 +301,16 @@ switchDemoGppeC ::
     , CSignal Bittide (BitVector LinkCount)
     , CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
-    , CSignal Bittide Bit
     )
     ( CSignal Bittide (CallistoResult LinkCount)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "SYNC_OUT" ::: CSignal Basic125 Bit
     , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
+    , Sync Bittide Basic125
     )
 switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0, syncIn) -> do
+  circuit $ \(ccMM, muMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
@@ -362,7 +361,7 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
     -- Stop UART multiplexing
 
     -- Start Clock control
-    ( syncOut
+    ( sync
       , Fwd swCcOut0
       , [ ccWhoAmIBus
           , ccUartBus
@@ -378,7 +377,7 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMM, (syncIn, ccJtag, mask, linksSuitableForCc))
+        -< (ccMM, (ccJtag, mask, linksSuitableForCc))
 
     defaultBittideClkRstEn
       (wbStorage "SampleMemory")
@@ -422,8 +421,8 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
          , txs
          , Fwd lc
          , uartTx
-         , syncOut
          , ebStables
+         , sync
          )
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
