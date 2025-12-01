@@ -28,11 +28,8 @@ The current implementation has a few objectives:
 module Protocols.MemoryMap (
   module Protocols.MemoryMap.Check.Normalized,
   Mm,
-  ConstBwd,
-  ConstFwd,
-  constBwd,
-  constFwd,
-  getConstBwd,
+  Protocols.ToConstBwd,
+  Protocols.ToConst,
   getConstBwdAny,
   getMMAny,
   withName,
@@ -76,52 +73,27 @@ import Clash.Prelude (
   Show (show),
   SimOnly (..),
   String,
-  Type,
   deepErrorX,
   error,
   flip,
-  fst,
   natToNum,
   ($),
   (<>),
  )
 
-import Protocols.MemoryMap.Check.Normalized
+import Protocols
 
 import Clash.Class.BitPackC
 import Data.Data (Proxy (Proxy))
 import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
-import Protocols
+import Protocols.MemoryMap.Check.Normalized
+import Protocols.MemoryMap.TypeDescription (TypeRef, WithTypeDescription (asTypeRef))
 
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
-import Protocols.MemoryMap.TypeDescription (TypeRef, WithTypeDescription (asTypeRef))
 
 -- | Abbreviation for a simulation-only 'MemoryMap'
 type Mm = SimOnly MemoryMap
-
--- | Protocol carrying a single value on its 'Fwd'
-data ConstFwd (a :: Type)
-
--- | Protocol carrying a single value on its 'Bwd'
-data ConstBwd (a :: Type)
-
-instance Protocol (ConstFwd a) where
-  type Fwd (ConstFwd a) = a
-  type Bwd (ConstFwd a) = ()
-
-instance Protocol (ConstBwd a) where
-  type Fwd (ConstBwd a) = ()
-  type Bwd (ConstBwd a) = a
-
-constFwd :: a -> Circuit () (ConstFwd a)
-constFwd val = Circuit $ \((), ()) -> ((), val)
-
-constBwd :: a -> Circuit (ConstBwd a) ()
-constBwd val = Circuit $ \((), ()) -> (val, ())
-
-getConstBwd :: Circuit (ConstBwd a) () -> a
-getConstBwd (Circuit f) = fst $ f ((), ())
 
 data Name = Name
   { name :: String
@@ -222,7 +194,7 @@ data Register = Register
   deriving (Show)
 
 withName ::
-  (HasCallStack) => String -> Circuit (ConstBwd Mm, a) b -> Circuit (ConstBwd Mm, a) b
+  (HasCallStack) => String -> Circuit (ToConstBwd Mm, a) b -> Circuit (ToConstBwd Mm, a) b
 withName name' (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -231,7 +203,7 @@ withName name' (Circuit f) = Circuit go
     mm' = mm{tree = WithName locCaller name' mm.tree}
 
 withDeviceTag ::
-  (HasCallStack) => String -> Circuit (ConstBwd Mm, a) b -> Circuit (ConstBwd Mm, a) b
+  (HasCallStack) => String -> Circuit (ToConstBwd Mm, a) b -> Circuit (ToConstBwd Mm, a) b
 withDeviceTag tag (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -255,7 +227,7 @@ withDeviceTag tag (Circuit f) = Circuit go
       _ -> error "`withDeviceTag` called on a tree with more than one device definition"
 
 withDeviceTags ::
-  (HasCallStack) => [String] -> Circuit (ConstBwd Mm, a) b -> Circuit (ConstBwd Mm, a) b
+  (HasCallStack) => [String] -> Circuit (ToConstBwd Mm, a) b -> Circuit (ToConstBwd Mm, a) b
 withDeviceTags tags' (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -279,7 +251,7 @@ withDeviceTags tags' (Circuit f) = Circuit go
       _ -> error "`withDeviceTags` called on a tree with more than one device definition"
 
 withTag ::
-  (HasCallStack) => String -> Circuit (ConstBwd Mm, a) b -> Circuit (ConstBwd Mm, a) b
+  (HasCallStack) => String -> Circuit (ToConstBwd Mm, a) b -> Circuit (ToConstBwd Mm, a) b
 withTag tag (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -288,7 +260,7 @@ withTag tag (Circuit f) = Circuit go
     mm' = mm{tree = WithTag locCaller tag mm.tree}
 
 withTags ::
-  (HasCallStack) => [String] -> Circuit (ConstBwd Mm, a) b -> Circuit (ConstBwd Mm, a) b
+  (HasCallStack) => [String] -> Circuit (ToConstBwd Mm, a) b -> Circuit (ToConstBwd Mm, a) b
 withTags tags' (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -298,7 +270,7 @@ withTags tags' (Circuit f) = Circuit go
     tree' = L.foldl (flip (WithTag locCaller)) mm.tree tags'
 
 withAbsAddr ::
-  (HasCallStack) => Address -> Circuit (ConstBwd Mm, a) b -> Circuit (ConstBwd Mm, a) b
+  (HasCallStack) => Address -> Circuit (ToConstBwd Mm, a) b -> Circuit (ToConstBwd Mm, a) b
 withAbsAddr addr (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -306,13 +278,13 @@ withAbsAddr addr (Circuit f) = Circuit go
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
     mm' = mm{tree = WithAbsAddr locCaller addr mm.tree}
 
-withMemoryMap :: MemoryMap -> Circuit a b -> Circuit (ConstBwd Mm, a) b
+withMemoryMap :: MemoryMap -> Circuit a b -> Circuit (ToConstBwd Mm, a) b
 withMemoryMap mm = withConstBwd (SimOnly mm)
 
-withPrefix :: v -> Circuit a b -> Circuit (ConstBwd v, a) b
+withPrefix :: v -> Circuit a b -> Circuit (ToConstBwd v, a) b
 withPrefix = withConstBwd
 
-withConstBwd :: forall v a b. v -> Circuit a b -> Circuit (ConstBwd v, a) b
+withConstBwd :: forall v a b. v -> Circuit a b -> Circuit (ToConstBwd v, a) b
 withConstBwd val (Circuit f) = Circuit go
  where
   go :: (((), Fwd a), Bwd b) -> ((v, Bwd a), Fwd b)
@@ -324,21 +296,21 @@ mergeDeviceDefs :: [Map.Map String DeviceDefinition] -> Map.Map String DeviceDef
 mergeDeviceDefs = L.foldl Map.union Map.empty
 
 getConstBwdAny ::
-  (HasCallStack, NFDataX (Fwd a), NFDataX (Bwd b)) => Circuit (ConstBwd v, a) b -> v
+  (HasCallStack, NFDataX (Fwd a), NFDataX (Bwd b)) => Circuit (ToConstBwd v, a) b -> v
 getConstBwdAny (Circuit f) = val
  where
   ((val, _), _) = f (((), deepErrorX "getConstBwdAny0"), deepErrorX "getConstBwdAny1")
 
 getMMAny ::
   (HasCallStack, NFDataX (Fwd a), NFDataX (Bwd b)) =>
-  Circuit (ConstBwd Mm, a) b ->
+  Circuit (ToConstBwd Mm, a) b ->
   MemoryMap
 getMMAny circ = let SimOnly memoryMap = getConstBwdAny circ in memoryMap
 
 deviceSingleton :: DeviceDefinition -> DeviceDefinitions
 deviceSingleton def' = Map.singleton def'.deviceName.name def'
 
-unMemmap :: Circuit (ConstBwd Mm, a) b -> Circuit a b
+unMemmap :: Circuit (ToConstBwd Mm, a) b -> Circuit a b
 unMemmap (Circuit f) = Circuit go
  where
   go (fwdA, bwdB) = (bwdA, fwdB)
@@ -374,7 +346,7 @@ locN n = go (getCallStack callStack) n
       <> " levels of `HasCallStack` context."
   go (_ : rest) m = go rest (m - 1)
 
-ignoreMM :: Circuit () (ConstBwd Mm)
+ignoreMM :: Circuit () (ToConstBwd Mm)
 ignoreMM = Circuit $ \_ -> ((), ())
 
 todoMM :: (HasCallStack) => SimOnly MemoryMap

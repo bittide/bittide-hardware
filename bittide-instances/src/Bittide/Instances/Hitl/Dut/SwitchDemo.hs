@@ -42,7 +42,7 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Char (ord)
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap (ConstBwd, MemoryMap, Mm)
+import Protocols.MemoryMap (MemoryMap, Mm)
 import Protocols.Wishbone
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
 
@@ -91,11 +91,11 @@ simpleManagementUnitC ::
   ) =>
   SimpleManagementConfig nodeBusses ->
   Circuit
-    (Mm.ConstBwd Mm.Mm, (Jtag bitDom, CSignal bitDom (BitVector 64)))
+    (ToConstBwd Mm.Mm, (Jtag bitDom, CSignal bitDom (BitVector 64)))
     ( CSignal bitDom (Unsigned 64)
     , Vec
         nodeBusses
-        ( Mm.ConstBwd Mm.Mm
+        ( ToConstBwd Mm.Mm
         , Wishbone bitDom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4)
         )
     )
@@ -216,8 +216,8 @@ switchDemoC ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "MU" ::: ConstBwd Mm
-    , "CC" ::: ConstBwd Mm
+    ( "MU" ::: ToConstBwd Mm
+    , "CC" ::: ToConstBwd Mm
     , Jtag Bittide
     , CSignal Bittide (BitVector 64)
     , CSignal Bittide (BitVector LinkCount)

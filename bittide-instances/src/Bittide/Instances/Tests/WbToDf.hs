@@ -57,7 +57,7 @@ register to the `Df` output and also sends some debug messages over UART.
 -}
 dut ::
   (HasCallStack) =>
-  Circuit (ConstBwd Mm) (Df System SomeAdt, Df System (BitVector 8))
+  Circuit (ToConstBwd Mm) (Df System SomeAdt, Df System (BitVector 8))
 dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [srcBus, dfBus, uartBus] <-

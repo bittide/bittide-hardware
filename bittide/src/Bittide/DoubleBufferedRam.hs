@@ -19,7 +19,6 @@ import Data.Typeable
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (
   Access (ReadWrite),
-  ConstBwd,
   DeviceDefinition (..),
   MemoryMap (..),
   MemoryMapTree (DeviceInstance),
@@ -27,6 +26,7 @@ import Protocols.MemoryMap (
   Name (..),
   NamedLoc (..),
   Register (..),
+  ToConstBwd,
   deviceSingleton,
   locCaller,
   locHere,
@@ -125,7 +125,7 @@ wbStorageDPC ::
   String ->
   InitialContent depth (Bytes 4) ->
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , (Wishbone dom 'Standard awA (Bytes 4), Wishbone dom 'Standard awB (Bytes 4))
     )
     ()
@@ -234,7 +234,7 @@ wbStorage ::
   ) =>
   String ->
   InitialContent depth (Bytes 4) ->
-  Circuit (ConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4)) ()
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4)) ()
 wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
   ((SimOnly memMap, wbStorage' initContent m2s), ())
  where

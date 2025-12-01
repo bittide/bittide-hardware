@@ -17,7 +17,7 @@ import Project.FilePath
 import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
 import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap (ConstBwd, Mm)
+import Protocols.MemoryMap (Mm)
 import Protocols.MemoryMap.TypeDescription
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
@@ -40,7 +40,7 @@ timeWbMm = mm
 -- | DUT for C timer test - VexRiscv with UART and Timer peripherals
 dutCpu ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
-  Circuit (ConstBwd Mm) (Df dom (BitVector 8))
+  Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
 dutCpu = withBittideByteOrder $ circuit $ \mm -> do
   (uartRx, jtag) <- idleSource
   [uartBus, (mmTime, timeBus)] <-

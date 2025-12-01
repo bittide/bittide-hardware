@@ -24,7 +24,6 @@ import Protocols (CSignal, Circuit (..))
 import Protocols.MemoryMap (
   Access (ReadWrite),
   Address,
-  ConstBwd,
   DeviceDefinition (DeviceDefinition),
   MemoryMap (..),
   MemoryMapTree (DeviceInstance, Interconnect),
@@ -32,6 +31,7 @@ import Protocols.MemoryMap (
   Name (Name),
   NamedLoc (..),
   Register (Register, access, address, fieldType, reset, tags),
+  ToConstBwd,
   locHere,
   mergeDeviceDefs,
   regType,
@@ -64,7 +64,7 @@ deriveTypeDescription ''FakeType
 
 magicUart ::
   (HasCallStack, HiddenClockResetEnable dom, KnownNat addrWidth) =>
-  Circuit (ConstBwd Mm, Wishbone dom 'Standard addrWidth (BitVector 32)) ()
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard addrWidth (BitVector 32)) ()
 magicUart = Circuit go
  where
   ((_, callLoc) : _) = getCallStack callStack
@@ -126,7 +126,7 @@ magicUart = Circuit go
 
 someCircuit ::
   (HasCallStack, HiddenClockResetEnable dom, HasCallStack) =>
-  Circuit (ConstBwd Mm, Wishbone dom 'Standard 32 (BitVector 32)) ()
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard 32 (BitVector 32)) ()
 someCircuit = circuit $ \(mm, master) -> do
   [a, b] <- interconnect -< (mm, master)
   withPrefix 0b01 (withName "A" magicUart) -< a
@@ -134,7 +134,7 @@ someCircuit = circuit $ \(mm, master) -> do
 
 someCircuit' ::
   (HasCallStack, HiddenClockResetEnable dom) =>
-  Circuit (ConstBwd Mm, Wishbone dom 'Standard 32 (BitVector 32)) ()
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard 32 (BitVector 32)) ()
 someCircuit' = withName "top" $ circuit $ \(mm, master) -> do
   [a, b] <- interconnectImplicit -< (mm, master)
   withName "A" magicUart -< a
@@ -143,7 +143,7 @@ someCircuit' = withName "top" $ circuit $ \(mm, master) -> do
 someOtherCircuit ::
   (HasCallStack, HiddenClockResetEnable dom) =>
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , ( Wishbone dom 'Standard 32 (BitVector 32)
       , CSignal dom Bit
       )
@@ -184,7 +184,7 @@ moreRealUart' ::
   SNat transmitBufferDepth ->
   SNat receiveBufferDepth ->
   Circuit
-    (ConstBwd Mm, (Wishbone dom 'Standard addrW (BitVector (8 * nBytes)), CSignal dom Bit))
+    (ToConstBwd Mm, (Wishbone dom 'Standard addrW (BitVector (8 * nBytes)), CSignal dom Bit))
     (CSignal dom Bit, CSignal dom (Bool, Bool))
 moreRealUart' tD rD = withMemoryMap mm (moreRealUart tD rD)
  where
@@ -246,12 +246,12 @@ interconnectImplicit ::
   , KnownNat (addrWidth - CLog 2 n)
   ) =>
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , Wishbone dom 'Standard addrWidth a
     )
     ( Vec
         n
-        ( ConstBwd Mm
+        ( ToConstBwd Mm
         , Wishbone dom 'Standard (addrWidth - CLog 2 n) a
         )
     )
@@ -269,13 +269,13 @@ interconnect ::
   , KnownNat (addrWidth - CLog 2 n)
   ) =>
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , Wishbone dom 'Standard addrWidth a
     )
     ( Vec
         n
-        ( ConstBwd (BitVector (CLog 2 n))
-        , ( ConstBwd Mm
+        ( ToConstBwd (BitVector (CLog 2 n))
+        , ( ToConstBwd Mm
           , Wishbone dom 'Standard (addrWidth - CLog 2 n) a
           )
         )

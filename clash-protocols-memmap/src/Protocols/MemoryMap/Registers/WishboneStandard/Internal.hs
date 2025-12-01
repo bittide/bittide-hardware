@@ -19,8 +19,6 @@ import Data.Maybe (fromMaybe, isJust)
 import GHC.Stack (HasCallStack, SrcLoc)
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
-  ConstBwd,
-  ConstFwd,
   DeviceDefinition (DeviceDefinition, definitionLoc, deviceName, registers, tags),
   MemoryMap (MemoryMap, deviceDefs, tree),
   MemoryMapTree (DeviceInstance),
@@ -58,9 +56,9 @@ busActivityWrite _ = Nothing
 auto-assigned offsets.
 -}
 type RegisterWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
-  ( ConstFwd (Offset aw)
+  ( ToConst (Offset aw)
   , -- \^ Offset from the base address of the device, produced by 'deviceWb'
-    ConstBwd (RegisterMeta aw)
+    ToConstBwd (RegisterMeta aw)
   , -- \^ Meta information about the register, produced by the register
     Wishbone dom 'Standard aw (Bytes wordSize)
     -- \^ A register is a Wishbone subordinate
@@ -70,9 +68,9 @@ type RegisterWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
 custom offsets.
 -}
 type RegisterWithOffsetWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
-  ( ConstBwd (Offset aw)
+  ( ToConstBwd (Offset aw)
   , -- \^ Offset from the base address of the device, provided by the user
-    ConstBwd (RegisterMeta aw)
+    ToConstBwd (RegisterMeta aw)
   , -- \^ Meta information about the register, produced by the register
     Wishbone dom 'Standard aw (Bytes wordSize)
     -- \^ A register is a Wishbone subordinate
@@ -212,7 +210,7 @@ deviceWithOffsetsWb ::
   -- | Device name
   String ->
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , Wishbone dom 'Standard aw (Bytes wordSize)
     )
     ( Vec n (RegisterWithOffsetWb dom aw wordSize)

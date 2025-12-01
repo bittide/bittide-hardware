@@ -70,7 +70,7 @@ callistoSwClockControlC ::
   DumpVcd ->
   PeConfig (otherWb + SwcccInternalBusses) ->
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , ( Jtag dom
       , CSignal dom (BitVector nLinks) -- link mask
       , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
@@ -80,7 +80,7 @@ callistoSwClockControlC ::
     , CSignal dom (CallistoResult nLinks)
     , Vec
         otherWb
-        ( ConstBwd Mm
+        ( ToConstBwd Mm
         , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
         )
     )

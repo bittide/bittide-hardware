@@ -44,6 +44,7 @@ import Bittide.SharedTypes
 import qualified Data.List as L
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as Mm
+import qualified Protocols.ToConst as ToConst
 import qualified Protocols.Vec as Vec
 import qualified Protocols.Wishbone as Wishbone
 
@@ -70,11 +71,11 @@ singleMasterInterconnectC ::
   , NFDataX a
   ) =>
   Circuit
-    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
     ( Vec
         nSlaves
-        ( Mm.ConstBwd (Unsigned pfxWidth)
-        , (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard (addrW - pfxWidth) a)
+        ( ToConstBwd (Unsigned pfxWidth)
+        , (ToConstBwd Mm.Mm, Wishbone dom 'Standard (addrW - pfxWidth) a)
         )
     )
 singleMasterInterconnectC = Circuit go
@@ -423,14 +424,14 @@ uartInterfaceWb ::
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    ((Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes)), uartIn)
+    ((ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes)), uartIn)
     (uartOut, CSignal dom (Bool, Bool))
 uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
   (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
   (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
-  Mm.constBwd memMap -< mm
+  ToConst.toBwd memMap -< mm
   idC -< (uartTx, uartStatus)
  where
   memMap =
@@ -691,7 +692,7 @@ timeWb ::
   , 1 <= DomainPeriod dom
   ) =>
   Circuit
-    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes 4))
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (Unsigned 64))
 timeWb = circuit $ \mmWb -> do
   [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- Mm.deviceWb "Timer" -< mmWb
@@ -805,9 +806,9 @@ arbiterMm ::
   , KnownNat n
   ) =>
   Circuit
-    ( Vec n (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
+    ( Vec n (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
     )
-    ( Mm.ConstBwd Mm.Mm
+    ( ToConstBwd Mm.Mm
     , Wishbone dom 'Standard addrW a
     )
 arbiterMm = circuit $ \mmWbs -> do
@@ -835,7 +836,7 @@ readDnaPortE2Wb ::
   -- | Simulation DNA value
   BitVector 96 ->
   Circuit
-    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = circuit $ \wb -> do
   [maybeDnaWb] <- Mm.deviceWb "Dna" -< wb
@@ -865,7 +866,7 @@ readDnaPortE2WbWorker ::
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
-    (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
     ()
 readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
   [maybeDnaWb] <- Mm.deviceWb "Dna" -< wb

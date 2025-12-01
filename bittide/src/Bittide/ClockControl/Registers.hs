@@ -17,7 +17,7 @@ import Clash.Class.BitPackC (ByteOrder)
 import Clash.Explicit.Reset (unsafeOrReset)
 import Clash.Functor.Extra ((<<$>>), (<<*>>))
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, Mm)
+import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
@@ -77,7 +77,7 @@ clockControlWb ::
   Vec nLinks (Signal dom (RelDataCount m)) ->
   -- | Wishbone accessible clock control circuitry
   Circuit
-    (ConstBwd Mm, Wishbone dom 'Standard addrW (BitVector 32))
+    (ToConstBwd Mm, Wishbone dom 'Standard addrW (BitVector 32))
     (CSignal dom (ClockControlData nLinks))
 clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   [ wbNumLinks

@@ -27,6 +27,7 @@ import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Idle
 import Protocols.MemoryMap
+import qualified Protocols.ToConst as ToConst
 import Protocols.Wishbone
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
@@ -86,7 +87,7 @@ dut =
       (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartTx)
 
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)
-      constBwd todoMM -< mmAxiRx
+      ToConst.toBwd todoMM -< mmAxiRx
 
       axiStream <-
         axiUserMapC (const False)
@@ -94,7 +95,7 @@ dut =
           <| axiPacking
           <| wbToAxi4StreamTx
           -< axiTxBus
-      constBwd todoMM -< mmAxiTx
+      ToConst.toBwd todoMM -< mmAxiTx
       idC -< uartRx
  where
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())

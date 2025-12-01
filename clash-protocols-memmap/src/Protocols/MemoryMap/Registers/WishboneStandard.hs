@@ -40,7 +40,7 @@ import Clash.Class.BitPackC (Bytes)
 import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import GHC.Stack (withFrozenCallStack)
 import GHC.Stack.Types (HasCallStack)
-import Protocols.MemoryMap (ConstBwd, ConstFwd, Mm)
+import Protocols.MemoryMap (Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard.Internal
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
@@ -74,7 +74,7 @@ deviceWb ::
   -- | Device name
   String ->
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , Wishbone dom 'Standard aw (Bytes wordSize)
     )
     ( Vec n (RegisterWb dom aw wordSize)
@@ -93,8 +93,8 @@ deviceWb deviceName = circuit $ \(mm, wb) -> do
   --      size, it auto-aligns at least at a `wordSize`-byte boundary.
   genOffsets ::
     Circuit
-      (Vec n (ConstBwd (Offset aw)), Vec n (ConstBwd (RegisterMeta aw)))
-      (Vec n (ConstFwd (Offset aw)), Vec n (ConstBwd (RegisterMeta aw)))
+      (Vec n (ToConstBwd (Offset aw)), Vec n (ToConstBwd (RegisterMeta aw)))
+      (Vec n (ToConst (Offset aw)), Vec n (ToConstBwd (RegisterMeta aw)))
   genOffsets = Circuit go
    where
     go ::
@@ -199,7 +199,7 @@ registerWithOffsetWbDf clk rst regConfig offset resetValue =
     genOffset -< offsetBwd
     registerWbDf clk rst regConfig resetValue -< ((Fwd offset, meta, wb), maybeA)
  where
-  genOffset :: Circuit (ConstBwd (BitVector aw)) ()
+  genOffset :: Circuit (ToConstBwd (BitVector aw)) ()
   genOffset = Circuit $ \_ -> (offset, ())
 
 -- | 'registerWb' with a hidden clock and reset

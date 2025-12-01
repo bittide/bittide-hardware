@@ -165,7 +165,7 @@ switchDemoPeWb ::
   SNat bufferSize ->
   -- | Local clock cycle counter
   Circuit
-    ( ConstBwd Mm
+    ( ToConstBwd Mm
     , ( CSignal dom (Unsigned 64)
       , Wishbone dom 'Standard addrW (Bytes 4)
       , -- \| Device DNA

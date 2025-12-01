@@ -11,7 +11,7 @@ import Bittide.Shutter (shutter)
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, Mm)
+import Protocols.MemoryMap (Access (ReadOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
   deviceWb,
@@ -52,7 +52,7 @@ captureUgn ::
   -- | Data from link
   Signal dom (Maybe (BitVector 64)) ->
   Circuit
-    (ConstBwd Mm, Wishbone dom 'Standard addrW (Bytes 4))
+    (ToConstBwd Mm, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (BitVector 64))
 captureUgn localCounter linkIn = circuit $ \bus -> do
   [wbLocalCounter, wbRemoteCounter, wbHasCaptured] <- deviceWb "CaptureUgn" -< bus

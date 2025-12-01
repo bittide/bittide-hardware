@@ -19,7 +19,7 @@ import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, Mm, getMMAny)
+import Protocols.MemoryMap (Access (WriteOnly), Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -100,7 +100,7 @@ statusRegister ::
   , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
-    (ConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4))
+    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4))
     (CSignal dom TestStatus)
 statusRegister = circuit $ \(mm, wb) -> do
   [statusWb] <- deviceWb "StatusRegister" -< (mm, wb)
@@ -128,7 +128,7 @@ vexRiscvTestC ::
   , ValidBaud dom Baud
   ) =>
   Circuit
-    (ConstBwd Mm, (Jtag dom, CSignal dom UartRx))
+    (ToConstBwd Mm, (Jtag dom, CSignal dom UartRx))
     (CSignal dom TestStatus, CSignal dom UartTx)
 vexRiscvTestC =
   withBittideByteOrder

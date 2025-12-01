@@ -28,12 +28,11 @@ import qualified VexRiscv.Reset as MinReset
 
 import qualified Data.ByteString as BS
 import qualified Protocols.MemoryMap as Mm (
-  ConstBwd,
   Mm,
-  constBwd,
   withDeviceTag,
   withTag,
  )
+import qualified Protocols.ToConst as ToConst
 import qualified Protocols.Vec as Vec
 
 -- | Configuration for a Bittide Processing Element.
@@ -90,10 +89,10 @@ processingElement ::
   DumpVcd ->
   PeConfig nBusses ->
   Circuit
-    (Mm.ConstBwd Mm.Mm, Jtag dom)
+    (ToConstBwd Mm.Mm, Jtag dom)
     ( Vec
         (nBusses - PeInternalBusses)
-        (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
+        (ToConstBwd Mm.Mm, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
     )
 processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
@@ -118,7 +117,7 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
         onTransactionWb
       -< dBus0
   (pfxs, wbs) <- Vec.unzip <| singleMasterInterconnectC -< (mmDbus, dBus1)
-  idleSink <| (Vec.vecCircuits $ fmap Mm.constBwd prefixes) -< pfxs
+  idleSink <| (Vec.vecCircuits $ fmap ToConst.toBwd prefixes) -< pfxs
   ([(mmI, iMemBus), dMemBus], extBusses) <- Vec.split -< wbs
 
   -- Instruction and data memory are never accessed explicitly by developers,
@@ -166,9 +165,9 @@ rvCircuit ::
   Signal dom Bit ->
   Signal dom Bit ->
   Circuit
-    (Mm.ConstBwd Mm.Mm, Jtag dom)
+    (ToConstBwd Mm.Mm, Jtag dom)
     ( Wishbone dom 'Standard 30 (Bytes 4)
-    , (Mm.ConstBwd Mm.Mm, Wishbone dom 'Standard 30 (Bytes 4))
+    , (ToConstBwd Mm.Mm, Wishbone dom 'Standard 30 (Bytes 4))
     )
 rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
   case (?busByteOrder, ?regByteOrder) of

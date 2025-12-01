@@ -36,7 +36,7 @@ import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
 import Protocols.Idle (idleSource)
-import Protocols.MemoryMap (ConstBwd, MemoryMap, Mm, getMMAny)
+import Protocols.MemoryMap (MemoryMap, Mm, ToConstBwd, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (..),
   deviceWb,
@@ -138,7 +138,7 @@ manyTypesWb ::
   , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
-    (ConstBwd Mm, Wishbone dom 'Standard aw (Bytes wordSize))
+    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 manyTypesWb = circuit $ \(mm, wb) -> do
   [ wbS0
@@ -408,7 +408,7 @@ simResult = chr . fromIntegral <$> catMaybes uartStream
 {- | An instance connecting a vexriscv to a UART and a memory mapped devices that
 has many (read/write) registers.
 -}
-dut :: Circuit (ConstBwd Mm) (Df Basic50 (BitVector 8))
+dut :: Circuit (ToConstBwd Mm) (Df Basic50 (BitVector 8))
 dut =
   withBittideByteOrder
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
@@ -452,7 +452,7 @@ dut =
 memoryMap :: MemoryMap
 memoryMap = getMMAny dut0
  where
-  dut0 :: Circuit (ConstBwd Mm, Df System ()) ()
+  dut0 :: Circuit (ToConstBwd Mm, Df System ()) ()
   dut0 = circuit $ \(mm, _df) -> do
     _uart <- dut -< mm
     idC
