@@ -12,8 +12,9 @@ if { $user_tap_count == "" } {
 
 for {set i 0} {$i < $user_tap_count} {incr i} {
   jtag newtap $_CHIPNAME tap$i -irlen 5 -ignore-version
-  target create $_CHIPNAME.tap$i riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap$i
-  $_CHIPNAME.tap$i riscv set_command_timeout_sec 1
+  if {$i == [expr {$user_tap_count - 1}]} {
+    target create $_CHIPNAME.tap$i riscv -endian $_ENDIAN -chain-position $_CHIPNAME.tap$i
+  }
 }
 
 poll_period 50
@@ -27,18 +28,3 @@ foreach tap $tap_list {
 }
 
 echo "Initialization complete"
-
-# Examine all taps in IDCODE order
-# set tap_idcode_pairs {}
-# foreach tap $tap_list {
-#     set idcode [jtag cget $tap -idcode]
-#     lappend tap_idcode_pairs [list $idcode $tap]
-# }
-
-# set sorted_tap_idcode_pairs [lsort -integer -index 0 $tap_idcode_pairs]
-
-# foreach pair $sorted_tap_idcode_pairs {
-#     set tap [lindex $pair 1]
-#     echo "Examining $tap..."
-#     $tap arp_examine
-# }
