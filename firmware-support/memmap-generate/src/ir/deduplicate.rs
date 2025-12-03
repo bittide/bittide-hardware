@@ -112,8 +112,6 @@ pub fn deduplicate<'ctx, 'hals>(
                 }
             }
             deduped_devices.push(*first_handle);
-        } else {
-            println!("Hey look, a non-shared device!! {:?}", first_desc);
         }
     }
 
@@ -121,28 +119,32 @@ pub fn deduplicate<'ctx, 'hals>(
     let mut type_mapping = HashMap::new();
 
     for versions in all_types.values() {
-        let mut desc_iter = versions.iter().map(|(_hal, handle, _desc)| handle);
-        let Some(first_handle) = desc_iter.next() else {
+        let mut desc_iter = versions.iter().copied();
+        let Some((_, first_handle, _)) = desc_iter.next() else {
             continue;
         };
-        let first_desc = mapping.type_descs[first_handle];
 
-        let all_same = desc_iter.all(|handle| mapping.type_descs[handle] == first_desc);
+        let all_same = desc_iter
+            .clone()
+            .all(|(_, handle, _)| mapping.type_descs[&handle] == mapping.type_descs[&first_handle]);
         if all_same {
             // create mapping!
-            for (_hal, handle, _) in versions.iter() {
+            for (_, handle, _) in desc_iter {
                 if handle != first_handle {
-                    type_mapping.insert(*handle, *first_handle);
+                    type_mapping.insert(handle, first_handle);
                 }
             }
-            deduped_types.push(*first_handle);
+
+            deduped_types.push(first_handle);
         } else {
             let (found_in_hal, found, _) = versions
                 .iter()
-                .find(|(_hal, handle, _desc)| mapping.type_descs[handle] != first_desc)
+                .find(|(_hal, handle, _desc)| {
+                    mapping.type_descs[handle] != mapping.type_descs[&first_handle]
+                })
                 .unwrap();
             return Err(DeduplicationError::NonMatchingTypesFound {
-                expected: *first_handle,
+                expected: first_handle,
                 found: *found,
                 found_in_hal: *found_in_hal,
             });
@@ -195,8 +197,18 @@ pub fn deduplicate_type_names<'ctx>(ctx: &'ctx mut IrCtx, shared: &HalShared) {
     for ty in ctx.type_refs.values_mut() {
         if let TypeRef::Reference { name, args: _ } = ty {
             let ty_name = &ctx.type_names[*name];
-            let ty_handle = type_name_indices[ty_name];
-            *name = ty_handle;
+            if let Some(ty_handle) = type_name_indices.get(ty_name) {
+                *name = *ty_handle;
+            } else {
+                panic!(
+                    "A type was referenced that has no definition:  {}, known types: {:?}",
+                    ty_name.base,
+                    type_name_indices
+                        .keys()
+                        .map(|n| &n.base)
+                        .collect::<Vec<_>>()
+                );
+            }
         }
     }
 }

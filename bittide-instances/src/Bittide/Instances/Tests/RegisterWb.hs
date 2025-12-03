@@ -124,6 +124,10 @@ data Inner = Inner
   deriving (Generic, NFDataX, ShowX, Show, BitPackC, BitPack)
 deriveTypeDescription ''Inner
 
+data OnlyReferencedInVec = OnlyReferencedInVec (BitVector 8) (BitVector 13)
+  deriving (Generic, NFDataX, ShowX, Show, BitPackC, BitPack)
+deriveTypeDescription ''OnlyReferencedInVec
+
 -- | Example that exports a bunch of different types.
 manyTypesWb ::
   forall wordSize aw dom.
@@ -184,6 +188,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbMaybeU96
     , wbMaybeS96
     , wbEitherAbc
+    , wbOnlyInVec
     ] <-
     deviceWb "ManyTypes" -< (mm, wb)
 
@@ -257,6 +262,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWb_ hasClock hasReset (registerConfig "eitherAbc") initEitherAbc
     -< (wbEitherAbc, Fwd noWrite)
+
+  registerWb_ hasClock hasReset (registerConfig "onlyReferencedInVec") initOnlyInVec
+    -< (wbOnlyInVec, Fwd noWrite)
 
   idC
  where
@@ -393,6 +401,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initEitherAbc :: Either (BitVector 2) Abc
   initEitherAbc = Left 0
+
+  initOnlyInVec :: Vec 2 OnlyReferencedInVec
+  initOnlyInVec = OnlyReferencedInVec 2 3 :> OnlyReferencedInVec 4 5 :> Nil
 
 sim :: IO ()
 sim = putStrLn simResult
