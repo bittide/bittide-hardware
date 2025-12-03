@@ -283,6 +283,14 @@ fn main() -> ! {
         types::Either::Right(types::Abc::B)
     );
 
+    read_write!(
+        array => "only_referenced_in_vec",
+        only_referenced_in_vec,
+        [types::OnlyReferencedInVec(2, 3), types::OnlyReferencedInVec(4, 5)],
+        set_only_referenced_in_vec,
+        [types::OnlyReferencedInVec(6, 7), types::OnlyReferencedInVec(8, 9)]
+    );
+
     test_ok();
 }
 

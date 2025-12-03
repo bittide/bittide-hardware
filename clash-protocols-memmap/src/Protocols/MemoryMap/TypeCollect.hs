@@ -39,7 +39,7 @@ allReferences regs = go Map.empty regsAsList
 
   go alreadyChecked Seq.Empty = alreadyChecked
   go alreadyChecked ((name, desc@(WithSomeTypeDescription proxy)) :<| toCheck)
-    | Just _ <- Map.lookup name alreadyChecked = go alreadyChecked toCheck
+    | Just _ <- Map.lookup name alreadyChecked = go alreadyChecked (toCheck <> deps)
     | otherwise = go (Map.insert name desc alreadyChecked) (toCheck <> deps)
    where
     deps = tyReferences proxy
