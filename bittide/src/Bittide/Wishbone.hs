@@ -820,6 +820,24 @@ arbiterMm = circuit $ \mmWbs -> do
  where
   goDuplicate (_, mm) = (repeat mm, ())
 
+-- | Extend the address width of a Wishbone bus manager interface.
+extendAddressWidthWb ::
+  (KnownNat awOut, KnownNat awIn, awIn <= awOut) =>
+  Circuit (Wishbone dom mode awIn a) (Wishbone dom mode awOut a)
+extendAddressWidthWb = Circuit (unbundle . fmap go . bundle)
+ where
+  go (WishboneM2S{..}, s2m) = (s2m, WishboneM2S{addr = resize addr, ..})
+
+-- | Like 'extendAddressWidthWb', but also handles memory maps.
+extendAddressWidthWbMm ::
+  (KnownNat awOut, KnownNat awIn, awIn <= awOut) =>
+  Circuit
+    (ToConstBwd Mm.Mm, Wishbone dom mode awIn a)
+    (ToConstBwd Mm.Mm, Wishbone dom mode awOut a)
+extendAddressWidthWbMm = circuit $ \(mm, wbIn) -> do
+  wbOut <- extendAddressWidthWb -< wbIn
+  idC -< (mm, wbOut)
+
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit
 value.
