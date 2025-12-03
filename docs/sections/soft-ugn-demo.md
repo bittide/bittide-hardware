@@ -42,13 +42,12 @@ Connected components:
 - Timer
 - UART (for debugging)
 - FPGA DNA register
-- CPU identifier register
 
 The management unit has access to and is responsible for all scatter/gather calendars in
 the node.
 
 To change the binary run on this CPU, one may either:
-- Edit `bittide-instances/src/Bittide/Instances/Hitl/Driver/SoftUgnDemo.hs`, line 215 (at
+- Edit `bittide-instances/src/Bittide/Instances/Hitl/SoftUgnDemo/Driver.hs`, line 215 (at
   time of writing) to use another binary instead of `soft-ugn-mu`
 - Edit the source files in `firmware-binaries/soft-ugn-mu/` to change the binary
   pre-selected by the driver function
@@ -79,7 +78,7 @@ One may specifically run the software UGN demo test by making a
 ```
 
 At the time of writing, the clock control CPU stabilizes system. The driver running
-on the host (`bittide-instances/src/Bittide/Instances/Hitl/Driver/SoftUgnDemo.hs`)
+on the host (`bittide-instances/src/Bittide/Instances/Hitl/SoftUgnDemo/Driver.hs`)
 then releases the reset of the management unit CPU. In turn, this CPU will center
 the elastic buffers and print out the UGNs captured using the hardware UGN capture
 component over UART. Finally, the general purpose processing element has its
