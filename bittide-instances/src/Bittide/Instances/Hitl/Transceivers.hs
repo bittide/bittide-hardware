@@ -180,11 +180,10 @@ transceiversUpTest ::
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
-  , "spiDone" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
   )
 transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
-  (txs, txns, txps, syncOut, spiDone, spiM2S)
+  (txs, txns, txps, syncOut, spiM2S)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
 
@@ -197,7 +196,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
       $ unsafeFromActiveLow
       $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txs, txns, txps, allUp, anyErrors, _stats, spiDone, spiM2S) =
+  (txs, txns, txps, allUp, anyErrors, _stats, _spiDone, spiM2S) =
     goTransceiversUpTest fpgaIndex refClk sysClk testRst rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allUp

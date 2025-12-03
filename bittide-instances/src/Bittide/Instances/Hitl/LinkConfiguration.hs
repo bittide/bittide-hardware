@@ -215,11 +215,10 @@ linkConfigurationTest ::
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
-  , "spiDone" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
   )
 linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
-  (txSims, txns, txps, syncOut, spiDone, spiM2S)
+  (txSims, txns, txps, syncOut, spiM2S)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -242,7 +241,7 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
       `orReset` syncInRst
       `orReset` unsafeFromActiveLow startTest
 
-  (txSims, txns, txps, allReady, success, _stats, spiDone, spiM2S) =
+  (txSims, txns, txps, allReady, success, _stats, _spiDone, spiM2S) =
     transceiversStartAndObserve refClk sysClk testRst myIndex rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allReady

@@ -1,38 +1,17 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE CPP #-}
-
-{- | Switch demo for a Bittide system. In concert with its driver file, this device under
-test should demonstrate the predictability of a Bittide system once it has achieved logical
-synchronicity.
-
-For more details, see [QBayLogic's presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y)
-on the topic.
--}
-module Bittide.Instances.Hitl.Dut.SwitchDemoGppe (
-  switchDemoGppeC,
-  -- Memory maps
-  memoryMapMu,
-  memoryMapCc,
-  memoryMapGppe,
-) where
+module Bittide.Instances.Hitl.SwitchDemoGppe.Core (core) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Protocols
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
-import Bittide.ClockControl.Callisto.Types (
-  CallistoResult (..),
-  Stability (..),
- )
-import Bittide.ClockControl.CallistoSw (
-  SwcccInternalBusses,
-  callistoSwClockControlC,
- )
-import Bittide.Df (asciiDebugMux)
-import Bittide.DoubleBufferedRam
+import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
+import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.DoubleBufferedRam (InitialContent (Undefined), wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
@@ -44,83 +23,34 @@ import Bittide.ProcessingElement (
   processingElement,
  )
 import Bittide.ScatterGather
-import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
 import Bittide.Sync (Sync)
-import Bittide.Wishbone (
-  readDnaPortE2WbWorker,
-  timeWb,
-  uartBytes,
-  uartDf,
-  uartInterfaceWb,
- )
-
+import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
-import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
-import Data.Char (ord)
-import Protocols
-import Protocols.MemoryMap (MemoryMap, Mm)
-import Protocols.Wishbone
-import Protocols.Wishbone.Extra
-import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
+import Protocols.MemoryMap (Mm)
+import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
+import Protocols.Wishbone.Extra (delayWishboneC)
+import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
-#ifdef SIM_BAUD_RATE
-type Baud = MaxBaudRate Basic125
-#else
-type Baud = 921_600
-#endif
+type FifoSize = 5 -- = 2^5 = 32
 
-baud :: SNat Baud
-baud = SNat
+type NmuInternalBusses = 4 + PeInternalBusses
+type NmuExternalBusses = 2 + (LinkCount * PeripheralsPerLink) + 1 + 1 -- +2 for SG calendars, +1 for the switch calendar, +1 for tranceivers
+type PeripheralsPerLink = 2 -- UGN component, Elastic buffer
+type NmuRemBusWidth = 30 - CLog 2 (NmuExternalBusses + NmuInternalBusses)
 
-{- Internal busses:
-    - Instruction memory
-    - Data memory
-    - `timeWb`
--}
-
-memoryMapMu, memoryMapCc, memoryMapGppe :: MemoryMap
-(memoryMapMu, memoryMapCc, memoryMapGppe) = (muMm, ccMm, gppeMm)
- where
-  Circuit circuitFn =
-    withBittideByteOrder
-      $ switchDemoGppeC
-        (clockGen, resetGen, enableGen)
-        (clockGen, resetGen, enableGen)
-        (repeat clockGen)
-        (repeat resetGen)
-  ((SimOnly muMm, SimOnly ccMm, SimOnly gppeMm, _, _, _, _), _) =
-    circuitFn
-      (
-        ( ()
-        , ()
-        , ()
-        , pure (JtagIn 0 0 0)
-        , pure maxBound
-        , pure maxBound
-        , repeat (pure Nothing)
-        )
-      ,
-        ( ()
-        , repeat ()
-        , ()
-        , ()
-        , repeat ()
-        , pure low
-        )
-      )
-
-ccConfig ::
+muConfig ::
   ( KnownNat n
-  , PrefixWidth (n + SwcccInternalBusses) <= 30
+  , PrefixWidth (n + NmuInternalBusses) <= 30
   ) =>
-  PeConfig (n + SwcccInternalBusses)
-ccConfig =
+  PeConfig (n + NmuInternalBusses)
+muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
     , initI = Undefined @(Div (64 * 1024) 4)
@@ -130,21 +60,36 @@ ccConfig =
     , includeIlaWb = False
     }
 
-uartLabels :: Vec 3 (Vec 2 Byte)
-uartLabels =
-  fmap (fromIntegral . ord)
-    <$> ( $(listToVecTH "MU")
-            :> $(listToVecTH "CC")
-            :> $(listToVecTH "PE")
-            :> Nil
-        )
+ccConfig ::
+  ( KnownNat n
+  , PrefixWidth (n + SwcccInternalBusses) <= 30
+  ) =>
+  PeConfig (n + SwcccInternalBusses)
+ccConfig =
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv2
+    , initI = Undefined @(Div (64 * 1024) 4)
+    , initD = Undefined @(Div (64 * 1024) 4)
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
+    }
 
-type NmuInternalBusses = 4 + PeInternalBusses
-type NmuExternalBusses = 2 + (LinkCount * PeripheralsPerLink) + 1 -- +2 for SG calendars, +1 for the switch calendar
-type PeripheralsPerLink = 2 -- UGN component, Elastic buffer
-type NmuRemBusWidth = 30 - CLog 2 (NmuExternalBusses + NmuInternalBusses)
-
-type FifoSize = 5 -- = 2^5 = 32
+gppeConfig ::
+  ( KnownNat n
+  , 2 <= n
+  , PrefixWidth n <= 30
+  ) =>
+  PeConfig n
+gppeConfig =
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv3
+    , initI = Undefined @(Div (64 * 1024) 4)
+    , initD = Undefined @(Div (64 * 1024) 4)
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
+    }
 
 managementUnit ::
   forall dom.
@@ -168,7 +113,7 @@ managementUnit ::
 managementUnit maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
-    wbs0 <- processingElement NoDumpVcd peConfig -< (mm, jtag)
+    wbs0 <- processingElement NoDumpVcd muConfig -< (mm, jtag)
     ([wbTime, uartWb, dnaWb], wbs1) <- Vec.split -< wbs0
 
     -- Peripherals
@@ -179,16 +124,6 @@ managementUnit maybeDna =
 
     -- Output
     idC -< (cnt, wbs1, uartOut)
- where
-  peConfig =
-    PeConfig
-      { cpu = Riscv32imc.vexRiscv0
-      , initI = Undefined @(Div (64 * 1024) 4)
-      , initD = Undefined @(Div (64 * 1024) 4)
-      , iBusTimeout = d0
-      , dBusTimeout = d0
-      , includeIlaWb = False
-      }
 
 gppe ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
@@ -206,7 +141,7 @@ gppe ::
 gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Core and interconnect
   [wbScat, wbGath, wbTime, uartWb, dnaWb] <-
-    processingElement NoDumpVcd peConfig -< (mm, jtag)
+    processingElement NoDumpVcd gppeConfig -< (mm, jtag)
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
@@ -226,15 +161,6 @@ gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) ->
   -- Output
   idC -< (linkOut, uart)
  where
-  peConfig =
-    PeConfig
-      { cpu = Riscv32imc.vexRiscv2
-      , initI = Undefined @(Div (64 * 1024) 4)
-      , initD = Undefined @(Div (64 * 1024) 4)
-      , iBusTimeout = d0
-      , dBusTimeout = d0
-      , includeIlaWb = False
-      }
   scatterConfig = ScatterConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
   gatherConfig = GatherConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
   maxCalDepth = d1024
@@ -272,11 +198,11 @@ calendarConfig =
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-switchDemoGppeC ::
+core ::
   ( ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
-  (Clock Basic125, Reset Basic125, Enable Basic125) ->
+  (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
@@ -290,13 +216,16 @@ switchDemoGppeC ::
     , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     )
     ( CSignal Bittide (CallistoResult LinkCount)
-    , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
-    , "UART_TX" ::: CSignal Basic125 Bit
-    , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
+    , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
+    , "MU_UART" ::: Df Bittide (BitVector 8)
+    , "CC_UART" ::: Df Bittide (BitVector 8)
+    , "GPPE_UART" ::: Df Bittide (BitVector 8)
+    , "MU_TRANSCEIVER"
+        ::: (ToConstBwd Mm.Mm, Wishbone Bittide 'Standard NmuRemBusWidth (Bytes 4))
     )
-switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
+core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMM, ccMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
@@ -304,14 +233,14 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
 
     -- Start management unit
     (Fwd lc, muWbAll, muUartBytesBittide) <-
-      defaultBittideClkRstEn (managementUnit maybeDna) -< (muMM, muJtag)
+      withBittideClockResetEnable (managementUnit maybeDna) -< (muMM, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (muSgWbs, [(switchWbMM, switchWb)]) <- Vec.split -< muWbs2
+    (muSgWbs, [(switchWbMM, switchWb), muTransceiverBus]) <- Vec.split -< muWbs2
     -- Stop management unit
 
     -- Start internal links
-    (_relDatCount, _underflow, _overflow, ebStables, Fwd rxs1) <-
+    (_relDatCount, _underflow, _overflow, _ebStables, Fwd rxs1) <-
       unzip5Vec
         <| ( Vec.vecCircuits
               $ xilinxElasticBufferWb
@@ -323,38 +252,27 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
            )
         -< ebWbs
 
-    rxs2 <- defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
 
     switchIn <- Vec.append -< ([gppeTx], rxs2)
     (switchOut, _calEntry) <-
-      defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (switchIn, switchWb))
+      withBittideClockResetEnable $ switchC calendarConfig -< (switchWbMM, (switchIn, switchWb))
     ([Fwd gppeRx], txs) <- Vec.split -< switchOut
-
-    (gppeTx, gppeUartBytesBittide) <-
-      defaultBittideClkRstEn gppe maybeDna gppeRx -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop internal links
 
-    -- Start UART multiplexing
-    uartTxBytes <-
-      defaultRefClkRstEn
-        $ asciiDebugMux d1024 uartLabels
-        -< [muUartBytes, ccUartBytes, gppeUartBytes]
-    (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
+    -- Start general purpose processing element
+    (gppeTx, gppeUartBytesBittide) <-
+      withBittideClockResetEnable gppe maybeDna gppeRx -< (gppeMm, muSgWbs, gppeJtag)
+    -- Stop general purpose processing element
 
-    muUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst -< muUartBytesBittide
-    gppeUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst -< gppeUartBytesBittide
-    -- Stop UART multiplexing
-
-    -- Start Clock control
+    -- Start clock control
     ( sync
       , Fwd swCcOut0
       , [ ccUartBus
           , ccSampleMemoryBus
           ]
       ) <-
-      defaultBittideClkRstEn
+      withBittideClockResetEnable
         $ callistoSwClockControlC
           @LinkCount
           refClk
@@ -365,19 +283,15 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
           ccConfig
         -< (ccMM, (ccJtag, mask, linksSuitableForCc))
 
-    defaultBittideClkRstEn
+    withBittideClockResetEnable
       (wbStorage "SampleMemory")
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
 
     (ccUartBytesBittide, _uartStatus) <-
-      defaultBittideClkRstEn
+      withBittideClockResetEnable
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-
-    ccUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst
-        -< ccUartBytesBittide
     -- Stop Clock control
 
     let swCcOut1 =
@@ -402,17 +316,17 @@ switchDemoGppeC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxRes
 
     idC
       -< ( Fwd swCcOut1
-         , txs
          , Fwd lc
-         , uartTx
-         , ebStables
+         , txs
          , sync
+         , muUartBytesBittide
+         , ccUartBytesBittide
+         , gppeUartBytesBittide
+         , muTransceiverBus
          )
  where
-  defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
-  defaultBittideClkRstEn = withClockResetEnable bitClk bitRst bitEna
-  defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
-  defaultRefClkRstEn = withClockResetEnable refClk refRst refEna
+  withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
+  withBittideClockResetEnable = withClockResetEnable bitClk bitRst bitEna
 
 uncurry5 ::
   (a -> b -> c -> d -> e -> f) ->
