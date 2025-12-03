@@ -186,16 +186,17 @@ def get_build_key():
 
 def get_clash_key():
     exclude = (
-        "bittide-instances/src/Bittide/Instances/Hitl/Driver/",
-        "bittide-instances/src/Bittide/Instances/Hitl/Utils/",
-        "bittide-instances/src/Bittide/Instances/Hitl/Post/",
         "bittide-instances/bin",
+        "bittide-instances/src/Bittide/Instances/Hitl/*/Driver.hs",
+        "bittide-instances/src/Bittide/Instances/Hitl/Driver/",
+        "bittide-instances/src/Bittide/Instances/Hitl/Post/",
+        "bittide-instances/src/Bittide/Instances/Hitl/Utils/",
         "gdb-hs/",
         "vivado-hs/",
     )
-    files = get_git_files_from_patterns(CLASH_KEY_PATTERNS)
-    files = (f for f in files if not f.startswith(exclude))
-    return CLASH_KEY_PREFIX + sha256sum_files(files)
+    files = set(get_git_files_from_patterns(CLASH_KEY_PATTERNS))
+    exclude_files = set(get_git_files_from_patterns(exclude))
+    return CLASH_KEY_PREFIX + sha256sum_files(files - exclude_files)
 
 def get_synth_key():
     # Files in the _build directory are not tracked by git. Therefore we have
