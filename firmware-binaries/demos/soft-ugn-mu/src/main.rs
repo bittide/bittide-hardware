@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::soft_ugn_demo_mu::DeviceInstances;
+use bittide_hal::{hals::soft_ugn_demo_mu::DeviceInstances, shared_devices::Transceivers};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
@@ -17,6 +17,7 @@ use riscv_rt::entry;
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
+    let transceivers = &INSTANCES.transceivers;
 
     uwriteln!(uart, "Hello from management unit..").unwrap();
 
@@ -44,6 +45,13 @@ fn main() -> ! {
         eb.set_stable(true);
     }
     uwriteln!(uart, "All elastic buffers centered").unwrap();
+
+    uwriteln!(uart, "Switch transceiver channels to user mode..").unwrap();
+    for channel in 0..Transceivers::RECEIVE_READYS_LEN {
+        transceivers.set_receive_readys(channel, true);
+        transceivers.set_transmit_starts(channel, true);
+    }
+    uwriteln!(uart, "Done").unwrap();
 
     uwriteln!(uart, "Starting UGN captures").unwrap();
     let mut capture_ugns = [

@@ -13,22 +13,34 @@ Bittide switch.
 {{#drawio path="diagrams/switchDemoGppe.drawio" page=1}}
 
 ### Initialization sequence
-1. FPGA board reset
-2. SPI programming of clock generators
-3. Transceiver initialization
-4. Clock control to stabilize Bittide domain
-5. Elastic buffer centering
-6. Start running binary on management unit
-7. Start running binary on processing element(s)
+1. "Boot" CPU
+    1. Gets programmed by the host
+    2. Programs the clock boards
+    3. Gets transceiver block out of reset (enabling the bittide domain / other CPUs)
+    4. Activates each transceiver channel and waits until they've negotiated a link with their neighbors.
+    5. Prints "all done" message to UART.
+2. Clock control CPU
+    1. Gets programmed by the host
+    2. Calibrates clocks
+    3. Prints "all done" message to UART.
+    4. (Keeps calibrating clocks.)
+3. Management unit CPU
+    1. Gets programmed by the host
+    2. Centers elastic buffers
+    3. Sets the channels to "user" mode. This makes the channels accept data from the outside world instead of their negotiation state machinery.
+    4. Prints UGNs captured by hardware component to UART.
+4. General purpose procesisng element (PE)
+    1. Gets programmed by the host
+    2. Prints "Hello!" message over UART
 
 ### Domain related
 Components:
+- Boot CPU (BOOT)
 - Transceivers
 - Domain difference counters
 - Clock control (CC)
-- SPI programmer for clock generator
 - Elastic buffers (one per incoming transceiver link)
-- UGN capture
+- Hardware UGN capture
 
 ### Node related
 Components:
@@ -36,20 +48,19 @@ Components:
 - Crossbar
 - Crossbar calendar
 - Null link
-- General purpose processing element (GPPE)
+- 1x general purpose processing element (PE)
 - 1x scatter/gather units
 
 ### Management unit
 - Timer
 - UART (for debugging)
 - FPGA DNA register
-- CPU identifier register
 
 The management unit has access to and is responsible for all scatter/gather calendars in
 the node, as well as the crossbar calendar.
 
 To change the binary run on this CPU, one may either:
-- Edit `bittide-instances/src/Bittide/Instances/Hitl/Driver/SwitchDemoGppe.hs`, line 215
+- Edit `bittide-instances/src/Bittide/Instances/Hitl/SwitchDemoGppe/Driver.hs`, line 215
   (at time of writing) to use another binary instead of `switch-demo2-mu`
 - Edit the source files in `firmware-binaries/switch-demo2-mu/` to change the binary
   pre-selected by the driver function
@@ -58,11 +69,11 @@ To change the binary run on this CPU, one may either:
 This component is labeled as "PE" in the diagram above. Connected components:
 - 7 scatter and gather units, one of each per elastic buffer
 - UART (for debugging)
-- CPU identifier register
 - Timer
 - Scatter/gather unit connection to crossbar output
-- TODO:
-  - FPGA DNA register
+- FPGA DNA register
+
+The general purpose processing element is a drop-in replacement of the ASIC processing element. It has no functionality other than printing "Hello!" over UART.
 
 ### Debugging related
 - UART arbiter
@@ -71,7 +82,7 @@ This component is labeled as "PE" in the diagram above. Connected components:
 - `SYNC_IN`/`SYNC_OUT`
 
 ## Running tests
-One may specifically run the software UGN demo test by making a
+One may specifically run the switch demo with GPPE test by making a
 `.github/synthesis/debug.json` with the following contents:
 
 ```json
@@ -81,13 +92,14 @@ One may specifically run the software UGN demo test by making a
 ```
 
 At the time of writing, the clock control CPU stabilizes system. The driver running
-on the host (`bittide-instances/src/Bittide/Instances/Hitl/Driver/SwitchDemoGppe.hs`)
+on the host (`bittide-instances/src/Bittide/Instances/Hitl/SwitchDemoGppe/Driver.hs`)
 then releases the reset of the management unit CPU. In turn, this CPU will center
 the elastic buffers and print out the UGNs captured using the hardware UGN capture
 component over UART. Finally, the general purpose processing element has its
-reset deasserted. It simply prints "Hello from C!".
+reset deasserted. It simply prints "Hello!" over UART.
 
 Tests are configured to run the following binaries on the system's CPUs:
+- Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `switch-demo2-mu` (`firmware-binaries/demos/switch-demo2-mu`)
 - General purpose processing element: `switch-demo2-gppe` (`firmware-binaries/demos/switch-demo2-gppe`)

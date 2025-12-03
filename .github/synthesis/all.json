@@ -23,7 +23,6 @@
   {"top": "linkConfigurationTest",         "stage": "test",  "cc_report": false},
   {"top": "si539xConfigTest",              "stage": "test",  "cc_report": false},
   {"top": "softUgnDemoTest",               "stage": "test",  "cc_report": true},
-  {"top": "swCcTopologyTest",              "stage": "test",  "cc_report": true},
   {"top": "switchDemoTest",                "stage": "test",  "cc_report": true},
   {"top": "switchDemoGppeTest",            "stage": "test",  "cc_report": true},
   {"top": "syncInSyncOut",                 "stage": "test",  "cc_report": false},

@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2025 Google LLC
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Switch Demo with GPPE
+# Switch Demo with ASIC processing element
 
 This chapter describes the specific hardware setup used to perform a demonstration of the
 Bittide switch.
@@ -13,22 +13,35 @@ Bittide switch.
 {{#drawio path="diagrams/switchDemoAsic.drawio" page=2}}
 
 ### Initialization sequence
-1. FPGA board reset
-2. SPI programming of clock generators
-3. Transceiver initialization
-4. Clock control to stabilize Bittide domain
-5. Elastic buffer centering
-6. Start running binary on management unit
-7. Start running binary on processing element(s)
+1. "Boot" CPU
+    1. Gets programmed by the host
+    2. Programs the clock boards
+    3. Gets transceiver block out of reset (enabling the bittide domain / other CPUs)
+    4. Activates each transceiver channel and waits until they've negotiated a link with
+    their neighbors.
+    5. Prints "all done" message to UART.
+2. Clock control CPU
+    1. Gets programmed by the host
+    2. Calibrates clocks
+    3. Prints "all done" message to UART.
+    4. (Keeps calibrating clocks.)
+3. Management unit CPU
+    1. Gets programmed by the host
+    2. Centers elastic buffers
+    3. Sets the channels to "user" mode. This makes the channels accept data from the
+    outside world instead of their negotiation state machinery.
+    4. Prints UGNs captured by hardware component to UART.
+
+The ASIC processing element comes out of reset as soon as the bittide domain is enabled.
 
 ### Domain related
 Components:
+- Boot CPU (BOOT)
 - Transceivers
 - Domain difference counters
 - Clock control (CC)
-- SPI programmer for clock generator
 - Elastic buffers (one per incoming transceiver link)
-- UGN capture
+- Hardware UGN capture
 
 ### Node related
 Components:
@@ -36,20 +49,19 @@ Components:
 - Crossbar
 - Crossbar calendar
 - Null link
-- General purpose processing element (GPPE)
+- ASIC processing element
 - 1x scatter/gather units
 
 ### Management unit
 - Timer
 - UART (for debugging)
 - FPGA DNA register
-- CPU identifier register
 
 The management unit has access to and is responsible for all scatter/gather calendars in
 the node, as well as the crossbar calendar.
 
 To change the binary run on this CPU, one may either:
-- Edit `bittide-instances/src/Bittide/Instances/Hitl/Driver/SwitchDemo.hs`, line 500
+- Edit `bittide-instances/src/Bittide/Instances/Hitl/SwitchDemo/Driver.hs`, line 500
   (at time of writing) to use another binary instead of `switch-demo1-mu`
 - Edit the source files in `firmware-binaries/switch-demo1-mu/` to change the binary
   pre-selected by the driver function
@@ -69,7 +81,6 @@ the schedule is correct and the bittide property holds, a "thread" through all n
 created. For more information see [this presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y/).
 
 
-
 ### Debugging related
 - UART arbiter
 - JTAG interconnect
@@ -77,23 +88,24 @@ created. For more information see [this presentation](https://docs.google.com/pr
 - `SYNC_IN`/`SYNC_OUT`
 
 ## Running tests
-One may specifically run the software UGN demo test by making a
+One may specifically run the switch demo test by making a
 `.github/synthesis/debug.json` with the following contents:
 
 ```json
 [
-  {"top": "switchDemoGppeTest",       "stage": "test", "cc_report": true}
+  {"top": "switchDemoTest",       "stage": "test", "cc_report": true}
 ]
 ```
 
 At the time of writing, the clock control CPU stabilizes system. The driver running
-on the host (`bittide-instances/src/Bittide/Instances/Hitl/Driver/SwitchDemo.hs`)
+on the host (`bittide-instances/src/Bittide/Instances/Hitl/SwitchDemo/Driver.hs`)
 then releases the reset of the management unit CPU. In turn, this CPU will center
 the elastic buffers and print out the UGNs captured using the hardware UGN capture
-component over UART. Finally, the general purpose processing element has its
-reset deasserted. It simply prints "Hello from C!".
+component over UART. The behavior of the application specific processing element is
+explained in [Application specific processing element](###application-specific-processing-element).
 
 Tests are configured to run the following binaries on the system's CPUs:
+- Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `switch-demo1-mu` (`firmware-binaries/demos/switch-demo1-mu`)
 
