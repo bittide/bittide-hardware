@@ -779,8 +779,8 @@ arbiter = Circuit goArbitrate0
   -- Actual worker
   goArbitrate1 current (m2ss, s2m) = (next, (s2ms, m2s))
    where
-    candidate = findIndex (.busCycle) m2ss
-    selected = maybe candidate Just current
+    candidate = findIndex (\m -> m.busCycle && m.strobe) m2ss
+    selected = current <|> candidate
     m2s = maybe emptyWishboneM2S (m2ss !!) selected
 
     -- Always route the read data from the subordinate to all managers to prevent
@@ -791,10 +791,11 @@ arbiter = Circuit goArbitrate0
       Nothing -> emptyS2Ms
       Just idx -> replace idx s2m emptyS2Ms
 
-    next =
-      case selected of
-        Just idx | not s2m.acknowledge -> Just idx
-        _ -> candidate
+    -- Note that 'next' only indicates whether we're "locked" to a certain
+    -- manager for the next cycle.
+    next
+      | hasTerminateFlag s2m = Nothing
+      | otherwise = selected
 
 -- | Like 'arbiter', but also handles memory maps.
 arbiterMm ::
