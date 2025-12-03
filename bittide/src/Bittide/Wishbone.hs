@@ -16,6 +16,7 @@ import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
+import Clash.Explicit.Prelude (noReset)
 import Clash.Functor.Extra ((<<$>>))
 import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
@@ -221,6 +222,9 @@ ilaWb ::
     (Wishbone dom 'Standard addrW a)
 ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
   let
+    counter :: Signal dom (Unsigned 32)
+    counter = withReset noReset $ withEnable enableGen $ register 0 (counter + 1)
+
     -- Our HITL test infrastructure looks for 'trigger' and 'capture' and uses
     -- it to trigger the ILA and do selective capture. Though defaults are
     -- changable using Vivado, we set it to capture only valid Wishbone
@@ -244,6 +248,7 @@ ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
                 :> "s2m_retry"
                 :> "capture"
                 :> "trigger"
+                :> "count"
                 :> Nil
             )
               { advancedTriggers = True
@@ -265,6 +270,7 @@ ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
           (Wishbone.retry <$> s2m)
           (capture m2s s2m)
           (trigger m2s s2m)
+          counter
    in
     ilaInst `hwSeqX` (s2m, m2s)
 
