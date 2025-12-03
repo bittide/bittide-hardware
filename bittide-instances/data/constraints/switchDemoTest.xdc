@@ -14,9 +14,6 @@ set_clock_groups \
   -group [get_clocks -include_generated_clocks {SYSCLK_125_p}] \
   -group [get_clocks -include_generated_clocks {SMA_MGT_REFCLK_C_p}]
 
-# GPIO_LED_0_LS
-set_property BOARD_PART_PIN GPIO_LED_0_LS [get_ports {spiDone}]
-
 # USER SMA GPIO_P
 set_property -dict {IOSTANDARD LVCMOS18 PACKAGE_PIN H27} [get_ports {SYNC_IN}]
 # USER_SMA_GPIO_N (connected on node 0 to SYNC_IN of all nodes)

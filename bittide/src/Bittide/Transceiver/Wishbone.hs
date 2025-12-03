@@ -8,7 +8,8 @@ import Protocols
 
 import Bittide.SharedTypes (Bytes)
 import Bittide.Transceiver (CInputs (..), COutputs (..), Config, transceiverPrbsNC)
-import Bittide.Transceiver.ResetManager (emptyStatistics)
+
+-- import Bittide.Transceiver.ResetManager (emptyStatistics)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import GHC.Stack (HasCallStack)
@@ -60,7 +61,7 @@ transceiverPrbsNWb ::
     )
 transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   Fwd tOutputs <- transceiverPrbsNC clk tReset config -< (Fwd tInputs, gths)
-  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <- deviceWb "Transceivers" -< wb
+  [wbc0, wbc1, wbc2, wbc3 {-wbs0,-}, wbs1, wbs2, wbs3] <- deviceWb "Transceivers" -< wb
 
   -- Configuration registers
   (Fwd tEnable, _c0) <-
@@ -73,8 +74,8 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
     registerWb clk tReset txStartsConfig (repeat False) -< (wbc3, Fwd noWrite)
 
   -- Status registers
-  registerWb_ clk tReset statsConfig (repeat emptyStatistics)
-    -< (wbs0, Fwd (Just <$> bundle tOutputs.stats))
+  -- registerWb_ clk tReset statsConfig (repeat emptyStatistics)
+  --   -< (wbs0, Fwd (Just <$> bundle tOutputs.stats))
   registerWb_ clk tReset handshakesDoneConfig (repeat False)
     -< (wbs1, Fwd (Just <$> bundle tOutputs.handshakesDoneFree))
   registerWb_ clk tReset linkReadysConfig (repeat False)
@@ -121,11 +122,11 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
           "Indicate ready to transmit (non-link negotiation) data. Note that the transceiver block will not transition to sending data until you indicate the link is also ready to receive data (see 'receive_readys'). Though this can be set independently of 'channel_enables', this setting has no effect unless the corresponding channel is also enabled. Once set, there is no way to retract readiness until the next time the channel is disabled."
       }
 
-  statsConfig =
-    (registerConfig "statistics")
-      { access = ReadOnly
-      , description = "Various statistics from the transceiver reset manager."
-      }
+  -- statsConfig =
+  --   (registerConfig "statistics")
+  --     { access = ReadOnly
+  --     , description = "Various statistics from the transceiver reset manager."
+  --     }
 
   handshakesDoneConfig =
     (registerConfig "handshakes_done")

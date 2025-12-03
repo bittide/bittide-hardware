@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
 
-module Bittide.Instances.Hitl.Dut.SwitchDemo where
+module Bittide.Instances.Hitl.SwitchDemo.Core (core) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -12,7 +12,6 @@ import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
-import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
@@ -24,7 +23,7 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
-import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (Bytes)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
 import Bittide.Sync (Sync)
@@ -32,34 +31,22 @@ import Bittide.Wishbone (
   readDnaPortE2WbWorker,
   timeWb,
   uartBytes,
-  uartDf,
   uartInterfaceWb,
  )
 
 import Clash.Class.BitPackC (ByteOrder)
-import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
-import Data.Char (ord)
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap (MemoryMap, Mm)
+import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone
-import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
+import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
-#ifdef SIM_BAUD_RATE
-type Baud = MaxBaudRate Basic125
-#else
-type Baud = 921_600
-#endif
-
 type FifoSize = 5 -- = 2^5 = 32
-
-baud :: SNat Baud
-baud = SNat
 
 {- Internal busses:
     - Instruction memory
@@ -138,38 +125,10 @@ calendarConfig =
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-memoryMapMu, memoryMapCc :: MemoryMap
-(memoryMapMu, memoryMapCc) = (muMm, ccMm)
- where
-  Circuit circuitFn =
-    withBittideByteOrder
-      $ switchDemoC
-        (clockGen, resetGen, enableGen)
-        (clockGen, resetGen, enableGen)
-        (repeat clockGen)
-        (repeat resetGen)
-  ((SimOnly muMm, SimOnly ccMm, _, _, _, _, _), _) =
-    circuitFn
-      (
-        ( ()
-        , ()
-        , pure (JtagIn 0 0 0)
-        , pure maxBound
-        , pure maxBound
-        , pure maxBound
-        , repeat (pure Nothing)
-        )
-      ,
-        ( ()
-        , repeat ()
-        , ()
-        , ()
-        , repeat ()
-        , pure low
-        )
-      )
+type MuBusses = 19
+type MuAddressWidth = NmuRemBusWidth MuBusses
 
-muConfig :: SimpleManagementConfig 18
+muConfig :: SimpleManagementConfig MuBusses
 muConfig =
   SimpleManagementConfig
     { peConfig =
@@ -199,19 +158,11 @@ ccConfig =
     , includeIlaWb = False
     }
 
-uartLabels :: Vec 2 (Vec 2 Byte)
-uartLabels =
-  fmap (fromIntegral . ord)
-    <$> ( $(listToVecTH "MU")
-            :> $(listToVecTH "CC")
-            :> Nil
-        )
-
-switchDemoC ::
+core ::
   ( ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
-  (Clock Basic125, Reset Basic125, Enable Basic125) ->
+  (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
@@ -225,13 +176,15 @@ switchDemoC ::
     , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     )
     ( CSignal Bittide (CallistoResult LinkCount)
-    , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
-    , "UART_TX" ::: CSignal Basic125 Bit
-    , "EB_STABLES" ::: Vec LinkCount (CSignal Bittide Bool)
+    , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
+    , "MU_UART" ::: Df Bittide (BitVector 8)
+    , "CC_UART" ::: Df Bittide (BitVector 8)
+    , "MU_TRANSCEIVER"
+        ::: (ToConstBwd Mm.Mm, Wishbone Bittide 'Standard MuAddressWidth (Bytes 4))
     )
-switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
+core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMm, ccMm, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
@@ -245,6 +198,7 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
         , (switchWbMM, switchWb)
         , dnaWb
         , muUartBus
+        , muTransceiverBus
         ]
       , restWbs
       ) <-
@@ -260,7 +214,7 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
 
     -- Start internal links
     (ugnWbs, ebWbs) <- Vec.split -< restWbs
-    (_relDatCount, _underflow, _overflow, ebStables, Fwd rxs1) <-
+    (_relDatCount, _underflow, _overflow, _ebStables, Fwd rxs1) <-
       unzip5Vec
         <| ( Vec.vecCircuits
               $ xilinxElasticBufferWb
@@ -286,19 +240,6 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
       defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
         -< (peWbMM, (Fwd lc, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
     -- Stop ASIC processing element
-
-    -- Start UART multiplexing
-    uartTxBytes <-
-      defaultRefClkRstEn
-        $ asciiDebugMux d1024 uartLabels
-        -< [muUartBytes, ccUartBytes]
-    (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
-
-    muUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst -< muUartBytesBittide
-    ccUartBytes <-
-      dcFifoDf d5 bitClk bitRst refClk refRst -< ccUartBytesBittide
-    -- Stop UART multiplexing
 
     -- Start clock control
     ( sync
@@ -349,12 +290,18 @@ switchDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets 
                         }
             else swCcOut0
 
-    idC -< (Fwd swCcOut1, txs, Fwd lc, uartTx, ebStables, sync)
+    idC
+      -< ( Fwd swCcOut1
+         , Fwd lc
+         , txs
+         , sync
+         , muUartBytesBittide
+         , ccUartBytesBittide
+         , muTransceiverBus
+         )
  where
   defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   defaultBittideClkRstEn = withClockResetEnable bitClk bitRst bitEna
-  defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
-  defaultRefClkRstEn = withClockResetEnable refClk refRst refEna
 
 uncurry5 ::
   (a -> b -> c -> d -> e -> f) ->

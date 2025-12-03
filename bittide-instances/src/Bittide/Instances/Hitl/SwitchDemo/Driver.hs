@@ -5,18 +5,14 @@
 -- TODO: Remove use of partial functions
 {-# OPTIONS_GHC -Wno-x-partial #-}
 
-module Bittide.Instances.Hitl.Driver.SwitchDemo where
+module Bittide.Instances.Hitl.SwitchDemo.Driver where
 
 import Clash.Prelude
 
 import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
 import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
-import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Dut.SwitchDemo (
-  memoryMapCc,
-  memoryMapMu,
- )
+import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
@@ -59,6 +55,7 @@ import Vivado.VivadoM
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import qualified Bittide.Calculator as Calc
+import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as MemoryMaps
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V
@@ -213,7 +210,7 @@ getPathAddress mm = traverseTree annAbsTree1
     devDef = mm.deviceDefs M.! devName
 
 muSwitchDemoPeBuffer :: (HasCallStack, Num a, Show a) => a
-muSwitchDemoPeBuffer = getPathAddress memoryMapMu ["0", "SwitchDemoPE", "buffer"]
+muSwitchDemoPeBuffer = getPathAddress MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
 
 dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
@@ -236,22 +233,22 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
 
-  sampleMemoryBase = getPathAddress @Integer memoryMapCc ["0", "SampleMemory", "data"]
+  sampleMemoryBase = getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
 
 initGdb ::
   FilePath ->
   String ->
   Gdb ->
-  Int ->
+  Ocd.TapInfo ->
   (HwTarget, DeviceInfo) ->
   IO ()
-initGdb hitlDir binName gdb gdbPort (hwT, _d) = do
+initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
   Gdb.setLogging gdb
     $ hitlDir
     </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
   Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
-  Gdb.setTarget gdb gdbPort
+  Gdb.setTarget gdb tapInfo.gdbPort
   Gdb.setTimeout gdb Nothing
   Gdb.runCommand gdb "echo connected to target device"
   pure ()
@@ -289,6 +286,36 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
   pure (pico, cleanup)
 
+{- | Parse the tap info from OpenOCD log produced during startup. This function
+expects to find multiple JTAG IDs and exactly one GDB port. This is typically
+paired with 'vexriscv_boot_init.tcl' which only creates a target for the
+last TAP (the boot CPU).
+-}
+parseBootTapInfo :: (HasCallStack) => Ocd.OcdInitData -> Ocd.TapInfo
+parseBootTapInfo initOcd =
+  case (L.sortOn snd <$> Ocd.parseJtagIds initOcd.log, Ocd.parseGdbPorts initOcd.log) of
+    (Left err, _) -> error $ "Failed to parse JTAG IDs from OpenOCD log: " <> err
+    (_, Left err) -> error $ "Failed to parse GDB ports from OpenOCD log: " <> err
+    (Right [], Right _) -> error "No JTAG IDs found in OpenOCD log!"
+    (Right _, Right (_ : _ : _)) -> error "Multiple GDB ports found in OpenOCD log!"
+    (Right _, Right []) -> error "No GDB ports found in OpenOCD log!"
+    (Right ((jtagTapId, jtagId) : _), Right [(gdbTapId, gdbPort)])
+      | jtagTapId /= gdbTapId -> error [i|#{jtagTapId} /= #{gdbTapId}|]
+      | otherwise -> Ocd.TapInfo{tapId = jtagTapId, jtagId, gdbPort}
+
+{- | Parse the tap info from OpenOCD log produced during startup. This function
+expects to find all taps given to it. For each tap, it expects to find exactly one
+GDB port.
+-}
+parseTapInfo :: (HasCallStack) => [Ocd.JtagId] -> Ocd.OcdInitData -> [Ocd.TapInfo]
+parseTapInfo expectedJtagIds initOcd =
+  case Ocd.parseJtagIdsAndGdbPorts initOcd.log of
+    Left err -> error $ "Failed to parse TAP info from OpenOCD log: " <> err
+    Right tapInfos
+      | ((.jtagId) <$> tapInfos) /= expectedJtagIds ->
+          error [i|Parsed JTAG IDs do not match expected IDs!|]
+      | otherwise -> tapInfos
+
 driver ::
   (HasCallStack) =>
   String ->
@@ -310,7 +337,7 @@ driver testName targets = do
       let
         mmioAddrs :: [Integer]
         mmioAddrs =
-          [ getPathAddress memoryMapMu ["0", "CaptureUgn" <> show @Integer n]
+          [ getPathAddress MemoryMaps.mu ["0", "CaptureUgn" <> show @Integer n]
           | n <- [0 .. natToNum @(LinkCount - 1)]
           ]
 
@@ -333,8 +360,8 @@ driver testName targets = do
     muGetCurrentTime :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
-      Gdb.writeLe gdb (getPathAddress @Integer memoryMapMu ["0", "Timer", "command"]) Capture
-      Gdb.readLe gdb (getPathAddress @Integer memoryMapMu ["0", "Timer", "scratchpad"])
+      Gdb.writeLe gdb (getPathAddress @Integer MemoryMaps.mu ["0", "Timer", "command"]) Capture
+      Gdb.readLe gdb (getPathAddress @Integer MemoryMaps.mu ["0", "Timer", "scratchpad"])
 
     muWriteCfg ::
       (HasCallStack) =>
@@ -352,19 +379,19 @@ driver testName targets = do
         putStrLn $ "Writing config to device " <> d.deviceId
         Gdb.writeLe @(Unsigned 64)
           gdb
-          (getPathAddress memoryMapMu (sdpePrefixed "read_start"))
+          (getPathAddress MemoryMaps.mu (sdpePrefixed "read_start"))
           cfg.startReadAt
         Gdb.writeLe @(Unsigned 64)
           gdb
-          (getPathAddress memoryMapMu (sdpePrefixed "read_cycles"))
+          (getPathAddress MemoryMaps.mu (sdpePrefixed "read_cycles"))
           (numConvert cfg.readForN)
         Gdb.writeLe @(Unsigned 64)
           gdb
-          (getPathAddress memoryMapMu (sdpePrefixed "write_start"))
+          (getPathAddress MemoryMaps.mu (sdpePrefixed "write_start"))
           cfg.startWriteAt
         Gdb.writeLe @(Unsigned 64)
           gdb
-          (getPathAddress memoryMapMu (sdpePrefixed "write_cycles"))
+          (getPathAddress MemoryMaps.mu (sdpePrefixed "write_cycles"))
           (numConvert cfg.writeForN)
 
     finalCheck ::
@@ -381,7 +408,7 @@ driver testName targets = do
           let
             headBaseAddr = muSwitchDemoPeBuffer
             myBaseAddr = toInteger (headBaseAddr + 24 * (L.length gdbs - num - 1))
-            dnaBaseAddr = getPathAddress @Integer memoryMapMu ["0", "Dna", "maybe_dna"]
+            dnaBaseAddr = getPathAddress @Integer MemoryMaps.mu ["0", "Dna", "maybe_dna"]
           myCounter <- Gdb.readLe @(Unsigned 64) headGdb myBaseAddr
           myDeviceDna <- Gdb.readLe @(Maybe (BitVector 96)) myGdb dnaBaseAddr
           headDeviceDna <- Gdb.readLe @(BitVector 96) headGdb (myBaseAddr + 0x08)
@@ -404,44 +431,63 @@ driver testName targets = do
       return result
 
   forM_ targets (assertProbe "probe_test_start")
-  T.tryWithTimeout
-    T.PrintActionTime
-    "Wait for handshakes successes from all boards"
-    30_000_000
-    $ awaitHandshakes targets
+
   let
-    -- Expected JTAG IDs for MU and CC TAPs in that order
-    expectedJtagIds = [0x0514C001, 0x1514C001]
-    openOcdStarts = liftIO <$> L.zipWith (Ocd.initOpenOcd expectedJtagIds hitlDir) targets [0 ..]
-  brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+    -- BOOT / MU / CC IDs
+    expectedJtagIds = [0x0_514C001, 0x1_514C001, 0x2_514C001]
+    toInitArgs (_, deviceInfo) targetIndex =
+      Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
+    initArgs = L.zipWith toInitArgs targets [0 ..]
+    optionalBootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
+    openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalBootInitArgs
+
+  let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
+  brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+    -- Start OpenOCD that will program the boot CPU
+    brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+      let bootTapInfos = parseBootTapInfo <$> initOcdsData
+
+      Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
+        liftIO
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) bootGdbs
+        liftIO $ mapConcurrently_ Gdb.continue bootGdbs
+        liftIO
+          $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
+          $ forConcurrently_ picocoms
+          $ \pico ->
+            waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
+
     let
-      allTapInfos = (.tapInfos) <$> initOcdsData
+      optionalInitArgs = L.repeat def
+      openOcdStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalInitArgs
 
-      muTapInfos, ccTapInfos :: [Ocd.TapInfo]
-      (muTapInfos, ccTapInfos)
-        | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
-        , [mus, ccs] <- L.transpose allTapInfos =
-            (mus, ccs)
-        | otherwise =
-            error
-              $ "Unexpected number of OpenOCD taps initialized. Expected: "
-              <> show (L.length expectedJtagIds)
-              <> ", but got: "
-              <> show (L.length <$> allTapInfos)
+    -- Start OpenOCD instances for all CPUs
+    brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+      let
+        allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-      muPorts = (.gdbPort) <$> muTapInfos
-      ccPorts = (.gdbPort) <$> ccTapInfos
+        _bootTapInfos, muTapInfos, ccTapInfos :: [Ocd.TapInfo]
+        (_bootTapInfos, muTapInfos, ccTapInfos)
+          | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
+          , [boots, mus, ccs] <- L.transpose allTapInfos =
+              (boots, mus, ccs)
+          | otherwise =
+              error
+                $ "Unexpected number of OpenOCD taps initialized. Expected: "
+                <> show (L.length expectedJtagIds)
+                <> ", but got: "
+                <> show (L.length <$> allTapInfos)
 
-    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
-      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+      Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
-      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muPorts targets
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+        Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+          liftIO
+            $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muTapInfos targets
+          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
-        let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO
