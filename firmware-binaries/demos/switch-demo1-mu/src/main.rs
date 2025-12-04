@@ -23,7 +23,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Centering buffer occupancies").unwrap();
     for (i, eb) in [
-        &INSTANCES.elastic_buffer,
+        &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
         &INSTANCES.elastic_buffer_2,
         &INSTANCES.elastic_buffer_3,
@@ -56,7 +56,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Starting UGN captures").unwrap();
     let mut capture_ugns = [
-        (INSTANCES.capture_ugn, false),
+        (INSTANCES.capture_ugn_0, false),
         (INSTANCES.capture_ugn_1, false),
         (INSTANCES.capture_ugn_2, false),
         (INSTANCES.capture_ugn_3, false),
