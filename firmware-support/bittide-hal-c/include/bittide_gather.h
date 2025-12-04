@@ -2,38 +2,32 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+/// This file contains helper functions for working with gather units.
+///
+/// Because there are multiple different implementations of gather units
+/// (due to slight differences in register types) this code would need to be
+/// generic.
+/// As C doesn't have generics, this file instead depends on the specific
+/// gather unit header file to be included to use the correct interface.
+
 #ifndef BITTIDE_GATHER_H
 #define BITTIDE_GATHER_H
 
-#include <stdint.h>
+#include "stdbool.h"
+#include "stdint.h"
 
-/**
- * GatherUnit - Handle for interfacing with a gather unit
- *
- * The gather unit collects data from local memory and sends it to other nodes
- * over the Bittide network.
- */
-typedef struct {
-  volatile uint64_t *gather_memory;   ///< Pointer to gather memory base address
-  volatile uint32_t *metacycle_count; ///< Pointer to metacycle count register
-  volatile uint32_t
-      *metacycle_register; ///< Pointer to metacycle synchronization register
-  uint32_t memory_len;     ///< Length of gather memory in uint64_t words
-} GatherUnit;
+// All of those includes don't really do anything.. I guess it might help
+// with auto-completion though?
 
-/**
- * Initialize a GatherUnit
- *
- * @param gather_memory Pointer to the gather memory base address
- * @param metacycle_count Pointer to the metacycle count register
- * @param metacycle_register Pointer to the metacycle synchronization register
- * @param memory_len Length of the gather memory in uint64_t words
- * @return Initialized GatherUnit struct
- */
-GatherUnit gather_unit_init(volatile uint64_t *gather_memory,
-                            volatile uint32_t *metacycle_count,
-                            volatile uint32_t *metacycle_register,
-                            uint32_t memory_len);
+#ifdef HAL_SCATTER_GATHER_PE_DEVICE_GATHER_UNIT_H
+#include "hals/scatter_gather_pe/devices/gather_unit.h"
+#elif HAL_SOFT_UGN_DEMO_GPPE_DEVICE_GATHER_UNIT_H
+#include "hals/soft_ugn_demo_gppe/devices/gather_unit.h"
+#elif HAL_SWITCH_DEMO_GPPE_PE_DEVICE_GATHER_UNIT_H
+#include "hals/switch_demo_gppe_pe/devices/gather_unit.h"
+#else
+#error "No gather unit header definition found!"
+#endif
 
 /**
  * Write a slice of data to gather memory
@@ -46,26 +40,23 @@ GatherUnit gather_unit_init(volatile uint64_t *gather_memory,
  * words)
  * @param offset Offset in gather memory (in uint64_t words) to start writing to
  * @param len Number of uint64_t words to write
- * @return 0 on success, -1 if bounds check fails or parameters are invalid
+ * @return true on success, false if bounds check fails or parameters are
+ * invalid
  */
-int gather_unit_write_slice(const GatherUnit *unit, const uint64_t *src,
-                            uint32_t offset, uint32_t len);
+static inline bool gather_unit_write_slice(GatherUnit unit, const uint64_t *src,
+                                           uint32_t offset, uint32_t len) {
+  // Validate parameters
+  if (src == 0 || offset + len > GATHER_UNIT_GATHER_MEMORY_LEN) {
+    return false;
+  }
 
-/**
- * Read a slice of data from gather memory
- *
- * Reads data from the gather memory buffer. This function performs bounds
- * checking to prevent reading beyond the allocated memory region.
- *
- * @param unit Pointer to the GatherUnit
- * @param dst Destination buffer for the read data (must be at least len words)
- * @param offset Offset in gather memory (in uint64_t words) to start reading
- * from
- * @param len Number of uint64_t words to read
- * @return 0 on success, -1 if bounds check fails or parameters are invalid
- */
-int gather_unit_read_slice(const GatherUnit *unit, uint64_t *dst,
-                           uint32_t offset, uint32_t len);
+  // Perform write
+  for (uint32_t i = 0; i < len; i++) {
+    gather_unit_set_gather_memory_unchecked(unit, offset + i, src[i]);
+  }
+
+  return true;
+}
 
 /**
  * Wait for the next metacycle boundary
@@ -75,14 +66,8 @@ int gather_unit_read_slice(const GatherUnit *unit, uint64_t *dst,
  *
  * @param unit Pointer to the GatherUnit
  */
-void gather_unit_wait_for_new_metacycle(const GatherUnit *unit);
-
-/**
- * Get the current metacycle count
- *
- * @param unit Pointer to the GatherUnit
- * @return Current metacycle count
- */
-uint32_t gather_unit_metacycle_count(const GatherUnit *unit);
+static inline void gather_unit_wait_for_new_metacycle(GatherUnit unit) {
+  (void)gather_unit_get_metacycle_register(unit);
+}
 
 #endif // BITTIDE_GATHER_H

@@ -5,6 +5,7 @@
 #ifndef BITTIDE_TIMER_H
 #define BITTIDE_TIMER_H
 
+#include "shared_devices/timer.h"
 #include <stdint.h>
 
 // ============================================================================
@@ -26,14 +27,6 @@ typedef enum {
   WAIT_SUCCESS = 0,       // Wait was successful
   WAIT_ALREADY_PASSED = 1 // Requested instant already passed
 } WaitResult;
-
-/// Timer device structure (populated with memory-mapped register pointers)
-typedef struct {
-  volatile uint8_t *command;
-  volatile uint64_t *scratchpad;
-  volatile uint64_t *frequency;
-  volatile uint8_t *cmp_result;
-} Timer;
 
 // ============================================================================
 // Duration Function Declarations
@@ -89,24 +82,18 @@ uint64_t instant_to_cycles(Instant i, uint64_t frequency);
 // Timer Function Declarations
 // ============================================================================
 
-Timer timer_init(volatile uint8_t *command, volatile uint64_t *scratchpad,
-                 volatile uint64_t *frequency, volatile uint8_t *cmp_result);
-
-uint64_t timer_frequency(const Timer *timer);
-
 // Cycle-based API (Low-level)
-uint64_t timer_now_cycles(const Timer *timer);
-void timer_wait_cycles(const Timer *timer, uint64_t cycles);
-WaitResult timer_wait_until_cycles(const Timer *timer, uint64_t target_cycles);
-void timer_wait_cycles_stall(const Timer *timer, uint64_t cycles);
-WaitResult timer_wait_until_cycles_stall(const Timer *timer,
-                                         uint64_t target_cycles);
+uint64_t timer_now_cycles(Timer timer);
+void timer_wait_cycles(Timer timer, uint64_t cycles);
+WaitResult timer_wait_until_cycles(Timer timer, uint64_t target_cycles);
+void timer_wait_cycles_stall(Timer timer, uint64_t cycles);
+WaitResult timer_wait_until_cycles_stall(Timer timer, uint64_t target_cycles);
 
 // Microsecond-based API (High-level)
-Instant timer_now(const Timer *timer);
-void timer_wait(const Timer *timer, Duration duration);
-WaitResult timer_wait_until(const Timer *timer, Instant target);
-void timer_wait_stall(const Timer *timer, Duration duration);
-WaitResult timer_wait_until_stall(const Timer *timer, Instant target);
+Instant timer_now(Timer timer);
+void timer_wait(Timer timer, Duration duration);
+WaitResult timer_wait_until(Timer timer, Instant target);
+void timer_wait_stall(Timer timer, Duration duration);
+WaitResult timer_wait_until_stall(Timer timer, Instant target);
 
 #endif // BITTIDE_TIMER_H

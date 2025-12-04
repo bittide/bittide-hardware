@@ -277,7 +277,7 @@ fn annotate_types(
 ) {
     let mut has_float = BTreeSet::new();
 
-    for (variant_handle, variant) in varis.variants.iter() {
+    for (variant_handle, variant) in varis.type_ref_variants.iter() {
         let ty_desc = &ctx.type_descs[variant.original_type_desc];
 
         for ty_handle in ty_desc.type_ref_range.handles() {
@@ -299,7 +299,7 @@ fn annotate_types(
     loop {
         let size_before = has_float.len();
 
-        for (variant_handle, variant) in varis.variants.iter() {
+        for (variant_handle, variant) in varis.type_ref_variants.iter() {
             let ty_desc = &ctx.type_descs[variant.original_type_desc];
 
             for ty_handle in ty_desc.type_ref_range.handles() {
@@ -308,7 +308,7 @@ fn annotate_types(
                     .get(&ty_handle)
                     .copied()
                     .unwrap_or(ty_handle);
-                if let Some(sub) = variant.monomorph_substitutions.get(&ty_handle) {
+                if let Some(sub) = variant.monomorph_type_ref_substitutions.get(&ty_handle) {
                     if has_float.contains(sub) {
                         has_float.insert(variant_handle);
                     }
@@ -327,7 +327,7 @@ fn annotate_types(
         }
     }
 
-    for (variant_handle, variant) in varis.variants.iter() {
+    for (variant_handle, variant) in varis.type_ref_variants.iter() {
         if ctx.type_aliases.contains(&variant.original_type_desc) {
             continue;
         }

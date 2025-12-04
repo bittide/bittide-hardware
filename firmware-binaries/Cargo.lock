@@ -48,6 +48,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bittide-hal-c"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "memmap-generate",
+]
+
+[[package]]
 name = "bittide-macros"
 version = "0.1.0"
 dependencies = [
@@ -80,6 +88,7 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 name = "c_hello"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal-c",
  "cc",
  "memmap-generate",
  "riscv-rt",
@@ -89,6 +98,7 @@ dependencies = [
 name = "c_scatter_gather_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal-c",
  "bittide-sys",
  "cc",
  "memmap-generate",
@@ -100,6 +110,7 @@ dependencies = [
 name = "c_timer_wb"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal-c",
  "bittide-sys",
  "cc",
  "memmap-generate",
@@ -622,6 +633,7 @@ name = "soft-ugn-gppe"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-hal-c",
  "bittide-sys",
  "cc",
  "memmap-generate",

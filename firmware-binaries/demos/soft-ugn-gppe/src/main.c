@@ -4,19 +4,20 @@
 
 #include "bittide_dna.h"
 #include "bittide_uart.h"
-#include "softugndemogppe_memmap.h"
+#include "hals/soft_ugn_demo_gppe/device_instances.h"
 
 int c_main(void) {
-  Uart uart = uart_init(UART_DATA, UART_STATUS);
+  Uart uart = hal.uart;
+
   dna_t dna_value;
-  dna_read(DNA_MAYBE_DNA, dna_value);
+  dna_read(hal.dna, dna_value);
 
-  uart_puts(&uart, "DNA: ");
-  uart_putdna(&uart, dna_value);
-  uart_puts(&uart, "\n");
+  uart_puts(uart, "DNA: ");
+  uart_putdna(uart, dna_value);
+  uart_puts(uart, "\n");
 
-  uart_puts(&uart, "Running on RISC-V\n");
-  uart_puts(&uart, "Hello from C!\n");
+  uart_puts(uart, "Running on RISC-V\n");
+  uart_puts(uart, "Hello from C!\n");
 
   while (1) {
   }

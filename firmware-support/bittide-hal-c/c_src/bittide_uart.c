@@ -3,41 +3,36 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "bittide_uart.h"
+#include "shared_devices/uart.h"
 
-Uart uart_init(volatile uint8_t *data, volatile uint8_t *status) {
-  Uart uart = {.data = data, .status = status};
-  return uart;
+int uart_tx_full(Uart uart) {
+  return uart_get_status(uart) & UART_STATUS_TX_FULL;
 }
 
-int uart_tx_full(const Uart *uart) {
-  return *uart->status & UART_STATUS_TX_FULL;
+int uart_rx_empty(Uart uart) {
+  return uart_get_status(uart) & UART_STATUS_RX_EMPTY;
 }
 
-int uart_rx_empty(const Uart *uart) {
-  return *uart->status & UART_STATUS_RX_EMPTY;
-}
-
-void uart_putc(const Uart *uart, char c) {
+void uart_putc(Uart uart, char c) {
   while (uart_tx_full(uart)) {
     // Wait for TX buffer to be ready
   }
-  *uart->data = c;
+  uart_set_data(uart, c);
 }
 
-void uart_puts(const Uart *uart, const char *s) {
+void uart_puts(Uart uart, const char *s) {
   while (*s) {
     uart_putc(uart, *s++);
   }
 }
 
-char uart_getc(const Uart *uart) {
+char uart_getc(Uart uart) {
   while (uart_rx_empty(uart)) {
     // Wait for RX buffer to have data
   }
-  return *uart->data;
+  return uart_get_data(uart);
 }
-
-void uart_puthex32(const Uart *uart, uint32_t val) {
+void uart_puthex32(Uart uart, uint32_t val) {
   const char hex[] = "0123456789abcdef";
   uart_puts(uart, "0x");
   for (int i = 28; i >= 0; i -= 4) {
@@ -45,7 +40,7 @@ void uart_puthex32(const Uart *uart, uint32_t val) {
   }
 }
 
-void uart_puthex64(const Uart *uart, uint64_t val) {
+void uart_puthex64(Uart uart, uint64_t val) {
   const char hex[] = "0123456789abcdef";
   uart_puts(uart, "0x");
   for (int i = 60; i >= 0; i -= 4) {
@@ -53,7 +48,7 @@ void uart_puthex64(const Uart *uart, uint64_t val) {
   }
 }
 
-void uart_putdna(const Uart *uart, const dna_t val) {
+void uart_putdna(Uart uart, const dna_t val) {
   const char hex[] = "0123456789abcdef";
   // DNA is 96 bits stored as 3x32-bit words
   // Print from most significant to least significant word
@@ -63,8 +58,7 @@ void uart_putdna(const Uart *uart, const dna_t val) {
     }
   }
 }
-
-void uart_putdec(const Uart *uart, uint64_t val) {
+void uart_putdec(Uart uart, uint64_t val) {
   char buf[21]; // max 20 digits for uint64_t + null
   int i = 20;
   buf[i] = '\0';

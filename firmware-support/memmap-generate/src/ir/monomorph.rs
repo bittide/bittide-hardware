@@ -19,7 +19,7 @@ use crate::{
         input_to_ir::IrInputMapping,
         types::{IrCtx, TypeDescription, TypeName, TypeRef},
     },
-    storage::{Handle, Storage},
+    storage::{Handle, HandleRange, Storage},
 };
 
 /// Whether a type level argument should be monomorphized or not.
@@ -31,13 +31,15 @@ pub enum ArgMonomorphState {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Debug)]
 enum MonomorphTypeRefResult<'ir> {
-    MonomorphVariant(Handle<MonomorphVariant>),
+    TypeRefVariant(Handle<TypeRefVariant>),
+    TupleVariant(Handle<TupleVariant>),
     RawArg(&'ir input::TypeRef),
 }
 
 /// A pass describing what elements should be monomorphized or not.
 pub trait MonomorphPass {
     fn custom_type(&mut self, ctx: &IrCtx, desc: &TypeDescription, args: &mut [ArgMonomorphState]);
+    fn monomorph_tuples(&mut self) -> bool;
 }
 
 /// Storages for variant information.
@@ -45,27 +47,36 @@ pub trait MonomorphPass {
 /// Tracks monomorph variants externally to the [IrCtx].
 #[derive(Default, Debug)]
 pub struct MonomorphVariants {
-    pub variants: Storage<MonomorphVariant>,
+    pub type_ref_variants: Storage<TypeRefVariant>,
+    pub tuple_variant: Storage<TupleVariant>,
 
-    pub variants_by_type: BTreeMap<Handle<TypeName>, Vec<Handle<MonomorphVariant>>>,
+    pub variants_by_type: BTreeMap<Handle<TypeName>, Vec<Handle<TypeRefVariant>>>,
 
-    pub type_refs: BTreeMap<Handle<TypeRef>, Handle<MonomorphVariant>>,
+    pub type_refs: BTreeMap<Handle<TypeRef>, Handle<TypeRefVariant>>,
+    pub tuples: BTreeMap<Handle<TypeRef>, Handle<TupleVariant>>,
 }
 
 enum TypeDescMonomorphMode<'a> {
     TopLevel,
     RecurseMonomorph {
         variable_subs: BTreeMap<Handle<TypeRef>, Handle<TypeRef>>,
-        mono_subs: &'a mut BTreeMap<Handle<TypeRef>, Handle<MonomorphVariant>>,
+        mono_type_ref_subs: &'a mut BTreeMap<Handle<TypeRef>, Handle<TypeRefVariant>>,
+        mono_tuple_subs: &'a mut BTreeMap<Handle<TypeRef>, Handle<TupleVariant>>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct MonomorphVariant {
+pub struct TypeRefVariant {
     pub original_type_desc: Handle<TypeDescription>,
     pub variable_substitutions: BTreeMap<Handle<TypeRef>, Handle<TypeRef>>,
-    pub monomorph_substitutions: BTreeMap<Handle<TypeRef>, Handle<MonomorphVariant>>,
+    pub monomorph_type_ref_substitutions: BTreeMap<Handle<TypeRef>, Handle<TypeRefVariant>>,
+    pub monomorph_tuple_substitutions: BTreeMap<Handle<TypeRef>, Handle<TupleVariant>>,
     pub argument_mono_values: SmallVec<[Option<Handle<TypeRef>>; 2]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TupleVariant {
+    pub elements: SmallVec<[Handle<TypeRef>; 2]>,
 }
 
 /// Monomorpher that keeps track of which arguments have been encountered yet.
@@ -78,8 +89,9 @@ pub struct Monomorpher<'ir> {
             Handle<TypeName>,
             SmallVec<[Option<MonomorphTypeRefResult<'ir>>; 2]>,
         ),
-        Handle<MonomorphVariant>,
+        Handle<TypeRefVariant>,
     >,
+    tuples_by_elems: BTreeMap<SmallVec<[MonomorphTypeRefResult<'ir>; 2]>, Handle<TupleVariant>>,
     number_primitives: BTreeMap<Handle<TypeRef>, Handle<TypeRef>>,
     tuples: Vec<Handle<TypeRef>>, // hmm no idea how to deal with this :melting_face:
     vectors: Vec<Handle<TypeRef>>,
@@ -91,6 +103,7 @@ impl<'ir> Monomorpher<'ir> {
             ctx,
             mapping,
             variants_by_args: BTreeMap::new(),
+            tuples_by_elems: BTreeMap::new(),
             number_primitives: BTreeMap::new(),
             tuples: vec![],
             vectors: vec![],
@@ -125,22 +138,27 @@ impl<'ir> Monomorpher<'ir> {
         varis: &mut MonomorphVariants,
         pass: &mut impl MonomorphPass,
     ) {
-        let variants_start = varis.variants.range_counter();
-        for var_handle in varis.variants.whole_range().handles() {
-            let var = &varis.variants[var_handle];
+        let variants_start = varis.type_ref_variants.range_counter();
+        for var_handle in varis.type_ref_variants.whole_range().handles() {
+            let var = &varis.type_ref_variants[var_handle];
             let desc_handle = var.original_type_desc;
             let desc = &self.ctx.type_descs[desc_handle];
             if let Some(variants) = varis.variants_by_type.get(&desc.name).cloned() {
                 for variant_handle in variants {
-                    let variant = &varis.variants[variant_handle];
+                    let variant = &varis.type_ref_variants[variant_handle];
 
-                    let mut mono_subs = BTreeMap::new();
+                    let mut mono_type_ref_subs = BTreeMap::new();
+                    let mut mono_tuple_subs = BTreeMap::new();
                     let mut mode = TypeDescMonomorphMode::RecurseMonomorph {
                         variable_subs: variant.variable_substitutions.clone(),
-                        mono_subs: &mut mono_subs,
+                        mono_type_ref_subs: &mut mono_type_ref_subs,
+                        mono_tuple_subs: &mut mono_tuple_subs,
                     };
                     self.monomorph_type_definition(varis, pass, &mut mode, desc_handle);
-                    varis.variants[variant_handle].monomorph_substitutions = mono_subs;
+                    varis.type_ref_variants[variant_handle].monomorph_type_ref_substitutions =
+                        mono_type_ref_subs;
+                    varis.type_ref_variants[variant_handle].monomorph_tuple_substitutions =
+                        mono_tuple_subs;
                 }
             } else {
                 panic!(
@@ -148,24 +166,27 @@ impl<'ir> Monomorpher<'ir> {
                 );
             }
         }
-        let mut range = variants_start.finish(&varis.variants);
+        let mut range = variants_start.finish(&varis.type_ref_variants);
 
         loop {
-            let variants_start = varis.variants.range_counter();
+            let variants_start = varis.type_ref_variants.range_counter();
 
             for var in range.handles() {
-                let variant = &varis.variants[var];
+                let variant = &varis.type_ref_variants[var];
 
-                let mut mono_subs = BTreeMap::new();
+                let mut mono_type_ref_subs = BTreeMap::new();
+                let mut mono_tuple_subs = BTreeMap::new();
                 let mut mode = TypeDescMonomorphMode::RecurseMonomorph {
                     variable_subs: variant.variable_substitutions.clone(),
-                    mono_subs: &mut mono_subs,
+                    mono_type_ref_subs: &mut mono_type_ref_subs,
+                    mono_tuple_subs: &mut mono_tuple_subs,
                 };
                 self.monomorph_type_definition(varis, pass, &mut mode, variant.original_type_desc);
-                varis.variants[var].monomorph_substitutions = mono_subs;
+                varis.type_ref_variants[var].monomorph_type_ref_substitutions = mono_type_ref_subs;
+                varis.type_ref_variants[var].monomorph_tuple_substitutions = mono_tuple_subs;
             }
 
-            range = variants_start.finish(&varis.variants);
+            range = variants_start.finish(&varis.type_ref_variants);
 
             if range.len == 0 {
                 break;
@@ -221,18 +242,15 @@ impl<'ir> Monomorpher<'ir> {
             TypeDescMonomorphMode::TopLevel => handle,
             TypeDescMonomorphMode::RecurseMonomorph {
                 variable_subs,
-                mono_subs: _,
+                mono_type_ref_subs: _,
+                mono_tuple_subs: _,
             } => variable_subs.get(&handle).copied().unwrap_or(handle),
         };
 
         match &self.ctx.type_refs[handle] {
             TypeRef::Reference { name, args } => {
-                let name_val = &self.ctx.type_names[*name].base;
-                if name_val == "ValidEntry" {
-                    println!("ValidEntry");
-                }
-                let mut arg_result_buf = Vec::with_capacity(args.len);
-                let mut arg_state = Vec::with_capacity(args.len);
+                let mut arg_result_buf = SmallVec::<[_; 2]>::with_capacity(args.len);
+                let mut arg_state = SmallVec::<[_; 2]>::with_capacity(args.len);
 
                 for arg in args.handles() {
                     arg_result_buf.push(self.monomorph_type_ref(varis, pass, type_desc_mode, arg));
@@ -248,7 +266,7 @@ impl<'ir> Monomorpher<'ir> {
 
                 let variant =
                     self.instantiate_type(varis, handle, *name, desc_handle, type_desc_mode, subs);
-                MonomorphTypeRefResult::MonomorphVariant(variant)
+                MonomorphTypeRefResult::TypeRefVariant(variant)
             }
             TypeRef::BitVector(arg_handle)
             | TypeRef::Unsigned(arg_handle)
@@ -265,11 +283,23 @@ impl<'ir> Monomorpher<'ir> {
                 MonomorphTypeRefResult::RawArg(self.mapping.type_refs[&handle])
             }
             TypeRef::Tuple(handle_range) => {
+                let mut element_refs = SmallVec::<[_; 2]>::new();
+
                 for handle in handle_range.handles() {
-                    self.monomorph_type_ref(varis, pass, type_desc_mode, handle);
+                    element_refs.push(self.monomorph_type_ref(varis, pass, type_desc_mode, handle));
                 }
                 self.tuples.push(handle);
-                MonomorphTypeRefResult::RawArg(self.mapping.type_refs[&handle])
+                if pass.monomorph_tuples() {
+                    MonomorphTypeRefResult::TupleVariant(self.instantiate_tuple(
+                        varis,
+                        type_desc_mode,
+                        handle,
+                        *handle_range,
+                        element_refs,
+                    ))
+                } else {
+                    MonomorphTypeRefResult::RawArg(self.mapping.type_refs[&handle])
+                }
             }
             TypeRef::Variable(_)
             | TypeRef::Bool
@@ -291,6 +321,65 @@ impl<'ir> Monomorpher<'ir> {
             .unwrap()
     }
 
+    fn instantiate_tuple(
+        &mut self,
+        varis: &mut MonomorphVariants,
+        type_desc_mode: &mut TypeDescMonomorphMode,
+        tuple_handle: Handle<TypeRef>,
+        elements: HandleRange<TypeRef>,
+        element_results: SmallVec<[MonomorphTypeRefResult<'ir>; 2]>,
+    ) -> Handle<TupleVariant> {
+        if let Some(var) = self.tuples_by_elems.get(&element_results) {
+            match type_desc_mode {
+                TypeDescMonomorphMode::TopLevel => {
+                    varis.tuples.insert(tuple_handle, *var);
+                }
+                TypeDescMonomorphMode::RecurseMonomorph {
+                    variable_subs: _,
+                    mono_type_ref_subs: _,
+                    mono_tuple_subs,
+                } => {
+                    mono_tuple_subs.insert(tuple_handle, *var);
+                }
+            }
+            return *var;
+        }
+
+        let mut resolved_elems = SmallVec::new();
+
+        for handle in elements.handles() {
+            let resolved_handle = match type_desc_mode {
+                TypeDescMonomorphMode::TopLevel => handle,
+                TypeDescMonomorphMode::RecurseMonomorph {
+                    variable_subs,
+                    mono_type_ref_subs: _,
+                    mono_tuple_subs: _,
+                } => variable_subs.get(&handle).copied().unwrap_or(handle),
+            };
+            resolved_elems.push(resolved_handle);
+        }
+
+        let tuple_var = TupleVariant {
+            elements: resolved_elems,
+        };
+        let handle = varis.tuple_variant.push(tuple_var);
+
+        match type_desc_mode {
+            TypeDescMonomorphMode::TopLevel => {
+                varis.tuples.insert(tuple_handle, handle);
+            }
+            TypeDescMonomorphMode::RecurseMonomorph {
+                variable_subs: _,
+                mono_type_ref_subs: _,
+                mono_tuple_subs,
+            } => {
+                mono_tuple_subs.insert(tuple_handle, handle);
+            }
+        }
+
+        handle
+    }
+
     fn instantiate_type(
         &mut self,
         varis: &mut MonomorphVariants,
@@ -304,7 +393,7 @@ impl<'ir> Monomorpher<'ir> {
                 (ArgMonomorphState, MonomorphTypeRefResult<'ir>),
             ),
         >,
-    ) -> Handle<MonomorphVariant> {
+    ) -> Handle<TypeRefVariant> {
         let desc = &self.ctx.type_descs[desc_handle];
         let with_names = desc.param_names.handles().zip(variable_subs);
 
@@ -329,9 +418,10 @@ impl<'ir> Monomorpher<'ir> {
                 }
                 TypeDescMonomorphMode::RecurseMonomorph {
                     variable_subs: _,
-                    mono_subs,
+                    mono_type_ref_subs,
+                    mono_tuple_subs: _,
                 } => {
-                    mono_subs.insert(type_handle, *var);
+                    mono_type_ref_subs.insert(type_handle, *var);
                 }
             }
             return *var;
@@ -348,14 +438,15 @@ impl<'ir> Monomorpher<'ir> {
         }
 
         // no variant created for this yet
-        let variant = MonomorphVariant {
+        let variant = TypeRefVariant {
             original_type_desc: desc_handle,
             variable_substitutions: subs,
-            monomorph_substitutions: Default::default(),
+            monomorph_type_ref_substitutions: Default::default(),
+            monomorph_tuple_substitutions: Default::default(),
             argument_mono_values: arg_subs,
         };
 
-        let variant_handle = varis.variants.push(variant);
+        let variant_handle = varis.type_ref_variants.push(variant);
         self.variants_by_args
             .insert((type_name, memo_args), variant_handle);
 
@@ -371,9 +462,10 @@ impl<'ir> Monomorpher<'ir> {
             }
             TypeDescMonomorphMode::RecurseMonomorph {
                 variable_subs: _,
-                mono_subs,
+                mono_type_ref_subs,
+                mono_tuple_subs: _,
             } => {
-                mono_subs.insert(type_handle, variant_handle);
+                mono_type_ref_subs.insert(type_handle, variant_handle);
             }
         }
 
@@ -403,6 +495,10 @@ pub mod passes {
                 }
             }
         }
+
+        fn monomorph_tuples(&mut self) -> bool {
+            false
+        }
     }
 
     /// Monomorphize type-level naturals and type arguments.
@@ -419,6 +515,10 @@ pub mod passes {
                 *arg = super::ArgMonomorphState::Monomorph;
             }
         }
+
+        fn monomorph_tuples(&mut self) -> bool {
+            true
+        }
     }
 
     /// Don't monomorphize anything.
@@ -434,6 +534,10 @@ pub mod passes {
             for arg in args {
                 *arg = super::ArgMonomorphState::NoMonomorph;
             }
+        }
+
+        fn monomorph_tuples(&mut self) -> bool {
+            false
         }
     }
 }
