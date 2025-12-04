@@ -16,6 +16,7 @@ module Bittide.Instances.Hitl.Setup (
   fpgaSetup,
   knownFpgaIds,
   knownFpgaIdsVec,
+  knownLinkConfigs,
   linkMask,
   linkMasks,
   demoRigInfo,
@@ -75,6 +76,9 @@ setup. The indices match the position of each FPGA in the mining rig.
 -}
 knownFpgaIdsVec :: Vec FpgaCount FpgaId
 knownFpgaIdsVec = fst <$> fpgaSetup
+
+knownLinkConfigs :: Vec FpgaCount (Vec LinkCount (Index FpgaCount))
+knownLinkConfigs = snd <$> fpgaSetup
 
 {- | The IDs of the Digilent chips on each of the FPGA boards of the test
 setup. The indices match the position of each FPGA in the mining rig.
