@@ -16,7 +16,6 @@ import System.IO (Handle, hGetChar, hReady)
 import "extra" Data.List.Extra (trimEnd)
 
 import Test.Tasty.HUnit
-import qualified System.IO as IO
 
 data Filter = Continue | Stop (Either String ())
 
@@ -106,10 +105,14 @@ Do not use on Handles that might return non-ASCII characters.
 -}
 readUntilLine :: Handle -> String -> IO [String]
 readUntilLine h expected = do
-  line <- IO.hGetLine h
-  if line == expected
-    then pure []
-    else (line :) <$> readUntilLine h expected
+  result <- expectLine h $ \s ->
+    trace ("Reading until \"" <> expected <> "\", got: " <> s) $
+      if s == expected
+        then Stop (Right ())
+        else Continue
+  case result of
+    Right lines' -> pure (init lines') -- Remove the expected line from the result
+    Left err -> error err
 
 {- | Read n characters from a handle.
 Do not use on Handles that might return non-ASCII characters.
