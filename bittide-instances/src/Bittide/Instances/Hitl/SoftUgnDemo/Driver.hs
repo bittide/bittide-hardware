@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PackageImports #-}
 
 module Bittide.Instances.Hitl.SoftUgnDemo.Driver where
@@ -19,9 +20,10 @@ import Bittide.Instances.Hitl.SwitchDemo.Driver (
  )
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
-import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
+import Bittide.Instances.Hitl.Utils.Ugn
+import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
-import Control.Monad (forM_)
+import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class
 import Data.Vector.Internal.Check (HasCallStack)
 import Project.FilePath
@@ -133,16 +135,23 @@ driver testName targets = do
               $ \pico ->
                 waitForLine pico.stdoutHandle "[MU] All elastic buffers centered"
 
-            liftIO
-              $ T.tryWithTimeoutOn
-                T.PrintActionTime
-                "Waiting for captured UGNs"
-                (3 * 60_000_000)
-                goDumpCcSamples
-              $ forConcurrently_ picocoms
-              $ \pico ->
-                waitForLine pico.stdoutHandle "[MU] All UGNs captured"
-
+            hardwareCaptureCounters <-
+              liftIO
+                $ T.tryWithTimeoutOn
+                  T.PrintActionTime
+                  "Waiting for hardware UGNs"
+                  (3 * 60_000_000)
+                  goDumpCcSamples
+                $ mapConcurrently
+                  ( \pico -> do
+                      parseCaptureCounters pico.stdoutHandle
+                  )
+                  picocoms
+            let hardwareUgns =
+                  L.zipWith
+                    (\i ccs -> (timingOracleToUgnEdge . counterCaptureToTimingOracle i) <$> ccs)
+                    [0 ..]
+                    hardwareCaptureCounters
             liftIO
               $ T.tryWithTimeoutOn
                 T.PrintActionTime
@@ -156,15 +165,54 @@ driver testName targets = do
             -- From here the actual test should be done, but for now it's just going to be
             -- waiting for the devices to print out over UART.
             liftIO $ mapConcurrently_ Gdb.continue gppeGdbs
-            liftIO
-              $ T.tryWithTimeoutOn
-                T.PrintActionTime
-                "Waiting for UGN discovery protocol to complete"
-                (600_000_000)
-                goDumpCcSamples
-              $ forConcurrently_ picocoms
-              $ \pico ->
-                waitForLine pico.stdoutHandle "[PE] UGN discovery protocol complete!"
+            softwareUgnsPerNode <-
+              liftIO
+                $ T.tryWithTimeoutOn
+                  T.PrintActionTime
+                  "Waiting for software UGNs"
+                  (600_000_000)
+                  goDumpCcSamples
+                $ mapConcurrently
+                  ( \pico -> do
+                      parseSoftwareUgns pico.stdoutHandle
+                  )
+                  picocoms
+
+            liftIO $ do
+              putStrLn "\n=== Hardware UGNs ==="
+              forM_ (L.zip hardwareUgns [0 :: Int ..]) $ \(hw, idx) ->
+                putStrLn $ "Node " <> show idx <> ": " <> show (L.length hw) <> " edges"
+
+              putStrLn "\n=== Software UGNs ==="
+              forM_ (L.zip softwareUgnsPerNode [0 :: Int ..]) $ \((swIn, swOut), idx) ->
+                putStrLn
+                  $ "Node "
+                  <> show idx
+                  <> ": "
+                  <> show (L.length swIn + L.length swOut)
+                  <> " edges"
+
+              -- Process and compare UGN edges
+              let hardwareUgnsFlat = postProcessHardwareUgns hardwareUgns
+              softwareUgnsFlat <- postProcessSoftwareUgns softwareUgnsPerNode
+              matched <- compareUgnEdges hardwareUgnsFlat softwareUgnsFlat
+
+              unless matched $ do
+                putStrLn "\n=== Per-Node Details ==="
+                forM_ (L.zip3 hardwareUgns softwareUgnsPerNode [0 :: Int ..]) $ \(hw, (swIn, swOut), idx) -> do
+                  let sw = swIn L.++ swOut
+                  when (L.length hw /= L.length sw) $ do
+                    putStrLn $ "\nNode " <> show idx <> " edge count differs:"
+                    putStrLn $ "  Hardware: " <> show (L.length hw) <> " edges"
+                    putStrLn
+                      $ "  Software: "
+                      <> show (L.length sw)
+                      <> " edges ("
+                      <> show (L.length swIn)
+                      <> " in + "
+                      <> show (L.length swOut)
+                      <> " out)"
+                error "UGN edges did not match between hardware and software"
 
             liftIO goDumpCcSamples
 
