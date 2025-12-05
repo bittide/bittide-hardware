@@ -42,8 +42,8 @@ fn main() -> ! {
     //   1: Write to the gather memory.
     //   2: Read from the scatter memory.
 
-    let source: [u64; MEM_SIZE] = core::array::from_fn(|i| i as u64);
-    let mut destination: [u64; MEM_SIZE] = [99; MEM_SIZE];
+    let source: [[u8; 8]; MEM_SIZE] = core::array::from_fn(|i| (i as u64).to_le_bytes());
+    let mut destination: [[u8; 8]; MEM_SIZE] = [99u64.to_le_bytes(); MEM_SIZE];
 
     // Metacycle 1: write to gather
     gather_unit.wait_for_new_metacycle();

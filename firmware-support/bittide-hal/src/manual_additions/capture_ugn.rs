@@ -13,6 +13,6 @@ impl CaptureUgn {
     }
 
     pub fn ugn_unchecked(&self) -> u64 {
-        self.local_counter() - self.remote_counter()
+        self.local_counter() - u64::from_le_bytes(self.remote_counter())
     }
 }

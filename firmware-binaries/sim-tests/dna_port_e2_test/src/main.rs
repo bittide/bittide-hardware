@@ -15,7 +15,10 @@ fn main() -> ! {
     // Initialize peripherals.
     let mut uart = unsafe { Uart::new(0x4000_0000 as *mut u8) };
     let dna = unsafe { Dna::new(0x6000_0000 as *mut u8) };
-    uwriteln!(uart, "{}", dna.dna()).unwrap();
+    let mut dna_arr = [0; 16];
+    dna_arr[0..12].copy_from_slice(&dna.dna());
+    let dna_val = u128::from_le_bytes(dna_arr);
+    uwriteln!(uart, "{}", dna_val).unwrap();
     loop {
         continue;
     }

@@ -10,7 +10,7 @@ impl GatherUnit {
     ///
     /// The source memory size must be smaller or equal to the memory size of
     /// the `GatherUnit` memory.
-    pub fn write_slice(&self, src: &[u64], offset: usize) {
+    pub fn write_slice(&self, src: &[[u8; 8]], offset: usize) {
         assert!(src.len() + offset <= Self::GATHER_MEMORY_LEN);
         let mut off = offset;
         for &val in src {
@@ -38,7 +38,7 @@ impl ScatterUnit {
     ///
     /// The destination memory size must be smaller or equal to the memory size
     ///  of the `ScatterUnit`.
-    pub fn read_slice(&self, dst: &mut [u64], offset: usize) {
+    pub fn read_slice(&self, dst: &mut [[u8; 8]], offset: usize) {
         assert!(dst.len() + offset <= Self::SCATTER_MEMORY_LEN);
         let mut off = offset;
         for val in dst {

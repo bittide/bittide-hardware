@@ -119,8 +119,8 @@ impl StabilityDetector {
         // XXX: These values are currently hardcoded to 8 bits, which would
         //      break if we ever have more than 8 links. We'll cross that bridge
         //      when we get there.
-        cc.set_links_settled(settleds as u8);
-        cc.set_links_stable(stables as u8);
+        cc.set_links_settled([settleds as u8]);
+        cc.set_links_stable([stables as u8]);
 
         Stability {
             stable: stables as u8,

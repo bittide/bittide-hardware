@@ -83,11 +83,7 @@ impl Callisto {
         self.accumulated_speed_requests += speed_change_to_sign(speed_request);
 
         if let Maybe::Just(wait_time) = self.config.wait_time {
-            self.update_reframe_state(
-                wait_time as usize,
-                Into::<u32>::into(cc.links_stable()) != 0,
-                c_des,
-            );
+            self.update_reframe_state(wait_time as usize, cc.links_stable()[0] != 0, c_des);
         }
 
         speed_request

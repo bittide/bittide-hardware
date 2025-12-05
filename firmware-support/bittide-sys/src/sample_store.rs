@@ -19,7 +19,7 @@ pub struct SampleStore {
 impl SampleStore {
     pub fn new(memory: SampleMemory, store_samples_every: usize) -> Self {
         // First memory location is reserved for the number of samples stored.
-        memory.set_data(0, 0);
+        memory.set_data(0, 0u32.to_le_bytes());
 
         Self {
             memory,
@@ -37,45 +37,49 @@ impl SampleStore {
         stability: Stability,
         net_speed_change: i32,
     ) {
-        let n_samples_stored: usize = self.memory.data(0).unwrap() as usize;
+        let n_samples_stored: usize = u32::from_le_bytes(self.memory.data(0).unwrap()) as usize;
         let start_index = n_samples_stored * WORDS_PER_SAMPLE + 1;
 
         // Store local clock counter
         let local_clock: u64 = freeze.local_clock_counter();
         let local_clock_msbs = (local_clock >> 32) as u32;
         let local_clock_lsbs = (local_clock & 0xFFFFFFFF) as u32;
-        self.memory.set_data(start_index, local_clock_lsbs);
-        self.memory.set_data(start_index + 1, local_clock_msbs);
+        self.memory
+            .set_data(start_index, local_clock_lsbs.to_le_bytes());
+        self.memory
+            .set_data(start_index + 1, local_clock_msbs.to_le_bytes());
 
         // Store number of sync pulses seen
         let number_of_sync_pulses_seen = freeze.number_of_sync_pulses_seen();
         self.memory
-            .set_data(start_index + 2, number_of_sync_pulses_seen);
+            .set_data(start_index + 2, number_of_sync_pulses_seen.to_le_bytes());
 
         // Store cycles since last sync pulse
         let cycles_since_sync_pulse = freeze.cycles_since_sync_pulse();
         self.memory
-            .set_data(start_index + 3, cycles_since_sync_pulse);
+            .set_data(start_index + 3, cycles_since_sync_pulse.to_le_bytes());
 
         // Store stability information
         self.memory.set_data(
             start_index + 4,
-            stability.stable as u32 | ((stability.settled as u32) << 8),
+            (stability.stable as u32 | ((stability.settled as u32) << 8)).to_le_bytes(),
         );
 
         // Store net speed change
         self.memory
-            .set_data(start_index + 5, net_speed_change as u32);
+            .set_data(start_index + 5, (net_speed_change as u32).to_le_bytes());
 
         // Store the EB counters
         for (i, eb_counter) in freeze.eb_counters_volatile_iter().enumerate() {
-            self.memory.set_data(start_index + 6 + i, eb_counter as u32);
+            self.memory
+                .set_data(start_index + 6 + i, (eb_counter as u32).to_le_bytes());
         }
 
         // Bump number of samples stored, but only if we're running "for real"
         // and the data actually fits in memory.
         if bump_counter && self.memory.data(start_index + WORDS_PER_SAMPLE).is_some() {
-            self.memory.set_data(0, (n_samples_stored + 1) as u32);
+            self.memory
+                .set_data(0, ((n_samples_stored + 1) as u32).to_le_bytes());
         }
     }
 

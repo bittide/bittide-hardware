@@ -15,7 +15,7 @@ pub struct ReceiveBufferEmpty;
 impl Uart {
     /// UART status register output
     pub fn read_status(&self) -> UartStatus {
-        let flags = self.status();
+        let flags = self.status()[0];
 
         let rx_mask = 0b10;
         let rx_empty = flags & rx_mask;
@@ -45,7 +45,7 @@ impl Uart {
         if self.read_status().receive_buffer_empty {
             Err(ReceiveBufferEmpty)
         } else {
-            Ok(self.data())
+            Ok(self.data()[0])
         }
     }
 
@@ -65,7 +65,7 @@ impl Uart {
         if self.read_status().transmit_buffer_full {
             Err(TransmitBufferFull)
         } else {
-            self.set_data(data);
+            self.set_data([data]);
             Ok(())
         }
     }

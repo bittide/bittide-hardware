@@ -7,7 +7,7 @@
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use ufmt::{uwrite, uwriteln};
+use ufmt::{uWrite, uwrite, uwriteln};
 
 use bittide_hal::hals::register_wb as hal;
 use bittide_hal::types;
@@ -18,28 +18,44 @@ use riscv_rt::entry;
 
 const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
-fn test_result(result: &str) -> ! {
+trait WriterAny: uWrite<Error = ()> + Write {}
+
+impl<T: uWrite<Error = ()> + Write> WriterAny for T {}
+
+fn test_result<F>(result: F) -> !
+where
+    F: FnOnce(&mut dyn WriterAny),
+{
     let uart = &mut INSTANCES.uart;
-    uwriteln!(uart, "RESULT: {}", result).unwrap();
+    uwrite!(uart, "RESULT: ").unwrap();
+    result(uart);
     loop {}
 }
 
 fn test_ok() -> ! {
-    test_result("OK")
+    test_result(|w| uwriteln!(w, "OK").unwrap())
 }
 
-fn test_fail(msg: &str) -> ! {
-    let mut full_msg = heapless::String::<150>::new();
-    write!(full_msg, "FAIL: {}", msg).unwrap();
-    test_result(&full_msg)
+fn test_fail(msg: impl FnOnce(&mut dyn WriterAny)) -> ! {
+    test_result(|w| {
+        uwrite!(w, "FAIL: ").unwrap();
+        msg(w);
+    });
 }
 
 fn expect<T: ufmt::uDebug + PartialEq>(msg: &str, expected: T, actual: T) {
     if expected != actual {
-        let mut err = heapless::String::<150>::new();
-        uwrite!(err, "{}: expected {:?}, got {:?}", msg, expected, actual).unwrap();
-        test_fail(&err);
+        test_fail(|w| {
+            uwriteln!(w, "{}: expected {:?}, got {:?}", msg, expected, actual).unwrap();
+        });
     }
+}
+
+fn bv16(v: u16) -> [u8; 2] {
+    v.to_le_bytes()
+}
+fn bv64(v: u64) -> [u8; 8] {
+    v.to_le_bytes()
 }
 
 #[cfg_attr(not(test), entry)]
@@ -94,14 +110,14 @@ fn main() -> ! {
     read_write!("u2", u2, 3721049880298531338, set_u2, 7442099760597062676);
     read_write!("u3", u3, 0xBADC_0FEE, set_u3, 24);
 
-    read_write!("bv0", bv0, 8, set_bv0, 16);
-    read_write!("bv1", bv1, 16, set_bv1, 32);
+    read_write!("bv0", bv0, [8], set_bv0, [16]);
+    read_write!("bv1", bv1, bv16(16), set_bv1, bv16(32));
     read_write!(
         "bv2",
         bv2,
-        3721049880298531338,
+        bv64(3721049880298531338),
         set_bv2,
-        7442099760597062676
+        bv64(7442099760597062676)
     );
 
     // floats/doubles don't implement uDebug, so go through bool instead :(
@@ -120,7 +136,13 @@ fn main() -> ! {
 
     read_write!("b0", b0, true, set_b0, false);
 
-    read_write!(array => "v0", v0, [0x8, 0x16, 0x24, 0x32, 0x40, 0x4E, 0x5C, 0x6A], set_v0, [16, 32, 64, 128, 3, 9, 27, 81]);
+    read_write!(
+        array => "v0",
+        v0,
+        [[0x8], [0x16], [0x24], [0x32], [0x40], [0x4E], [0x5C], [0x6A]],
+        set_v0,
+        [[16], [32], [64], [128], [3], [9], [27], [81]]
+    );
 
     // also check with iterator interface
     {
@@ -132,12 +154,12 @@ fn main() -> ! {
         {
             let mut msg = heapless::String::<64>::new();
             uwrite!(msg, "rt.v0[{:?}]", i).unwrap();
-            expect(&msg, expected, got);
+            expect(&msg, [expected], got);
         }
     }
 
-    read_write!(array => "v1", v1, [0x8, 0x16, 3721049880298531338], set_v1, [1600, 3200, 7442099760597062676]);
-    read_write!(array => "v2", v2, [[0x8, 0x16], [0x24, 0x32]], set_v2, [[0xAB, 0xCD], [0x12, 0x34]]);
+    read_write!(array => "v1", v1, [bv64(0x8), bv64(0x16), bv64(3721049880298531338u64)], set_v1, [bv64(1600), bv64(3200), bv64(7442099760597062676)]);
+    read_write!(array => "v2", v2, [[[0x8], [0x16]], [[0x24], [0x32]]], set_v2, [[[0xAB], [0xCD]], [[0x12], [0x34]]]);
 
     expect("init.unitW", false, many_types.unit_w());
     many_types.set_unit(());
@@ -159,46 +181,46 @@ fn main() -> ! {
     read_write!(
         "e0",
         e0,
-        types::Either::Left(8),
+        types::Either::Left([8]),
         set_e0,
-        types::Either::Right(0x12)
+        types::Either::Right(bv16(0x12))
     );
 
     read_write!(
         "oi",
         oi,
         types::Maybe::Just(types::Inner {
-            inner_a: 0x16,
-            inner_b: 0x24,
+            inner_a: [0x16],
+            inner_b: bv16(0x24),
         }),
         set_oi,
         types::Maybe::Just(types::Inner {
-            inner_a: 2,
-            inner_b: 4,
+            inner_a: [2],
+            inner_b: bv16(4),
         })
     );
 
     read_write!(
         "x2",
         x2,
-        types::X2(8, types::X3(16, 32, 64)),
+        types::X2([8], types::X3(bv16(16), [32], [64])),
         set_x2,
-        types::X2(16, types::X3(32, 64, 128))
+        types::X2([16], types::X3(bv16(32), [64], [128]))
     );
 
     read_write!(
         "me0",
         me0,
-        types::Maybe::Just(types::Either::Left(8)),
+        types::Maybe::Just(types::Either::Left([8])),
         set_me0,
-        types::Maybe::Just(types::Either::Right(0x12))
+        types::Maybe::Just(types::Either::Right(bv16(0x12)))
     );
     read_write!(
         "me1",
         me1,
-        types::Maybe::Just(types::Either::Left(8)),
+        types::Maybe::Just(types::Either::Left(bv16(8))),
         set_me1,
-        types::Maybe::Just(types::Either::Right(0x12))
+        types::Maybe::Just(types::Either::Right([0x12]))
     );
 
     read_write!(
@@ -230,7 +252,7 @@ fn main() -> ! {
         types::P3(types::P2(0x1234, 0x56, 9), 0xBA)
     );
 
-    read_write!("t0", t0, (12, 584), set_t0, (24, -948));
+    read_write!("t0", t0, ([12], 584), set_t0, ([24], -948));
 
     read_write!("i20", i20, 17, set_i20, 3);
     read_write!(
@@ -244,7 +266,9 @@ fn main() -> ! {
     read_write!(
         "maybe_b96",
         maybe_b96,
-        types::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        types::Maybe::Just([
+            0xF1, 0xEE, 0xDB, 0xEA, 0x5D, 0x55, 0x55, 0x55, 0xB5, 0xBA, 0xBA, 0x4A
+        ]),
         set_maybe_b96,
         types::Maybe::Nothing
     );
@@ -270,15 +294,15 @@ fn main() -> ! {
     read_write!(
         "eitherAbc",
         either_abc,
-        types::Either::Left(0),
+        types::Either::Left([0]),
         set_either_abc,
-        types::Either::Left(0b11)
+        types::Either::Left([0b11])
     );
 
     read_write!(
         "eitherAbc",
         either_abc,
-        types::Either::Left(0b11),
+        types::Either::Left([0b11]),
         set_either_abc,
         types::Either::Right(types::Abc::B)
     );
@@ -286,9 +310,9 @@ fn main() -> ! {
     read_write!(
         array => "only_referenced_in_vec",
         only_referenced_in_vec,
-        [types::OnlyReferencedInVec(2, 3), types::OnlyReferencedInVec(4, 5)],
+        [types::OnlyReferencedInVec([2], bv16(3)), types::OnlyReferencedInVec([4], bv16(5))],
         set_only_referenced_in_vec,
-        [types::OnlyReferencedInVec(6, 7), types::OnlyReferencedInVec(8, 9)]
+        [types::OnlyReferencedInVec([6], bv16(7)), types::OnlyReferencedInVec([8], bv16(9))]
     );
 
     test_ok();
@@ -296,23 +320,19 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    let mut panic_msg = heapless::String::<150>::new();
-    if let Some(location) = info.location() {
-        if write!(
-            panic_msg,
-            "PANIC at {}:{}: ",
-            location.file(),
-            location.line()
-        )
-        .is_err()
-        {
-            test_fail("recursive panic");
+    test_fail(|w| {
+        let mut any_write_errors = false;
+        if let Some(location) = info.location() {
+            any_write_errors |=
+                uwrite!(w, "PANIC at {}:{}: ", location.file(), location.line()).is_err();
+        } else {
+            any_write_errors |= uwrite!(w, "PANIC: ").is_err();
         }
-    } else if write!(panic_msg, "PANIC: ").is_err() {
-        test_fail("recursive panic");
-    }
-    if write!(panic_msg, "{}", info.message()).is_err() {
-        test_fail("recursive panic");
-    }
-    test_result(&panic_msg);
+
+        any_write_errors |= writeln!(w, "{}", info.message()).is_err();
+
+        if any_write_errors {
+            _ = writeln!(w, "recursive panic");
+        }
+    });
 }
