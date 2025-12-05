@@ -46,4 +46,7 @@ void uart_putdna(Uart uart, const dna_t val);
 /// Print a decimal number to UART
 void uart_putdec(Uart uart, uint64_t val);
 
+/// Print a signed decimal number to UART
+void uart_putdec_signed(Uart uart, int64_t val);
+
 #endif // BITTIDE_UART_H
