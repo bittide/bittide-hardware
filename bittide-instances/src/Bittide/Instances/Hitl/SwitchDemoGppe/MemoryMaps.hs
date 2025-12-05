@@ -1,0 +1,38 @@
+-- SPDX-FileCopyrightText: 2025 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
+module Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps where
+
+import Clash.Explicit.Prelude
+import Protocols
+
+import Bittide.Instances.Hitl.SwitchDemoGppe.BringUp (bringUp)
+import Bittide.SharedTypes (withBittideByteOrder)
+import Protocols.MemoryMap (MemoryMap)
+import VexRiscv (JtagIn (..))
+
+import qualified Protocols.Spi as Spi
+
+boot, mu, cc, gppe :: MemoryMap
+(boot, mu, cc, gppe) = (bootMm, muMm, ccMm, gppeMm)
+ where
+  Circuit circuitFn = withBittideByteOrder $ bringUp clockGen noReset
+
+  ((SimOnly bootMm, SimOnly muMm, SimOnly ccMm, SimOnly gppeMm, _, _), _) =
+    circuitFn
+      (
+        ( ()
+        , ()
+        , ()
+        , ()
+        , pure (JtagIn 0 0 0)
+        , (clockGen, SimOnly (repeat 0), 0, 0, repeat "", repeat "")
+        )
+      ,
+        ( pure (Spi.S2M low)
+        , pure low
+        , ()
+        , ()
+        )
+      )

@@ -8,6 +8,7 @@ import Prelude
 
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Data.Default (Default (def))
 import Data.List (isInfixOf, isPrefixOf, sort, sortOn)
 import Data.Maybe (fromJust)
 import Numeric (readHex)
@@ -21,7 +22,6 @@ import Bittide.Hitl (DeviceInfo (..))
 import Bittide.Instances.Hitl.Utils.Program
 import Paths_bittide_instances
 import Project.Handle
-import Vivado.Tcl (HwTarget)
 
 import qualified System.Timeout.Extra as T
 
@@ -39,66 +39,85 @@ initCompleteMarker :: String
 initCompleteMarker = "Initialization complete"
 
 data OcdInitData = OcdInitData
-  { tapInfos :: [TapInfo]
-  -- ^ TapInfo for each detected tap
+  { log :: [String]
+  -- ^ All output from OpenOCD until initialization complete. This can be used
+  -- to parse the JTAG IDs and GDB ports. See:
+  --
+  -- - 'parseJtagIdsAndGdbPorts'
+  -- - 'parseJtagIds'
+  -- - 'parseGdbPorts'
   , handles :: ProcessHandles
   -- ^ OpenOCD stdio handles
   , cleanup :: IO ()
   -- ^ Cleanup function
   }
 
-initOpenOcd :: [JtagId] -> FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
-initOpenOcd expectedJtagIds hitlDir (_, d) targetIndex = do
-  putStrLn $ "Starting OpenOCD for target " <> d.deviceId
+data InitOpenOcdArgs = InitOpenOcdArgs
+  { expectedJtagIds :: [JtagId]
+  -- ^ Expected JTAG IDs for the target devices, in order. Only used for port
+  -- calculation and TAP insertion.
+  , hitlDir :: FilePath
+  -- ^ Directory to store OpenOCD logs in.
+  , deviceInfo :: DeviceInfo
+  -- ^ Hardware target and device info.
+  , targetIndex :: Int
+  -- ^ Index of this target in the list of targets.
+  }
+
+data InitOpenOcdOptionalArgs = InitOpenOcdOptionalArgs
+  { logPrefix :: String
+  -- ^ Prefix to add to the file name of the OpenOCD log files.
+  , initTcl :: FilePath
+  -- ^ Path to the OpenOCD init TCL script to use.
+  }
+
+instance Default InitOpenOcdOptionalArgs where
+  def =
+    InitOpenOcdOptionalArgs
+      { logPrefix = ""
+      , initTcl = "vexriscv_init.tcl"
+      }
+
+initOpenOcd :: InitOpenOcdArgs -> InitOpenOcdOptionalArgs -> IO OcdInitData
+initOpenOcd args optionalArgs = do
+  putStrLn $ "Starting OpenOCD for target " <> args.deviceInfo.deviceId
 
   let
     baseGdbPort = 3333
-    gdbPort = baseGdbPort + targetIndex * length expectedJtagIds
-    tclPort = 6666 + targetIndex
-    telnetPort = 4444 + targetIndex
-    ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
-    ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
+    gdbPort = baseGdbPort + args.targetIndex * length args.expectedJtagIds
+    tclPort = 6666 + args.targetIndex
+    telnetPort = 4444 + args.targetIndex
+    ocdStdout =
+      args.hitlDir
+        </> "openocd-" <> optionalArgs.logPrefix <> show args.targetIndex <> "-stdout.log"
+    ocdStderr =
+      args.hitlDir
+        </> "openocd-" <> optionalArgs.logPrefix <> show args.targetIndex <> "-stderr.log"
   putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
   putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
 
   putStrLn "Starting OpenOCD..."
   (ocd, ocdPh, ocdClean0) <-
     startOpenOcdWithEnvAndArgs
-      ["-f", "sipeed.tcl", "-f", "ports.tcl", "-f", "vexriscv_init.tcl"]
+      ["-f", "sipeed.tcl", "-f", "ports.tcl", "-f", optionalArgs.initTcl]
       [ ("OPENOCD_STDOUT_LOG", ocdStdout)
       , ("OPENOCD_STDERR_LOG", ocdStderr)
-      , ("USB_DEVICE", d.usbAdapterLocation)
+      , ("USB_DEVICE", args.deviceInfo.usbAdapterLocation)
       , ("GDB_PORT", show gdbPort)
       , ("TCL_PORT", show tclPort)
       , ("TELNET_PORT", show telnetPort)
-      , ("TAP_COUNT", show (length expectedJtagIds))
+      , ("TAP_COUNT", show (length args.expectedJtagIds))
       ]
   hSetBuffering ocd.stderrHandle LineBuffering
   output <-
     T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000 $
       readUntilLine ocd.stderrHandle initCompleteMarker
 
-  -- Parse the OpenOCD output to extract GDB ports based on JTAG IDs
-  case parseJtagIdsAndGdbPorts output of
-    Left err -> error $ "Failed to parse OpenOCD output: " <> err
-    Right tapInfos -> do
-      let detectedJtagIds = map (.jtagId) tapInfos
+  let
+    ocdProcName = "OpenOCD (" <> args.deviceInfo.deviceId <> ")"
+    ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
 
-      -- Compare detected JTAG IDs with expected ones
-      if detectedJtagIds /= expectedJtagIds
-        then
-          error $
-            "JTAG ID mismatch! Expected: "
-              <> show expectedJtagIds
-              <> ", but detected: "
-              <> show detectedJtagIds
-        else do
-          putStrLn $ "JTAG IDs match expected configuration: " <> show detectedJtagIds
-
-          let
-            ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
-            ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
-          return $ OcdInitData tapInfos ocd ocdClean1
+  return $ OcdInitData{log = output, handles = ocd, cleanup = ocdClean1}
 
 withOpenOcd ::
   (MonadMask m, MonadIO m) =>

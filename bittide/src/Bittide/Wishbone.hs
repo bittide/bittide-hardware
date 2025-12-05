@@ -16,6 +16,7 @@ import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
+import Clash.Explicit.Prelude (noReset)
 import Clash.Functor.Extra ((<<$>>))
 import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
@@ -221,6 +222,9 @@ ilaWb ::
     (Wishbone dom 'Standard addrW a)
 ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
   let
+    counter :: Signal dom (Unsigned 32)
+    counter = withReset noReset $ withEnable enableGen $ register 0 (counter + 1)
+
     -- Our HITL test infrastructure looks for 'trigger' and 'capture' and uses
     -- it to trigger the ILA and do selective capture. Though defaults are
     -- changable using Vivado, we set it to capture only valid Wishbone
@@ -244,6 +248,7 @@ ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
                 :> "s2m_retry"
                 :> "capture"
                 :> "trigger"
+                :> "count"
                 :> Nil
             )
               { advancedTriggers = True
@@ -265,6 +270,7 @@ ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
           (Wishbone.retry <$> s2m)
           (capture m2s s2m)
           (trigger m2s s2m)
+          counter
    in
     ilaInst `hwSeqX` (s2m, m2s)
 
@@ -295,6 +301,29 @@ maybeIlaWb ::
 maybeIlaWb True a b c d e = ilaWb a b c d e
 maybeIlaWb False _ _ _ _ _ = circuit $ \left -> do
   idC -< left
+
+-- | Like 'ilaWb', but also handles memory maps.
+ilaWbMm ::
+  forall name dom addrW a.
+  (HiddenClock dom) =>
+  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  -- unreliable when more than one ILA is used with the same arguments, but the
+  -- module name can be set reliably.
+  SSymbol name ->
+  -- | Number of registers to insert at each probe. Supported values: 0-6.
+  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  Index 7 ->
+  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  -- by 'ilaConfig' equals 'D4096'.
+  Depth ->
+  WbToBool dom 'Standard addrW a ->
+  WbToBool dom 'Standard addrW a ->
+  Circuit
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
+ilaWbMm name stages depth trigger capture = circuit $ \(mm, wbIn) -> do
+  wbOut <- ilaWb name stages depth trigger capture -< wbIn
+  idC -< (mm, wbOut)
 
 {- | Given a vector with elements and a mask, promote all values with a corresponding
 'True' to 'Just', others to 'Nothing'.
@@ -779,8 +808,8 @@ arbiter = Circuit goArbitrate0
   -- Actual worker
   goArbitrate1 current (m2ss, s2m) = (next, (s2ms, m2s))
    where
-    candidate = findIndex (.busCycle) m2ss
-    selected = maybe candidate Just current
+    candidate = findIndex (\m -> m.busCycle && m.strobe) m2ss
+    selected = current <|> candidate
     m2s = maybe emptyWishboneM2S (m2ss !!) selected
 
     -- Always route the read data from the subordinate to all managers to prevent
@@ -791,10 +820,11 @@ arbiter = Circuit goArbitrate0
       Nothing -> emptyS2Ms
       Just idx -> replace idx s2m emptyS2Ms
 
-    next =
-      case selected of
-        Just idx | not s2m.acknowledge -> Just idx
-        _ -> candidate
+    -- Note that 'next' only indicates whether we're "locked" to a certain
+    -- manager for the next cycle.
+    next
+      | hasTerminateFlag s2m = Nothing
+      | otherwise = selected
 
 -- | Like 'arbiter', but also handles memory maps.
 arbiterMm ::
@@ -818,6 +848,24 @@ arbiterMm = circuit $ \mmWbs -> do
   idC -< (mm, wb)
  where
   goDuplicate (_, mm) = (repeat mm, ())
+
+-- | Extend the address width of a Wishbone bus manager interface.
+extendAddressWidthWb ::
+  (KnownNat awOut, KnownNat awIn, awIn <= awOut) =>
+  Circuit (Wishbone dom mode awIn a) (Wishbone dom mode awOut a)
+extendAddressWidthWb = Circuit (unbundle . fmap go . bundle)
+ where
+  go (WishboneM2S{..}, s2m) = (s2m, WishboneM2S{addr = resize addr, ..})
+
+-- | Like 'extendAddressWidthWb', but also handles memory maps.
+extendAddressWidthWbMm ::
+  (KnownNat awOut, KnownNat awIn, awIn <= awOut) =>
+  Circuit
+    (ToConstBwd Mm.Mm, Wishbone dom mode awIn a)
+    (ToConstBwd Mm.Mm, Wishbone dom mode awOut a)
+extendAddressWidthWbMm = circuit $ \(mm, wbIn) -> do
+  wbOut <- extendAddressWidthWb -< wbIn
+  idC -< (mm, wbOut)
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit

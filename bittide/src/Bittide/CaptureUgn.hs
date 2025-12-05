@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.CaptureUgn (captureUgn) where
+module Bittide.CaptureUgn (captureUgn, sendUgn, sendUgnC) where
 
 import Clash.Explicit.Prelude
 
@@ -21,6 +21,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 import Clash.Class.BitPackC (ByteOrder)
+
 import qualified Clash.Prelude as C
 
 {- | Captures the remote counter from a bittide link and pairs it with the corresponding
@@ -71,3 +72,49 @@ captureUgn localCounter linkIn = circuit $ \bus -> do
   localCounterConfig = (registerConfig "local_counter"){access = ReadOnly}
   remoteCounterConfig = (registerConfig "remote_counter"){access = ReadOnly}
   hasCapturedConfig = (registerConfig "has_captured"){access = ReadOnly}
+
+{- | Outputs the local counter when the link is *not* sampling and the very first
+cycle that it is. Otherwise, outputs the switch data. In effect, this makes sure
+that the first frame received by the neighbor contains the local counter. This
+can subsequently be captured using 'captureUgn' and used to calculate UGNs/IGNs.
+-}
+sendUgn ::
+  forall dom.
+  ( HasCallStack
+  , C.HiddenClock dom
+  ) =>
+  -- | Local counter
+  Signal dom (Unsigned 64) ->
+  -- | Sampling? Typically driven by 'Bittide.Transceiver.Output.txSampling'.
+  Signal dom Bool ->
+  -- | Switch data
+  Signal dom (BitVector 64) ->
+  -- | Data to transceiver
+  Signal dom (BitVector 64)
+sendUgn localCounter sampling switchData =
+  mux samplingDelayed switchData (pack <$> localCounter)
+ where
+  samplingDelayed =
+    C.withEnable enableGen
+      $ C.delay (errorX "sendUgn: first samplingDelayed") sampling
+
+-- | Like 'sendUgn', but more convenient to use in our current setup.
+sendUgnC ::
+  forall dom n.
+  ( HasCallStack
+  , C.HiddenClock dom
+  , KnownNat n
+  ) =>
+  -- | Local counter
+  Signal dom (Unsigned 64) ->
+  -- | Sampling? Typically driven by 'Bittide.Transceiver.Outputs.txSamplings'.
+  Vec n (Signal dom Bool) ->
+  Circuit
+    (Vec n (CSignal dom (BitVector 64)))
+    (Vec n (CSignal dom (BitVector 64)))
+sendUgnC localCounter txSamplings = Circuit go
+ where
+  go ::
+    (Vec n (Signal dom (BitVector 64)), Vec n ()) ->
+    (Vec n (), Vec n (Signal dom (BitVector 64)))
+  go (txDatas, _) = (repeat (), sendUgn localCounter <$> txSamplings <*> txDatas)

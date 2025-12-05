@@ -23,7 +23,7 @@ import Bittide.SharedTypes
 import Bittide.Wishbone
 
 import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
-import Clash.Cores.Xilinx.Ila (Depth (D4096))
+import Clash.Cores.Xilinx.Ila (Depth (D32768, D4096))
 import qualified VexRiscv.Reset as MinReset
 
 import qualified Data.ByteString as BS
@@ -99,12 +99,12 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
     rvCircuit cpu dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
   iBus1 <-
     maybeIlaWb
-      includeIlaWb
+      False
       (SSymbol @"instructionBus")
       2
       D4096
-      onTransactionWb
-      onTransactionWb
+      onRequestWb
+      onRequestWb
       -< iBus0
   dBus1 <-
     watchDogWb "dBus" iBusTimeout
@@ -112,9 +112,9 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
         includeIlaWb
         (SSymbol @"dataBus")
         2
-        D4096
-        onTransactionWb
-        onTransactionWb
+        D32768
+        onRequestWb
+        onRequestWb
       -< dBus0
   (pfxs, wbs) <- Vec.unzip <| singleMasterInterconnectC -< (mmDbus, dBus1)
   idleSink <| (Vec.vecCircuits $ fmap ToConst.toBwd prefixes) -< pfxs

@@ -175,15 +175,8 @@ library
     Bittide.Instances.Hitl.Driver.ClockControl.Samples
     Bittide.Instances.Hitl.Driver.DnaOverSerial
     Bittide.Instances.Hitl.Driver.Si539xConfiguration
-    Bittide.Instances.Hitl.Driver.SoftUgnDemo
-    Bittide.Instances.Hitl.Driver.SwCcTopologies
-    Bittide.Instances.Hitl.Driver.SwitchDemo
-    Bittide.Instances.Hitl.Driver.SwitchDemoGppe
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
-    Bittide.Instances.Hitl.Dut.SoftUgnDemo
-    Bittide.Instances.Hitl.Dut.SwitchDemo
-    Bittide.Instances.Hitl.Dut.SwitchDemoGppe
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.LinkConfiguration
@@ -191,10 +184,21 @@ library
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.Si539xConfiguration
-    Bittide.Instances.Hitl.SoftUgnDemo
-    Bittide.Instances.Hitl.SwCcTopologies
-    Bittide.Instances.Hitl.SwitchDemo
-    Bittide.Instances.Hitl.SwitchDemoGppe
+    Bittide.Instances.Hitl.SoftUgnDemo.BringUp
+    Bittide.Instances.Hitl.SoftUgnDemo.Core
+    Bittide.Instances.Hitl.SoftUgnDemo.Driver
+    Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps
+    Bittide.Instances.Hitl.SoftUgnDemo.TopEntity
+    Bittide.Instances.Hitl.SwitchDemo.BringUp
+    Bittide.Instances.Hitl.SwitchDemo.Core
+    Bittide.Instances.Hitl.SwitchDemo.Driver
+    Bittide.Instances.Hitl.SwitchDemo.MemoryMaps
+    Bittide.Instances.Hitl.SwitchDemo.TopEntity
+    Bittide.Instances.Hitl.SwitchDemoGppe.BringUp
+    Bittide.Instances.Hitl.SwitchDemoGppe.Core
+    Bittide.Instances.Hitl.SwitchDemoGppe.Driver
+    Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps
+    Bittide.Instances.Hitl.SwitchDemoGppe.TopEntity
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
@@ -250,6 +254,7 @@ library
     clock,
     constraints,
     containers,
+    data-default,
     deepseq,
     directory,
     exceptions,

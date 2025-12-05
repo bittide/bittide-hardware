@@ -8,6 +8,7 @@ import Protocols
 
 import Bittide.SharedTypes (Bytes)
 import Bittide.Transceiver (CInputs (..), COutputs (..), Config, transceiverPrbsNC)
+
 import Bittide.Transceiver.ResetManager (emptyStatistics)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)

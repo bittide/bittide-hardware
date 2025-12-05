@@ -15,13 +15,12 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Driver.SwitchDemo (initGdb, initPicocom)
+import Bittide.Instances.Hitl.SwitchDemo.Driver (initGdb, initPicocom, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Program
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
-import Control.Monad (forM_)
 import Control.Monad.IO.Class
 import System.Exit
 import System.FilePath
@@ -42,47 +41,44 @@ driverFunc _name targets = do
     <> show ((\(_, info) -> info.deviceId) <$> targets)
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
+  let hitlDir = projectDir </> "_build" </> "hitl"
 
-  forM_ targets $ \(hwT, deviceInfo) -> do
-    liftIO $ putStrLn $ "Running driver for " <> deviceInfo.deviceId
+  let
+    expectedJtagIds = [0x0514C001]
+    toInitArgs (_, deviceInfo) targetIndex =
+      Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
+    initArgs = L.zipWith toInitArgs targets [0 ..]
+    optionalInitArgs = L.repeat def
+    openOcdStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalInitArgs
 
-    let hitlDir = projectDir </> "_build" </> "hitl"
-
-    openHardwareTarget hwT
-
+  brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
-      expectedJtagIds = [0x0514C001]
-      openOcdStarts = liftIO <$> L.zipWith (Ocd.initOpenOcd expectedJtagIds hitlDir) targets [0 ..]
-    brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
-      let
-        allTapInfos = (.tapInfos) <$> initOcdsData
+      allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-        peTapInfos :: [Ocd.TapInfo]
-        peTapInfos
-          | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
-          , [pes] <- L.transpose allTapInfos =
-              pes
-          | otherwise =
-              error
-                $ "Unexpected number of OpenOCD taps initialized. Expected: "
-                <> show (L.length expectedJtagIds)
-                <> ", but got: "
-                <> show (L.length <$> allTapInfos)
+      peTapInfos :: [Ocd.TapInfo]
+      peTapInfos
+        | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
+        , [pes] <- L.transpose allTapInfos =
+            pes
+        | otherwise =
+            error
+              $ "Unexpected number of OpenOCD taps initialized. Expected: "
+              <> show (L.length expectedJtagIds)
+              <> ", but got: "
+              <> show (L.length <$> allTapInfos)
 
-        gdbPorts = (.gdbPort) <$> peTapInfos
+    Gdb.withGdbs (L.length targets) $ \gdbs -> do
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-board") gdbs peTapInfos targets
+      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gdbs
 
-      Gdb.withGdbs (L.length targets) $ \gdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-board") gdbs gdbPorts targets
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gdbs
+      let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
+      brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+        liftIO $ mapConcurrently_ Gdb.continue gdbs
 
-        let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          liftIO $ mapConcurrently_ Gdb.continue gdbs
-
-          liftIO
-            $ T.tryWithTimeout T.PrintActionTime "Waiting for test success" 15_000_000
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "All tests passed"
+        liftIO
+          $ T.tryWithTimeout T.PrintActionTime "Waiting for test success" 15_000_000
+          $ forConcurrently_ picocoms
+          $ \pico ->
+            waitForLine pico.stdoutHandle "All tests passed"
 
   pure ExitSuccess
