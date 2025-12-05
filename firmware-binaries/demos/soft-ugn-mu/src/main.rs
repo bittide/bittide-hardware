@@ -5,7 +5,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::{hals::soft_ugn_demo_mu::DeviceInstances, shared_devices::Transceivers};
+use bittide_hal::{
+    hals::soft_ugn_demo_mu::DeviceInstances,
+    shared_devices::{Transceivers, Uart},
+    types::ValidEntry_16,
+};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
@@ -13,6 +17,50 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
 use riscv_rt::entry;
+
+/// Initialize scatter and gather calendars with incrementing counter entries.
+/// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
+fn initialize_calendars(uart: &mut Uart) {
+    const NUM_ENTRIES: usize = 4000;
+
+    // Initialize all scatter calendars
+    let calendars = [
+        // Scatter calendars
+        &INSTANCES.scatter_calendar_0,
+        &INSTANCES.scatter_calendar_1,
+        &INSTANCES.scatter_calendar_2,
+        &INSTANCES.scatter_calendar_3,
+        &INSTANCES.scatter_calendar_4,
+        &INSTANCES.scatter_calendar_5,
+        &INSTANCES.scatter_calendar_6,
+        // Gather calendars
+        &INSTANCES.gather_calendar_0,
+        &INSTANCES.gather_calendar_1,
+        &INSTANCES.gather_calendar_2,
+        &INSTANCES.gather_calendar_3,
+        &INSTANCES.gather_calendar_4,
+        &INSTANCES.gather_calendar_5,
+        &INSTANCES.gather_calendar_6,
+    ];
+
+    uwriteln!(uart, "  Initializing {} calendars", calendars.len()).unwrap();
+    // Write entries to all calendars
+
+    for calendar in calendars.iter() {
+        for n in 0..NUM_ENTRIES {
+            let entry = ValidEntry_16 {
+                ve_entry: n as u16,
+                ve_repeat: 0,
+            };
+            calendar.set_shadow_entry(entry);
+            calendar.set_write_addr(n as u16);
+        }
+        calendar.set_shadow_depth_index((NUM_ENTRIES - 1) as u16);
+        calendar.set_swap_active(true);
+    }
+
+    uwriteln!(uart, "All calendars initialized").unwrap();
+}
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
@@ -82,6 +130,11 @@ fn main() -> ! {
         }
     }
     uwriteln!(uart, "All UGNs captured").unwrap();
+
+    // Initialize scatter/gather calendars with incrementing counters
+    uwriteln!(uart, "Initializing scatter/gather calendars").unwrap();
+    initialize_calendars(&mut uart);
+    uwriteln!(uart, "All calendars initialized").unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {}
