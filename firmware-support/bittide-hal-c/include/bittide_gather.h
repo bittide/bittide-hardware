@@ -21,13 +21,33 @@
 
 #ifdef HAL_SCATTER_GATHER_PE_DEVICE_GATHER_UNIT_H
 #include "hals/scatter_gather_pe/devices/gather_unit.h"
-#elif HAL_SOFT_UGN_DEMO_GPPE_DEVICE_GATHER_UNIT_H
+#elif defined HAL_SOFT_UGN_DEMO_GPPE_DEVICE_GATHER_UNIT_H
 #include "hals/soft_ugn_demo_gppe/devices/gather_unit.h"
-#elif HAL_SWITCH_DEMO_GPPE_PE_DEVICE_GATHER_UNIT_H
+#elif defined HAL_SWITCH_DEMO_GPPE_PE_DEVICE_GATHER_UNIT_H
 #include "hals/switch_demo_gppe_pe/devices/gather_unit.h"
 #else
 #error "No gather unit header definition found!"
 #endif
+
+/**
+ * Write a slice of data to gather memory
+ *
+ * Writes data to the gather memory buffer without performing bounds checking.
+ *
+ * @param unit Pointer to the GatherUnit
+ * @param src Source buffer containing data to write (must contain at least len
+ * words)
+ * @param offset Offset in gather memory (in uint64_t words) to start writing to
+ * @param len Number of uint64_t words to write
+ */
+static inline void gather_unit_write_slice_unchecked(GatherUnit unit,
+                                                     const uint64_t *src,
+                                                     uint32_t offset,
+                                                     uint32_t len) {
+  for (uint32_t i = 0; i < len; i++) {
+    gather_unit_set_gather_memory_unchecked(unit, offset + i, src[i]);
+  }
+}
 
 /**
  * Write a slice of data to gather memory
@@ -50,14 +70,38 @@ static inline bool gather_unit_write_slice(GatherUnit unit, const uint64_t *src,
     return false;
   }
 
-  // Perform write
-  for (uint32_t i = 0; i < len; i++) {
-    gather_unit_set_gather_memory_unchecked(unit, offset + i, src[i]);
-  }
+  gather_unit_write_slice_unchecked(unit, src, offset, len);
 
   return true;
 }
+/**
+ * Write a slice of data to gather memory with wrapping
+ *
+ * This function writes data to the gather memory, wrapping around to the
+ * beginning of the memory if the write operation exceeds the memory boundary.
+ *
+ * @param unit Pointer to the GatherUnit
+ * @param src Source buffer containing data to write
+ * @param offset Offset in gather memory (in uint64_t words) to start writing to
+ * @param len Number of uint64_t words to write
+ */
+static inline void gather_unit_write_slice_wrapping(GatherUnit unit,
+                                                    const uint64_t *src,
+                                                    uint32_t offset,
+                                                    uint32_t len) {
+  if (offset + len <= GATHER_UNIT_GATHER_MEMORY_LEN) {
+    // No wrapping needed
+    gather_unit_write_slice_unchecked(unit, src, offset, len);
+  } else {
+    // Wrapping needed
+    uint32_t first_part_len = GATHER_UNIT_GATHER_MEMORY_LEN - offset;
+    uint32_t second_part_len = len - first_part_len;
 
+    gather_unit_write_slice_unchecked(unit, src, offset, first_part_len);
+    gather_unit_write_slice_unchecked(unit, src + first_part_len, 0,
+                                      second_part_len);
+  }
+}
 /**
  * Wait for the next metacycle boundary
  *

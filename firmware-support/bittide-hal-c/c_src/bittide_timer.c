@@ -245,3 +245,22 @@ WaitResult timer_wait_until_stall(Timer timer, Instant target) {
   uint64_t target_cycles = instant_to_cycles(target, freq);
   return timer_wait_until_cycles_stall(timer, target_cycles);
 }
+
+// ============================================================================
+// Timer Comparison Functions
+// ============================================================================
+
+CompareResult get_compare_result(Timer timer) {
+  return timer_get_cmp_result(timer) ? COMPARE_GREATER_EQUAL : COMPARE_LESS;
+}
+
+CompareResult timer_compare_cycles(Timer timer, uint64_t target_cycles) {
+  timer_set_scratchpad(timer, target_cycles);
+  return get_compare_result(timer);
+}
+
+CompareResult timer_compare(Timer timer, Instant target) {
+  uint64_t freq = timer_get_frequency(timer);
+  uint64_t target_cycles = instant_to_cycles(target, freq);
+  return timer_compare_cycles(timer, target_cycles);
+}
