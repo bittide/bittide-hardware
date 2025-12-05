@@ -107,7 +107,7 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
       onRequestWb
       -< iBus0
   dBus1 <-
-    watchDogWb "dBus" iBusTimeout
+    watchDogWb "dBus" dBusTimeout
       <| maybeIlaWb
         includeIlaWb
         (SSymbol @"dataBus")
@@ -128,7 +128,7 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
     $ wbStorage "DataMemory" initD
     -< dMemBus
 
-  iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
+  iBus2 <- removeMsb <| watchDogWb "iBus" iBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   Mm.withTag "no-generate"
     $ Mm.withDeviceTag "no-generate"
     $ wbStorageDPC "InstructionMemory" initI
