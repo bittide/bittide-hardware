@@ -86,7 +86,7 @@ driverFunc _name [d@(_, dI)] = do
     liftIO $ do
       hSetBuffering ocd.stderrHandle LineBuffering
       putStr "Waiting for OpenOCD to halt..."
-      expectLine ocd.stderrHandle Ocd.waitForInitComplete
+      expectLine_ ocd.stderrHandle Ocd.waitForInitComplete
       putStrLn "  Done"
 
       putStrLn "Starting Picocom..."
@@ -104,7 +104,7 @@ driverFunc _name [d@(_, dI)] = do
           Gdb.setLogging gdb gdbOutLog
           Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
           Gdb.setTarget gdb 3333
-          errorToException =<< Gdb.loadBinary gdb
+          assertEither =<< Gdb.loadBinary gdb
           Gdb.setBreakpoints
             gdb
             [ "core::panicking::panic"

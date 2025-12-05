@@ -456,7 +456,7 @@ driver testName targets = do
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
           $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) bootGdbs
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
@@ -487,12 +487,12 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
         Gdb.withGdbs (L.length targets) $ \muGdbs -> do
           liftIO
             $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muTapInfos targets
-          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+          liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs

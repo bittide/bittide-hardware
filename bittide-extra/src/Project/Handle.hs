@@ -17,41 +17,50 @@ import "extra" Data.List.Extra (trimEnd)
 
 import Test.Tasty.HUnit
 
-import qualified System.IO as IO
+data Filter = Continue | Stop (Either String ())
 
-data Error = Ok | Error String
-data Filter = Continue | Stop Error
+-- | Convert an 'Either String a' to an 'Assertion'. Discards the 'a' value.
+assertEither :: Either String a -> Assertion
+assertEither (Right _) = pure ()
+assertEither (Left msg) = error msg
 
--- | Convert an 'Error' to an 'Assertion'.
-errorToException :: Error -> Assertion
-errorToException Ok = pure ()
-errorToException (Error msg) = assertFailure msg
+-- | Convert an 'Either String a' to an 'IO a'. Throws an error on 'Left'.
+expectRight :: (HasCallStack) => Either String a -> IO a
+expectRight (Right v) = pure v
+expectRight (Left msg) = error msg
+
+-- | Version of `expectLine` that directly throws an error on `Left`.
+expectLine_ :: (HasCallStack) => Handle -> (String -> Filter) -> Assertion
+expectLine_ h f = do
+  result <- expectLine h f
+  assertEither result
 
 {- | Utility function that reads lines from a handle, and applies a filter to
 each line. If the filter returns 'Continue', the function will continue
-reading lines. If the filter returns @Stop Ok@, the function will return
-successfully. If the filter returns @Stop (Error msg)@, the function will
-fail with the given message, along with a log of all processed lines.
+reading lines. If the filter returns @Stop (Right ())@, the function will return
+successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
+the function will fail with the given message, along with a log of all processed lines.
 -}
-expectLine :: (HasCallStack) => Handle -> (String -> Filter) -> Assertion
-expectLine = expectLine' ""
+expectLine ::
+  (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
+expectLine = expectLine' []
  where
-  expectLine' s0 h f = do
+  expectLine' acc h f = do
     byteLine0 <- hGetLine h
     let
       byteLine1 = filter (\c -> isAscii c && not (isControl c)) byteLine0
       line = w2c <$> unpack byteLine1
       trimmed = trimEnd line
-      s1 = s0 <> "\n" <> line
-      cont = expectLine' s1 h f
+      acc' = acc <> [line]
+      cont = expectLine' acc' h f
     if null trimmed
       then cont
       else case f trimmed of
         Continue -> cont
-        Stop Ok -> pure ()
-        Stop (Error msg) -> do
-          putStrLn s1
-          assertFailure msg
+        Stop (Right ()) -> pure (Right acc')
+        Stop (Left msg) -> do
+          putStrLn (unlines acc')
+          pure (Left msg)
 
 {- | Utility function that reads lines from a handle, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
@@ -59,11 +68,11 @@ it will get stuck if the expected line does not appear. Only use in combination
 with sensible time outs (also see 'main').
 -}
 waitForLine :: Handle -> String -> IO ()
-waitForLine h expected =
-  expectLine h $ \s ->
+waitForLine h expected = do
+  expectLine_ h $ \s ->
     trace ("Wait for \"" <> expected <> "\", got: " <> s) $
       if s == expected
-        then Stop Ok
+        then Stop (Right ())
         else Continue
 
 -- Utility function that returns the remaining characters in a handle.
@@ -96,10 +105,14 @@ Do not use on Handles that might return non-ASCII characters.
 -}
 readUntilLine :: Handle -> String -> IO [String]
 readUntilLine h expected = do
-  line <- IO.hGetLine h
-  if line == expected
-    then pure []
-    else (line :) <$> readUntilLine h expected
+  result <- expectLine h $ \s ->
+    trace ("Reading until \"" <> expected <> "\", got: " <> s) $
+      if s == expected
+        then Stop (Right ())
+        else Continue
+  case result of
+    Right lines' -> pure (init lines') -- Remove the expected line from the result
+    Left err -> error err
 
 {- | Read n characters from a handle.
 Do not use on Handles that might return non-ASCII characters.

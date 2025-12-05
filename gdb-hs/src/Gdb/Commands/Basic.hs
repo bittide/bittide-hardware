@@ -12,7 +12,6 @@ import Control.Concurrent (withMVar)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Numeric (showHex)
-import Project.Handle (Error (Error, Ok))
 import System.IO (hPutStrLn)
 import System.Posix (sigINT, signalProcess)
 import System.Process.Internals (
@@ -57,23 +56,23 @@ interrupt gdb =
 {- | Load a preset binary onto the CPU. This will also run 'compareSections' to
 ensure that the binary was loaded correctly.
 -}
-loadBinary :: (HasCallStack) => Gdb -> IO Error
+loadBinary :: (HasCallStack) => Gdb -> IO (Either String ())
 loadBinary gdb = do
   output <- readCommand gdb "load"
 
   if any ("Remote communication error." `L.isPrefixOf`) output
-    then pure $ Error [i|GDB remote communication error: #{output}|]
+    then pure $ Left [i|GDB remote communication error: #{output}|]
     else compareSections gdb
 
 {- | Runs "compare-sections" in gdb and parses the resulting output.
 If any of the hash values do not match, this function will throw an error.
 -}
-compareSections :: (HasCallStack) => Gdb -> IO Error
+compareSections :: (HasCallStack) => Gdb -> IO (Either String ())
 compareSections gdb = do
   output <- readCommand gdb "compare-sections"
   if all isMatch output
-    then pure Ok
-    else pure $ Error [i|Unexpected output from compare-sections: #{output}|]
+    then pure (Right ())
+    else pure $ Left [i|Unexpected output from compare-sections: #{output}|]
  where
   isMatch :: String -> Bool
   isMatch s =
