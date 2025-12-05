@@ -75,3 +75,18 @@ void uart_putdec(Uart uart, uint64_t val) {
 
   uart_puts(uart, &buf[i]);
 }
+
+void uart_putdec_signed(Uart uart, int64_t val) {
+  if (val < 0) {
+    uart_putc(uart, '-');
+    // Handle most negative value specially to avoid overflow
+    // INT64_MIN is -9223372036854775808, which can't be negated in int64_t
+    if (val == INT64_MIN) {
+      uart_putdec(uart, 9223372036854775808ULL);
+    } else {
+      uart_putdec(uart, (uint64_t)(-val));
+    }
+  } else {
+    uart_putdec(uart, (uint64_t)val);
+  }
+}
