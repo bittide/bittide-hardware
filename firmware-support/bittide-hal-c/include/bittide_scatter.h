@@ -21,9 +21,9 @@
 
 #ifdef HAL_SCATTER_GATHER_PE_DEVICE_SCATTER_UNIT_H
 #include "hals/scatter_gather_pe/devices/scatter_unit.h"
-#elif HAL_SOFT_UGN_DEMO_GPPE_DEVICE_SCATTER_UNIT_H
+#elif defined HAL_SOFT_UGN_DEMO_GPPE_DEVICE_SCATTER_UNIT_H
 #include "hals/soft_ugn_demo_gppe/devices/scatter_unit.h"
-#elif HAL_SWITCH_DEMO_GPPE_PE_DEVICE_SCATTER_UNIT_H
+#elif defined HAL_SWITCH_DEMO_GPPE_PE_DEVICE_SCATTER_UNIT_H
 #include "hals/switch_demo_gppe_pe/devices/scatter_unit.h"
 #else
 #error "No scatter unit header definition found!"
