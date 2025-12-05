@@ -32,6 +32,28 @@
 /**
  * Read a slice of data from scatter memory
  *
+ * Reads data from the scatter memory buffer. This function does not perform
+ * bounds checking, so the caller must ensure that the read operation is within
+ * valid memory bounds.
+ *
+ * @param unit Pointer to the ScatterUnit
+ * @param dst Destination buffer for the read data (must be at least len words)
+ * @param offset Offset in scatter memory (in uint64_t words) to start reading
+ * from
+ * @param len Number of uint64_t words to read
+ */
+static inline void scatter_unit_read_slice_unchecked(ScatterUnit unit,
+                                                     uint64_t *dst,
+                                                     uint32_t offset,
+                                                     uint32_t len) {
+  for (uint32_t i = 0; i < len; i++) {
+    scatter_unit_get_scatter_memory_unchecked(unit, offset + i, &dst[i]);
+  }
+}
+
+/**
+ * Read a slice of data from scatter memory
+ *
  * Reads data from the scatter memory buffer. This function performs bounds
  * checking to prevent reading beyond the allocated memory region.
  *
@@ -49,13 +71,39 @@ static inline bool scatter_unit_read_slice(ScatterUnit unit, uint64_t *dst,
     return false;
   }
 
-  // Perform read
-  for (uint32_t i = 0; i < len; i++) {
-    scatter_unit_get_scatter_memory_unchecked(unit, offset + i, &dst[i]);
-  }
+  scatter_unit_read_slice_unchecked(unit, dst, offset, len);
 
   // return 0;
   return true;
+}
+/**
+ * Read a slice of data from scatter memory with wrapping
+ *
+ * This function reads data from the scatter memory, wrapping around to the
+ * beginning of the memory if the read operation exceeds the memory boundary.
+ *
+ * @param unit Pointer to the ScatterUnit
+ * @param dst Destination buffer for the read data
+ * @param offset Offset in scatter memory (in uint64_t words) to start reading
+ * from
+ * @param len Number of uint64_t words to read
+ */
+static inline void scatter_unit_read_slice_wrapping(ScatterUnit unit,
+                                                    uint64_t *dst,
+                                                    uint32_t offset,
+                                                    uint32_t len) {
+  if (offset + len <= SCATTER_UNIT_SCATTER_MEMORY_LEN) {
+    // No wrapping needed
+    scatter_unit_read_slice_unchecked(unit, dst, offset, len);
+  } else {
+    // Wrapping needed
+    uint32_t first_part_len = SCATTER_UNIT_SCATTER_MEMORY_LEN - offset;
+    uint32_t second_part_len = len - first_part_len;
+
+    scatter_unit_read_slice_unchecked(unit, dst, offset, first_part_len);
+    scatter_unit_read_slice_unchecked(unit, dst + first_part_len, 0,
+                                      second_part_len);
+  }
 }
 
 /**
