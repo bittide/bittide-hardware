@@ -7,12 +7,16 @@ The `calendar` module provides a hardware abstraction layer over based on the ge
 peripheral access code for the `Calendar` device.
  */
 
-use crate as bittide_hal;
+use crate::{self as bittide_hal, hals};
 
-use bittide_hal::{hals::switch_c::devices::calendar::Calendar, types::ValidEntry_12};
+use bittide_hal::{
+    hals::switch_c::devices::calendar::Calendar,
+    types::{ValidEntry_12, ValidEntry_16},
+};
 
 pub type EntryType = ValidEntry_12<[u8; 16]>;
 
+/// Generic Calendar implementations
 impl Calendar {
     /// Reads entry n from the shadow calendar.
     pub fn read_shadow_entry(&self, n: usize) -> EntryType {
@@ -63,5 +67,27 @@ impl Calendar {
             self.set_write_addr(n1);
         }
         self.set_shadow_depth_index((entries.len() - 1) as u8);
+    }
+}
+
+type RingbufferCalendar = hals::soft_ugn_demo_mu::devices::calendar::Calendar;
+
+/// Ringbuffer related calendar implementations
+impl RingbufferCalendar {
+    pub fn initialize_as_ringbuffer(&self, size: usize) {
+        assert!(
+            size <= Self::SHADOW_DEPTH_INDEX_SIZE,
+            "Size exceeds shadow calendar size"
+        );
+        for n in 0..size {
+            let entry = ValidEntry_16 {
+                ve_entry: n as u16,
+                ve_repeat: 0,
+            };
+            self.set_shadow_entry(entry);
+            self.set_write_addr(n as u16);
+        }
+        self.set_shadow_depth_index((size - 1) as u16);
+        self.set_swap_active(true);
     }
 }
