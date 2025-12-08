@@ -118,7 +118,7 @@ impl<T> HandleRange<T> {
     }
 
     /// Iterator over the handles.
-    pub fn handles(self) -> impl DoubleEndedIterator<Item = Handle<T>> + ExactSizeIterator {
+    pub fn handles(self) -> impl DoubleEndedIterator<Item = Handle<T>> + ExactSizeIterator + Clone {
         (self.start.0..(self.start.0 + self.len)).map(|idx| Handle(idx, PhantomData))
     }
 
