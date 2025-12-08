@@ -26,7 +26,7 @@ fn main() {
         .flag("--target=riscv32-unknown-none-elf") // RISC-V target
         .flag("-march=rv32imc")
         .flag("-mabi=ilp32")
-        .flag("-Os") // Optimize for size
+        .flag("-O2") // Optimize for size
         .flag("-ffreestanding")
         .flag("-nostdlib")
         .compile("c_main");
