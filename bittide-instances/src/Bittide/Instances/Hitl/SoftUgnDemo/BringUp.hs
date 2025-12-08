@@ -79,23 +79,9 @@ bootPeConfig =
     , includeIlaWb = False
     }
 
-{- | Reset logic:
+{- | See 'Bittide.Instances.Hitl.SwitchDemo.BringUp.bringUp'
 
-HW:
-
-  1. Wait for SPI
-  2. Wait for transceivers handshakes (=> all domains are up after this)
-  3. Send local counter for one cycle, connect to switch after (=> in parallel
-     with steps 4 and onwards, just wait until the transceiver says it's sampling from the
-     transmit data input (@txDatas@))
-  4a. Deassert CC CPU reset
-  4b. Deassert Bittide domain reset (=> MU CPU, PE)
-  5. Wait for stable buffers
-  6. Wait for elastic buffer initialization (=> signal we're ready to receive data)
-
-SW (MU):
-
-  1. Wait for all UGNs to be captured
+TODO: Deduplicate
 -}
 bringUp ::
   "REFCLK" ::: Clock Basic125 ->
