@@ -117,7 +117,7 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
       for (int16_t i = 0; i < BUFFER_SIZE; i++) {
 
         uint64_t gather_data =
-            encode_alignment_pair(out_state, incoming_offset, i);
+            encode_alignment_pair(out_state, i, incoming_offsets[port]);
         gather_unit_set_gather_memory_unchecked(gather, i, gather_data);
       }
     }
