@@ -25,8 +25,9 @@ import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Sync (Sync, syncInCounterC, syncOutGenerateWbC, toSync)
-import Bittide.Wishbone (timeWb)
+import Bittide.Wishbone (arbiterMm, extendAddressWidthWbMm, timeWb)
 import Protocols.MemoryMap
+import Protocols.Wishbone.Extra (delayWishboneMm)
 
 import qualified Protocols.Vec as Vec
 
@@ -45,10 +46,11 @@ type SwcccRemBusWidth n = 30 - PrefixWidth (n + SwcccInternalBusses)
 -- TODO: Make this the primary Callisto function once the reset logic is fixed
 -- and Callisto is detached from the ILA plotting mechanisms.
 callistoSwClockControlC ::
-  forall nLinks dom free rx otherWb.
+  forall nLinks dom free rx otherWb otherWbMu.
   ( HiddenClockResetEnable dom
   , KnownNat nLinks
   , KnownNat otherWb
+  , KnownNat otherWbMu
   , HasSynchronousReset dom
   , HasSynchronousReset free
   , HasSynchronousReset rx
@@ -71,6 +73,10 @@ callistoSwClockControlC ::
   PeConfig (otherWb + SwcccInternalBusses) ->
   Circuit
     ( ToConstBwd Mm
+    , -- Management unit
+      ( ToConstBwd Mm
+      , Wishbone dom 'Standard otherWbMu (Bytes 4)
+      )
     , ( Jtag dom
       , CSignal dom (BitVector nLinks) -- link mask
       , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
@@ -85,9 +91,9 @@ callistoSwClockControlC ::
         )
     )
 callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
-  circuit $ \(mm, (jtag, Fwd linkMask, Fwd linksOk)) -> do
+  circuit $ \(mm, muClockControlBus, (jtag, Fwd linkMask, Fwd linksOk)) -> do
     allWishbone <- processingElement dumpVcd peConfig -< (mm, jtag)
-    ( [ clockControlBus
+    ( [ ccClockControlBus
         , timeWbBus
         , freezeBus
         , syncOutGeneratorBus
@@ -99,6 +105,17 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
 
     Fwd clockControlData <-
       clockControlWb linkMask linksOk (unbundle diffCounters) -< clockControlBus
+
+    clockControlBus <- arbiterMm -< [ccClockControlBusWide, muClockControlBusWide]
+    -- We need to extend the width of both wishbone busses since we don't know which
+    -- is wider.
+    ccClockControlBusWide <-
+      extendAddressWidthWbMm @(Max (SwcccRemBusWidth otherWb) otherWbMu)
+        -< ccClockControlBus
+    muClockControlBusWide <-
+      extendAddressWidthWbMm @(Max (SwcccRemBusWidth otherWb) otherWbMu)
+        <| delayWishboneMm
+        -< muClockControlBus
 
     freeze hasClock hasReset
       -< ( freezeBus

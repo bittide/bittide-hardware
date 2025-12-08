@@ -24,7 +24,7 @@ import Bittide.ProcessingElement (
   processingElement,
  )
 import Bittide.ScatterGather
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (Bytes)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
@@ -32,7 +32,7 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
-import Protocols.Wishbone.Extra (delayWishboneC)
+import Protocols.Wishbone.Extra (delayWishbone)
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
@@ -60,8 +60,9 @@ type PeripheralsPerLink = 4
 
 {- External busses:
     - Transceivers
+    - Callisto
 -}
-type NmuExternalBusses = 1 + (LinkCount * PeripheralsPerLink)
+type NmuExternalBusses = 2 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
 
 muConfig ::
@@ -145,7 +146,11 @@ managementUnit maybeDna =
     idC -< (localCounter, uartOut, restBusses)
 
 gppe ::
-  (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
+  ( HiddenClockResetEnable dom
+  , 1 <= DomainPeriod dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Vec LinkCount (Signal dom (BitVector 64)) ->
@@ -157,7 +162,7 @@ gppe ::
     ( Vec LinkCount (CSignal dom (BitVector 64))
     , Df dom (BitVector 8)
     )
-gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
+gppe maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Core and interconnect
   (scatterBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
   (gatherBusses, wbs1) <- Vec.split -< wbs0
@@ -166,7 +171,7 @@ gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
   (nmuMms, nmuWbs) <- Vec.unzip -< nmuWbMms
-  nmuWbsDelayed <- repeatC delayWishboneC -< nmuWbs
+  nmuWbsDelayed <- repeatC delayWishbone -< nmuWbs
   nmuWbMmsDelayed <- Vec.zip -< (nmuMms, nmuWbsDelayed)
 
   -- Scatter Gather units
@@ -230,7 +235,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (muSgWbs, [muTransceiverBus]) <- Vec.split -< muWbs2
+    (muSgWbs, [muTransceiverBus, muCallistoBus]) <- Vec.split -< muWbs2
     -- Stop management unit
 
     -- Start internal links
@@ -271,7 +276,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMm, (ccJtag, mask, linksSuitableForCc))
+        -< (ccMm, muCallistoBus, (ccJtag, mask, linksSuitableForCc))
 
     withBittideClockResetEnable
       (wbStorage "SampleMemory")
