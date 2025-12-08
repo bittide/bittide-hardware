@@ -53,8 +53,8 @@ uint64_t encode_alignment_pair(enum RingbufferAlignState state,
 void decode_alignment_pair(uint64_t encoded, enum RingbufferAlignState *state,
                            int16_t *incoming_offset, int16_t *outgoing_offset) {
   *state = (enum RingbufferAlignState)((encoded >> 32) & 0xFF);
-  *incoming_offset = (int16_t)((encoded >> 16) & 0xFFFF);
-  *outgoing_offset = (int16_t)(encoded & 0xFFFF);
+  *outgoing_offset = (int16_t)((encoded >> 16) & 0xFFFF);
+  *incoming_offset = (int16_t)(encoded & 0xFFFF);
 }
 
 void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
@@ -117,7 +117,7 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
       for (int16_t i = 0; i < BUFFER_SIZE; i++) {
 
         uint64_t gather_data =
-            encode_alignment_pair(out_state, i, incoming_offsets[port]);
+            encode_alignment_pair(out_state, incoming_offsets[port], i);
         gather_unit_set_gather_memory_unchecked(gather, i, gather_data);
       }
     }
