@@ -13,6 +13,16 @@
 // so we have access to Uart type and uart_* functions
 
 // ============================================================================
+// Ringbuffer Alignment State
+// ============================================================================
+
+enum RingbufferAlignState {
+  RINGBUFFER_ALIGN_EMPTY = 0,
+  RINGBUFFER_ALIGN_ANNOUNCE = 1,
+  RINGBUFFER_ALIGN_ACKNOWLEDGE = 2,
+};
+
+// ============================================================================
 // Message Printing Macros
 // ============================================================================
 // These macros follow the pattern from elara_experiments for setting up
@@ -344,6 +354,73 @@
     uart_putdec(UART, now_cycles);                                             \
     uart_puts(UART, "\n");                                                     \
   } while (0);
+
+// ============================================================================
+// Ringbuffer Alignment Messages
+// ============================================================================
+
+#define PRINT_ALIGN_START(UART)                                                \
+  do {                                                                         \
+    uart_puts(UART, "========================================\n");             \
+    uart_puts(UART, "Starting ringbuffer alignment...\n");                     \
+    uart_puts(UART, "========================================\n");             \
+  } while (0)
+
+#define PRINT_ALIGN_ITERATION(UART, ITER)                                      \
+  do {                                                                         \
+    uart_puts(UART, "\nAlign iteration ");                                     \
+    uart_putdec(UART, (uint64_t)(ITER));                                       \
+    uart_puts(UART, ":\n");                                                    \
+  } while (0)
+
+#define PRINT_ALIGN_STATE_CHANGE(UART, PORT, STATE, IN_OFF)                    \
+  do {                                                                         \
+    uart_puts(UART, "  P");                                                    \
+    uart_putdec(UART, (uint64_t)(PORT));                                       \
+    uart_puts(UART, ": state=");                                               \
+    if ((STATE) == RINGBUFFER_ALIGN_ANNOUNCE)                                  \
+      uart_puts(UART, "ANNOUNCE");                                             \
+    else if ((STATE) == RINGBUFFER_ALIGN_ACKNOWLEDGE)                          \
+      uart_puts(UART, "ACK");                                                  \
+    else                                                                       \
+      uart_puts(UART, "EMPTY");                                                \
+    uart_puts(UART, ", in_off=");                                              \
+    uart_putdec_signed(UART, (IN_OFF));                                        \
+    uart_puts(UART, "\n");                                                     \
+  } while (0)
+
+#define PRINT_ALIGN_OUTGOING_OFFSET(UART, PORT, OUT_OFF)                       \
+  do {                                                                         \
+    uart_puts(UART, "  P");                                                    \
+    uart_putdec(UART, (uint64_t)(PORT));                                       \
+    uart_puts(UART, ": out_off=");                                             \
+    uart_putdec_signed(UART, (OUT_OFF));                                       \
+    uart_puts(UART, "\n");                                                     \
+  } while (0)
+
+#define PRINT_ALIGN_PORT_ALIGNED(UART, PORT)                                   \
+  do {                                                                         \
+    uart_puts(UART, "  P");                                                    \
+    uart_putdec(UART, (uint64_t)(PORT));                                       \
+    uart_puts(UART, ": ALIGNED\n");                                            \
+  } while (0)
+
+#define PRINT_ALIGN_COMPLETE(UART, IN_OFFS, OUT_OFFS, NUM_PORTS)               \
+  do {                                                                         \
+    uart_puts(UART, "\n========================================\n");           \
+    uart_puts(UART, "Ringbuffer alignment complete!\n");                       \
+    uart_puts(UART, "Final offsets:\n");                                       \
+    for (int32_t port = 0; port < (NUM_PORTS); port++) {                       \
+      uart_puts(UART, "  P");                                                  \
+      uart_putdec(UART, (uint64_t)port);                                       \
+      uart_puts(UART, ": in=");                                                \
+      uart_putdec_signed(UART, (IN_OFFS)[port]);                               \
+      uart_puts(UART, ", out=");                                               \
+      uart_putdec_signed(UART, (OUT_OFFS)[port]);                              \
+      uart_puts(UART, "\n");                                                   \
+    }                                                                          \
+    uart_puts(UART, "========================================\n\n");           \
+  } while (0)
 
 // ========== =================================================================
 // Pre-defined Message Strings
