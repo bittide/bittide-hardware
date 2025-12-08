@@ -114,12 +114,16 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
         gather_unit_set_gather_memory_unchecked(gather, -outgoing_offsets[port],
                                                 gather_data);
       } else {
-        enum RingbufferAlignState out_state =
-            state == RINGBUFFER_ALIGN_EMPTY ? RINGBUFFER_ALIGN_ANNOUNCE : state;
+        enum RingbufferAlignState out_state;
+        if (state == RINGBUFFER_ALIGN_EMPTY) {
+          out_state = RINGBUFFER_ALIGN_ANNOUNCE;
+        } else {
+          out_state = RINGBUFFER_ALIGN_ACKNOWLEDGE;
+        }
         for (int16_t i = 0; i < BUFFER_SIZE; i++) {
 
           uint64_t gather_data =
-              encode_alignment_pair(state, incoming_offset, i);
+              encode_alignment_pair(out_state, incoming_offset, i);
           gather_unit_set_gather_memory_unchecked(gather, i, gather_data);
         }
       }
