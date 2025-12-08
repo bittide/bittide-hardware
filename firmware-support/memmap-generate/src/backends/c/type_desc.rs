@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use crate::backends::c::{generate_variable_binding, tuple_name, VariableRefType};
+use crate::backends::c::{generate_variable_binding, tuple_name};
 use crate::ir::types::{TypeConstructor, TypeRef};
 use crate::storage::HandleRange;
 use crate::{
@@ -63,8 +63,7 @@ pub fn generate_tuple_definition(
             varis,
             None,
             refs,
-            &format!("_{i}"),
-            VariableRefType::NoRef,
+            crate::backends::c::VariableBindingContext::Member(&format!("_{i}")),
             *elem,
             code,
         );
@@ -176,8 +175,7 @@ fn generate_type_definition(
                     varis,
                     Some(variant),
                     refs,
-                    &name,
-                    VariableRefType::NoRef,
+                    crate::backends::c::VariableBindingContext::Member(name.as_str()),
                     ty,
                     code,
                 );
@@ -225,8 +223,7 @@ fn generate_type_definition(
                             varis,
                             Some(variant),
                             refs,
-                            &name,
-                            VariableRefType::NoRef,
+                            crate::backends::c::VariableBindingContext::Member(name.as_str()),
                             ty,
                             code,
                         );
@@ -241,8 +238,7 @@ fn generate_type_definition(
                             varis,
                             Some(variant),
                             refs,
-                            &name,
-                            VariableRefType::NoRef,
+                            crate::backends::c::VariableBindingContext::Member(name.as_str()),
                             ty,
                             code,
                         );
@@ -272,8 +268,7 @@ fn generate_type_definition(
                 varis,
                 Some(variant),
                 refs,
-                &ty_name,
-                VariableRefType::NoRef,
+                crate::backends::c::VariableBindingContext::VarDeclStatement(ty_name.as_str()),
                 *handle,
                 code,
             );

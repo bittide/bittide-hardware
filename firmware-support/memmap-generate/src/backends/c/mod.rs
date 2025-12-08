@@ -61,21 +61,48 @@ pub struct TypeReferences {
 pub enum VariableRefType {
     Const,
     ConstVec,
+    ConstBitVector,
     Mutable,
     MutableVec,
+    MutableBitVector,
     NoRef,
 }
 
 impl VariableRefType {
-    fn into_vec_ref(self) -> Self {
-        match self {
-            VariableRefType::Const => Self::ConstVec,
-            VariableRefType::Mutable => Self::MutableVec,
-            VariableRefType::ConstVec | VariableRefType::MutableVec | VariableRefType::NoRef => {
-                self
-            }
+    fn as_set_arg(ctx: &IrCtx, variant: Option<&TypeRefVariant>, ty: &TypeRef) -> Self {
+        match ty {
+            TypeRef::BitVector(size) if bv_of_size_1(ctx, variant, *size) => Self::NoRef,
+            TypeRef::BitVector(_size) => Self::ConstBitVector,
+            TypeRef::Vector(_handle, _handle1) => Self::ConstVec,
+            _ => Self::NoRef,
         }
     }
+
+    fn as_get_out_arg(ctx: &IrCtx, variant: Option<&TypeRefVariant>, ty: &TypeRef) -> Self {
+        match ty {
+            TypeRef::BitVector(size) if bv_of_size_1(ctx, variant, *size) => Self::Mutable,
+            TypeRef::BitVector(_size) => Self::MutableBitVector,
+            TypeRef::Vector(_handle, _handle1) => Self::MutableVec,
+            _ => Self::Mutable,
+        }
+    }
+}
+
+fn bv_of_size_1(ctx: &IrCtx, variant: Option<&TypeRefVariant>, size: Handle<TypeRef>) -> bool {
+    let size = lookup_sub(variant, size);
+    match &ctx.type_refs[size] {
+        TypeRef::Nat(n) => n.div_ceil(8) == 1,
+        _ => false,
+    }
+}
+
+#[derive(Debug, Clone)]
+enum VariableBindingContext<'a> {
+    SetArg(&'a str),
+    OutArg(&'a str),
+    Member(&'a str),
+    VarDeclStatement(&'a str),
+    TypeOnly,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -84,23 +111,51 @@ fn generate_variable_binding(
     varis: &MonomorphVariants,
     variant: Option<&TypeRefVariant>,
     refs: &mut TypeReferences,
-    variable_name: &str,
-    ref_type: VariableRefType,
+    var_binding: VariableBindingContext,
     ty: Handle<TypeRef>,
     code: &mut String,
 ) {
     let handle = lookup_sub(variant, ty);
+    let ty_ref = &ctx.type_refs[handle];
 
-    let before_var = match ref_type {
+    let (variable_name, ref_ty) = match &var_binding {
+        VariableBindingContext::SetArg(name) => {
+            (*name, VariableRefType::as_set_arg(ctx, variant, ty_ref))
+        }
+        VariableBindingContext::OutArg(name) => {
+            (*name, VariableRefType::as_get_out_arg(ctx, variant, ty_ref))
+        }
+        VariableBindingContext::Member(name) => (*name, VariableRefType::NoRef),
+        VariableBindingContext::VarDeclStatement(name) => (*name, VariableRefType::NoRef),
+        VariableBindingContext::TypeOnly => ("", VariableRefType::NoRef),
+    };
+
+    let before_var = match ref_ty {
         VariableRefType::Const => "const *",
         VariableRefType::ConstVec => "const ",
+        VariableRefType::ConstBitVector => "const ",
         VariableRefType::Mutable => "*",
         VariableRefType::MutableVec => "",
+        VariableRefType::MutableBitVector => "",
         VariableRefType::NoRef => "",
     };
 
     match &ctx.type_refs[handle] {
-        TypeRef::BitVector(handle) | TypeRef::Unsigned(handle) => {
+        TypeRef::BitVector(handle) => {
+            let size = &ctx.type_refs[lookup_sub(variant, *handle)];
+
+            if let TypeRef::Nat(n) = size {
+                let n = n.div_ceil(8);
+                if n == 1 {
+                    write!(code, "uint8_t {before_var}{variable_name}").unwrap();
+                } else {
+                    write!(code, "uint8_t {before_var}{variable_name}[{n}]").unwrap();
+                }
+            } else {
+                panic!("Unsigned/BitVector with length not known after monomorphisation");
+            }
+        }
+        TypeRef::Unsigned(handle) => {
             let size = &ctx.type_refs[lookup_sub(variant, *handle)];
 
             if let TypeRef::Nat(n) = size {
@@ -140,16 +195,7 @@ fn generate_variable_binding(
             write!(code, "double {before_var}{variable_name}").unwrap();
         }
         TypeRef::Vector(len, inner) => {
-            generate_variable_binding(
-                ctx,
-                varis,
-                variant,
-                refs,
-                variable_name,
-                ref_type.into_vec_ref(),
-                *inner,
-                code,
-            );
+            generate_variable_binding(ctx, varis, variant, refs, var_binding.clone(), *inner, code);
             if let TypeRef::Nat(n) = &ctx.type_refs[lookup_sub(variant, *len)] {
                 write!(code, "[{n}]").unwrap();
             } else {

@@ -141,6 +141,8 @@ fn main() {
             }
 
             with_guard(&mut tuple_file, "TYPES_TUPLES_H", |file| {
+                writeln!(file, "{}", gen_imports()).unwrap();
+
                 generate_type_ref_imports(&ctx, &refs, file);
                 writeln!(file, "{}", code).unwrap();
             });
@@ -253,6 +255,10 @@ fn main() {
 }
 
 fn generate_type_ref_imports(ctx: &IrCtx, refs: &backend_c::TypeReferences, file: &mut impl Write) {
+    if !refs.tuples.is_empty() {
+        writeln!(file, "#include \"types/tuples.h\"").unwrap();
+    }
+
     for ty in &refs.references {
         let name = &ctx.type_names[*ty];
         let mod_name = ident(IdentType::Module, &name.base);
@@ -263,7 +269,9 @@ fn generate_type_ref_imports(ctx: &IrCtx, refs: &backend_c::TypeReferences, file
 fn gen_imports() -> &'static str {
     r#"#include "stdint.h"
 #include "stdbool.h"
-#include "stddef.h""#
+#include "stddef.h"
+#include "string.h"
+"#
 }
 
 fn with_guard<A>(file: &mut File, guard: &str, f: impl FnOnce(&mut File) -> A) -> A {

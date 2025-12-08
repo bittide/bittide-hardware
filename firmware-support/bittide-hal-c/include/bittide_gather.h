@@ -41,7 +41,7 @@
  * @param len Number of uint64_t words to write
  */
 static inline void gather_unit_write_slice_unchecked(GatherUnit unit,
-                                                     const uint64_t *src,
+                                                     const uint8_t (*src)[8],
                                                      uint32_t offset,
                                                      uint32_t len) {
   for (uint32_t i = 0; i < len; i++) {
@@ -63,7 +63,8 @@ static inline void gather_unit_write_slice_unchecked(GatherUnit unit,
  * @return true on success, false if bounds check fails or parameters are
  * invalid
  */
-static inline bool gather_unit_write_slice(GatherUnit unit, const uint64_t *src,
+static inline bool gather_unit_write_slice(GatherUnit unit,
+                                           const uint8_t (*src)[8],
                                            uint32_t offset, uint32_t len) {
   // Validate parameters
   if (src == 0 || offset + len > GATHER_UNIT_GATHER_MEMORY_LEN) {
@@ -86,7 +87,7 @@ static inline bool gather_unit_write_slice(GatherUnit unit, const uint64_t *src,
  * @param len Number of uint64_t words to write
  */
 static inline void gather_unit_write_slice_wrapping(GatherUnit unit,
-                                                    const uint64_t *src,
+                                                    const uint8_t (*src)[8],
                                                     uint32_t offset,
                                                     uint32_t len) {
   if (offset + len <= GATHER_UNIT_GATHER_MEMORY_LEN) {
@@ -111,7 +112,9 @@ static inline void gather_unit_write_slice_wrapping(GatherUnit unit,
  * @param unit Pointer to the GatherUnit
  */
 static inline void gather_unit_wait_for_new_metacycle(GatherUnit unit) {
-  (void)gather_unit_get_metacycle_register(unit);
+  uint8_t val[4];
+  gather_unit_get_metacycle_register(unit, val);
+  (void)val;
 }
 
 #endif // BITTIDE_GATHER_H

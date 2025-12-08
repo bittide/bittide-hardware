@@ -48,6 +48,17 @@ void uart_puthex64(Uart uart, uint64_t val) {
   }
 }
 
+void uart_puthex64_bv(Uart uart, uint8_t val[8]) {
+  const char hex[] = "0123456789abcdef";
+  uart_puts(uart, "0x");
+  for (int i = 0; i < 8; i++) {
+    uint8_t byte = val[i];
+    uint8_t nibbles[2] = {(byte & 0xF0) >> 4, (byte & 0xF)};
+    uart_putc(uart, hex[nibbles[0]]);
+    uart_putc(uart, hex[nibbles[1]]);
+  }
+}
+
 void uart_putdna(Uart uart, const dna_t val) {
   const char hex[] = "0123456789abcdef";
   // DNA is 96 bits stored as 3x32-bit words

@@ -78,7 +78,7 @@ impl StabilityDetector {
             )
             .enumerate()
         {
-            let active = test_bit(link_mask_rev, i);
+            let active = test_bit(link_mask_rev[0], i);
             let diff0 = data_count_stored.abs_diff(min_seen);
             let diff1 = data_count_stored.abs_diff(max_seen);
             let height_violated = diff0 > self.margin || diff1 > self.margin;

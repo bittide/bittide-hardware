@@ -363,6 +363,7 @@ impl<'ir> Monomorpher<'ir> {
             elements: resolved_elems,
         };
         let handle = varis.tuple_variant.push(tuple_var);
+        self.tuples_by_elems.insert(element_results, handle);
 
         match type_desc_mode {
             TypeDescMonomorphMode::TopLevel => {
