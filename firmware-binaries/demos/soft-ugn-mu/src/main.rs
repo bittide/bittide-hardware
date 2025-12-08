@@ -35,7 +35,7 @@ fn initialize_calendars(uart: &mut Uart) {
 
     // Initialize all scatter calendars
     let scatter_calendars = [
-        &INSTANCES.scatter_calendar,
+        &INSTANCES.scatter_calendar_0,
         &INSTANCES.scatter_calendar_1,
         &INSTANCES.scatter_calendar_2,
         &INSTANCES.scatter_calendar_3,
@@ -46,7 +46,7 @@ fn initialize_calendars(uart: &mut Uart) {
 
     // Initialize all gather calendars
     let gather_calendars = [
-        &INSTANCES.gather_calendar,
+        &INSTANCES.gather_calendar_0,
         &INSTANCES.gather_calendar_1,
         &INSTANCES.gather_calendar_2,
         &INSTANCES.gather_calendar_3,
@@ -106,7 +106,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Centering buffer occupancies").unwrap();
     for (i, eb) in [
-        &INSTANCES.elastic_buffer,
+        &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
         &INSTANCES.elastic_buffer_2,
         &INSTANCES.elastic_buffer_3,
@@ -138,7 +138,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Starting UGN captures").unwrap();
     let mut capture_ugns = [
-        (INSTANCES.capture_ugn, false),
+        (INSTANCES.capture_ugn_0, false),
         (INSTANCES.capture_ugn_1, false),
         (INSTANCES.capture_ugn_2, false),
         (INSTANCES.capture_ugn_3, false),

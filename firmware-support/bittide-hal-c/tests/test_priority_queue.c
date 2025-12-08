@@ -8,7 +8,7 @@
 #include <stdio.h>
 
 // Include the priority queue header and implementation
-#include "../src/priority_queue.c"
+#include "../c_src/priority_queue.c"
 #include "priority_queue.h"
 
 // Test counter

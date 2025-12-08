@@ -9,12 +9,13 @@ use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, ToTokens};
 
 use crate::{
+    backends::all_instance_names,
     input_language::{RegisterAccess, TypeName},
     ir::{
         deduplicate::HalShared,
         monomorph::{MonomorphVariants, TypeRefVariant},
         types::{
-            DeviceDescription, IrCtx, PathComp, RegisterDescription, TreeElem, TypeDefinition,
+            DeviceDescription, IrCtx, RegisterDescription, TreeElem, TypeDefinition,
             TypeDescription, TypeRef,
         },
     },
@@ -105,10 +106,11 @@ pub fn generate_device_instances(
     ctx: &IrCtx,
     shared: &HalShared,
     hal_name: &str,
-    tree_elems: impl Iterator<Item = Handle<TreeElem>>,
+    tree_elems: impl Iterator<Item = Handle<TreeElem>> + Clone,
 ) -> TokenStream {
-    let mut name_idx = BTreeMap::<_, usize>::new();
     let hal_ident = ident(IdentType::Module, hal_name);
+    let (name_mapping, name_counts) = all_instance_names(ctx, tree_elems.clone());
+    let mut names_used = BTreeMap::new();
 
     let (imports, fields) = tree_elems
         .filter_map(|handle| match ctx.tree_elem_types[handle.cast()] {
@@ -124,25 +126,21 @@ pub fn generate_device_instances(
         })
         .map(move |(handle, dev_name, abs_addr)| {
             let name = &ctx.identifiers[dev_name];
-            let elem = &ctx.tree_elems[handle];
             let dev_ident = ident(IdentType::Device, name);
 
-            let path = &ctx.paths[elem.path];
-
-            let instance_name_ident = if let Some(name) = path_name(path) {
-                ident(IdentType::Instance, name)
-            } else {
-                let instance_name = match name_idx.entry(name) {
-                    std::collections::btree_map::Entry::Vacant(vacant_entry) => {
-                        vacant_entry.insert(0);
-                        &format!("{dev_ident}")
-                    }
-                    std::collections::btree_map::Entry::Occupied(mut occupied_entry) => {
-                        *occupied_entry.get_mut() += 1;
-                        &format!("{dev_ident}_{}", occupied_entry.get())
-                    }
-                };
-                ident(IdentType::Instance, instance_name)
+            let instance_name_ident = {
+                let raw_name = name_mapping[&handle];
+                if name_counts[raw_name] > 1 {
+                    // if there's more than one instance with the same name,
+                    // generate suffixes, `_0`, `_1` etc
+                    let count = names_used
+                        .entry(raw_name)
+                        .and_modify(|n| *n += 1)
+                        .or_insert(0);
+                    ident(IdentType::Instance, format!("{raw_name}_{count}"))
+                } else {
+                    ident(IdentType::Instance, raw_name)
+                }
             };
 
             use std::str::FromStr;
@@ -186,14 +184,6 @@ pub fn generate_device_instances(
                 }
             }
         }
-    }
-}
-
-fn path_name(path: &[PathComp]) -> Option<&str> {
-    let comp = path.last()?;
-    match comp {
-        PathComp::Named { loc: _, name } => Some(name.as_str()),
-        PathComp::Unnamed(_) => None,
     }
 }
 

@@ -18,6 +18,9 @@ fn main() {
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
+        .file("src/messages.h")
+        .file("src/bittide_ugn.h")
+        .file("src/bittide_ugn.c")
         .files(bittide_hal_c::manual_source_files())
         .compiler("clang")
         .include("src") // Add src directory for our custom stdint.h
@@ -26,7 +29,7 @@ fn main() {
         .flag("--target=riscv32-unknown-none-elf") // RISC-V target
         .flag("-march=rv32imc")
         .flag("-mabi=ilp32")
-        .flag("-O2") // Optimize for size
+        .flag("-Os") // Optimize for size
         .flag("-ffreestanding")
         .flag("-nostdlib")
         .compile("c_main");
