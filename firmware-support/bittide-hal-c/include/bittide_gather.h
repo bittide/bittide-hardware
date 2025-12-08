@@ -114,4 +114,14 @@ static inline void gather_unit_wait_for_new_metacycle(GatherUnit unit) {
   (void)gather_unit_get_metacycle_register(unit);
 }
 
+/**
+ * Clear the gather memory by setting all words to zero
+ *
+ * @param unit Pointer to the GatherUnit
+ */
+static inline void gather_unit_clear(GatherUnit unit) {
+  for (uint32_t i = 0; i < GATHER_UNIT_GATHER_MEMORY_LEN; i++) {
+    gather_unit_set_gather_memory_unchecked(unit, i, 0);
+  }
+}
 #endif // BITTIDE_GATHER_H
