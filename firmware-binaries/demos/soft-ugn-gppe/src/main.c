@@ -43,6 +43,101 @@ ScatterUnit su;
 #define STARTING_DELAY_WRITE (BUFFER_SIZE * 1000)
 #define STARTING_DELAY_READ (BUFFER_SIZE * 1002)
 
+uint64_t encode_alignment_pair(enum RingbufferAlignState state,
+                               int16_t incoming_offset,
+                               int16_t outgoing_offset) {
+  return ((uint64_t)(state & 0xFF) << 32) |
+         ((uint64_t)(incoming_offset & 0xFFFF) << 16) |
+         ((uint64_t)(outgoing_offset & 0xFFFF));
+}
+void decode_alignment_pair(uint64_t encoded, enum RingbufferAlignState *state,
+                           int16_t *incoming_offset, int16_t *outgoing_offset) {
+  *state = (enum RingbufferAlignState)((encoded >> 32) & 0xFF);
+  *incoming_offset = (int16_t)((encoded >> 16) & 0xFFFF);
+  *outgoing_offset = (int16_t)(encoded & 0xFFFF);
+}
+
+void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
+                       Uart uart) {
+  PRINT_ALIGN_START(uart);
+
+  bool all_aligned = false;
+  int16_t incoming_offsets[NUM_PORTS] = {0};
+  enum RingbufferAlignState states[NUM_PORTS] = {RINGBUFFER_ALIGN_ANNOUNCE};
+  uint32_t iteration = 0;
+
+  while (!all_aligned) {
+    iteration++;
+    PRINT_ALIGN_ITERATION(uart, iteration);
+
+    for (int32_t port = 0; port < NUM_PORTS; port++) {
+      if (states[port] == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+        continue; // Already aligned
+      }
+      GatherUnit gather = ugn_ctx->gather_units[port];
+      ScatterUnit scatter = ugn_ctx->scatter_units[port];
+
+      // Process scatter memory
+      uint64_t scatter_data;
+      scatter_unit_get_scatter_memory_unchecked(scatter, 0, &scatter_data);
+      int16_t incoming_offset;
+      int16_t outgoing_offset;
+      enum RingbufferAlignState state;
+
+      decode_alignment_pair(scatter_data, &state, &incoming_offset,
+                            &outgoing_offset);
+
+      // Update state based on received data
+      enum RingbufferAlignState old_state = states[port];
+      states[port] = state;
+
+      // A valid frame always contains incoming offset
+      if (state != RINGBUFFER_ALIGN_EMPTY) {
+        incoming_offsets[port] = incoming_offset;
+        if (old_state != state) {
+          PRINT_ALIGN_STATE_CHANGE(uart, port, state, incoming_offset);
+        }
+      }
+
+      // An announce or acknowledge frame contains the outgoing offset
+      if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
+          state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+        outgoing_offsets[port] = outgoing_offset;
+        PRINT_ALIGN_OUTGOING_OFFSET(uart, port, outgoing_offset);
+      }
+
+      // Do writing to gather memory
+      if (state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+        PRINT_ALIGN_PORT_ALIGNED(uart, port);
+        uint64_t gather_data = encode_alignment_pair(
+            RINGBUFFER_ALIGN_ACKNOWLEDGE, incoming_offset, outgoing_offset);
+        gather_unit_set_gather_memory_unchecked(gather, -outgoing_offsets[port],
+                                                gather_data);
+      } else {
+        enum RingbufferAlignState out_state =
+            state == RINGBUFFER_ALIGN_EMPTY ? RINGBUFFER_ALIGN_ANNOUNCE : state;
+        for (int16_t i = 0; i < BUFFER_SIZE; i++) {
+
+          uint64_t gather_data =
+              encode_alignment_pair(state, incoming_offset, i);
+          gather_unit_set_gather_memory_unchecked(gather, i, gather_data);
+        }
+      }
+    }
+
+    // Check if all ports are aligned
+    all_aligned = true;
+    for (int32_t port = 0; port < NUM_PORTS; port++) {
+      if (states[port] != RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+        all_aligned = false;
+        break;
+      }
+    }
+  }
+
+  PRINT_ALIGN_COMPLETE(uart, incoming_offsets, outgoing_offsets, NUM_PORTS);
+}
+
 // ============================================================================
 // Main Entry Point
 // ============================================================================
@@ -82,6 +177,10 @@ int c_main(void) {
   // Print consolidated initialization information
   PRINT_INIT_INFO(uart, &ugn_ctx, BUFFER_SIZE, SEND_PERIOD, RECEIVE_PERIOD,
                   NUM_PORTS);
+
+  // Align ringbuffers before starting event loop
+  int16_t outgoing_offsets[NUM_PORTS] = {0};
+  align_ringbuffers(&ugn_ctx, outgoing_offsets, uart);
 
   // Event loop variables
   FixedIntPriorityQueue event_queue;
