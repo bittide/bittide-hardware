@@ -16,6 +16,7 @@ riscv-rt = "0.11.0"
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 ufmt = "0.2.0"
+itertools = { version = "0.14.0", default-features = false }
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }

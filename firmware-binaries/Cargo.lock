@@ -163,6 +163,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "itertools",
  "memmap-generate",
  "riscv-rt",
  "ufmt",
