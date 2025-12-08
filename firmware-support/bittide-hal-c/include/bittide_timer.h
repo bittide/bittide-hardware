@@ -28,6 +28,9 @@ typedef enum {
   WAIT_ALREADY_PASSED = 1 // Requested instant already passed
 } WaitResult;
 
+/// Result from comparison operations (same as WaitResult)
+typedef enum { COMPARE_LESS = 0, COMPARE_GREATER_EQUAL = 1 } CompareResult;
+
 // ============================================================================
 // Duration Function Declarations
 // ============================================================================
@@ -95,5 +98,10 @@ void timer_wait(Timer timer, Duration duration);
 WaitResult timer_wait_until(Timer timer, Instant target);
 void timer_wait_stall(Timer timer, Duration duration);
 WaitResult timer_wait_until_stall(Timer timer, Instant target);
+
+// Timer Comparison Functions
+CompareResult get_compare_result(Timer timer);
+CompareResult timer_compare_cycles(Timer timer, uint64_t target_cycles);
+CompareResult timer_compare(Timer timer, Instant target);
 
 #endif // BITTIDE_TIMER_H
