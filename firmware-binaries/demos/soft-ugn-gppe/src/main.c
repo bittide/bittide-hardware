@@ -131,7 +131,9 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
       }
     }
   }
-
+  for (int32_t port = 0; port < NUM_PORTS; port++) {
+    gather_unit_clear(ugn_ctx->gather_units[port]);
+  }
   PRINT_ALIGN_COMPLETE(uart, incoming_offsets, outgoing_offsets, NUM_PORTS);
 }
 
