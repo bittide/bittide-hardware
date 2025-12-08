@@ -187,6 +187,9 @@ int c_main(void) {
 
   // Get current time
   uint64_t start_cycles = timer_now_cycles(timer);
+
+  // Align start_cycles to start of buffer
+  start_cycles = start_cycles + (BUFFER_SIZE - (start_cycles % BUFFER_SIZE));
   uint64_t start_cycles_write = start_cycles + STARTING_DELAY_WRITE;
   uint64_t start_cycles_read = start_cycles + STARTING_DELAY_READ;
 
