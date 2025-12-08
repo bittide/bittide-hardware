@@ -55,13 +55,6 @@ fn main() -> ! {
     for channel in 0..Transceivers::CHANNEL_ENABLES_LEN {
         transceivers.set_channel_enables(channel, true);
     }
-
-    for channel in 0..Transceivers::HANDSHAKES_DONE_LEN {
-        while !transceivers.handshakes_done(channel).unwrap_or(false) {}
-        uwriteln!(uart, "Channel {} handshake done.", channel).unwrap();
-        uwriteln!(uart, "{:?}", transceivers.statistics(channel)).unwrap();
-    }
-
     uwriteln!(uart, "Done.").unwrap();
 
     uwriteln!(uart, "Going into infinite loop..").unwrap();

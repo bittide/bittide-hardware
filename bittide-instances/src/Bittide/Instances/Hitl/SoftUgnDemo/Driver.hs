@@ -73,47 +73,50 @@ driver testName targets = do
           $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
-        liftIO
-          $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
-          $ forConcurrently_ picocoms
-          $ \pico ->
-            waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
 
-  let
-    optionalInitArgs = L.repeat def
-    openOcdStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalInitArgs
-
-  -- Start OpenOCD instances for all CPUs
-  brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
-      allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
+      optionalInitArgs = L.repeat def
+      openOcdStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalInitArgs
 
-      _bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos :: [Ocd.TapInfo]
-      (_bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos)
-        | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
-        , [boots, mus, ccs, gppes] <- L.transpose allTapInfos =
-            (boots, mus, ccs, gppes)
-        | otherwise =
-            error
-              $ "Unexpected number of OpenOCD taps initialized. Expected: "
-              <> show (L.length expectedJtagIds)
-              <> ", but got: "
-              <> show (L.length <$> allTapInfos)
+    -- Start OpenOCD instances for all CPUs
+    brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+      let
+        allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
-      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+        _bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos :: [Ocd.TapInfo]
+        (_bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos)
+          | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
+          , [boots, mus, ccs, gppes] <- L.transpose allTapInfos =
+              (boots, mus, ccs, gppes)
+          | otherwise =
+              error
+                $ "Unexpected number of OpenOCD taps initialized. Expected: "
+                <> show (L.length expectedJtagIds)
+                <> ", but got: "
+                <> show (L.length <$> allTapInfos)
 
-      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+      Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
-        Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
-          liftIO
-            $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppeTapInfos targets
-          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gppeGdbs
+        Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+          liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
+          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
-          brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+          Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
+            liftIO
+              $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppeTapInfos targets
+            liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gppeGdbs
+
+            -- Wait for boot CPU to finish after loading CC, MU, and GPPE binaries,
+            -- but before continuing them. This increases the chance of CC seeing
+            -- links that are coming up.
+            liftIO
+              $ T.tryWithTimeout T.PrintActionTime "Waiting for boot done" 60_000_000
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
+
             let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue ccGdbs
             liftIO

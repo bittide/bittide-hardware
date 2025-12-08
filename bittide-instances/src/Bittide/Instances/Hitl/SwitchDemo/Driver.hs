@@ -458,11 +458,6 @@ driver testName targets = do
           $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
-        liftIO
-          $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
-          $ forConcurrently_ picocoms
-          $ \pico ->
-            waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
 
     let
       optionalInitArgs = L.repeat def
@@ -493,6 +488,15 @@ driver testName targets = do
           liftIO
             $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muTapInfos targets
           liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+
+          -- Wait for boot CPU to finish after loading CC and MU binaries, but before
+          -- continuing them. This increases the chance of CC seeing links that are
+          -- coming up
+          liftIO
+            $ T.tryWithTimeout T.PrintActionTime "Waiting for boot done" 60_000_000
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
 
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
