@@ -21,14 +21,14 @@
 
 ScatterUnit su;
 // Number of event loop iterations
-#define NUM_PERIODS 5000000
+#define NUM_PERIODS 1000
 #define NUM_PORTS 7
 
 // Protocol timing parameter
 #define BUFFER_SIZE 4000
 
 // SEND timing parameters
-#define SEND_SPACING (3 * BUFFER_SIZE)) // Spacing between SEND events
+#define SEND_SPACING (3 * BUFFER_SIZE) // Spacing between SEND events
 #define SEND_PERIOD (SEND_SPACING * NUM_PORTS)
 #define FINAL_SEND_DELAY (2 * SEND_PERIOD + BUFFER_SIZE)
 
