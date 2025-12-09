@@ -60,19 +60,14 @@ impl Callisto {
     /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
     pub fn update<I>(self: &mut Callisto, cc: &ClockControl, eb_counters_iter: I) -> SpeedChange
     where
-        I: Iterator<Item = i32>,
+        I: Iterator<Item = Option<i32>>,
     {
         // `fStep` should match the step size of the clock boards. For all our HITL
         // tests this is set by `HwCcTopologies.commonStepSizeSelect`.
         const FSTEP: f32 = 10e-9; // 10 PPB
 
-        let link_mask_rev = cc.link_mask_rev();
-
         // Sum the data counts for all active links
-        let measured_sum: i32 = eb_counters_iter
-            .enumerate()
-            .map(|(i, v)| if test_bit(link_mask_rev, i) { v } else { 0 })
-            .sum();
+        let measured_sum: i32 = eb_counters_iter.flatten().sum();
 
         let c_des = self.config.gain * (measured_sum as f32) + self.steady_state_target;
         let c_est = FSTEP * self.accumulated_speed_requests as f32;
@@ -127,9 +122,4 @@ fn speed_change_to_sign(speed_change: SpeedChange) -> i32 {
         SpeedChange::SlowDown => -1,
         SpeedChange::SpeedUp => 1,
     }
-}
-
-/// Test whether the `i`-th bit in `bv` is set.
-fn test_bit(bv: u8, i: usize) -> bool {
-    (bv & (1 << i)) != 0
 }

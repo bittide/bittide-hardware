@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::panic::PanicInfo;
+use itertools::izip;
 
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::manual_additions::timer::Instant;
@@ -37,19 +38,6 @@ fn main() -> ! {
     uwriteln!(uart, "Starting sync out generator..").unwrap();
     sync_out_generator.set_active(true);
 
-    uwriteln!(uart, "Waiting for at least one pulse..").unwrap();
-    while freeze.number_of_sync_pulses_seen() == 0 {
-        // TOOD: Memory map sync pulse counter -- no need to involve freeze here
-        freeze.set_freeze(());
-    }
-
-    // XXX: CPU is booted after all links are available, so we can blindly enable
-    //      all counters.
-    uwriteln!(uart, "Starting domain diff counters..").unwrap();
-    for i in 0..DomainDiffCounters::ENABLE_LEN {
-        domain_diff_counters.set_enable(i, true);
-    }
-
     uwriteln!(uart, "Starting clock control..").unwrap();
     let mut callisto = Callisto::new(cc.config().callisto);
 
@@ -67,16 +55,34 @@ fn main() -> ! {
     let mut prev_all_stable = false;
 
     loop {
-        // Do clock control on "frozen" counters
+        // Store frozen elastic buffer counters
         freeze.set_freeze(());
-        cc.set_change_speed(callisto.update(&cc, freeze.eb_counters_volatile_iter()));
+
+        // Do clock control update
+        cc.set_change_speed(
+            callisto.update(
+                &cc,
+                izip!(
+                    0..DomainDiffCounters::ENABLE_LEN,
+                    freeze.eb_counters_volatile_iter()
+                )
+                .map(|(i, counter)| {
+                    if domain_diff_counters.enable(i).unwrap_or(false) {
+                        Some(counter)
+                    } else {
+                        None
+                    }
+                }),
+            ),
+        );
 
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
 
         // Store debug information. Stop capturing samples if we are stable to
         // reduce plot sizes.
-        if !prev_all_stable {
+        let has_sense_of_global_time = freeze.number_of_sync_pulses_seen() != 0;
+        if !prev_all_stable && has_sense_of_global_time {
             sample_store.store(&freeze, stability, callisto.accumulated_speed_requests);
         }
 
@@ -89,6 +95,13 @@ fn main() -> ! {
             panic!("Links no longer stable");
         }
         prev_all_stable = all_stable;
+
+        // Update active domain difference counters based on which links are
+        // enabled.
+        let link_mask_rev = cc.link_mask_rev();
+        for i in 0..DomainDiffCounters::ENABLE_LEN {
+            domain_diff_counters.set_enable(i, test_bit(link_mask_rev, i));
+        }
 
         // Wait for next update
         let timer_result = timer.wait_until_stall(next_update);
@@ -113,6 +126,11 @@ fn panic_on_missed_deadline(
         .unwrap();
         panic!("Deadline missed! See UART log.");
     };
+}
+
+/// Test whether the `i`-th bit in `bv` is set.
+fn test_bit(bv: u8, i: usize) -> bool {
+    (bv & (1 << i)) != 0
 }
 
 #[panic_handler]

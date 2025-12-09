@@ -19,7 +19,13 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let transceivers = &INSTANCES.transceivers;
 
-    uwriteln!(uart, "Hello from management unit..").unwrap();
+    // Channels should be enabled by boot program, so we can simply wait here
+    uwriteln!(uart, "Waiting for channel negotiations..").unwrap();
+    for channel in 0..Transceivers::HANDSHAKES_DONE_LEN {
+        while !transceivers.handshakes_done(channel).unwrap_or(false) {}
+        uwriteln!(uart, "Channel {} negotiation done.", channel).unwrap();
+        uwriteln!(uart, "{:?}", transceivers.statistics(channel)).unwrap();
+    }
 
     uwriteln!(uart, "Centering buffer occupancies").unwrap();
     for (i, eb) in [

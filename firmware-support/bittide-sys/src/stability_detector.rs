@@ -9,6 +9,10 @@ use bittide_hal::{
 use itertools::izip;
 use ufmt::derive::uDebug;
 
+fn test_bit(bv: u8, i: usize) -> bool {
+    (bv & (1 << i)) != 0
+}
+
 pub struct StabilityDetector {
     /// Reference data counts -- sampled at some point in time and used to
     /// compare against the current data counts to determine stability.
@@ -61,21 +65,28 @@ impl StabilityDetector {
     pub fn update(&mut self, cc: &ClockControl, now: Instant) -> Stability {
         let mut stables: u32 = 0;
         let mut settleds: u32 = 0;
+        let link_mask_rev = cc.link_mask_rev();
 
-        for (data_count_stored, maybe_start, data_count, min_seen, max_seen, prev_stable) in izip!(
-            self.data_counts.iter_mut(),
-            self.starts.iter_mut(),
-            cc.data_counts_volatile_iter(),
-            cc.min_data_counts_seen_volatile_iter(),
-            cc.max_data_counts_seen_volatile_iter(),
-            self.prev_stabilities.iter_mut()
-        ) {
+        for (i, (data_count_stored, maybe_start, data_count, min_seen, max_seen, prev_stable)) in
+            izip!(
+                self.data_counts.iter_mut(),
+                self.starts.iter_mut(),
+                cc.data_counts_volatile_iter(),
+                cc.min_data_counts_seen_volatile_iter(),
+                cc.max_data_counts_seen_volatile_iter(),
+                self.prev_stabilities.iter_mut()
+            )
+            .enumerate()
+        {
+            let active = test_bit(link_mask_rev, i);
             let diff0 = data_count_stored.abs_diff(min_seen);
             let diff1 = data_count_stored.abs_diff(max_seen);
             let height_violated = diff0 > self.margin || diff1 > self.margin;
 
-            let (stable, settled) = if height_violated {
-                // Reset everything, as we violated the window height
+            let (stable, settled) = if height_violated || !active {
+                // Reset everything, as we violated the window height or if this
+                // link is inactive. The latter prevents inactive links from
+                // being considered stable.
                 *maybe_start = Some(now);
                 *data_count_stored = data_count;
                 cc.set_clear_data_counts_seen(true);

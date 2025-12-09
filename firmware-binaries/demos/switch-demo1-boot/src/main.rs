@@ -9,7 +9,7 @@ use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
 use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
-use bittide_hal::shared_devices::transceivers::Transceivers;
+use bittide_hal::shared_devices::Transceivers;
 use bittide_hal::switch_demo_boot::DeviceInstances;
 use bittide_macros::load_clock_config_csv;
 
@@ -49,20 +49,11 @@ fn main() -> ! {
 
     uwriteln!(uart, "Enabling bittide domain..").unwrap();
     transceivers.set_transceiver_enable(true);
-    uwriteln!(uart, "Done.").unwrap();
 
     uwriteln!(uart, "Enabling all transceiver channels..").unwrap();
     for channel in 0..Transceivers::CHANNEL_ENABLES_LEN {
         transceivers.set_channel_enables(channel, true);
     }
-
-    for channel in 0..Transceivers::HANDSHAKES_DONE_LEN {
-        while !transceivers.handshakes_done(channel).unwrap_or(false) {}
-        uwriteln!(uart, "Channel {} handshake done.", channel).unwrap();
-        uwriteln!(uart, "{:?}", transceivers.statistics(channel)).unwrap();
-    }
-
-    uwriteln!(uart, "Done.").unwrap();
 
     uwriteln!(uart, "Going into infinite loop..").unwrap();
     #[allow(clippy::empty_loop)]
