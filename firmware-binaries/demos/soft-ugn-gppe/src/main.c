@@ -51,11 +51,11 @@ int c_main(void) {
 
   Uart uart = hal.uart;
   ScatterUnit scatter_units[NUM_PORTS] = {
-      hal.scatter_unit_0, hal.scatter_unit_1, hal.scatter_unit_2,
+      hal.scatter_unit,   hal.scatter_unit_1, hal.scatter_unit_2,
       hal.scatter_unit_3, hal.scatter_unit_4, hal.scatter_unit_5,
       hal.scatter_unit_6};
 
-  GatherUnit gather_units[NUM_PORTS] = {hal.gather_unit_0, hal.gather_unit_1,
+  GatherUnit gather_units[NUM_PORTS] = {hal.gather_unit,   hal.gather_unit_1,
                                         hal.gather_unit_2, hal.gather_unit_3,
                                         hal.gather_unit_4, hal.gather_unit_5,
                                         hal.gather_unit_6};
