@@ -27,7 +27,7 @@ import Prelude
 import Clash.Prelude (BitVector, Index, Natural, Unsigned, bitCoerce)
 
 import Bittide.Instances.Hitl.Setup
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, unless, when)
 import Data.Either.Extra (mapLeft)
 import Data.Functor (void)
 import Data.List (findIndex)
@@ -220,85 +220,136 @@ Performs edge-by-edge comparison and reports:
 
 Returns 'True' if edges match exactly, 'False' otherwise.
 -}
+compareRoundtripLatencies :: [RoundTripLatency] -> [RoundTripLatency] -> IO Bool
+compareRoundtripLatencies hwRoundtrips swRoundtrips = do
+  putStrLn "\n=== Roundtrip Latency Comparison ==="
+  putStrLn $ "Total hardware roundtrips: " <> show (L.length hwRoundtrips)
+  putStrLn $ "Total software roundtrips: " <> show (L.length swRoundtrips)
+
+  -- Match roundtrips by node and port
+  let matchRoundtrip hw =
+        L.find
+          ( \sw ->
+              sw.rtlNode == hw.rtlNode
+                && sw.rtlPort == hw.rtlPort
+          )
+          swRoundtrips
+
+      hwMatches = [(hw, matchRoundtrip hw) | hw <- hwRoundtrips]
+      matchedSwRoundtrips = [sw | (_, Just sw) <- hwMatches]
+      unmatchedSwRoundtrips = L.filter (\sw -> sw `notElem` matchedSwRoundtrips) swRoundtrips
+
+      allMatch =
+        all
+          ( \(hw, mSw) -> case mSw of
+              Just sw -> hw.rtlCycles == sw.rtlCycles
+              Nothing -> False
+          )
+          hwMatches
+          && null unmatchedSwRoundtrips
+
+  if allMatch && L.length hwRoundtrips == L.length swRoundtrips
+    then do
+      putStrLn "[SUCCESS] All roundtrip latencies match!"
+      return True
+    else do
+      putStrLn "[FAILURE] Roundtrip latencies differ!\n"
+
+      -- Report hardware roundtrips and their matches
+      forM_ (L.zip [0 :: Int ..] hwMatches) $ \(idx, (hw, mSw)) -> do
+        case mSw of
+          Nothing -> do
+            putStrLn $ "\n[" <> show idx <> "] Hardware roundtrip NOT FOUND in software:"
+            putStrLn $ "  HW: " <> show hw
+          Just sw -> do
+            when (hw.rtlCycles /= sw.rtlCycles) $ do
+              putStrLn $ "\n[" <> show idx <> "] Roundtrip latency differs:"
+              putStrLn $
+                "  HW: Node 0x"
+                  <> showHex (fromIntegral hw.rtlNode :: Integer) ""
+                  <> " Port "
+                  <> show hw.rtlPort
+                  <> " = "
+                  <> show hw.rtlCycles
+                  <> " cycles"
+              putStrLn $
+                "  SW: Node 0x"
+                  <> showHex (fromIntegral sw.rtlNode :: Integer) ""
+                  <> " Port "
+                  <> show sw.rtlPort
+                  <> " = "
+                  <> show sw.rtlCycles
+                  <> " cycles"
+              putStrLn $
+                "    ↳ Delta: "
+                  <> show (abs (fromIntegral hw.rtlCycles - fromIntegral sw.rtlCycles :: Integer))
+                  <> " cycles"
+
+      -- Report software roundtrips not in hardware
+      unless (null unmatchedSwRoundtrips) $ do
+        putStrLn "\n=== Software roundtrips NOT FOUND in hardware ==="
+        forM_ unmatchedSwRoundtrips $ \sw -> do
+          putStrLn $ "  SW: " <> show sw
+
+      return False
+
 compareUgnEdges :: [UgnEdge] -> [UgnEdge] -> IO Bool
 compareUgnEdges hardwareUgns softwareUgns = do
-  putStrLn "\n=== Detailed Comparison ==="
+  putStrLn "\n=== Detailed Edge Comparison ==="
   putStrLn $ "Total hardware UGN edges: " <> show (L.length hardwareUgns)
   putStrLn $ "Total software UGN edges: " <> show (L.length softwareUgns)
 
-  if hardwareUgns == softwareUgns
+  -- Compare edges by matching source and destination nodes
+  let matchEdge hw =
+        L.find
+          ( \sw ->
+              sw.ueSrcNode == hw.ueSrcNode
+                && sw.ueDstNode == hw.ueDstNode
+          )
+          softwareUgns
+
+      hwMatches = [(hw, matchEdge hw) | hw <- hardwareUgns]
+      matchedSwEdges = [sw | (_, Just sw) <- hwMatches]
+      unmatchedSwEdges = L.filter (\sw -> sw `notElem` matchedSwEdges) softwareUgns
+
+      allMatch =
+        all
+          ( \(hw, mSw) -> case mSw of
+              Just sw -> hw.ueUgn == sw.ueUgn
+              Nothing -> False
+          )
+          hwMatches
+          && null unmatchedSwEdges
+
+  if allMatch && L.length hardwareUgns == L.length softwareUgns
     then do
       putStrLn "[SUCCESS] All UGN edges match!"
       return True
     else do
       putStrLn "[FAILURE] UGN edges differ!\n"
 
-      -- Compare edge by edge
-      let maxLen = max (L.length hardwareUgns) (L.length softwareUgns)
-          hwPadded = hardwareUgns L.++ L.replicate (maxLen - L.length hardwareUgns) (error "No HW edge")
-          swPadded = softwareUgns L.++ L.replicate (maxLen - L.length softwareUgns) (error "No SW edge")
+      -- Report hardware edges and their matches
+      forM_ (L.zip [0 :: Int ..] hwMatches) $ \(idx, (hw, mSw)) -> do
+        case mSw of
+          Nothing -> do
+            putStrLn $ "\n[" <> show idx <> "] Hardware edge NOT FOUND in software:"
+            putStrLn $ "  HW: " <> show hw
+          Just sw -> do
+            when (hw.ueUgn /= sw.ueUgn) $ do
+              putStrLn $ "\n[" <> show idx <> "] UGN value differs:"
+              putStrLn $ "  HW: " <> show hw
+              putStrLn $ "  SW: " <> show sw
+              putStrLn $
+                "    ↳ UGN delta: "
+                  <> show (abs (hw.ueUgn - sw.ueUgn))
+                  <> " cycles"
 
-      forM_ (L.zip3 [0 :: Int ..] hwPadded swPadded) $ \(idx, hw, sw) -> do
-        if idx >= L.length hardwareUgns
-          then
-            putStrLn $
-              "\n["
-                <> show idx
-                <> "] MISSING in hardware, present in software:"
-                <> "\n  SW: "
-                <> show sw
-          else
-            if idx >= L.length softwareUgns
-              then
-                putStrLn $
-                  "\n["
-                    <> show idx
-                    <> "] MISSING in software, present in hardware:"
-                    <> "\n  HW: "
-                    <> show hw
-              else
-                if hw /= sw
-                  then do
-                    putStrLn $ "\n[" <> show idx <> "] MISMATCH:"
-                    putStrLn $ "  HW: " <> show hw
-                    putStrLn $ "  SW: " <> show sw
+      -- Report software edges not in hardware
+      unless (null unmatchedSwEdges) $ do
+        putStrLn "\n=== Software edges NOT FOUND in hardware ==="
+        forM_ unmatchedSwEdges $ \sw -> do
+          putStrLn $ "  SW: " <> show sw
 
-                    -- Analyze the differences
-                    when (hw.ueSrcNode /= sw.ueSrcNode) $
-                      putStrLn $
-                        "    ↳ Source node differs: "
-                          <> show hw.ueSrcNode
-                          <> " vs "
-                          <> show sw.ueSrcNode
-                    when (hw.ueSrcPort /= sw.ueSrcPort) $
-                      putStrLn $
-                        "    ↳ Source port differs: "
-                          <> show hw.ueSrcPort
-                          <> " vs "
-                          <> show sw.ueSrcPort
-                    when (hw.ueDstNode /= sw.ueDstNode) $
-                      putStrLn $
-                        "    ↳ Dest node differs: "
-                          <> show hw.ueDstNode
-                          <> " vs "
-                          <> show sw.ueDstNode
-                    when (hw.ueDstPort /= sw.ueDstPort) $
-                      putStrLn $
-                        "    ↳ Dest port differs: "
-                          <> show hw.ueDstPort
-                          <> " vs "
-                          <> show sw.ueDstPort
-                    when (hw.ueUgn /= sw.ueUgn) $
-                      putStrLn $
-                        "    ↳ UGN value differs: "
-                          <> show hw.ueUgn
-                          <> " vs "
-                          <> show sw.ueUgn
-                          <> " (delta: "
-                          <> show (abs (hw.ueUgn - sw.ueUgn))
-                          <> ")"
-                  else
-                    pure () -- Edges match
       return False
 
 -- * UGN Processing Functions
