@@ -147,11 +147,16 @@ driver testName targets = do
                       parseCaptureCounters pico.stdoutHandle
                   )
                   picocoms
-            let hardwareUgns =
-                  L.zipWith
-                    (\i ccs -> (timingOracleToUgnEdge . counterCaptureToTimingOracle i) <$> ccs)
-                    [0 ..]
-                    hardwareCaptureCounters
+            let
+              hardwareUgns =
+                L.zipWith
+                  (\i ccs -> (timingOracleToUgnEdge . counterCaptureToTimingOracle i) <$> ccs)
+                  [0 ..]
+                  hardwareCaptureCounters
+              hardwareRoundtrips = calculateRoundtripLatencies $ L.concat hardwareUgns
+            _ <- liftIO $ do
+              putStrLn "\n=== Hardware UGN Roundtrip Latencies ==="
+              mapM print hardwareRoundtrips
             liftIO
               $ T.tryWithTimeoutOn
                 T.PrintActionTime

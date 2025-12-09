@@ -109,38 +109,40 @@ data RoundTripLatency = RoundTripLatency
 
 {- | Calculate roundtrip latencies from UGN edges.
 
-For each node and port, finds the outgoing Ugn edge and its incoming Ugn Edge.
-Then computes the roundtrip latency as: UGN(a -> b) + UGN(b -> a)
+For each node and port, finds the pair of edges going out and coming back,
+then computes the roundtrip latency as: UGN(a:x -> b:y) + UGN(b:y -> a:x)
+
+This matches the algorithm used in the C code (PRINT_ROUNDTRIP_LATENCIES)
+and Bittide.Calculator (printAllIgns).
 
 Returns a list of roundtrip latencies, one for each port of each node that
-has both outgoing and incoming edges.
+has both outgoing and return edges.
 -}
 calculateRoundtripLatencies :: [UgnEdge] -> [RoundTripLatency]
-calculateRoundtripLatencies edges = concatMap computeNodeRoundtrips nodeGroups
+calculateRoundtripLatencies edges = mapMaybe computeRoundtrip edges
  where
-  nodeGroups =
-    L.groupBy
-      (\a b -> a.ueSrcNode == b.ueSrcNode)
-      (L.sortOn (.ueSrcNode) edges)
-
-  computeNodeRoundtrips :: [UgnEdge] -> [RoundTripLatency]
-  computeNodeRoundtrips nodeEdges =
-    let ports = L.nub $ L.map (.ueSrcPort) nodeEdges
-     in mapMaybe (computeNodeRoundtrip nodeEdges) ports
-
-  computeNodeRoundtrip nodeEdges port =
-    case (outgoingEdge, incomingEdge) of
-      (Just outEdge, Just inEdge) ->
+  computeRoundtrip :: UgnEdge -> Maybe RoundTripLatency
+  computeRoundtrip outEdge =
+    case returnEdge of
+      Just retEdge ->
         Just $
           RoundTripLatency
             { rtlNode = outEdge.ueSrcNode
             , rtlPort = outEdge.ueSrcPort
-            , rtlCycles = fromIntegral (outEdge.ueUgn + inEdge.ueUgn)
+            , rtlCycles = fromIntegral (outEdge.ueUgn + retEdge.ueUgn)
             }
-      _ -> Nothing
+      Nothing -> Nothing
    where
-    outgoingEdge = L.find (\e -> e.ueSrcPort == port) nodeEdges
-    incomingEdge = L.find (\e -> e.ueDstPort == port) nodeEdges
+    -- Find the return edge: from (dstNode, dstPort) back to (srcNode, srcPort)
+    returnEdge =
+      L.find
+        ( \e ->
+            e.ueSrcNode == outEdge.ueDstNode
+              && e.ueSrcPort == outEdge.ueDstPort
+              && e.ueDstNode == outEdge.ueSrcNode
+              && e.ueDstPort == outEdge.ueSrcPort
+        )
+        edges
 
 -- | Custom Show instance for UgnEdge that displays node IDs in hexadecimal.
 instance Show UgnEdge where
