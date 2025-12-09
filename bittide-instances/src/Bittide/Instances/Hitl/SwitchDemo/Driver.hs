@@ -496,13 +496,17 @@ driver testName targets = do
 
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue muGdbs
+
+          -- The MU will continuously center the elastic buffers to prevent them
+          -- from over/under-flowing. Technically we don't need this wait, as the MU will
+          -- continue to the next step (capturing UGNs).
           liftIO
             $ T.tryWithTimeoutOn T.PrintActionTime "Waiting for stable links" 60_000_000 goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->
               waitForLine pico.stdoutHandle "[CC] All links stable"
 
-          liftIO $ mapConcurrently_ Gdb.continue muGdbs
           liftIO
             $ T.tryWithTimeoutOn
               T.PrintActionTime

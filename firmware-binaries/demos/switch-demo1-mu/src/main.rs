@@ -18,6 +18,15 @@ use riscv_rt::entry;
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let transceivers = &INSTANCES.transceivers;
+    let elastic_buffers = [
+        &INSTANCES.elastic_buffer_0,
+        &INSTANCES.elastic_buffer_1,
+        &INSTANCES.elastic_buffer_2,
+        &INSTANCES.elastic_buffer_3,
+        &INSTANCES.elastic_buffer_4,
+        &INSTANCES.elastic_buffer_5,
+        &INSTANCES.elastic_buffer_6,
+    ];
 
     // Channels should be enabled by boot program, so we can simply wait here
     uwriteln!(uart, "Waiting for channel negotiations..").unwrap();
@@ -27,30 +36,26 @@ fn main() -> ! {
         uwriteln!(uart, "{:?}", transceivers.statistics(channel)).unwrap();
     }
 
-    uwriteln!(uart, "Centering buffer occupancies").unwrap();
-    for (i, eb) in [
-        &INSTANCES.elastic_buffer_0,
-        &INSTANCES.elastic_buffer_1,
-        &INSTANCES.elastic_buffer_2,
-        &INSTANCES.elastic_buffer_3,
-        &INSTANCES.elastic_buffer_4,
-        &INSTANCES.elastic_buffer_5,
-        &INSTANCES.elastic_buffer_6,
-    ]
-    .iter()
-    .enumerate()
-    {
-        uwriteln!(
-            uart,
-            "Elastic buffer {}, current occupancy: {}",
-            i,
-            eb.data_count()
-        )
-        .unwrap();
-        eb.set_occupancy(0);
+    // Keep centering elastic buffers to avoid over/under-flows. Keep track of
+    // number of frames changed while centering.
+    uwriteln!(uart, "Continuously center buffer occupancies").unwrap();
+    let mut eb_changes: [i8; 7] = [0; 7];
+    // TODO: What is the exit condition for this loop?
+    let some_cool_condition = false;
+    while !some_cool_condition {
+        for (i, eb) in elastic_buffers.iter().enumerate()
+        {
+            eb_changes[i] += eb.data_count();
+            eb.set_occupancy(0);
+        }
+    }
+
+    for (i, eb) in elastic_buffers.iter().enumerate() {
+        uwriteln!(uart, "Elastic Buffer {}, frames changed: {}", i, eb_changes[i]).unwrap();
         eb.set_stable(true);
     }
 
+    // TODO: Print message related to exit condition of eb centering loop
     uwriteln!(uart, "All elastic buffers centered").unwrap();
 
     uwriteln!(uart, "Switch transceiver channels to user mode..").unwrap();
