@@ -23,9 +23,9 @@ void dna_read(Dna dna_device, dna_t out) {
       conv.dna[0] = value.just._0[0];
       conv.dna[1] = value.just._0[1];
 
-      out[0] = conv.vals[1];
-      out[1] = conv.vals[2];
-      out[2] = conv.vals[3];
+      out[0] = conv.vals[0];
+      out[1] = conv.vals[1];
+      out[2] = conv.vals[2];
       return;
     }
     // If not present, retry
