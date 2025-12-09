@@ -31,7 +31,7 @@ import Control.Monad (forM_, when)
 import Data.Either.Extra (mapLeft)
 import Data.Functor (void)
 import Data.List (findIndex)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, mapMaybe)
 import Numeric (showHex)
 import Project.Handle
 import Text.Parsec
@@ -106,6 +106,41 @@ data RoundTripLatency = RoundTripLatency
   -- ^ Roundtrip latency in clock cycles
   }
   deriving (Show, Eq)
+
+{- | Calculate roundtrip latencies from UGN edges.
+
+For each node and port, finds the outgoing Ugn edge and its incoming Ugn Edge.
+Then computes the roundtrip latency as: UGN(a -> b) + UGN(b -> a)
+
+Returns a list of roundtrip latencies, one for each port of each node that
+has both outgoing and incoming edges.
+-}
+calculateRoundtripLatencies :: [UgnEdge] -> [RoundTripLatency]
+calculateRoundtripLatencies edges = concatMap computeNodeRoundtrips nodeGroups
+ where
+  nodeGroups =
+    L.groupBy
+      (\a b -> a.ueSrcNode == b.ueSrcNode)
+      (L.sortOn (.ueSrcNode) edges)
+
+  computeNodeRoundtrips :: [UgnEdge] -> [RoundTripLatency]
+  computeNodeRoundtrips nodeEdges =
+    let ports = L.nub $ L.map (.ueSrcPort) nodeEdges
+     in mapMaybe (computeNodeRoundtrip nodeEdges) ports
+
+  computeNodeRoundtrip nodeEdges port =
+    case (outgoingEdge, incomingEdge) of
+      (Just outEdge, Just inEdge) ->
+        Just $
+          RoundTripLatency
+            { rtlNode = outEdge.ueSrcNode
+            , rtlPort = outEdge.ueSrcPort
+            , rtlCycles = fromIntegral (outEdge.ueUgn + inEdge.ueUgn)
+            }
+      _ -> Nothing
+   where
+    outgoingEdge = L.find (\e -> e.ueSrcPort == port) nodeEdges
+    incomingEdge = L.find (\e -> e.ueDstPort == port) nodeEdges
 
 -- | Custom Show instance for UgnEdge that displays node IDs in hexadecimal.
 instance Show UgnEdge where
