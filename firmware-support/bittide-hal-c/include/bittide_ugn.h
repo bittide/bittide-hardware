@@ -347,7 +347,7 @@ static inline bool process_ugn_message(const UgnMessage *msg,
 }
 
 // Send UGN to a specific port
-static inline bool send_ugn_to_port(UgnContext *ctx, Timer *timer,
+static inline bool send_ugn_to_port(UgnContext *ctx, Timer timer,
                                     Event *event) {
   GatherUnit *unit = &ctx->gather_units[event->port];
   uint32_t port = event->port;
@@ -379,9 +379,9 @@ static inline bool send_ugn_to_port(UgnContext *ctx, Timer *timer,
   buffer[4] = msg.remote_counter;
   buffer[5] = ugn_encode_node_port(msg.node_id, msg.port);
 
-  timer_wait_until_cycles(*timer, event->event_time);
+  timer_wait_until_cycles(timer, event->event_time);
   gather_unit_write_slice_wrapping(*unit, buffer, offset, 6);
-  CompareResult cmp_result = timer_compare_cycles(*timer, deadline);
+  CompareResult cmp_result = timer_compare_cycles(timer, deadline);
 
   if (cmp_result == COMPARE_LESS) {
     ctx->met_send_count++;
@@ -397,7 +397,7 @@ static inline bool send_ugn_to_port(UgnContext *ctx, Timer *timer,
 }
 
 // Check incoming buffer for a specific port
-static inline bool check_incoming_buffer(UgnContext *ctx, Timer *timer,
+static inline bool check_incoming_buffer(UgnContext *ctx, Timer timer,
                                          Event *event) {
   ScatterUnit *unit = &ctx->scatter_units[event->port];
   if (event->port >= ctx->num_ports)
@@ -415,9 +415,9 @@ static inline bool check_incoming_buffer(UgnContext *ctx, Timer *timer,
       ugn_calculate_scatter_offset(ctx, event->port, event->event_time);
   uint64_t deadline = event->event_time + SCATTER_UNIT_SCATTER_MEMORY_LEN;
 
-  timer_wait_until_cycles(*timer, event->event_time);
+  timer_wait_until_cycles(timer, event->event_time);
   bool message_available = ugn_read_message(unit, offset, &msg);
-  CompareResult cmp_result = timer_compare_cycles(*timer, deadline);
+  CompareResult cmp_result = timer_compare_cycles(timer, deadline);
 
   if (cmp_result == COMPARE_LESS) {
     ctx->met_receive_count++;
@@ -447,8 +447,7 @@ static inline bool check_incoming_buffer(UgnContext *ctx, Timer *timer,
 }
 
 // Invalidate old scatter buffer data for a specific port
-static inline void invalidate_port(UgnContext *ctx, Timer *timer,
-                                   Event *event) {
+static inline void invalidate_port(UgnContext *ctx, Timer timer, Event *event) {
   uint32_t port = event->port;
   GatherUnit *gather_unit = &ctx->gather_units[port];
   uint64_t deadline = event->event_time + GATHER_UNIT_GATHER_MEMORY_LEN;
@@ -459,9 +458,9 @@ static inline void invalidate_port(UgnContext *ctx, Timer *timer,
 
   uint64_t zeros[6] = {0, 0, 0, 0, 0, 0};
 
-  timer_wait_until_cycles(*timer, event->event_time);
+  timer_wait_until_cycles(timer, event->event_time);
   gather_unit_write_slice_wrapping(*gather_unit, zeros, offset, 6);
-  CompareResult cmp_result = timer_compare_cycles(*timer, deadline);
+  CompareResult cmp_result = timer_compare_cycles(timer, deadline);
 
   if (cmp_result == COMPARE_LESS) {
     ctx->met_invalidate_count++;

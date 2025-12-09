@@ -133,7 +133,7 @@ int c_main(void) {
 
     // Process the event
     if (current_event.type == EVENT_TYPE_SEND) {
-      send_ugn_to_port(&ugn_ctx, &timer, &current_event);
+      send_ugn_to_port(&ugn_ctx, timer, &current_event);
       UgnMessageType msg_type;
       // Schedule ACKNOWLEDGE instead of ANNOUNCE If we captured the incoming
       // ugn
@@ -155,10 +155,10 @@ int c_main(void) {
     } else if (current_event.type == EVENT_TYPE_INVALIDATE) {
 
       // Invalidate the specific port and offset encoded in the event
-      invalidate_port(&ugn_ctx, &timer, &current_event);
+      invalidate_port(&ugn_ctx, timer, &current_event);
     } else if (current_event.type == EVENT_TYPE_RECEIVE) {
 
-      check_incoming_buffer(&ugn_ctx, &timer, &current_event);
+      check_incoming_buffer(&ugn_ctx, timer, &current_event);
 
       // If we have both UGNs for this port, no need to schedule further RECEIVE
       // events
