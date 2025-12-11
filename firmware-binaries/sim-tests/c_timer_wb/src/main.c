@@ -172,6 +172,96 @@ int c_main(void) {
     }
   }
 
+  // Test 8: WaitResult returns WAIT_ALREADY_PASSED for past times
+  uart_puts(uart, "Test 8: WaitResult behavior for past times\r\n");
+
+  // Create a time that's definitely in the past (time zero)
+  Instant past_time = instant_from_micros(0);
+
+  WaitResult past_result = timer_wait_until(timer, past_time);
+  if (past_result != WAIT_ALREADY_PASSED) {
+    test_fail(uart,
+              "wait_until should return WAIT_ALREADY_PASSED for past times");
+  }
+  uart_puts(uart, "        Result: WAIT_ALREADY_PASSED (correct)\r\n");
+
+  // Test 9: WaitResult returns SUCCESS for future times
+  uart_puts(uart, "Test 9: WaitResult behavior for future times\r\n");
+
+  Instant current = timer_now(timer);
+  Instant future_time = instant_add(current, duration_from_micros(100));
+
+  WaitResult future_result = timer_wait_until(timer, future_time);
+  if (future_result != WAIT_SUCCESS) {
+    test_fail(uart, "wait_until should return WAIT_SUCCESS for future times");
+  }
+  uart_puts(uart, "        Result: WAIT_SUCCESS (correct)\r\n");
+
+  Instant after_future = timer_now(timer);
+  // Verify we actually waited
+  if (after_future.micros < future_time.micros) {
+    test_fail(uart, "wait_until returned before target time");
+  }
+
+  // Test 10: WaitResult behavior for wait_until_cycles (low-level API)
+  uart_puts(uart, "Test 10: WaitResult for cycle-based API\r\n");
+
+  // Try to wait for cycles in the past
+  uint64_t past_cycles = 0;
+
+  WaitResult cycles_past_result = timer_wait_until_cycles(timer, past_cycles);
+  if (cycles_past_result != WAIT_ALREADY_PASSED) {
+    test_fail(uart,
+              "wait_until_cycles should return WAIT_ALREADY_PASSED for past");
+  }
+  uart_puts(uart, "        Result: WAIT_ALREADY_PASSED (correct)\r\n");
+
+  // Get fresh reading, compute target, and wait immediately (minimal delay)
+  uint64_t current_cycles = timer_now_cycles(timer);
+  uint64_t future_cycles = current_cycles + micros_to_cycles(100, freq);
+  WaitResult cycles_future_result =
+      timer_wait_until_cycles(timer, future_cycles);
+
+  // Now print the results
+
+  if (cycles_future_result != WAIT_SUCCESS) {
+    test_fail(uart, "wait_until_cycles should return WAIT_SUCCESS for future");
+  }
+  uart_puts(uart, "        Result: WAIT_SUCCESS (correct)\r\n");
+
+  uint64_t after_cycles = timer_now_cycles(timer);
+
+  if (after_cycles < future_cycles) {
+    uart_puts(uart, "        After wait: ");
+    uart_putdec(uart, after_cycles);
+    uart_puts(uart, " cycles\r\n");
+    test_fail(uart, "wait_until_cycles returned before target");
+  }
+
+  // Test 11: WaitResult behavior for stalling variants
+  uart_puts(uart, "Test 11: WaitResult for stalling wait variants\r\n");
+
+  // Use time zero as the past time to avoid underflow
+  Instant stall_past = instant_from_micros(0);
+
+  uart_puts(uart, "        Testing wait_until_stall with past time\r\n");
+  WaitResult stall_past_result = timer_wait_until_stall(timer, stall_past);
+  if (stall_past_result != WAIT_ALREADY_PASSED) {
+    test_fail(uart,
+              "wait_until_stall should return WAIT_ALREADY_PASSED for past");
+  }
+  uart_puts(uart, "        Result: WAIT_ALREADY_PASSED (correct)\r\n");
+
+  Instant stall_current = timer_now(timer);
+  Instant stall_future = instant_add(stall_current, duration_from_micros(100));
+
+  uart_puts(uart, "        Testing wait_until_stall with future time\r\n");
+  WaitResult stall_future_result = timer_wait_until_stall(timer, stall_future);
+  if (stall_future_result != WAIT_SUCCESS) {
+    test_fail(uart, "wait_until_stall should return WAIT_SUCCESS for future");
+  }
+  uart_puts(uart, "        Result: WAIT_SUCCESS (correct)\r\n");
+
   uart_puts(uart, "\r\n=== All tests PASSED! ===\r\n\r\n");
   uart_puts(uart, "C Timer HAL test completed successfully!\r\n");
 

@@ -18,6 +18,9 @@ fn main() {
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
+        .file("src/messages.h")
+        .file("src/bittide_ugn.h")
+        .file("src/bittide_ugn.c")
         .files(bittide_hal_c::manual_source_files())
         .compiler("clang")
         .include("src") // Add src directory for our custom stdint.h
@@ -32,7 +35,7 @@ fn main() {
         .compile("c_main");
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/main.c");
+    println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed={}", hal_c_headers.display());
     println!("cargo:rerun-if-changed={}", hal_c_include.display());
     println!("cargo:rerun-if-changed={}", hal_c_src.display());

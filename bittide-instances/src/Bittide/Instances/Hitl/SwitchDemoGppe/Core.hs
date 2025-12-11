@@ -164,7 +164,7 @@ gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) ->
   scatterConfig = ScatterConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
   gatherConfig = GatherConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
   maxCalDepth = d1024
-  repetitionBits = d12
+  repetitionBits = d16
   sgCal = ValidEntry 0 1000 :> Nil
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
@@ -172,12 +172,12 @@ calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)
-    {- The '@12' is so that the generated Rust code works. At time of writing,
+    {- The '@16' is so that the generated Rust code works. At time of writing,
     the generator makes two separate device-specific types for 'ValidEntry' since
     they have differing repetition bit widths. To fix this, all tests are being
-    set to a width of 12.
+    set to a width of 16.
     -}
-    (SNat @12)
+    (SNat @16)
 
     -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
     -- than that we cycle through the other nodes.

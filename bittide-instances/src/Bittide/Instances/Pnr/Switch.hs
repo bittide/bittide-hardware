@@ -32,30 +32,30 @@ switchExample ::
 switchExample clk rst =
   withBittideByteOrder
     $ withClockResetEnable clk syncRst enableGen
-    {- The 12s here and below are so that the generated Rust code works. At time
+    {- The 16s here and below are so that the generated Rust code works. At time
     of writing, the generator makes two separate device-specific types for 'ValidEntry'
     since they have differing repetition bit widths. To fix this, all tests are
-    being set to a width of 12.
+    being set to a width of 16.
     -}
-    $ switchC (CalendarConfig (SNat @256) d12 calActive calShadow)
+    $ switchC (CalendarConfig (SNat @256) d16 calActive calShadow)
  where
   syncRst = resetSynchronizer clk rst
-  calActive :: Vec 2 (ValidEntry (Vec 16 (Index 17)) 12)
+  calActive :: Vec 2 (ValidEntry (Vec 16 (Index 17)) 16)
   calActive =
     $( lift
         $ ( ValidEntry{veEntry = fmap resize indicesI, veRepeat = 8} ::
-              (ValidEntry (Vec 16 (Index 17)) 12)
+              (ValidEntry (Vec 16 (Index 17)) 16)
           )
         :> ValidEntry{veEntry = reverse $ fmap resize indicesI, veRepeat = 16}
         :> Nil
      )
-  calShadow :: Vec 16 (ValidEntry (Vec 16 (Index 17)) 12)
+  calShadow :: Vec 16 (ValidEntry (Vec 16 (Index 17)) 16)
   calShadow =
     $( lift
         $ iterate
           d16
           (\ve -> ve{veEntry = fmap succ ve.veEntry, veRepeat = succ ve.veRepeat})
-          (ValidEntry{veEntry = repeat 0, veRepeat = 0} :: (ValidEntry (Vec 16 (Index 17)) 12))
+          (ValidEntry{veEntry = repeat 0, veRepeat = 0} :: (ValidEntry (Vec 16 (Index 17)) 16))
      )
 {-# OPAQUE switchExample #-}
 
