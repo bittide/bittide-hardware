@@ -276,6 +276,10 @@ msbResize val =
   bitSizeA = natToNum @(BitSize (f a)) :: Int
   bitSizeB = natToNum @(BitSize (f b)) :: Int
 
+-- BitVectors are packed like byte arrays, meaning that
+--   - they have an alignment of 1
+--   - they are not padded to a size of a power of 2
+--   - packed to native endianess
 instance (KnownNat n) => BitPackC (BitVector n) where
   type ConstructorSizeC (BitVector n) = 0
   type AlignmentBoundaryC (BitVector n) = 1

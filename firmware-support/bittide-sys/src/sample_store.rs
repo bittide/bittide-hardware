@@ -37,7 +37,7 @@ impl SampleStore {
         stability: Stability,
         net_speed_change: i32,
     ) {
-        let n_samples_stored: usize = u32::from_le_bytes(self.memory.data(0).unwrap()) as usize;
+        let n_samples_stored: usize = u32::from_ne_bytes(self.memory.data(0).unwrap()) as usize;
         let start_index = n_samples_stored * WORDS_PER_SAMPLE + 1;
 
         // Store local clock counter
