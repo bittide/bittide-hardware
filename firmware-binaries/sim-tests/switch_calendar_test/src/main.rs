@@ -67,7 +67,7 @@ fn main() -> ! {
         ve_repeat: i as u16,
     });
 
-    let calendar = &mut INSTANCES.switch;
+    let calendar = &mut INSTANCES.switch_calendar;
     // Test End of metacycle register and metacycle count
     calendar.wait_for_end_of_metacycle();
     let bootmetacycle = calendar.metacycle_count();

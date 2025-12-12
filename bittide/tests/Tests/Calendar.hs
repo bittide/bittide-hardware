@@ -165,7 +165,7 @@ readMetacycleCount = property $ do
   config <- forAll $ genCalendarConfig @30 @(BitVector 8) @32 10 entryGen
   iterations <- forAll $ Gen.integral $ Range.linear 1 4
   let
-    deviceName = "dut_calendar"
+    deviceName = "calendar"
     dut =
       withBigEndian
         $ withClockResetEnable clockGen resetGen enableGen
