@@ -26,6 +26,7 @@ import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as SwitchDemoGppe
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
+import qualified Bittide.Instances.Tests.NestedInterconnect as NestedInterconnect
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
@@ -44,6 +45,7 @@ $( do
           [ ("Ethernet", vexRiscvEthernetMM)
           , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
           , ("Freeze", freezeMM)
+          , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWb", RegisterWb.memoryMap)
           , ("ScatterGatherPe", ScatterGather.dutMM)
