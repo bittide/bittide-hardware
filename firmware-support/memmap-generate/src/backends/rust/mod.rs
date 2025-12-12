@@ -2,7 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    str::FromStr,
+};
 
 use heck::{ToPascalCase, ToShoutySnakeCase, ToSnakeCase};
 use proc_macro2::{Ident, Literal, Span, TokenStream};
@@ -58,9 +61,9 @@ pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
 /// User provided annotations. Will be considered during code generation.
 #[derive(Default)]
 pub struct Annotations {
-    pub type_annotation: HashMap<Handle<TypeRefVariant>, TokenStream>,
-    pub type_imports: HashMap<Handle<TypeRefVariant>, TokenStream>,
-    pub type_tags: HashMap<Handle<TypeRefVariant>, Vec<String>>,
+    pub type_annotation: HashMap<Handle<TypeRefVariant>, BTreeSet<String>>,
+    pub type_imports: HashMap<Handle<TypeRefVariant>, BTreeSet<String>>,
+    pub type_tags: HashMap<Handle<TypeRefVariant>, BTreeSet<String>>,
 }
 
 /// Generate code for a type description, taking into account monomorp variants.
@@ -78,18 +81,25 @@ pub fn generate_type_desc<'ir>(
     let desc = &ctx.type_descs[handle];
     let type_name = &ctx.type_names[desc.name];
     let variants = if let Some(variants) = varis.variants_by_type.get(&desc.name) {
+        let mut all_imports = BTreeSet::new();
+
         let variant_toks = variants.iter().map(|var_handle| {
             generate_type_definition(ctx, varis, *var_handle, anns, &mut refs, desc)
         });
 
-        let imports = variants
-            .iter()
-            .filter_map(|var| anns.type_imports.get(var))
-            .cloned()
-            .collect::<TokenStream>();
+        for var in variants {
+            if let Some(imports) = anns.type_imports.get(var) {
+                all_imports.extend(imports)
+            }
+        }
+
+        let imports = all_imports
+            .into_iter()
+            .map(|s| TokenStream::from_str(s).expect("invalid TokenStream for import"))
+            .map(|import| quote! { use #import; });
 
         quote! {
-            #imports
+            #(#imports)*
             #(#variant_toks)*
         }
     } else {
@@ -233,12 +243,16 @@ fn generate_type_definition(
         let annots = if let Some(code) = anns.type_annotation.get(&var_handle) {
             code
         } else {
-            &TokenStream::new()
+            &BTreeSet::new()
         };
+        let annots = annots
+            .iter()
+            .map(|s| TokenStream::from_str(s).expect("invalid TokenStream for type annotations"))
+            .map(|toks| quote! { #toks });
         quote! {
             #naming_attr
             #repr
-            #annots
+            #(#annots)*
         }
     };
 
