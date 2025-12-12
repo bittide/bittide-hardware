@@ -107,6 +107,14 @@ data RoundTripLatency = RoundTripLatency
   }
   deriving (Show, Eq)
 
+-- | Adjust for additional latency in a ugn edge
+addLatencyEdge :: Unsigned 63 -> UgnEdge -> UgnEdge
+addLatencyEdge extra edge = edge{ueUgn = edge.ueUgn + bitCoerce (CP.resize extra)}
+
+-- | Adjust for additional latency in a roundtrip latency
+adjustLatencyRoundTrip :: Unsigned 64 -> RoundTripLatency -> RoundTripLatency
+adjustLatencyRoundTrip extra rtl = rtl{rtlCycles = rtl.rtlCycles + extra}
+
 {- | Calculate roundtrip latencies from UGN edges.
 
 For each node and port, finds the pair of edges going out and coming back,
@@ -351,6 +359,29 @@ compareUgnEdges hardwareUgns softwareUgns = do
           putStrLn $ "  SW: " <> show sw
 
       return False
+
+{- | Find UGN edges that don't match between hardware and software.
+
+Returns a list of pairs @(hardwareEdge, softwareEdge)@ where both edges have the
+same source and destination nodes, but differ in port numbers or UGN values.
+
+This is useful for identifying wiring or configuration mismatches where the
+logical connection exists but the physical details differ.
+-}
+findMismatchedUgnEdges :: [UgnEdge] -> [UgnEdge] -> [(UgnEdge, UgnEdge)]
+findMismatchedUgnEdges hardwareUgns softwareUgns =
+  mapMaybe findMismatch hardwareUgns
+ where
+  findMismatch hw =
+    case L.find (matchingSrcDst hw) softwareUgns of
+      Just sw
+        | hw.ueSrcPort /= sw.ueSrcPort
+            || hw.ueDstPort /= sw.ueDstPort
+            || hw.ueUgn /= sw.ueUgn ->
+            Just (hw, sw)
+      _ -> Nothing
+  matchingSrcDst a b =
+    a.ueSrcNode == b.ueSrcNode && a.ueDstNode == b.ueDstNode
 
 -- * UGN Processing Functions
 

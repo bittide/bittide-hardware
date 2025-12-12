@@ -201,13 +201,24 @@ driver testName targets = do
               let hardwareUgnsFlat = postProcessHardwareUgns hardwareUgns
               softwareUgnsFlat <- postProcessSoftwareUgns softwareUgnsPerNode
 
-              let softwareRoundtrips = calculateRoundtripLatencies softwareUgnsFlat
+              let
+                mismatchedUgns = findMismatchedUgnEdges hardwareUgnsFlat softwareUgnsFlat
+                softwareRoundtrips = calculateRoundtripLatencies softwareUgnsFlat
+                swExtraLatency = 2 * 2 -- gather read latency + extra link registers in both directions
+              unless (L.null mismatchedUgns) $ do
+                putStrLn "\n=== Mismatched UGN Edges ==="
+                forM_ mismatchedUgns $ \(hw, sw) -> do
+                  putStrLn $ "Hardware: " <> show hw
+                  putStrLn $ "Software: " <> show sw
 
               putStrLn "\n=== Software Roundtrip Latencies ==="
               mapM_ print softwareRoundtrips
 
               -- Compare roundtrip latencies
-              matched <- compareRoundtripLatencies hardwareRoundtrips softwareRoundtrips
+              matched <-
+                compareRoundtripLatencies
+                  (fmap (adjustLatencyRoundTrip swExtraLatency) hardwareRoundtrips)
+                  softwareRoundtrips
 
               unless matched $ do
                 putStrLn "\n=== Per-Node Details ==="
@@ -225,7 +236,9 @@ driver testName targets = do
                       <> show (L.length swOut)
                       <> " out)"
                 error "Roundtrip latencies did not match between hardware and software"
-
+              when (L.null mismatchedUgns)
+                $ error
+                  "All UGN edges matched successfully! we expected them not to match so you fixed a bug :) Please invert this check!"
             liftIO goDumpCcSamples
 
             pure ExitSuccess
