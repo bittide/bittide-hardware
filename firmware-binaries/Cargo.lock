@@ -95,6 +95,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "c_registerwb_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal-c",
+ "bittide-sys",
+ "cc",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "c_scatter_gather_test"
 version = "0.1.0"
 dependencies = [

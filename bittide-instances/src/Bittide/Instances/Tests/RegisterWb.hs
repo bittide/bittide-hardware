@@ -34,9 +34,9 @@ import Project.FilePath (
 import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
-import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
+import Protocols
 import Protocols.Idle (idleSource)
-import Protocols.MemoryMap (MemoryMap, Mm, ToConstBwd, getMMAny)
+import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (..),
   deviceWb,
@@ -417,16 +417,26 @@ simResult = chr . fromIntegral <$> catMaybes uartStream
   dut0 = Circuit $ ((),) . snd . toSignals dut . ((),) . snd
 
 {- | An instance connecting a vexriscv to a UART and a memory mapped devices that
-has many (read/write) registers.
+has many (read/write) registers. Uses the default Rust test binary.
 -}
 dut :: Circuit (ToConstBwd Mm) (Df Basic50 (BitVector 8))
-dut =
+dut = dutWithBinary "registerwb_test"
+
+{- | Parameterized DUT that loads a specific firmware binary.
+Allows testing with different implementations (Rust, C, etc.) while reusing
+the same hardware architecture.
+-}
+dutWithBinary ::
+  (HasCallStack) =>
+  String ->
+  Circuit (ToConstBwd Mm) (Df Basic50 (BitVector 8))
+dutWithBinary binaryName =
   withBittideByteOrder
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \mm -> do
       (uartRx, jtag) <- idleSource
-      [uartBus, manyTypes] <- processingElement dumpVcd peConfig -< (mm, jtag)
+      [uartBus, manyTypes] <- processingElement dumpVcd (peConfig binaryName) -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
       manyTypesWb -< manyTypes
       idC -< uartTx
@@ -438,9 +448,9 @@ dut =
         Just s -> pure (DumpVcd s)
         _ -> pure NoDumpVcd
 
-  peConfig = unsafePerformIO $ do
+  peConfig binary = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "registerwb_test"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> binary
     pure
       PeConfig
         { cpu = vexRiscv0
@@ -458,7 +468,7 @@ dut =
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
         }
-{-# OPAQUE dut #-}
+{-# OPAQUE dutWithBinary #-}
 
 memoryMap :: MemoryMap
 memoryMap = getMMAny dut0
