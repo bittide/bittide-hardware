@@ -206,9 +206,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
 
     -- Start management unit
-    (Fwd lc, muWbAll, muUartBytesBittide) <-
+    (Fwd lc, muWbAll0, muUartBytesBittide) <-
       withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
-    (ugnWbs, muWbs1) <- Vec.split -< muWbAll
+    (muWbAllMms, muWbAllWbs0) <- Vec.unzip -< muWbAll0
+    muWbAllWbs1 <-
+      repeatC (withClockResetEnable bitClk bitRst enableGen delayWishboneC) -< muWbAllWbs0
+    muWbAll1 <- Vec.zip -< (muWbAllMms, muWbAllWbs1)
+    (ugnWbs, muWbs1) <- Vec.split -< muWbAll1
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (muSgWbs, [muTransceiverBus]) <- Vec.split -< muWbs2
     -- Stop management unit
