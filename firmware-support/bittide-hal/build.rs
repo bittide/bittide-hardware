@@ -331,42 +331,36 @@ fn annotate_types(
         if ctx.type_aliases.contains(&variant.original_type_desc) {
             continue;
         }
-        let mut type_annots = TokenStream::new();
-        let mut type_imports = TokenStream::new();
+        let type_annots = annotations
+            .type_annotation
+            .entry(variant_handle)
+            .or_default();
+
+        let type_imports = annotations.type_imports.entry(variant_handle).or_default();
+
         let has_float_here = has_float.contains(&variant_handle);
         match (debug_type, has_float_here) {
             (DebugType::Debug | DebugType::Both, true) => {
-                type_annots.extend(quote! { #[derive(Debug)] });
+                type_annots.insert("#[derive(Debug)]".to_string());
             }
             (_, true) => {}
             (DebugType::Debug, _) => {
-                type_annots.extend(quote! { #[derive(Debug)] });
+                type_annots.insert("#[derive(Debug)]".to_string());
             }
             (DebugType::UDebug, _) => {
-                type_imports.extend(quote! { use ufmt::derive::uDebug; });
-                type_annots.extend(quote! { #[derive(uDebug)] });
+                type_imports.insert("ufmt::derive::uDebug".to_string());
+                type_annots.insert("#[derive(uDebug)]".to_string());
             }
             (DebugType::Both, _) => {
-                type_imports.extend(quote! { use ufmt::derive::uDebug; });
-                type_annots.extend(quote! { #[derive(Debug, uDebug)] });
+                type_imports.insert("ufmt::derive::uDebug".to_string());
+                type_annots.insert("#[derive(Debug, uDebug)]".to_string());
             }
         }
 
-        type_annots.extend(quote! { #[derive(Clone, Copy)] });
+        type_annots.insert("#[derive(Clone, Copy)]".to_string());
         if !has_float_here {
-            type_annots.extend(quote! { #[derive(PartialEq, Eq, PartialOrd, Ord)] });
+            type_annots.insert("#[derive(PartialEq, Eq, PartialOrd, Ord)]".to_string());
         }
-
-        annotations
-            .type_annotation
-            .entry(variant_handle)
-            .or_default()
-            .extend(type_annots);
-        annotations
-            .type_imports
-            .entry(variant_handle)
-            .or_default()
-            .extend(type_imports);
     }
 }
 
