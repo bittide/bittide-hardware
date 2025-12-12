@@ -10,22 +10,9 @@ void dna_read(Dna dna_device, dna_t out) {
   while (1) {
     Maybe_bv96 value = dna_get_maybe_dna(dna_device);
     if (value.tag == MAYBE_TAG_JUST) {
-      // Read the 96-bit DNA value as three 32-bit words
-
-      // conversion helper
-      union {
-        uint32_t vals[4];
-        uint128_t dna;
-      } conv;
-
-      // Read the 96-bit DNA value as three 32-bit words
-
-      conv.dna[0] = value.just._0[0];
-      conv.dna[1] = value.just._0[1];
-
-      out[0] = conv.vals[1];
-      out[1] = conv.vals[2];
-      out[2] = conv.vals[3];
+      // The DNA value is stored as a 12-byte array (96 bits)
+      // Copy directly to the output array (3x 32-bit words = 12 bytes)
+      memcpy(out, value.just._0, 12);
       return;
     }
     // If not present, retry

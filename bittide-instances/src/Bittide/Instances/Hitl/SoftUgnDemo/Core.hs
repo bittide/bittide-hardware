@@ -166,11 +166,11 @@ gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -
   -- Output
   idC -< (linksOut, uart)
  where
-  scatterConfig = ScatterConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  maxCalDepth = d1024
-  repetitionBits = d12
-  sgCal = ValidEntry 0 1000 :> Nil
+  scatterConfig = ScatterConfig (SNat @4000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  gatherConfig = GatherConfig (SNat @4000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  maxCalDepth = SNat @4096
+  repetitionBits = d16
+  sgCal = ValidEntry 0 3999 :> Nil
 
 core ::
   ( ?busByteOrder :: ByteOrder
@@ -206,9 +206,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
 
     -- Start management unit
-    (Fwd lc, muWbAll, muUartBytesBittide) <-
+    (Fwd lc, muWbAll0, muUartBytesBittide) <-
       withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
-    (ugnWbs, muWbs1) <- Vec.split -< muWbAll
+    (muWbAllMms, muWbAllWbs0) <- Vec.unzip -< muWbAll0
+    muWbAllWbs1 <-
+      repeatC (withClockResetEnable bitClk bitRst enableGen delayWishboneC) -< muWbAllWbs0
+    muWbAll1 <- Vec.zip -< (muWbAllMms, muWbAllWbs1)
+    (ugnWbs, muWbs1) <- Vec.split -< muWbAll1
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (muSgWbs, [muTransceiverBus]) <- Vec.split -< muWbs2
     -- Stop management unit
@@ -227,11 +231,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< ebWbs
 
     Fwd rxs2 <-
-      withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+      withBittideClockResetEnable
+        $ Vec.vecCircuits ((captureUgn lc . dflipflop bitClk) <$> rxs1)
+        -< ugnWbs
     -- Stop internal links
 
     -- Start general purpose processing element
-    (txs, gppeUartBytesBittide) <-
+    (Fwd txs, gppeUartBytesBittide) <-
       withBittideClockResetEnable gppe maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop general purpose processing element
 
@@ -287,7 +293,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     idC
       -< ( Fwd swCcOut1
          , Fwd lc
-         , txs
+         , Fwd (dflipflop bitClk <$> txs)
          , sync
          , muUartBytesBittide
          , ccUartBytesBittide

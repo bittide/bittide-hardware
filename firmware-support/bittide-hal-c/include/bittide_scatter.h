@@ -43,11 +43,12 @@
  * @param len Number of uint64_t words to read
  */
 static inline void scatter_unit_read_slice_unchecked(ScatterUnit unit,
-                                                     uint8_t (*dst)[8],
+                                                     uint64_t(*dst),
                                                      uint32_t offset,
                                                      uint32_t len) {
   for (uint32_t i = 0; i < len; i++) {
-    scatter_unit_get_scatter_memory_unchecked(unit, offset + i, dst[i]);
+    scatter_unit_get_scatter_memory_unchecked(unit, offset + i,
+                                              (uint8_t *)&dst[i]);
   }
 }
 
@@ -65,7 +66,7 @@ static inline void scatter_unit_read_slice_unchecked(ScatterUnit unit,
  * @return true on success, false if bounds check fails or parameters are
  * invalid
  */
-static inline bool scatter_unit_read_slice(ScatterUnit unit, uint8_t (*dst)[8],
+static inline bool scatter_unit_read_slice(ScatterUnit unit, uint64_t(*dst),
                                            uint32_t offset, uint32_t len) {
   if (dst == 0 || offset + len > SCATTER_UNIT_SCATTER_MEMORY_LEN) {
     return false;
@@ -88,7 +89,7 @@ static inline bool scatter_unit_read_slice(ScatterUnit unit, uint8_t (*dst)[8],
  * @param len Number of uint64_t words to read
  */
 static inline void scatter_unit_read_slice_wrapping(ScatterUnit unit,
-                                                    uint8_t (*dst)[8],
+                                                    uint64_t(*dst),
                                                     uint32_t offset,
                                                     uint32_t len) {
   if (offset + len <= SCATTER_UNIT_SCATTER_MEMORY_LEN) {
