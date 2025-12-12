@@ -276,31 +276,51 @@ msbResize val =
   bitSizeA = natToNum @(BitSize (f a)) :: Int
   bitSizeB = natToNum @(BitSize (f b)) :: Int
 
+-- BitVectors are packed like byte arrays, meaning that
+--   - they have an alignment of 1
+--   - they are not padded to a size of a power of 2
+--   - packed to native endianess
 instance (KnownNat n) => BitPackC (BitVector n) where
   type ConstructorSizeC (BitVector n) = 0
-  type
-    AlignmentBoundaryC (BitVector n) =
-      Min MaximumAlignmentBoundary (NextPowerOfTwo (BitSizeInBytes (BitVector n)))
-  type ByteSizeC (BitVector n) = NextPowerOfTwo (BitSizeInBytes (BitVector n))
+  type AlignmentBoundaryC (BitVector n) = 1
+  type ByteSizeC (BitVector n) = BitSizeInBytes (BitVector n)
 
   packC# byteOrder = toEndianBV byteOrder . resize
   maybeUnpackC# byteOrder = checkFits . fromEndianBV byteOrder
 
 instance (KnownNat n) => BitPackC (Unsigned n) where
   type ConstructorSizeC (Unsigned n) = 0
-  type AlignmentBoundaryC (Unsigned n) = AlignmentBoundaryC (BitVector n)
-  type ByteSizeC (Unsigned n) = ByteSizeC (BitVector n)
+  type
+    AlignmentBoundaryC (Unsigned n) =
+      Min MaximumAlignmentBoundary (ByteSizeC (Unsigned n))
+  type ByteSizeC (Unsigned n) = NextPowerOfTwo (BitSizeInBytes (Unsigned n))
 
-  packC# byteOrder = packC# byteOrder . pack
-  maybeUnpackC# byteOrder = fmap unpack . maybeUnpackC# byteOrder
+  packC# byteOrder val = res
+   where
+    bv = pack val
+    bvPadded = resize bv :: BitVector (ByteSizeC (Unsigned n) * 8)
+    res = toEndianBV byteOrder bvPadded
+  maybeUnpackC# byteOrder bv0 = un1
+   where
+    bv1 = fromEndianBV byteOrder bv0
+    un0 = unpack bv1 :: Unsigned (ByteSizeC (Unsigned n) * 8)
+    un1 = checkFits un0
 
 instance (KnownNat n) => BitPackC (Signed n) where
   type ConstructorSizeC (Signed n) = 0
-  type AlignmentBoundaryC (Signed n) = AlignmentBoundaryC (BitVector n)
-  type ByteSizeC (Signed n) = ByteSizeC (BitVector n)
+  type
+    AlignmentBoundaryC (Signed n) =
+      Min MaximumAlignmentBoundary (NextPowerOfTwo (BitSizeInBytes (Signed n)))
+  type ByteSizeC (Signed n) = NextPowerOfTwo (BitSizeInBytes (Signed n))
 
-  packC# byteOrder = unpack . toEndianBV byteOrder . pack . resize
-  maybeUnpackC# byteOrder = checkFits . unpack . fromEndianBV byteOrder
+  packC# byteOrder val = toEndianBV byteOrder bv
+   where
+    signExtendedVal = resize val :: Signed (ByteSizeC (Signed n) * 8)
+    bv = pack signExtendedVal :: BitVector (ByteSizeC (Signed n) * 8)
+
+  maybeUnpackC# byteOrder bv = checkFits signExtendedVal
+   where
+    signExtendedVal = unpack (fromEndianBV byteOrder bv) :: Signed (ByteSizeC (Signed n) * 8)
 
 {- | Checks whether the argument fits within the bounds of the result type. Only
 works when @BitSize (f a) <= @BitSize (f b)@.
@@ -326,12 +346,18 @@ instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
       Min MaximumAlignmentBoundary (NextPowerOfTwo (BitSizeInBytes (Index n)))
   type ByteSizeC (Index n) = NextPowerOfTwo (BitSizeInBytes (Index n))
 
-  packC# byteOrder = toEndianBV byteOrder . resize . pack
-  maybeUnpackC# byteOrder val0 = do
-    val1 <- maybeUnpackC# @(BitVector (BitSize (Index n))) byteOrder val0
-    if val1 > pack (maxBound :: Index n)
+  packC# byteOrder val = bv2
+   where
+    bv0 = pack val
+    bv1 = resize bv0 :: BitVector (ByteSizeC (Index n) * 8)
+    bv2 = toEndianBV byteOrder bv1
+  maybeUnpackC# byteOrder bv0 =
+    if bv1 > maxVal
       then Nothing
-      else Just (unpack val1)
+      else Just (unpack $ resize bv1)
+   where
+    bv1 = fromEndianBV byteOrder bv0 :: BitVector (ByteSizeC (Index n) * 8)
+    maxVal = resize (pack (maxBound :: Index n)) :: BitVector (ByteSizeC (Index n) * 8)
 
 instance BitPackC Float where
   type ConstructorSizeC Float = 0

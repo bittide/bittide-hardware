@@ -35,7 +35,8 @@ void c_main(void) {
   // ===== TIME-CRITICAL SECTION: No UART =====
   // Metacycle 1: Write to gather memory
   gather_unit_wait_for_new_metacycle(gather);
-  if (!gather_unit_write_slice(gather, source, 0, MEM_SIZE)) {
+  if (!gather_unit_write_slice(gather, (uint8_t const(*)[8])source, 0,
+                               MEM_SIZE)) {
     uart_puts(uart, "ERROR: gather_unit_write_slice failed\n");
     while (1) {
     }
@@ -43,7 +44,8 @@ void c_main(void) {
 
   // Metacycle 2: Read from scatter memory
   scatter_unit_wait_for_new_metacycle(scatter);
-  if (!scatter_unit_read_slice(scatter, destination, 0, MEM_SIZE)) {
+  if (!scatter_unit_read_slice(scatter, (uint8_t (*)[8])destination, 0,
+                               MEM_SIZE)) {
     uart_puts(uart, "ERROR: scatter_unit_read_slice failed\n");
     while (1) {
     }
@@ -83,8 +85,8 @@ void c_main(void) {
   uint32_t gather_mc_readings[5];
 
   // Read initial counts
-  scatter_mc_readings[0] = scatter_unit_get_metacycle_count(scatter);
-  gather_mc_readings[0] = gather_unit_get_metacycle_count(gather);
+  scatter_unit_get_metacycle_count(scatter, (uint8_t *)&scatter_mc_readings[0]);
+  gather_unit_get_metacycle_count(gather, (uint8_t *)&gather_mc_readings[0]);
 
   // Wait and read after each wait (alternating between gather and scatter)
   for (uint32_t i = 1; i < 5; i++) {
@@ -94,8 +96,9 @@ void c_main(void) {
     } else {
       scatter_unit_wait_for_new_metacycle(scatter);
     }
-    scatter_mc_readings[i] = scatter_unit_get_metacycle_count(scatter);
-    gather_mc_readings[i] = gather_unit_get_metacycle_count(gather);
+    scatter_unit_get_metacycle_count(scatter,
+                                     (uint8_t *)&scatter_mc_readings[i]);
+    gather_unit_get_metacycle_count(gather, (uint8_t *)&gather_mc_readings[i]);
   }
 
   // Check that scatter and gather readings are identical
@@ -137,7 +140,7 @@ void c_main(void) {
     uart_puts(uart, " errors\n");
     uart_puts(uart, "Readings: ");
     for (uint32_t i = 0; i < 5; i++) {
-      uart_putdec(uart, scatter_mc_readings[i]);
+      uart_puthex64(uart, scatter_mc_readings[i]);
       if (i < 4)
         uart_puts(uart, " -> ");
     }

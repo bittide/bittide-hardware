@@ -662,18 +662,13 @@ fn generate_type_ref(
             let size = &ctx.type_refs[lookup_sub(variant, *handle)];
 
             if let TypeRef::Nat(n) = size {
-                // let n = po2_type(*n).div_ceil(8) as usize;
-                // quote! { [u8; #n] }
-                let n = po2_type(*n);
-                let name = format!("u{n}");
-                ident(IdentType::Raw, name).into_token_stream()
+                // TODO maybe special case on n == 1 like the C backend?
+                let n = n.div_ceil(8) as usize;
+                let n_lit = Literal::usize_unsuffixed(n);
+                quote! { [u8; #n_lit] }
             } else {
                 quote! { compile_error!("BitVector with length not known after monomorphisation") }
             }
-            // let size = generate_type_ref(ctx, varis, variant, refs, *handle);
-            // quote! {
-            //    BitVector<#size>
-            // }
         }
         TypeRef::Unsigned(handle) => {
             let size = &ctx.type_refs[lookup_sub(variant, *handle)];

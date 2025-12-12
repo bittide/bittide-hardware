@@ -44,11 +44,11 @@ fn main() -> ! {
     let cc = unsafe { ClockControl::new((0b011 << 29) as *mut u8) };
 
     writeln!(uart, "nLinks: {}", cc.n_links()).unwrap();
-    writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();
-    writeln!(uart, "linksOk: {}", cc.links_ok()).unwrap();
+    writeln!(uart, "linkMask: {}", cc.link_mask()[0]).unwrap();
+    writeln!(uart, "linksOk: {}", cc.links_ok()[0]).unwrap();
     writeln!(uart, "linkMaskPopcnt: {}", cc.link_mask_pop_count()).unwrap();
-    writeln!(uart, "linksStable: {}", cc.links_stable()).unwrap();
-    writeln!(uart, "linksSettled: {}", cc.links_settled()).unwrap();
+    writeln!(uart, "linksStable: {}", cc.links_stable()[0]).unwrap();
+    writeln!(uart, "linksSettled: {}", cc.links_settled()[0]).unwrap();
 
     write!(uart, "dataCounts: [").unwrap();
     for (idx, dc) in cc.data_counts_volatile_iter().enumerate() {

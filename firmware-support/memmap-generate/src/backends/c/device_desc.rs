@@ -7,7 +7,8 @@ use std::fmt::Write;
 
 use crate::{
     backends::c::{
-        generate_variable_binding, ident, lookup_sub, IdentType, TypeReferences, VariableRefType,
+        bv_of_size_1, generate_variable_binding, ident, lookup_sub, IdentType, TypeReferences,
+        VariableBindingContext,
     },
     input_language::RegisterAccess,
     ir::{
@@ -137,15 +138,51 @@ fn generate_reg_get_func(
         }
     }
 
-    if let TypeRef::Vector(len, inner) = raw_ty {
+    if matches!(raw_ty, TypeRef::BitVector(size) if !bv_of_size_1(ctx, None, *size)) {
+        let func_name = ident(
+            IdentType::Method,
+            format!("{dev_name}_get_{}", ctx.identifiers[reg.name]),
+        );
         let mut out_arg = String::new();
         generate_variable_binding(
             ctx,
             varis,
             None,
             refs,
-            "out",
-            VariableRefType::Mutable,
+            VariableBindingContext::OutArg("out"),
+            reg.type_ref,
+            &mut out_arg,
+        );
+
+        writeln!(
+            code,
+            "static inline void {func_name}({dev_name} dev, {out_arg}) {{"
+        )
+        .unwrap();
+
+        let base_addr = format!("(dev.base + {})", reg.address);
+
+        write_type_to_addr(
+            ctx,
+            varis,
+            None,
+            refs,
+            (&base_addr, ValueType::VolatilePointer),
+            ("out", ValueType::Pointer),
+            reg.type_ref,
+            "    ",
+            code,
+        );
+
+        writeln!(code, "}}").unwrap();
+    } else if let TypeRef::Vector(len, inner) = raw_ty {
+        let mut out_arg = String::new();
+        generate_variable_binding(
+            ctx,
+            varis,
+            None,
+            refs,
+            VariableBindingContext::OutArg("out"),
             *inner,
             &mut out_arg,
         );
@@ -155,8 +192,7 @@ fn generate_reg_get_func(
             varis,
             None,
             refs,
-            "",
-            VariableRefType::NoRef,
+            VariableBindingContext::TypeOnly,
             *inner,
             &mut ty_ref,
         );
@@ -240,8 +276,7 @@ fn generate_reg_get_func(
             varis,
             None,
             refs,
-            "",
-            VariableRefType::NoRef,
+            VariableBindingContext::TypeOnly,
             reg.type_ref,
             &mut ret_ty,
         );
@@ -293,15 +328,50 @@ fn generate_reg_set_func(
         }
     }
 
-    if let TypeRef::Vector(len, inner) = raw_ty {
+    if matches!(raw_ty, TypeRef::BitVector(size) if !bv_of_size_1(ctx, None, *size)) {
         let mut val_arg = String::new();
         generate_variable_binding(
             ctx,
             varis,
             None,
             refs,
-            "val",
-            VariableRefType::NoRef,
+            VariableBindingContext::SetArg("val"),
+            reg.type_ref,
+            &mut val_arg,
+        );
+        let func_name = ident(
+            IdentType::Method,
+            format!("{dev_name}_set_{}", ctx.identifiers[reg.name]),
+        );
+        writeln!(
+            code,
+            "static inline void {func_name}({dev_name} dev, {val_arg}) {{"
+        )
+        .unwrap();
+
+        let dest_addr = format!("dev.base + {}", reg.address);
+
+        write_type_to_addr(
+            ctx,
+            varis,
+            None,
+            refs,
+            ("val", ValueType::Pointer),
+            (&dest_addr, ValueType::VolatilePointer),
+            reg.type_ref,
+            "    ",
+            code,
+        );
+
+        writeln!(code, "}}").unwrap();
+    } else if let TypeRef::Vector(len, inner) = raw_ty {
+        let mut val_arg = String::new();
+        generate_variable_binding(
+            ctx,
+            varis,
+            None,
+            refs,
+            VariableBindingContext::SetArg("val"),
             *inner,
             &mut val_arg,
         );
@@ -311,8 +381,7 @@ fn generate_reg_set_func(
             varis,
             None,
             refs,
-            "",
-            VariableRefType::NoRef,
+            VariableBindingContext::TypeOnly,
             *inner,
             &mut ty_ref,
         );
@@ -395,8 +464,7 @@ fn generate_reg_set_func(
             varis,
             None,
             refs,
-            "",
-            VariableRefType::NoRef,
+            VariableBindingContext::TypeOnly,
             reg.type_ref,
             &mut ret_ty,
         );
@@ -406,8 +474,7 @@ fn generate_reg_set_func(
             varis,
             None,
             refs,
-            "val",
-            VariableRefType::NoRef,
+            VariableBindingContext::SetArg("val"),
             reg.type_ref,
             &mut val_arg,
         );
@@ -430,7 +497,6 @@ fn generate_reg_set_func(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ValueType {
-    ArraySubscript,
     Pointer,
     VolatilePointer,
     Value,
@@ -450,70 +516,74 @@ fn write_type_to_addr(
 ) {
     let ty_handle = lookup_sub(variant, ty_handle);
     let ty = &ctx.type_refs[ty_handle];
-    if let TypeRef::Vector(len, inner) = ty {
-        let TypeRef::Nat(n) = &ctx.type_refs[*len] else {
-            panic!("register with vec-type must have constant length")
-        };
-        let mut ty_ref = String::new();
-        generate_variable_binding(
-            ctx,
-            varis,
-            None,
-            refs,
-            "",
-            VariableRefType::NoRef,
-            *inner,
-            &mut ty_ref,
-        );
 
-        let mut dest = String::new();
-        let mut base = String::new();
-        for i in 0..*n {
-            dest.clear();
-            write!(dest, "{destination_var}[{i}]").unwrap();
-            base.clear();
-            write!(base, "({base_addr} + ({i} * sizeof({ty_ref})))").unwrap();
-            write_type_to_addr(
+    match ty {
+        TypeRef::BitVector(size) if !bv_of_size_1(ctx, variant, *size) => {
+            let mut ty_ref = String::new();
+            generate_variable_binding(
                 ctx,
                 varis,
-                variant,
+                None,
                 refs,
-                (&base, ValueType::Value),
-                (&dest, ValueType::ArraySubscript),
-                *inner,
-                indent,
-                code,
+                VariableBindingContext::TypeOnly,
+                ty_handle,
+                &mut ty_ref,
             );
+            let ty_ref = ty_ref.trim();
+            writeln!(
+                code,
+                "{indent}memcpy_volatile({destination_var}, {base_addr}, sizeof({ty_ref}));"
+            )
+            .unwrap();
         }
-    } else {
-        let mut ty_ref = String::new();
-        generate_variable_binding(
-            ctx,
-            varis,
-            None,
-            refs,
-            "",
-            VariableRefType::NoRef,
-            ty_handle,
-            &mut ty_ref,
-        );
-        let ty_ref = ty_ref.trim();
-        let base_deref = match base_ty {
-            ValueType::ArraySubscript => "",
-            ValueType::Pointer => "*",
-            ValueType::VolatilePointer => &format!("*(volatile {ty_ref}*)"),
-            ValueType::Value => "",
-        };
-        let dest_deref = match dest_ty {
-            ValueType::ArraySubscript => "",
-            ValueType::Pointer => "*",
-            ValueType::VolatilePointer => &format!("*(volatile {ty_ref}*)"),
-            ValueType::Value => "",
-        };
-        writeln!(
-            code,
-            "{indent}{dest_deref}{destination_var} = {base_deref}{base_addr};",
-        )
-        .unwrap();
+        TypeRef::Vector(len, inner) => {
+            let TypeRef::Nat(_n) = &ctx.type_refs[*len] else {
+                panic!("register with vec-type must have constant length")
+            };
+            let mut ty_ref = String::new();
+            generate_variable_binding(
+                ctx,
+                varis,
+                None,
+                refs,
+                VariableBindingContext::TypeOnly,
+                *inner,
+                &mut ty_ref,
+            );
+
+            writeln!(
+                code,
+                "{indent}memcpy_volatile({destination_var}, {base_addr}, sizeof({ty_ref}));"
+            )
+            .unwrap();
+        }
+        _ => {
+            let mut ty_ref = String::new();
+            generate_variable_binding(
+                ctx,
+                varis,
+                None,
+                refs,
+                VariableBindingContext::TypeOnly,
+                ty_handle,
+                &mut ty_ref,
+            );
+            let ty_ref = ty_ref.trim();
+            let base_deref = match base_ty {
+                ValueType::Pointer => "*",
+                ValueType::VolatilePointer => &format!("*(volatile {ty_ref}*)"),
+                ValueType::Value => "",
+            };
+            let dest_deref = match dest_ty {
+                ValueType::Pointer => "*",
+                ValueType::VolatilePointer => &format!("*(volatile {ty_ref}*)"),
+                ValueType::Value => "",
+            };
+            writeln!(
+                code,
+                "{indent}{dest_deref}{destination_var} = {base_deref}{base_addr};",
+            )
+            .unwrap();
+        }
     }
 }

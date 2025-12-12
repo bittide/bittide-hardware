@@ -26,9 +26,9 @@ pub struct ConfigEntry {
 impl Into<RegisterOperation> for ConfigEntry {
     fn into(self) -> RegisterOperation {
         RegisterOperation {
-            page: self.page,
-            address: self.address,
-            write: Just(self.data),
+            page: [self.page],
+            address: [self.address],
+            write: Just([self.data]),
         }
     }
 }
@@ -150,8 +150,8 @@ impl Si539xSpi {
     /// Perform a read operation.
     pub fn read(&self, page: u8, address: u8) -> u8 {
         let read_op = RegisterOperation {
-            page,
-            address,
+            page: [page],
+            address: [address],
             write: Nothing,
         };
         self.set_register_operation(read_op);
@@ -159,7 +159,7 @@ impl Si539xSpi {
         while self.commit() {
             continue;
         }
-        self.read_data()
+        self.read_data()[0]
     }
 
     /// Perform a write operation.

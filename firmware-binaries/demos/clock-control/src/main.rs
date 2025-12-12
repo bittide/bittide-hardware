@@ -100,7 +100,7 @@ fn main() -> ! {
         // enabled.
         let link_mask_rev = cc.link_mask_rev();
         for i in 0..DomainDiffCounters::ENABLE_LEN {
-            domain_diff_counters.set_enable(i, test_bit(link_mask_rev, i));
+            domain_diff_counters.set_enable(i, test_bit(link_mask_rev[0], i));
         }
 
         // Wait for next update

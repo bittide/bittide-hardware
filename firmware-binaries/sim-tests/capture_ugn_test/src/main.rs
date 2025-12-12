@@ -23,8 +23,8 @@ fn main() -> ! {
     uwriteln!(
         uart,
         "(0x{:16X},0x{:16X})",
-        Into::<u64>::into(capture_ugn.local_counter()),
-        Into::<u64>::into(capture_ugn.remote_counter())
+        capture_ugn.local_counter(),
+        u64::from_ne_bytes(capture_ugn.remote_counter())
     )
     .unwrap();
     loop {

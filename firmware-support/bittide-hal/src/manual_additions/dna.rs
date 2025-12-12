@@ -7,7 +7,7 @@ use crate::types::Maybe;
 
 impl Dna {
     /// Fetch the DNA value from the device, retrying until successful.
-    pub fn dna(&self) -> u128 {
+    pub fn dna(&self) -> [u8; 12] {
         loop {
             match self.maybe_dna() {
                 Maybe::Just(value) => return value,

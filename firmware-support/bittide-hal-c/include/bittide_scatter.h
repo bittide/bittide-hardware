@@ -43,11 +43,11 @@
  * @param len Number of uint64_t words to read
  */
 static inline void scatter_unit_read_slice_unchecked(ScatterUnit unit,
-                                                     uint64_t *dst,
+                                                     uint8_t (*dst)[8],
                                                      uint32_t offset,
                                                      uint32_t len) {
   for (uint32_t i = 0; i < len; i++) {
-    scatter_unit_get_scatter_memory_unchecked(unit, offset + i, &dst[i]);
+    scatter_unit_get_scatter_memory_unchecked(unit, offset + i, dst[i]);
   }
 }
 
@@ -65,7 +65,7 @@ static inline void scatter_unit_read_slice_unchecked(ScatterUnit unit,
  * @return true on success, false if bounds check fails or parameters are
  * invalid
  */
-static inline bool scatter_unit_read_slice(ScatterUnit unit, uint64_t *dst,
+static inline bool scatter_unit_read_slice(ScatterUnit unit, uint8_t (*dst)[8],
                                            uint32_t offset, uint32_t len) {
   if (dst == 0 || offset + len > SCATTER_UNIT_SCATTER_MEMORY_LEN) {
     return false;
@@ -73,7 +73,6 @@ static inline bool scatter_unit_read_slice(ScatterUnit unit, uint64_t *dst,
 
   scatter_unit_read_slice_unchecked(unit, dst, offset, len);
 
-  // return 0;
   return true;
 }
 /**
@@ -89,7 +88,7 @@ static inline bool scatter_unit_read_slice(ScatterUnit unit, uint64_t *dst,
  * @param len Number of uint64_t words to read
  */
 static inline void scatter_unit_read_slice_wrapping(ScatterUnit unit,
-                                                    uint64_t *dst,
+                                                    uint8_t (*dst)[8],
                                                     uint32_t offset,
                                                     uint32_t len) {
   if (offset + len <= SCATTER_UNIT_SCATTER_MEMORY_LEN) {
@@ -115,7 +114,9 @@ static inline void scatter_unit_read_slice_wrapping(ScatterUnit unit,
  * @param unit ScatterUnit device
  */
 static inline void scatter_unit_wait_for_new_metacycle(ScatterUnit unit) {
-  (void)scatter_unit_get_metacycle_register(unit);
+  uint8_t val[4];
+  scatter_unit_get_metacycle_register(unit, val);
+  (void)val;
 }
 
 #endif // BITTIDE_SCATTER_H

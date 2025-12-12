@@ -122,5 +122,5 @@ pub unsafe fn write_padding(seg: &SegmentHeader) {
 
 fn read_u32_le(input: &mut impl Iterator<Item = u8>) -> Option<u32> {
     let bytes = [input.next()?, input.next()?, input.next()?, input.next()?];
-    Some(u32::from_le_bytes(bytes))
+    Some(u32::from_ne_bytes(bytes))
 }

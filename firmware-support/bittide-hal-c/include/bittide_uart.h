@@ -40,6 +40,9 @@ void uart_puthex32(Uart uart, uint32_t val);
 /// Print a 64-bit hex value to UART
 void uart_puthex64(Uart uart, uint64_t val);
 
+/// Print a 64-bit bitvector hex value to UART
+void uart_puthex64_bv(Uart uart, uint8_t val[8]);
+
 /// Print a DNA value (96 bits) to UART
 void uart_putdna(Uart uart, const dna_t val);
 

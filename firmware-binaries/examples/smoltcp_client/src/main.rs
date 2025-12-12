@@ -78,7 +78,7 @@ fn main() -> ! {
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
 
-    let dna: u128 = INSTANCES.dna.dna();
+    let dna: [u8; 12] = INSTANCES.dna.dna();
 
     uwriteln!(uart, "Starting TCP Client").unwrap();
     unsafe {
@@ -91,7 +91,7 @@ fn main() -> ! {
     }
 
     // Configure interface
-    let mut eth_addr = EthernetAddress::from_bytes(&dna.to_le_bytes()[0..6]);
+    let mut eth_addr = EthernetAddress::from_bytes(&dna[0..6]);
     set_unicast(&mut eth_addr);
     set_local(&mut eth_addr);
     let mut config = Config::new(eth_addr.into());
