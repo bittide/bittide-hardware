@@ -250,12 +250,16 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
            )
         -< ebWbs
 
+    -- Use of `dflipflop` to add pipelining should be replaced by
+    -- https://github.com/bittide/bittide-hardware/pull/1134
     Fwd rxs2 <-
-      withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+      withBittideClockResetEnable
+        $ Vec.vecCircuits ((captureUgn lc . dflipflop bitClk) <$> rxs1)
+        -< ugnWbs
     -- Stop internal links
 
     -- Start general purpose processing element
-    (txs, gppeUartBytesBittide) <-
+    (Fwd txs, gppeUartBytesBittide) <-
       withBittideClockResetEnable gppe maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop general purpose processing element
 
@@ -308,10 +312,12 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                         }
             else swCcOut0
 
+    -- Use of `dflipflop` to add pipelining should be replaced by
+    -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
          , Fwd lc
-         , txs
+         , Fwd (dflipflop bitClk <$> txs)
          , sync
          , muUartBytesBittide
          , ccUartBytesBittide
