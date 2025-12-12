@@ -326,8 +326,7 @@ mkCalendarC ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , KnownNat addrW
-  , -- , 4 <= addrW
-    BitPack a
+  , BitPack a
   , KnownNat nBytes
   , 1 <= nBytes
   , WithTypeDescription a
@@ -348,9 +347,9 @@ mkCalendarC
       (SNat :: SNat repetitionBits)
       bsActive
       bsShadow
-    ) = circuit $ \(mm, wb) -> do
+    ) = withName (compName <> "_calendar") $ circuit $ \(mm, wb) -> do
 {- FOURMOLU_DISABLE -}
-    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7Meta, wb7Bus)] <- deviceWb (compName <> "_calendar") -< (mm, wb)
+    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7Meta, wb7Bus)] <- deviceWb "calendar" -< (mm, wb)
     Fwd (writeEntry, _) <- registerWbI writeEntryCfg (unpack 0) -< (wb4, Fwd noWrite)
     Fwd (_, writeActive) <- registerWbI writeAddrCfg (0 :: Index calDepth) -< (wb1, Fwd noWrite)
     Fwd (readAddr, _) <- registerWbI readAddrCfg (0 :: Index calDepth) -< (wb2, Fwd noWrite)

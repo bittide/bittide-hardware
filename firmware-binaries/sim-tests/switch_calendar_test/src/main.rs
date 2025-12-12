@@ -7,7 +7,7 @@
 #![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
 
-use bittide_hal::{manual_additions::switch_calendar::EntryType, types::ValidEntry_12};
+use bittide_hal::{manual_additions::calendar::EntryType, types::ValidEntry_12};
 use ufmt::{uDebug, uwrite, uwriteln};
 
 #[cfg(not(test))]
