@@ -7,7 +7,7 @@
 #![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
 
-use bittide_hal::{manual_additions::switch_calendar::EntryType, types::ValidEntry_12};
+use bittide_hal::{manual_additions::calendar::EntryType, types::ValidEntry_12};
 use ufmt::{uDebug, uwrite, uwriteln};
 
 #[cfg(not(test))]
@@ -67,7 +67,7 @@ fn main() -> ! {
         ve_repeat: i as u16,
     });
 
-    let calendar = &mut INSTANCES.switch_calendar;
+    let calendar = &mut INSTANCES.switch;
     // Test End of metacycle register and metacycle count
     calendar.wait_for_end_of_metacycle();
     let bootmetacycle = calendar.metacycle_count();
