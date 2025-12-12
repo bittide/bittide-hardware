@@ -17,24 +17,14 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-// Perform wrapping addition of two u16 values with a specified maximum bound.
-// Useful for correctly computing calendar entries for the gather calendar taking into
-// account the read-latency.
-fn wrapping_add_with_maxbound(a: u16, b: u16, max_bound: u16) -> u16 {
-    let sum = a as u32 + b as u32;
-    if sum <= max_bound as u32 {
-        sum as u16
-    } else {
-        (sum - (max_bound as u32 + 1)) as u16
-    }
-}
 /// Initialize scatter and gather calendars with incrementing counter entries.
 /// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
 fn initialize_calendars(uart: &mut Uart) {
     const NUM_ENTRIES: usize = 4000;
 
     // Initialize all scatter calendars
-    let scatter_calendars = [
+    let calendars = [
+        // Scatter calendars
         &INSTANCES.scatter_calendar_0,
         &INSTANCES.scatter_calendar_1,
         &INSTANCES.scatter_calendar_2,
@@ -42,10 +32,7 @@ fn initialize_calendars(uart: &mut Uart) {
         &INSTANCES.scatter_calendar_4,
         &INSTANCES.scatter_calendar_5,
         &INSTANCES.scatter_calendar_6,
-    ];
-
-    // Initialize all gather calendars
-    let gather_calendars = [
+        // Gather calendars
         &INSTANCES.gather_calendar_0,
         &INSTANCES.gather_calendar_1,
         &INSTANCES.gather_calendar_2,
@@ -55,46 +42,22 @@ fn initialize_calendars(uart: &mut Uart) {
         &INSTANCES.gather_calendar_6,
     ];
 
-    uwriteln!(
-        uart,
-        "  Initializing {} calendars",
-        scatter_calendars.len() + gather_calendars.len()
-    )
-    .unwrap();
+    uwriteln!(uart, "  Initializing {} calendars", calendars.len()).unwrap();
     // Write entries to all calendars
-    for n in 0..NUM_ENTRIES {
-        let scatter_entry = ValidEntry_16 {
-            ve_entry: n as u16,
-            ve_repeat: 0,
-        };
 
-        // Take into account 1 cycle read latency for gather calendar
-        let gather_entry = ValidEntry_16 {
-            ve_entry: wrapping_add_with_maxbound(n as u16, 1, (NUM_ENTRIES - 1) as u16),
-            ve_repeat: 0,
-        };
-
-        for calendar in scatter_calendars.iter() {
-            calendar.set_shadow_entry(scatter_entry);
+    for calendar in calendars.iter() {
+        for n in 0..NUM_ENTRIES {
+            let entry = ValidEntry_16 {
+                ve_entry: n as u16,
+                ve_repeat: 0,
+            };
+            calendar.set_shadow_entry(entry);
             calendar.set_write_addr(n as u16);
         }
-
-        for calendar in gather_calendars.iter() {
-            calendar.set_shadow_entry(gather_entry);
-            calendar.set_write_addr(n as u16);
-        }
-    }
-
-    // Finalize all calendars
-    for calendar in scatter_calendars.iter() {
         calendar.set_shadow_depth_index((NUM_ENTRIES - 1) as u16);
         calendar.set_swap_active(true);
     }
 
-    for calendar in gather_calendars.iter() {
-        calendar.set_shadow_depth_index((NUM_ENTRIES - 1) as u16);
-        calendar.set_swap_active(true);
-    }
     uwriteln!(uart, "All calendars initialized").unwrap();
 }
 
