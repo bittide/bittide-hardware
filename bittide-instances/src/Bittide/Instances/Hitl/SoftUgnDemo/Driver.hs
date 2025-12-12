@@ -197,10 +197,17 @@ driver testName targets = do
                   <> show (L.length swIn + L.length swOut)
                   <> " edges"
 
-              -- Process and compare UGN edges
+              -- Process UGN edges and calculate roundtrip latencies
               let hardwareUgnsFlat = postProcessHardwareUgns hardwareUgns
               softwareUgnsFlat <- postProcessSoftwareUgns softwareUgnsPerNode
-              matched <- compareUgnEdges hardwareUgnsFlat softwareUgnsFlat
+
+              let softwareRoundtrips = calculateRoundtripLatencies softwareUgnsFlat
+
+              putStrLn "\n=== Software Roundtrip Latencies ==="
+              mapM_ print softwareRoundtrips
+
+              -- Compare roundtrip latencies
+              matched <- compareRoundtripLatencies hardwareRoundtrips softwareRoundtrips
 
               unless matched $ do
                 putStrLn "\n=== Per-Node Details ==="
@@ -217,7 +224,7 @@ driver testName targets = do
                       <> " in + "
                       <> show (L.length swOut)
                       <> " out)"
-                error "UGN edges did not match between hardware and software"
+                error "Roundtrip latencies did not match between hardware and software"
 
             liftIO goDumpCcSamples
 
