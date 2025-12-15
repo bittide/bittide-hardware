@@ -105,8 +105,9 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
 
         enum RingbufferAlignState state = decode_alignment_state(scatter_data);
 
-        // Found message at RX_Index
-        if (state == RINGBUFFER_ALIGN_ANNOUNCE) {
+        // Found message at RX_Index (accept both ANNOUNCE and ACKNOWLEDGE)
+        if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
+            state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
           incoming_offsets[port] = rx_idx;
           PRINT_ALIGN_STATE_CHANGE(uart, iteration, port, state, rx_idx);
           break;
