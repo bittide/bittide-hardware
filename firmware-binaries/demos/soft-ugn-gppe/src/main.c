@@ -33,8 +33,8 @@ ScatterUnit su;
 #define FINAL_SEND_DELAY (2 * SEND_PERIOD + BUFFER_SIZE)
 
 // RECEIVE timing parameters
-#define RECEIVE_SPACING 6000 // Spacing between RECEIVE events
-#define RECEIVE_PERIOD (RECEIVE_SPACING * NUM_PORTS + 1)
+#define RECEIVE_SPACING 8000 // Spacing between RECEIVE events
+#define RECEIVE_PERIOD (RECEIVE_SPACING * (NUM_PORTS + 1))
 
 // INVALIDATE timing parameters
 #define INVALIDATE_DELAY BUFFER_SIZE
@@ -214,7 +214,8 @@ int c_main(void) {
     uint64_t send_time = start_cycles_write + port * SEND_SPACING;
     uint32_t send_offset = send_time % BUFFER_SIZE;
 
-    uint64_t receive_time = start_cycles_read + port * RECEIVE_SPACING;
+    uint64_t receive_time =
+        start_cycles_read + port * RECEIVE_SPACING + incoming_offsets[port];
     uint32_t receive_offset = receive_time % BUFFER_SIZE;
 
     Event send_event = make_send_event(MSG_TYPE_ANNOUNCE, send_offset, port);
