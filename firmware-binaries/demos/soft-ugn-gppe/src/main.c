@@ -33,7 +33,7 @@ ScatterUnit su;
 #define FINAL_SEND_DELAY (2 * SEND_PERIOD + BUFFER_SIZE)
 
 // RECEIVE timing parameters
-#define RECEIVE_SPACING BUFFER_SIZE // Spacing between RECEIVE events
+#define RECEIVE_SPACING (2 * BUFFER_SIZE) // Spacing between RECEIVE events
 #define RECEIVE_PERIOD (RECEIVE_SPACING * (NUM_PORTS + 1))
 
 // INVALIDATE timing parameters
