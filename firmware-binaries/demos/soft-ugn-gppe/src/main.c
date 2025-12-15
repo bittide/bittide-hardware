@@ -21,7 +21,7 @@
 
 ScatterUnit su;
 // Number of event loop iterations
-#define NUM_PERIODS 2000000
+#define NUM_PERIODS 4000000
 #define NUM_PORTS 7
 
 // Protocol timing parameter
