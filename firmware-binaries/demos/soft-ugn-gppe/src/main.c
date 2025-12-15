@@ -62,70 +62,97 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
   PRINT_ALIGN_START(uart);
 
   bool all_aligned = false;
-  int16_t incoming_offsets[NUM_PORTS] = {0};
-  enum RingbufferAlignState states[NUM_PORTS] = {RINGBUFFER_ALIGN_ANNOUNCE};
+  int16_t incoming_offsets[NUM_PORTS];
+  bool received_ack[NUM_PORTS];
   uint32_t iteration = 0;
+
+  // Initialize arrays
+  for (int32_t port = 0; port < NUM_PORTS; port++) {
+    incoming_offsets[port] = -1; // -1 means not found yet
+    received_ack[port] = false;
+  }
+
+  // Step 2: Initialize - Write ALIGNMENT_ANNOUNCE to TX index 0, clear rest
+  for (int32_t port = 0; port < NUM_PORTS; port++) {
+    GatherUnit gather = ugn_ctx->gather_units[port];
+
+    // Write ALIGNMENT_ANNOUNCE at index 0
+    uint64_t announce_msg =
+        encode_alignment_pair(RINGBUFFER_ALIGN_ANNOUNCE, 0, 0);
+    gather_unit_set_gather_memory_unchecked(gather, 0,
+                                            (uint8_t const *)&announce_msg);
+
+    // Clear rest of buffer
+    uint64_t empty_msg = encode_alignment_pair(RINGBUFFER_ALIGN_EMPTY, 0, 0);
+    for (int16_t i = 1; i < BUFFER_SIZE; i++) {
+      gather_unit_set_gather_memory_unchecked(gather, i,
+                                              (uint8_t const *)&empty_msg);
+    }
+  }
 
   while (!all_aligned) {
     iteration++;
     PRINT_ALIGN_ITERATION(uart, iteration);
 
     for (int32_t port = 0; port < NUM_PORTS; port++) {
-      if (states[port] == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
-        continue; // Already aligned
+      if (incoming_offsets[port] >= 0 && received_ack[port]) {
+        continue; // Already fully aligned
       }
+
       GatherUnit gather = ugn_ctx->gather_units[port];
       ScatterUnit scatter = ugn_ctx->scatter_units[port];
 
-      // Process scatter memory
-      uint64_t scatter_data;
-      scatter_unit_get_scatter_memory_unchecked(scatter, 0, &scatter_data);
-      int16_t incoming_offset;
-      int16_t outgoing_offset;
-      enum RingbufferAlignState state;
+      // Step 3: Search - Scan RX ringbuffer for ALIGNMENT_ANNOUNCE or
+      // ALIGNMENT_RECEIVED
+      if (incoming_offsets[port] < 0) {
+        for (int16_t rx_idx = 0; rx_idx < BUFFER_SIZE; rx_idx++) {
+          uint64_t scatter_data;
+          scatter_unit_get_scatter_memory_unchecked(scatter, rx_idx,
+                                                    (uint8_t *)&scatter_data);
 
-      decode_alignment_pair(scatter_data, &state, &incoming_offset,
-                            &outgoing_offset);
+          int16_t dummy1, dummy2;
+          enum RingbufferAlignState state;
+          decode_alignment_pair(scatter_data, &state, &dummy1, &dummy2);
 
-      // Update state based on received data
-      enum RingbufferAlignState old_state = states[port];
-      states[port] = state;
+          // Step 4: Determine Offset - Found message at RX_Index
+          if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
+              state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+            incoming_offsets[port] = rx_idx;
+            outgoing_offsets[port] = rx_idx;
+            PRINT_ALIGN_STATE_CHANGE(uart, port, state, rx_idx);
+            PRINT_ALIGN_OUTGOING_OFFSET(uart, port, rx_idx);
 
-      // A valid frame always contains incoming offset
-      if (state != RINGBUFFER_ALIGN_EMPTY) {
-        incoming_offsets[port] = incoming_offset;
-        if (old_state != state) {
-          PRINT_ALIGN_STATE_CHANGE(uart, port, state, incoming_offset);
+            // Step 5: Acknowledge - Update TX index 0 to ALIGNMENT_RECEIVED
+            uint64_t ack_msg =
+                encode_alignment_pair(RINGBUFFER_ALIGN_ACKNOWLEDGE, 0, 0);
+            gather_unit_set_gather_memory_unchecked(gather, 0,
+                                                    (uint8_t const *)&ack_msg);
+            break;
+          }
         }
       }
 
-      // An announce or acknowledge frame contains the outgoing offset
-      if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
-          state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
-        outgoing_offsets[port] = outgoing_offset;
-        PRINT_ALIGN_OUTGOING_OFFSET(uart, port, outgoing_offset);
-      }
+      // Step 6: Confirm - Check if neighbor sent ALIGNMENT_RECEIVED
+      if (incoming_offsets[port] >= 0 && !received_ack[port]) {
+        uint64_t scatter_data;
+        scatter_unit_get_scatter_memory_unchecked(
+            scatter, incoming_offsets[port], (uint8_t *)&scatter_data);
 
-      // Do writing to gather memory
+        int16_t dummy1, dummy2;
+        enum RingbufferAlignState state;
+        decode_alignment_pair(scatter_data, &state, &dummy1, &dummy2);
 
-      enum RingbufferAlignState out_state;
-      if (state == RINGBUFFER_ALIGN_EMPTY) {
-        out_state = RINGBUFFER_ALIGN_ANNOUNCE;
-      } else {
-        out_state = RINGBUFFER_ALIGN_ACKNOWLEDGE;
-      }
-      for (int16_t i = 0; i < BUFFER_SIZE; i++) {
-
-        uint64_t gather_data =
-            encode_alignment_pair(out_state, incoming_offsets[port], i);
-        gather_unit_set_gather_memory_unchecked(gather, i, gather_data);
+        if (state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+          received_ack[port] = true;
+          PRINT_ALIGN_STATE_CHANGE(uart, port, state, incoming_offsets[port]);
+        }
       }
     }
 
-    // Check if all ports are aligned
+    // Step 7: Check if all ports are aligned
     all_aligned = true;
     for (int32_t port = 0; port < NUM_PORTS; port++) {
-      if (states[port] != RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+      if (incoming_offsets[port] < 0 || !received_ack[port]) {
         all_aligned = false;
         break;
       }
