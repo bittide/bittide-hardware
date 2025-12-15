@@ -103,27 +103,27 @@ managementUnit ::
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
     ( CSignal dom (Unsigned 64)
+    , Df dom (BitVector 8)
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
         , Wishbone dom 'Standard NmuRemBusWidth (Bytes 4)
         )
-    , Df dom (BitVector 8)
     )
 managementUnit maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
-    wbs0 <- processingElement NoDumpVcd muConfig -< (mm, jtag)
-    ([wbTime, uartWb, dnaWb], wbs1) <- Vec.split -< wbs0
+    allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
+    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    cnt <- timeWb -< wbTime
+    localCounter <- timeWb -< timeBus
     (uartOut, _uartStatus) <-
-      uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
-    readDnaPortE2WbWorker maybeDna -< dnaWb
+      uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
+    readDnaPortE2WbWorker maybeDna -< dnaBus
 
     -- Output
-    idC -< (cnt, wbs1, uartOut)
+    idC -< (localCounter, uartOut, restBusses)
 
 gppe ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
@@ -140,23 +140,23 @@ gppe ::
     )
 gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Core and interconnect
-  [wbScat, wbGath, wbTime, uartWb, dnaWb] <-
+  [scatterBus, gatherBus, timeBus, uartBus, dnaBus] <-
     processingElement NoDumpVcd gppeConfig -< (mm, jtag)
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
   (nmuMms, nmuWbs) <- Vec.unzip -< nmuWbMms
   nmuWbsDelayed <- repeatC delayWishboneC -< nmuWbs
-  [wbScatCal, wbGathCal] <- Vec.zip -< (nmuMms, nmuWbsDelayed)
+  [scatterCalendarBus, gatherCalendarBus] <- Vec.zip -< (nmuMms, nmuWbsDelayed)
 
   -- Scatter Gather units
-  scatterUnitWbC scatterConfig linkIn -< (wbScat, wbScatCal)
-  linkOut <- gatherUnitWbC gatherConfig -< (wbGath, wbGathCal)
+  scatterUnitWbC scatterConfig linkIn -< (scatterBus, scatterCalendarBus)
+  linkOut <- gatherUnitWbC gatherConfig -< (gatherBus, gatherCalendarBus)
 
   -- Peripherals
-  _cnt <- timeWb -< wbTime
-  (uart, _uartStatus) <- uartInterfaceWb d2 d1 uartBytes -< (uartWb, Fwd (pure Nothing))
-  readDnaPortE2WbWorker maybeDna -< dnaWb
+  _cnt <- timeWb -< timeBus
+  (uart, _uartStatus) <- uartInterfaceWb d2 d1 uartBytes -< (uartBus, Fwd (pure Nothing))
+  readDnaPortE2WbWorker maybeDna -< dnaBus
 
   -- Output
   idC -< (linkOut, uart)
@@ -232,7 +232,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
 
     -- Start management unit
-    (Fwd lc, muWbAll, muUartBytesBittide) <-
+    (Fwd lc, muUartBytesBittide, muWbAll) <-
       withBittideClockResetEnable (managementUnit maybeDna) -< (muMM, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
