@@ -69,7 +69,7 @@ fn main() -> ! {
     uwriteln!(uart, "Hello from management unit..").unwrap();
 
     uwriteln!(uart, "Centering buffer occupancies").unwrap();
-    for (i, eb) in [
+    let elastic_buffers = [
         &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
         &INSTANCES.elastic_buffer_2,
@@ -77,10 +77,9 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_4,
         &INSTANCES.elastic_buffer_5,
         &INSTANCES.elastic_buffer_6,
-    ]
-    .iter()
-    .enumerate()
-    {
+    ];
+
+    for (i, eb) in elastic_buffers.iter().enumerate() {
         uwriteln!(
             uart,
             "Elastic buffer {}, current occupancy: {}",
@@ -135,8 +134,36 @@ fn main() -> ! {
     initialize_calendars(&mut uart);
     uwriteln!(uart, "All calendars initialized").unwrap();
 
-    #[allow(clippy::empty_loop)]
-    loop {}
+    // Initialize occupancy ranges for monitoring
+    let mut occupancy_ranges: [(i8, i8); 7] = [(0, 0); 7];
+
+    uwriteln!(uart, "Starting elastic buffer occupancy monitoring...").unwrap();
+
+    loop {
+        for (i, eb) in elastic_buffers.iter().enumerate() {
+            let occupancy = eb.data_count();
+            let (min, max) = occupancy_ranges[i];
+
+            // Check if occupancy exceeds current range
+            if occupancy < min || occupancy > max {
+                uwriteln!(
+                    uart,
+                    "[WARNING] Port {} occupancy {} exceeds range [{}, {}]",
+                    i,
+                    occupancy,
+                    min,
+                    max
+                )
+                .unwrap();
+
+                if occupancy < min {
+                    occupancy_ranges[i].0 = occupancy;
+                } else {
+                    occupancy_ranges[i].1 = occupancy;
+                }
+            }
+        }
+    }
 }
 
 #[panic_handler]
