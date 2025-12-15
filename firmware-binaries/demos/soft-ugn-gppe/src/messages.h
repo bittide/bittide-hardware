@@ -373,9 +373,11 @@ enum RingbufferAlignState {
     uart_puts(UART, ":\n");                                                    \
   } while (0)
 
-#define PRINT_ALIGN_STATE_CHANGE(UART, PORT, STATE, IN_OFF)                    \
+#define PRINT_ALIGN_STATE_CHANGE(UART, ITER, PORT, STATE, IN_OFF)              \
   do {                                                                         \
-    uart_puts(UART, "  P");                                                    \
+    uart_puts(UART, "  [");                                                    \
+    uart_putdec(UART, (uint64_t)(ITER));                                       \
+    uart_puts(UART, "] P");                                                    \
     uart_putdec(UART, (uint64_t)(PORT));                                       \
     uart_puts(UART, ": state=");                                               \
     if ((STATE) == RINGBUFFER_ALIGN_ANNOUNCE)                                  \

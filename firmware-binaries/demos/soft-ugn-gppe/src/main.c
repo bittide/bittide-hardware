@@ -89,7 +89,6 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
   bool phase1_complete = false;
   while (!phase1_complete) {
     iteration++;
-    PRINT_ALIGN_ITERATION(uart, iteration);
 
     for (int32_t port = 0; port < NUM_PORTS; port++) {
       if (incoming_offsets[port] >= 0) {
@@ -107,10 +106,9 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
         enum RingbufferAlignState state = decode_alignment_state(scatter_data);
 
         // Found message at RX_Index
-        if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
-            state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+        if (state == RINGBUFFER_ALIGN_ANNOUNCE) {
           incoming_offsets[port] = rx_idx;
-          PRINT_ALIGN_STATE_CHANGE(uart, port, state, rx_idx);
+          PRINT_ALIGN_STATE_CHANGE(uart, iteration, port, state, rx_idx);
           break;
         }
       }
@@ -146,7 +144,6 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
   bool phase2_complete = false;
   while (!phase2_complete) {
     iteration++;
-    PRINT_ALIGN_ITERATION(uart, iteration);
 
     for (int32_t port = 0; port < NUM_PORTS; port++) {
       if (received_ack[port]) {
@@ -164,7 +161,8 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
 
       if (state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
         received_ack[port] = true;
-        PRINT_ALIGN_STATE_CHANGE(uart, port, state, incoming_offsets[port]);
+        PRINT_ALIGN_STATE_CHANGE(uart, iteration, port, state,
+                                 incoming_offsets[port]);
       }
     }
 
