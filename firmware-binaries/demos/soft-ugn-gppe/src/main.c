@@ -55,7 +55,6 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
                        Uart uart) {
   PRINT_ALIGN_START(uart);
 
-  bool all_aligned = false;
   bool received_ack[NUM_PORTS];
   uint32_t iteration = 0;
 
@@ -82,68 +81,111 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
     }
   }
 
-  while (!all_aligned) {
+  // ========================================================================
+  // PHASE 1: Search for incoming messages and discover offsets
+  // ========================================================================
+  uart_puts(uart, "Phase 1: Searching for announce messages...\n");
+
+  bool phase1_complete = false;
+  while (!phase1_complete) {
     iteration++;
     PRINT_ALIGN_ITERATION(uart, iteration);
 
     for (int32_t port = 0; port < NUM_PORTS; port++) {
-      if (incoming_offsets[port] >= 0 && received_ack[port]) {
-        continue; // Already fully aligned
+      if (incoming_offsets[port] >= 0) {
+        continue; // Already found offset for this port
       }
 
-      GatherUnit gather = ugn_ctx->gather_units[port];
       ScatterUnit scatter = ugn_ctx->scatter_units[port];
 
-      // Step 3: Search - Scan RX ringbuffer for ALIGNMENT_ANNOUNCE or
-      // ALIGNMENT_RECEIVED
-      if (incoming_offsets[port] < 0) {
-        for (int16_t rx_idx = 0; rx_idx < BUFFER_SIZE; rx_idx++) {
-          uint64_t scatter_data;
-          scatter_unit_get_scatter_memory_unchecked(scatter, rx_idx,
-                                                    (uint8_t *)&scatter_data);
-
-          enum RingbufferAlignState state =
-              decode_alignment_state(scatter_data);
-
-          // Step 4: Determine Offset - Found message at RX_Index
-          if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
-              state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
-            incoming_offsets[port] = rx_idx;
-            PRINT_ALIGN_STATE_CHANGE(uart, port, state, rx_idx);
-
-            // Step 5: Acknowledge - Update TX index 0 to ALIGNMENT_RECEIVED
-            uint64_t ack_msg =
-                encode_alignment_state(RINGBUFFER_ALIGN_ACKNOWLEDGE);
-            gather_unit_set_gather_memory_unchecked(gather, 0,
-                                                    (uint8_t const *)&ack_msg);
-            break;
-          }
-        }
-      }
-
-      // Step 6: Confirm - Check if neighbor sent ALIGNMENT_RECEIVED
-      if (incoming_offsets[port] >= 0 && !received_ack[port]) {
+      // Scan RX ringbuffer for ALIGNMENT_ANNOUNCE or ALIGNMENT_ACKNOWLEDGE
+      for (int16_t rx_idx = 0; rx_idx < BUFFER_SIZE; rx_idx++) {
         uint64_t scatter_data;
-        scatter_unit_get_scatter_memory_unchecked(
-            scatter, incoming_offsets[port], (uint8_t *)&scatter_data);
+        scatter_unit_get_scatter_memory_unchecked(scatter, rx_idx,
+                                                  (uint8_t *)&scatter_data);
 
         enum RingbufferAlignState state = decode_alignment_state(scatter_data);
 
-        if (state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
-          received_ack[port] = true;
-          PRINT_ALIGN_STATE_CHANGE(uart, port, state, incoming_offsets[port]);
+        // Found message at RX_Index
+        if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
+            state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+          incoming_offsets[port] = rx_idx;
+          PRINT_ALIGN_STATE_CHANGE(uart, port, state, rx_idx);
+          break;
         }
       }
     }
 
-    // Step 7: Check if all ports are aligned
-    all_aligned = true;
+    // Check if Phase 1 is complete (all offsets found)
+    phase1_complete = true;
     for (int32_t port = 0; port < NUM_PORTS; port++) {
-      if (incoming_offsets[port] < 0 || !received_ack[port]) {
-        all_aligned = false;
+      if (incoming_offsets[port] < 0) {
+        phase1_complete = false;
         break;
       }
     }
+  }
+
+  uart_puts(uart, "Phase 1 complete! All offsets discovered.\n");
+
+  // ========================================================================
+  // PHASE 2: Change to ACKNOWLEDGE and wait for all partners to acknowledge
+  // ========================================================================
+  uart_puts(uart,
+            "Phase 2: Sending acknowledges and waiting for confirmation...\n");
+
+  // Change all outgoing messages to ACKNOWLEDGE
+  for (int32_t port = 0; port < NUM_PORTS; port++) {
+    GatherUnit gather = ugn_ctx->gather_units[port];
+    uint64_t ack_msg = encode_alignment_state(RINGBUFFER_ALIGN_ACKNOWLEDGE);
+    gather_unit_set_gather_memory_unchecked(gather, 0,
+                                            (uint8_t const *)&ack_msg);
+  }
+
+  // Wait for all partners to send ACKNOWLEDGE
+  bool phase2_complete = false;
+  while (!phase2_complete) {
+    iteration++;
+    PRINT_ALIGN_ITERATION(uart, iteration);
+
+    for (int32_t port = 0; port < NUM_PORTS; port++) {
+      if (received_ack[port]) {
+        continue; // Already received ACK for this port
+      }
+
+      ScatterUnit scatter = ugn_ctx->scatter_units[port];
+
+      // Check at the known position for ACKNOWLEDGE
+      uint64_t scatter_data;
+      scatter_unit_get_scatter_memory_unchecked(scatter, incoming_offsets[port],
+                                                (uint8_t *)&scatter_data);
+
+      enum RingbufferAlignState state = decode_alignment_state(scatter_data);
+
+      if (state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
+        received_ack[port] = true;
+        PRINT_ALIGN_STATE_CHANGE(uart, port, state, incoming_offsets[port]);
+      }
+    }
+
+    // Check if Phase 2 is complete (all ACKs received)
+    phase2_complete = true;
+    for (int32_t port = 0; port < NUM_PORTS; port++) {
+      if (!received_ack[port]) {
+        phase2_complete = false;
+        break;
+      }
+    }
+  }
+
+  uart_puts(uart, "Phase 2 complete! All ports acknowledged.\n");
+
+  // Clear address 0 in all gather buffers
+  uint64_t empty_msg = encode_alignment_state(RINGBUFFER_ALIGN_EMPTY);
+  for (int32_t port = 0; port < NUM_PORTS; port++) {
+    GatherUnit gather = ugn_ctx->gather_units[port];
+    gather_unit_set_gather_memory_unchecked(gather, 0,
+                                            (uint8_t const *)&empty_msg);
   }
   for (int32_t port = 0; port < NUM_PORTS; port++) {
     gather_unit_clear(ugn_ctx->gather_units[port]);
