@@ -14,3 +14,4 @@ SPDX-License-Identifier: Apache-2.0
 - [Switch Demo with ASIC](sections/switch-demo-asic.md)
 - [Switch Demo with GPPE](sections/switch-demo-gppe.md)
 - [Ringbuffer aligment](sections/ringbuffer-alignment.md)
+- [Asynchronous communication](sections/asynchronous-communication.md)
