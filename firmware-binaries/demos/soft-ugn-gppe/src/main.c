@@ -44,11 +44,11 @@ ScatterUnit su;
 #define STARTING_DELAY_READ (BUFFER_SIZE * 1002)
 
 uint64_t encode_alignment_state(enum RingbufferAlignState state) {
-  return (uint64_t)(state & 0xFF);
+  return (uint64_t)state;
 }
 
 enum RingbufferAlignState decode_alignment_state(uint64_t encoded) {
-  return (enum RingbufferAlignState)(encoded & 0xFF);
+  return (enum RingbufferAlignState)encoded;
 }
 
 void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,

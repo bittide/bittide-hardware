@@ -18,8 +18,8 @@
 
 enum RingbufferAlignState {
   RINGBUFFER_ALIGN_EMPTY = 0,
-  RINGBUFFER_ALIGN_ANNOUNCE = 1,
-  RINGBUFFER_ALIGN_ACKNOWLEDGE = 2,
+  RINGBUFFER_ALIGN_ANNOUNCE = 0xBADC0FFEE,
+  RINGBUFFER_ALIGN_ACKNOWLEDGE = 0xDEADABBA,
 };
 
 // ============================================================================
