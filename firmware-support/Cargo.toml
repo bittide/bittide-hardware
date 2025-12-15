@@ -8,6 +8,7 @@ members = [
   "bittide-hal-c",
   "bittide-macros",
   "bittide-sys",
+  "clash-num",
   "gdb-trace",
   "memmap-generate",
 ]

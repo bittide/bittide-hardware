@@ -125,6 +125,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "clash-num"
+version = "0.1.0"
+dependencies = [
+ "const_panic",
+ "get-random-const",
+ "paste",
+ "rand 0.9.2",
+ "seq-macro",
+ "subst_macros",
+ "ufmt",
+]
+
+[[package]]
+name = "const_panic"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e262cdaac42494e3ae34c43969f9cdeb7da178bdb4b66fa6a1ea2edb4c8ae652"
+dependencies = [
+ "typewit",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -211,6 +233,15 @@ name = "gdb-trace"
 version = "0.1.0"
 dependencies = [
  "riscv",
+]
+
+[[package]]
+name = "get-random-const"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1026f5dfa5bcff6743033629e1de9f7cdcec4a013d4da2109edf911b73d93c7c"
+dependencies = [
+ "getrandom 0.3.4",
 ]
 
 [[package]]
@@ -589,6 +620,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
+name = "seq-macro"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bc711410fbe7399f390ca1c3b60ad0f53f80e95c5eb935e52268a0e2cd49acc"
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -706,6 +743,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "subst_macros"
+version = "0.1.0"
+source = "git+https://github.com/QBayLogic/subst_macros.git?rev=1273588cd7b854b8b6294cf54c7e238f77778ac4#1273588cd7b854b8b6294cf54c7e238f77778ac4"
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -751,6 +793,12 @@ dependencies = [
  "structmeta",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "typewit"
+version = "1.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8c1ae7cc0fdb8b842d65d127cb981574b0d2b249b74d1c7a2986863dc134f71"
 
 [[package]]
 name = "ufmt"
