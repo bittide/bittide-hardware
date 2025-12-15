@@ -166,11 +166,11 @@ gppe maybeDna linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) -
   -- Output
   idC -< (linksOut, uart)
  where
-  scatterConfig = ScatterConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  maxCalDepth = d1024
-  repetitionBits = d12
-  sgCal = ValidEntry 0 1000 :> Nil
+  scatterConfig = ScatterConfig (SNat @4000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  gatherConfig = GatherConfig (SNat @4000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  maxCalDepth = SNat @4096
+  repetitionBits = d16
+  sgCal = ValidEntry 0 3999 :> Nil
 
 core ::
   ( ?busByteOrder :: ByteOrder
@@ -227,11 +227,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< ebWbs
 
     Fwd rxs2 <-
-      withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+      withBittideClockResetEnable
+        $ Vec.vecCircuits ((captureUgn lc . dflipflop bitClk) <$> rxs1)
+        -< ugnWbs
     -- Stop internal links
 
     -- Start general purpose processing element
-    (txs, gppeUartBytesBittide) <-
+    (Fwd txs, gppeUartBytesBittide) <-
       withBittideClockResetEnable gppe maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop general purpose processing element
 
@@ -287,7 +289,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     idC
       -< ( Fwd swCcOut1
          , Fwd lc
-         , txs
+         , Fwd (dflipflop bitClk <$> txs)
          , sync
          , muUartBytesBittide
          , ccUartBytesBittide

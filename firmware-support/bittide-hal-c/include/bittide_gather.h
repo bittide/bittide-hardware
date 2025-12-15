@@ -15,6 +15,7 @@
 
 #include "stdbool.h"
 #include "stdint.h"
+#include "string.h"
 
 // All of those includes don't really do anything.. I guess it might help
 // with auto-completion though?
@@ -41,12 +42,11 @@
  * @param len Number of uint64_t words to write
  */
 static inline void gather_unit_write_slice_unchecked(GatherUnit unit,
-                                                     const uint8_t (*src)[8],
+                                                     uint64_t *src,
                                                      uint32_t offset,
                                                      uint32_t len) {
-  for (uint32_t i = 0; i < len; i++) {
-    gather_unit_set_gather_memory_unchecked(unit, offset + i, src[i]);
-  }
+  memcpy_volatile((unit.base + 0) + (offset * sizeof(uint64_t)), src,
+                  len * sizeof(uint64_t));
 }
 
 /**
@@ -63,8 +63,7 @@ static inline void gather_unit_write_slice_unchecked(GatherUnit unit,
  * @return true on success, false if bounds check fails or parameters are
  * invalid
  */
-static inline bool gather_unit_write_slice(GatherUnit unit,
-                                           const uint8_t (*src)[8],
+static inline bool gather_unit_write_slice(GatherUnit unit, uint64_t *src,
                                            uint32_t offset, uint32_t len) {
   // Validate parameters
   if (src == 0 || offset + len > GATHER_UNIT_GATHER_MEMORY_LEN) {
@@ -87,7 +86,7 @@ static inline bool gather_unit_write_slice(GatherUnit unit,
  * @param len Number of uint64_t words to write
  */
 static inline void gather_unit_write_slice_wrapping(GatherUnit unit,
-                                                    const uint8_t (*src)[8],
+                                                    uint64_t *src,
                                                     uint32_t offset,
                                                     uint32_t len) {
   if (offset + len <= GATHER_UNIT_GATHER_MEMORY_LEN) {
