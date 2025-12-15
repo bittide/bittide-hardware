@@ -28,12 +28,12 @@ ScatterUnit su;
 #define BUFFER_SIZE 4000
 
 // SEND timing parameters
-#define SEND_SPACING 8000 // Spacing between SEND events
+#define SEND_SPACING (2 * BUFFER_SIZE) // Spacing between SEND events
 #define SEND_PERIOD (SEND_SPACING * NUM_PORTS)
 #define FINAL_SEND_DELAY (2 * SEND_PERIOD + BUFFER_SIZE)
 
 // RECEIVE timing parameters
-#define RECEIVE_SPACING 8000 // Spacing between RECEIVE events
+#define RECEIVE_SPACING BUFFER_SIZE // Spacing between RECEIVE events
 #define RECEIVE_PERIOD (RECEIVE_SPACING * (NUM_PORTS + 1))
 
 // INVALIDATE timing parameters
