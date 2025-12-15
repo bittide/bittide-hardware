@@ -43,26 +43,19 @@ ScatterUnit su;
 #define STARTING_DELAY_WRITE (BUFFER_SIZE * 1000)
 #define STARTING_DELAY_READ (BUFFER_SIZE * 1002)
 
-uint64_t encode_alignment_pair(enum RingbufferAlignState state,
-                               int16_t incoming_offset,
-                               int16_t outgoing_offset) {
-  return ((uint64_t)(state & 0xFF) << 32) |
-         ((uint64_t)(incoming_offset & 0xFFFF) << 16) |
-         ((uint64_t)(outgoing_offset & 0xFFFF));
-}
-void decode_alignment_pair(uint64_t encoded, enum RingbufferAlignState *state,
-                           int16_t *incoming_offset, int16_t *outgoing_offset) {
-  *state = (enum RingbufferAlignState)((encoded >> 32) & 0xFF);
-  *outgoing_offset = (int16_t)((encoded >> 16) & 0xFFFF);
-  *incoming_offset = (int16_t)(encoded & 0xFFFF);
+uint64_t encode_alignment_state(enum RingbufferAlignState state) {
+  return (uint64_t)(state & 0xFF);
 }
 
-void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
+enum RingbufferAlignState decode_alignment_state(uint64_t encoded) {
+  return (enum RingbufferAlignState)(encoded & 0xFF);
+}
+
+void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
                        Uart uart) {
   PRINT_ALIGN_START(uart);
 
   bool all_aligned = false;
-  int16_t incoming_offsets[NUM_PORTS];
   bool received_ack[NUM_PORTS];
   uint32_t iteration = 0;
 
@@ -77,13 +70,12 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
     GatherUnit gather = ugn_ctx->gather_units[port];
 
     // Write ALIGNMENT_ANNOUNCE at index 0
-    uint64_t announce_msg =
-        encode_alignment_pair(RINGBUFFER_ALIGN_ANNOUNCE, 0, 0);
+    uint64_t announce_msg = encode_alignment_state(RINGBUFFER_ALIGN_ANNOUNCE);
     gather_unit_set_gather_memory_unchecked(gather, 0,
                                             (uint8_t const *)&announce_msg);
 
     // Clear rest of buffer
-    uint64_t empty_msg = encode_alignment_pair(RINGBUFFER_ALIGN_EMPTY, 0, 0);
+    uint64_t empty_msg = encode_alignment_state(RINGBUFFER_ALIGN_EMPTY);
     for (int16_t i = 1; i < BUFFER_SIZE; i++) {
       gather_unit_set_gather_memory_unchecked(gather, i,
                                               (uint8_t const *)&empty_msg);
@@ -110,21 +102,18 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
           scatter_unit_get_scatter_memory_unchecked(scatter, rx_idx,
                                                     (uint8_t *)&scatter_data);
 
-          int16_t dummy1, dummy2;
-          enum RingbufferAlignState state;
-          decode_alignment_pair(scatter_data, &state, &dummy1, &dummy2);
+          enum RingbufferAlignState state =
+              decode_alignment_state(scatter_data);
 
           // Step 4: Determine Offset - Found message at RX_Index
           if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
               state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
             incoming_offsets[port] = rx_idx;
-            outgoing_offsets[port] = rx_idx;
             PRINT_ALIGN_STATE_CHANGE(uart, port, state, rx_idx);
-            PRINT_ALIGN_OUTGOING_OFFSET(uart, port, rx_idx);
 
             // Step 5: Acknowledge - Update TX index 0 to ALIGNMENT_RECEIVED
             uint64_t ack_msg =
-                encode_alignment_pair(RINGBUFFER_ALIGN_ACKNOWLEDGE, 0, 0);
+                encode_alignment_state(RINGBUFFER_ALIGN_ACKNOWLEDGE);
             gather_unit_set_gather_memory_unchecked(gather, 0,
                                                     (uint8_t const *)&ack_msg);
             break;
@@ -138,9 +127,7 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
         scatter_unit_get_scatter_memory_unchecked(
             scatter, incoming_offsets[port], (uint8_t *)&scatter_data);
 
-        int16_t dummy1, dummy2;
-        enum RingbufferAlignState state;
-        decode_alignment_pair(scatter_data, &state, &dummy1, &dummy2);
+        enum RingbufferAlignState state = decode_alignment_state(scatter_data);
 
         if (state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
           received_ack[port] = true;
@@ -161,7 +148,7 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *outgoing_offsets,
   for (int32_t port = 0; port < NUM_PORTS; port++) {
     gather_unit_clear(ugn_ctx->gather_units[port]);
   }
-  PRINT_ALIGN_COMPLETE(uart, incoming_offsets, outgoing_offsets, NUM_PORTS);
+  PRINT_ALIGN_COMPLETE(uart, incoming_offsets, NUM_PORTS);
 }
 
 // ============================================================================
@@ -205,8 +192,8 @@ int c_main(void) {
                   NUM_PORTS);
 
   // Align ringbuffers before starting event loop
-  int16_t outgoing_offsets[NUM_PORTS] = {0};
-  align_ringbuffers(&ugn_ctx, outgoing_offsets, uart);
+  int16_t incoming_offsets[NUM_PORTS] = {0};
+  align_ringbuffers(&ugn_ctx, incoming_offsets, uart);
 
   // Event loop variables
   FixedIntPriorityQueue event_queue;
