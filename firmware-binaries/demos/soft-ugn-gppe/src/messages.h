@@ -405,7 +405,7 @@ enum RingbufferAlignState {
     uart_puts(UART, ": ALIGNED\n");                                            \
   } while (0)
 
-#define PRINT_ALIGN_COMPLETE(UART, IN_OFFS, OUT_OFFS, NUM_PORTS)               \
+#define PRINT_ALIGN_COMPLETE(UART, IN_OFFS, NUM_PORTS)                         \
   do {                                                                         \
     uart_puts(UART, "\n========================================\n");           \
     uart_puts(UART, "Ringbuffer alignment complete!\n");                       \
@@ -415,8 +415,6 @@ enum RingbufferAlignState {
       uart_putdec(UART, (uint64_t)port);                                       \
       uart_puts(UART, ": in=");                                                \
       uart_putdec_signed(UART, (IN_OFFS)[port]);                               \
-      uart_puts(UART, ", out=");                                               \
-      uart_putdec_signed(UART, (OUT_OFFS)[port]);                              \
       uart_puts(UART, "\n");                                                   \
     }                                                                          \
     uart_puts(UART, "========================================\n\n");           \
