@@ -68,17 +68,17 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
   for (int32_t port = 0; port < NUM_PORTS; port++) {
     GatherUnit gather = ugn_ctx->gather_units[port];
 
-    // Write ALIGNMENT_ANNOUNCE at index 0
-    uint64_t announce_msg = encode_alignment_state(RINGBUFFER_ALIGN_ANNOUNCE);
-    gather_unit_set_gather_memory_unchecked(gather, 0,
-                                            (uint8_t const *)&announce_msg);
-
     // Clear rest of buffer
     uint64_t empty_msg = encode_alignment_state(RINGBUFFER_ALIGN_EMPTY);
     for (int16_t i = 1; i < BUFFER_SIZE; i++) {
       gather_unit_set_gather_memory_unchecked(gather, i,
                                               (uint8_t const *)&empty_msg);
     }
+
+    // Write ALIGNMENT_ANNOUNCE at index 0
+    uint64_t announce_msg = encode_alignment_state(RINGBUFFER_ALIGN_ANNOUNCE);
+    gather_unit_set_gather_memory_unchecked(gather, 0,
+                                            (uint8_t const *)&announce_msg);
   }
 
   // ========================================================================
