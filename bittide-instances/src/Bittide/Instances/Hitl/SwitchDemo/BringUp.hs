@@ -159,7 +159,6 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, j
       -< ( muMm
          , ccMm
          , otherJtagBittide
-         , Fwd 0
          , Fwd (pure maxBound)
          , Fwd linksSuitableForCc
          , Fwd tOutputs.rxDatas

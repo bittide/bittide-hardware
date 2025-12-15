@@ -20,6 +20,7 @@ import Bittide.ProcessingElement (
   PeConfig (..),
   PeInternalBusses,
   PrefixWidth,
+  RemainingBusWidth,
   processingElement,
  )
 import Bittide.ScatterGather
@@ -40,10 +41,28 @@ import qualified Protocols.Vec as Vec
 
 type FifoSize = 5 -- = 2^5 = 32
 
+{- Internal busses:
+    - Instruction memory
+    - Data memory
+    - `timeWb`
+    - DNA
+    - UART
+-}
 type NmuInternalBusses = 3 + PeInternalBusses
-type NmuExternalBusses = (LinkCount * PeripheralsPerLink) + LinkCount + 1 -- +1 for tranceivers
-type PeripheralsPerLink = 3 -- Scatter calendar, Gather calendar, UGN component.
-type NmuRemBusWidth = 30 - CLog 2 (NmuExternalBusses + NmuInternalBusses)
+
+{- Busses per link:
+    - UGN component
+    - Elastic buffer
+    - Scatter calendar
+    - Gather calendar
+-}
+type PeripheralsPerLink = 4
+
+{- External busses:
+    - Transceivers
+-}
+type NmuExternalBusses = 1 + (LinkCount * PeripheralsPerLink)
+type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
 
 muConfig ::
   ( KnownNat n

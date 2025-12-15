@@ -18,6 +18,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
+  PeInternalBusses,
   PrefixWidth,
   RemainingBusWidth,
   processingElement,
@@ -44,47 +45,58 @@ type FifoSize = 5 -- = 2^5 = 32
     - Instruction memory
     - Data memory
     - `timeWb`
+    - DNA
+    - UART
 -}
-type NmuInternalBusses = 3
-type NmuRemBusWidth nodeBusses = RemainingBusWidth (nodeBusses + NmuInternalBusses)
+type NmuInternalBusses = 3 + PeInternalBusses
 
-data SimpleManagementConfig nodeBusses where
-  SimpleManagementConfig ::
-    (KnownNat nodeBusses) =>
-    { peConfig :: PeConfig (nodeBusses + NmuInternalBusses)
-    -- ^ Configuration for the internal 'processingElement'
-    , dumpVcd :: DumpVcd
-    -- ^ VCD dump configuration
-    } ->
-    SimpleManagementConfig nodeBusses
+{- Busses per link:
+    - UGN component
+    - Elastic buffer
+-}
+type PeripheralsPerLink = 2
 
-simpleManagementUnitC ::
-  forall bitDom nodeBusses.
-  ( KnownDomain bitDom
-  , HiddenClockResetEnable bitDom
+{- External busses:
+    - ASIC PE
+    - Switch calendar
+    - Transceivers
+-}
+type NmuExternalBusses = 3 + (LinkCount * PeripheralsPerLink)
+type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
+
+managementUnit ::
+  forall dom.
+  ( HiddenClockResetEnable dom
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
-  , 1 <= DomainPeriod bitDom
-  , KnownNat nodeBusses
-  , PrefixWidth (nodeBusses + NmuInternalBusses) <= 30
+  , 1 <= DomainPeriod dom
   ) =>
-  SimpleManagementConfig nodeBusses ->
+  -- | DNA value
+  Signal dom (Maybe (BitVector 96)) ->
   Circuit
-    (ToConstBwd Mm.Mm, (Jtag bitDom, CSignal bitDom (BitVector 64)))
-    ( CSignal bitDom (Unsigned 64)
+    (ToConstBwd Mm.Mm, Jtag dom)
+    ( CSignal dom (Unsigned 64)
+    , Df dom (BitVector 8)
     , Vec
-        nodeBusses
+        NmuExternalBusses
         ( ToConstBwd Mm.Mm
-        , Wishbone bitDom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4)
+        , Wishbone dom 'Standard NmuRemBusWidth (Bytes 4)
         )
     )
-simpleManagementUnitC (SimpleManagementConfig peConfig dumpVcd) =
-  circuit $ \(mm, (jtag, _linkIn)) -> do
-    peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
-    ([timeBus], nmuWbs) <- Vec.split -< peWbs
-    localCounter <- timeWb -< timeBus
+managementUnit maybeDna =
+  circuit $ \(mm, jtag) -> do
+    -- Core and interconnect
+    allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
+    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
-    idC -< (localCounter, nmuWbs)
+    -- Peripherals
+    localCounter <- timeWb -< timeBus
+    (uartOut, _uartStatus) <-
+      uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
+    readDnaPortE2WbWorker maybeDna -< dnaBus
+
+    -- Output
+    idC -< (localCounter, uartOut, restBusses)
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
 calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
@@ -117,22 +129,19 @@ calendarConfig =
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-type MuBusses = 19
-type MuAddressWidth = NmuRemBusWidth MuBusses
-
-muConfig :: SimpleManagementConfig MuBusses
+muConfig ::
+  ( KnownNat n
+  , PrefixWidth (n + NmuInternalBusses) <= 30
+  ) =>
+  PeConfig (n + NmuInternalBusses)
 muConfig =
-  SimpleManagementConfig
-    { peConfig =
-        PeConfig
-          { cpu = Riscv32imc.vexRiscv1
-          , initI = Undefined @(Div (64 * 1024) 4)
-          , initD = Undefined @(Div (64 * 1024) 4)
-          , iBusTimeout = d0
-          , dBusTimeout = d0
-          , includeIlaWb = False
-          }
-    , dumpVcd = NoDumpVcd
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv1
+    , initI = Undefined @(Div (64 * 1024) 4)
+    , initD = Undefined @(Div (64 * 1024) 4)
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
     }
 
 ccConfig ::
@@ -162,7 +171,6 @@ core ::
     ( "MU" ::: ToConstBwd Mm
     , "CC" ::: ToConstBwd Mm
     , Jtag Bittide
-    , CSignal Bittide (BitVector 64)
     , CSignal Bittide (BitVector LinkCount)
     , CSignal Bittide (BitVector LinkCount)
     , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
@@ -174,38 +182,28 @@ core ::
     , "MU_UART" ::: Df Bittide (BitVector 8)
     , "CC_UART" ::: Df Bittide (BitVector 8)
     , "MU_TRANSCEIVER"
-        ::: (ToConstBwd Mm.Mm, Wishbone Bittide 'Standard MuAddressWidth (Bytes 4))
+        ::: (ToConstBwd Mm.Mm, Wishbone Bittide 'Standard NmuRemBusWidth (Bytes 4))
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, jtag, linkIn, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
 
     -- Start management unit
-    (Fwd lc, muWbAll) <-
-      withBittideClockResetEnable (simpleManagementUnitC muConfig) -< (muMm, (muJtag, linkIn))
-
-    ( [ (peWbMM, peWb)
-        , (switchWbMM, switchWb)
-        , dnaWb
-        , muUartBus
-        , muTransceiverBus
-        ]
-      , restWbs
+    (Fwd lc, muUartBytesBittide, muWbAll) <-
+      withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
+    (ugnWbs, muWbs1) <- Vec.split -< muWbAll
+    ( ebWbs
+      , [ (peWbMM, peWb)
+          , (switchWbMM, switchWb)
+          , muTransceiverBus
+          ]
       ) <-
-      Vec.split -< muWbAll
-
-    withBittideClockResetEnable (readDnaPortE2WbWorker maybeDna) -< dnaWb
-
-    (muUartBytesBittide, _muUartStatus) <-
-      withBittideClockResetEnable
-        $ uartInterfaceWb d16 d16 uartBytes
-        -< (muUartBus, Fwd (pure Nothing))
+      Vec.split -< muWbs1
     -- Stop management unit
 
     -- Start internal links
-    (ugnWbs, ebWbs) <- Vec.split -< restWbs
     (_relDatCount, _underflow, _overflow, _ebStables, Fwd rxs1) <-
       unzip5Vec
         <| ( Vec.vecCircuits
