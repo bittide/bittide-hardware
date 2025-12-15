@@ -18,3 +18,4 @@ SPDX-License-Identifier: Apache-2.0
   - [Scatter Unit](sections/components/scatter-unit.md)
   - [Gather Unit](sections/components/gather-unit.md)
 - [Ringbuffer aligment](sections/ringbuffer-alignment.md)
+- [Asynchronous communication](sections/asynchronous-communication.md)

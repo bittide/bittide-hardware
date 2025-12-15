@@ -41,4 +41,4 @@ This leads to specific failure modes:
 *   **Data Loss:** If the CPU does not read from the RX ringbuffer every iteration, the hardware will overwrite unread data.
 *   **Data duplication:** If the CPU does not write to the TX ringbuffer every iteration, the hardware will resend old data.
 
-Reliable communication requires a higher-level protocol to handle these errors.
+Reliable communication requires a higher-level protocol to handle these errors. See the [Asynchronous Communication Protocol](asynchronous-communication.md) for a proposed solution using the `smoltcp` library to implement a reliable TCP/IP layer over the `AlignedRingbuffer`.
