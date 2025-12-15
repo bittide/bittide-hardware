@@ -160,7 +160,7 @@ fn main() -> ! {
         uwriteln!(
             uart,
             "  Before Drain: count={}, will drain {} times",
-            count_before as i8,
+            count_before,
             drains_needed
         )
         .unwrap();
