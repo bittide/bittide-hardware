@@ -138,7 +138,7 @@ managementUnit maybeDna =
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    localCounter <- timeWb -< timeBus
+    localCounter <- timeWb Nothing -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
@@ -197,7 +197,7 @@ gppe maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
     repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (gatherBusses, gatherCalendarBusses)
 
   -- Peripherals
-  _cnt <- timeWb -< timeBus
+  _cnt <- timeWb Nothing -< timeBus
   (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
   readDnaPortE2WbWorker maybeDna -< dnaBus
 
@@ -249,6 +249,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
               ( ilaConfig
                   $ "trigger"
                   :> "capture"
+                  :> "counter"
                   :> "in0"
                   :> "in1"
                   :> "in2"

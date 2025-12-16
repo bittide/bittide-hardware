@@ -71,7 +71,7 @@ dut = withBittideByteOrder
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     mm <- ignoreMM
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-    _localCounter <- timeWb -< (mmTime, timeBus)
+    _localCounter <- timeWb Nothing -< (mmTime, timeBus)
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -153,7 +153,7 @@ dutC = withBittideByteOrder
       processingElement NoDumpVcd peConfigC -< (mm, jtag)
     mm <- ignoreMM
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-    _localCounter <- timeWb -< (mmTime, timeBus)
+    _localCounter <- timeWb Nothing -< (mmTime, timeBus)
     idC -< uartTx
  where
   peConfigC = unsafePerformIO $ do

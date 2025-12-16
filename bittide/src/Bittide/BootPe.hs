@@ -45,7 +45,7 @@ bootPe peConfig = circuit $ \(mm, jtag) -> do
   [timeBus, uartBus, siBus, transceiverBus] <-
     processingElement NoDumpVcd peConfig -< (mm, jtag)
 
-  Fwd _localCounter <- timeWb -< timeBus
+  Fwd _localCounter <- timeWb Nothing -< timeBus
   (uartOut, _uartStatus) <-
     uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
   (spiDone, spiOut) <- si539xSpiWb (SNat @(Microseconds 10)) -< siBus
