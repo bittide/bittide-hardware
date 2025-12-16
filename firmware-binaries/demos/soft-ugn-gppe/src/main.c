@@ -33,15 +33,15 @@ ScatterUnit su;
 #define FINAL_SEND_DELAY (2 * SEND_PERIOD + BUFFER_SIZE)
 
 // RECEIVE timing parameters
-#define RECEIVE_SPACING (2 * BUFFER_SIZE) // Spacing between RECEIVE events
-#define RECEIVE_PERIOD (RECEIVE_SPACING * (NUM_PORTS + 1))
+#define RECEIVE_SPACING BUFFER_SIZE // Spacing between RECEIVE events
+#define RECEIVE_PERIOD (RECEIVE_SPACING * (2 * NUM_PORTS + 1))
 
 // INVALIDATE timing parameters
 #define INVALIDATE_DELAY BUFFER_SIZE
 
 // Initial offsets for scheduling events
 #define STARTING_DELAY_WRITE (BUFFER_SIZE * 200)
-#define STARTING_DELAY_READ (BUFFER_SIZE * 102)
+#define STARTING_DELAY_READ (BUFFER_SIZE * 100)
 
 uint64_t encode_alignment_state(enum RingbufferAlignState state) {
   return (uint64_t)state;
