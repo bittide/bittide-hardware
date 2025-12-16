@@ -77,6 +77,7 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_4,
         &INSTANCES.elastic_buffer_5,
         &INSTANCES.elastic_buffer_6,
+        &INSTANCES.elastic_buffer_7, // ILA buffer
     ];
 
     uwriteln!(uart, "Hello from management unit..").unwrap();
