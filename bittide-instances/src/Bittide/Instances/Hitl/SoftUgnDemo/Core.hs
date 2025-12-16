@@ -280,6 +280,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                   :> Nil
               )
                 { depth = D1024
+                , advancedTriggers = True
                 }
               refClk
               (pure True :: Signal Basic125 Bool)
