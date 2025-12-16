@@ -221,6 +221,7 @@ library
     Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Tests.ElasticBufferWb
+    Bittide.Instances.Tests.NestedInterconnect
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
@@ -311,6 +312,7 @@ test-suite unittests
     Wishbone.Axi
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
+    Wishbone.NestedInterconnect
     Wishbone.RegisterWb
     Wishbone.ScatterGather
     Wishbone.SwitchCalendar

@@ -22,6 +22,7 @@ members = [
   "sim-tests/clock-control-wb",
   "sim-tests/dna_port_e2_test",
   "sim-tests/elastic_buffer_wb_test",
+  "sim-tests/nested_interconnect_test",
   "sim-tests/wb_to_df_test",
   "sim-tests/scatter_gather_test",
   "sim-tests/switch_demo_pe_test",
