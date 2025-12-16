@@ -224,7 +224,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     let
       maybeDna = ilaInst `hwSeqX` readDnaPortE2 bitClk bitRst bitEna simDna2
       counter = register bitClk bitRst bitEna 0 (counter + 1)
-    Fwd (_, _, _, _, unbundle -> linksRef) <-
+    Fwd (_, _, _, ilaBufStable, unbundle -> linksRef) <-
       xilinxElasticBufferWb
         refClk
         refRst
@@ -261,7 +261,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 , advancedTriggers = True
                 }
               refClk
-              (pure True :: Signal Basic125 Bool)
+              ilaBufStable
               (isChange refClk refRst enableGen (bundle $ init linksRef))
               (fmap unpack $ linksRef !! (14 :: Int) :: Signal Basic125 (Unsigned 64))
               (linksRef !! (0 :: Int))
