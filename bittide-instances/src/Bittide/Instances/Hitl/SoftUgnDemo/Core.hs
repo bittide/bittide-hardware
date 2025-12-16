@@ -148,13 +148,13 @@ managementUnit externalCounter maybeDna =
     idC -< (uartOut, restBusses)
 
 isChange ::
-  (KnownDomain dom, Eq a, NFDataX a) =>
+  (KnownDomain dom, Eq a, NFDataX a, BitPack a) =>
   Clock dom ->
   Reset dom ->
   Enable dom ->
   Signal dom a ->
   Signal dom Bool
-isChange clk rst ena sig = changed
+isChange clk rst ena sig = changed .&&. fmap pack sig ./= 0
  where
   now = fmap Just sig
   prev = register clk rst ena Nothing now
@@ -285,7 +285,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 }
               refClk
               ilaBufStable
-              (isChange refClk refRst enableGen (bundle $ init linksRef))
+              (fmap or $ bundle $ fmap (isChange refClk refRst enableGen) (init linksRef))
               (fmap unpack $ linksRef !! (14 :: Int) :: Signal Basic125 (Unsigned 64))
               (linksRef !! (0 :: Int))
               (linksRef !! (1 :: Int))
