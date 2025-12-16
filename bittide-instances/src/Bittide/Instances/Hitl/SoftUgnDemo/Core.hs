@@ -156,8 +156,9 @@ isChange ::
   Signal dom Bool
 isChange clk rst ena sig = changed
  where
-  prev = register clk rst ena Nothing (fmap Just sig)
-  changed = fmap isJust prev .&&. prev ./=. fmap Just sig
+  now = fmap Just sig
+  prev = register clk rst ena Nothing now
+  changed = fmap isJust prev .&&. prev ./=. now
 
 gppe ::
   ( HiddenClockResetEnable dom
@@ -284,7 +285,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 }
               refClk
               (pure True :: Signal Basic125 Bool)
-              (isChange refClk refRst enableGen (bundle linksRef))
+              (isChange refClk refRst enableGen (bundle $ init linksRef))
               (fmap unpack $ linksRef !! (14 :: Int) :: Signal Basic125 (Unsigned 64))
               (linksRef !! (0 :: Int))
               (linksRef !! (1 :: Int))
