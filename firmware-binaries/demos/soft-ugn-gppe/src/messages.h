@@ -324,10 +324,10 @@ enum RingbufferAlignState {
   } while (0)
 
 // Assertion macro to check that SEND and RECEIVE periods are coprime
-#define ASSERT_PERIODS_COPRIME(UART, SEND_PERIOD, RECEIVE_PERIOD)              \
+#define ASSERT_PERIODS_COPRIME(UART, SEND_PERIOD, RECEIVE_PERIOD, BUFFER_SIZE) \
   do {                                                                         \
-    uint64_t a = (SEND_PERIOD);                                                \
-    uint64_t b = (RECEIVE_PERIOD);                                             \
+    uint64_t a = (SEND_PERIOD / BUFFER_SIZE);                                  \
+    uint64_t b = (RECEIVE_PERIOD / BUFFER_SIZE);                               \
     while (b != 0) {                                                           \
       uint64_t temp = b;                                                       \
       b = a % b;                                                               \
@@ -340,6 +340,20 @@ enum RingbufferAlignState {
       uart_puts(UART, " and ");                                                \
       uart_putdec(UART, (RECEIVE_PERIOD));                                     \
       uart_puts(UART, "\n");                                                   \
+    }                                                                          \
+  } while (0)
+
+// Assertion macro to check that a period is a multiple of buffer size
+#define ASSERT_PERIOD_BUFFER_MULTIPLE(UART, PERIOD, BUFFER_SIZE)               \
+  do {                                                                         \
+    if ((PERIOD) % (BUFFER_SIZE) != 0) {                                       \
+      uart_puts(UART, "[UGN ERROR] Period ");                                  \
+      uart_putdec(UART, (uint64_t)(PERIOD));                                   \
+      uart_puts(UART, " is not a multiple of buffer size ");                   \
+      uart_putdec(UART, (uint64_t)(BUFFER_SIZE));                              \
+      uart_puts(UART, "\n");                                                   \
+      while (1) {                                                              \
+      }                                                                        \
     }                                                                          \
   } while (0)
 
