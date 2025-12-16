@@ -13,9 +13,9 @@ import Prelude
 
 import Protocols.MemoryMap
 
+import Data.List (sortBy)
 import GHC.Stack (SrcLoc)
 
-import qualified Data.Bifunctor
 import qualified Data.Map.Strict as Map
 
 type AddressRange = (Address, Address)
@@ -44,44 +44,42 @@ makeAbsolute ::
   AddressRange ->
   MemoryMapTreeRelNorm ->
   (MemoryMapTreeAbsNorm, [AddressError])
-makeAbsolute ctx (start, end) (AnnDeviceInstance (tags, path, assertedAddr) srcLoc deviceName) =
+makeAbsolute ctx (start, size) (AnnDeviceInstance (tags, path, assertedAddr) srcLoc deviceName) =
   checkAssertedAddr start assertedAddr path $
     case Map.lookup deviceName ctx of
       Nothing -> error $ "DeviceDefinition " <> show deviceName <> " not found (" <> show srcLoc <> ")"
       Just def ->
         let
-          availableSize = end - start
           devSize = deviceSize def
           newDevInstance = AnnDeviceInstance (tags, path, start) srcLoc deviceName
          in
-          if devSize > availableSize
+          if devSize > size
             then
               let err =
                     SizeExceedsError
                       { startAddr = start
-                      , availableSize
+                      , availableSize = size
                       , requestedSize = devSize
                       , path
                       , location = srcLoc
                       }
                in (newDevInstance, [err])
             else (newDevInstance, [])
-makeAbsolute ctx (start, end) (AnnInterconnect (tags, path, assertedAddr) srcLoc comps) =
+makeAbsolute ctx (start, size) (AnnInterconnect (tags, path, assertedAddr) srcLoc comps0) =
   checkAssertedAddr start assertedAddr path $
-    let (unzip -> (comps1, concat -> errs)) = flip map (zip ranges comps) $ \((start', end'), (relStart, comp)) -> do
-          let (comp1, errs1) = makeAbsolute ctx (start', end') comp
-          ((relStart, comp1), errs1)
-     in (AnnInterconnect (tags, path, start) srcLoc comps1, errs)
+    let (unzip -> (comps2, concat -> errs)) = flip map componentList $ \((start', size'), comp) -> do
+          let (comp1, errs1) = makeAbsolute ctx (start + start', size') comp
+          ((start', comp1), errs1)
+     in (AnnInterconnect (tags, path, start) srcLoc comps2, errs)
  where
-  ranges
-    | [] <- comps = []
-    | [(relAddr, _comp)] <- comps = [(start + relAddr, end)]
-    | (first, _) : rest <- comps =
-        let
-          relStarts = zip (first : (fst <$> rest)) $ (fst <$> rest) <> [end - start]
-          startEnds = map (Data.Bifunctor.bimap (start +) (start +)) relStarts
-         in
-          map (Data.Bifunctor.bimap (start +) (end +)) startEnds
+  comps1 = sortBy (\(a, _) (b, _) -> a `compare` b) comps0
+  compRelStart = relAddrs `zip` (drop 1 $ (relAddrs <> [size]))
+   where
+    relAddrs = fst <$> comps1
+
+  compRelStartSize = map (\(start', nextStart) -> (start', nextStart - start')) compRelStart
+
+  componentList = compRelStartSize `zip` (snd <$> comps1)
 
 checkAssertedAddr ::
   Address -> Maybe (SrcLoc, Address) -> Path -> (a, [AddressError]) -> (a, [AddressError])

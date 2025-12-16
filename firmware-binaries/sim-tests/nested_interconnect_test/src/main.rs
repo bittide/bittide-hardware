@@ -55,12 +55,12 @@ fn main() -> ! {
         &mut INSTANCES.unnested_peripherals_0,
         &mut INSTANCES.unnested_peripherals_1,
         &mut INSTANCES.unnested_peripherals_2,
-        // &mut INSTANCES.l1_nested_peripherals_0,
-        // &mut INSTANCES.l1_nested_peripherals_1,
-        // &mut INSTANCES.l1_nested_peripherals_2,
-        // &mut INSTANCES.l2_nested_peripherals_0,
-        // &mut INSTANCES.l2_nested_peripherals_1,
-        // &mut INSTANCES.l2_nested_peripherals_2,
+        &mut INSTANCES.l1_nested_peripherals_0,
+        &mut INSTANCES.l1_nested_peripherals_1,
+        &mut INSTANCES.l1_nested_peripherals_2,
+        &mut INSTANCES.l2_nested_peripherals_0,
+        &mut INSTANCES.l2_nested_peripherals_1,
+        &mut INSTANCES.l2_nested_peripherals_2,
     ];
 
     // Test each peripheral

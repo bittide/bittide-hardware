@@ -2,6 +2,9 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{- | Regression test to make sure that nested interconnects work properly
+with memory map generation.
+-}
 module Bittide.Instances.Tests.NestedInterconnect where
 
 import Clash.Prelude
