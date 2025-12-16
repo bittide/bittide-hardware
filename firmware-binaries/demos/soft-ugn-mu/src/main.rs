@@ -77,7 +77,6 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_4,
         &INSTANCES.elastic_buffer_5,
         &INSTANCES.elastic_buffer_6,
-        &INSTANCES.elastic_buffer_7, // ILA buffer
     ];
 
     uwriteln!(uart, "Hello from management unit..").unwrap();
@@ -167,13 +166,26 @@ fn main() -> ! {
     initialize_calendars(&mut uart);
     uwriteln!(uart, "All calendars initialized").unwrap();
 
-    // Initialize occupancy ranges for monitoring
-    let mut occupancy_ranges: [(i8, i8); 7] = [(0, 0); 7];
+    uwriteln!(uart, "Centering ila buffer").unwrap();
+    INSTANCES.elastic_buffer_7.set_occupancy(0);
+    INSTANCES.elastic_buffer_7.set_stable(true);
 
+    // Initialize occupancy ranges for monitoring
+    let mut occupancy_ranges: [(i8, i8); 8] = [(0, 0); 8];
+    let all_elastic_buffers = [
+        &INSTANCES.elastic_buffer_0,
+        &INSTANCES.elastic_buffer_1,
+        &INSTANCES.elastic_buffer_2,
+        &INSTANCES.elastic_buffer_3,
+        &INSTANCES.elastic_buffer_4,
+        &INSTANCES.elastic_buffer_5,
+        &INSTANCES.elastic_buffer_6,
+        &INSTANCES.elastic_buffer_7,
+    ];
     uwriteln!(uart, "Starting elastic buffer occupancy monitoring...").unwrap();
 
     loop {
-        for (i, eb) in elastic_buffers.iter().enumerate() {
+        for (i, eb) in all_elastic_buffers.iter().enumerate() {
             let occupancy = eb.data_count();
             let (min, max) = occupancy_ranges[i];
 
