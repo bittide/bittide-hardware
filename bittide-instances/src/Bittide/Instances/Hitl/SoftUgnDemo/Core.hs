@@ -28,7 +28,9 @@ import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
+import Clash.Cores.Xilinx.Ila
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
+import Data.Maybe
 import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone.Extra (delayWishbone)
@@ -144,6 +146,18 @@ managementUnit maybeDna =
     -- Output
     idC -< (localCounter, uartOut, restBusses)
 
+isChange ::
+  (KnownDomain dom, Eq a, NFDataX a) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  Signal dom a ->
+  Signal dom Bool
+isChange clk rst ena sig = changed
+ where
+  prev = register clk rst ena Nothing (fmap Just sig)
+  changed = fmap isJust prev .&&. prev ./=. fmap Just sig
+
 gppe ::
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
@@ -227,7 +241,48 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
-    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+    let maybeDna = ilaInst `hwSeqX` readDnaPortE2 bitClk bitRst bitEna simDna2
+
+    let (ilaInst :: Signal Bittide ()) =
+          setName @"CoreIla"
+            $ ila
+              ( ilaConfig
+                  $ "trigger"
+                  :> "capture"
+                  :> "in0"
+                  :> "in1"
+                  :> "in2"
+                  :> "in3"
+                  :> "in4"
+                  :> "in5"
+                  :> "in6"
+                  :> "out0"
+                  :> "out1"
+                  :> "out2"
+                  :> "out3"
+                  :> "out4"
+                  :> "out5"
+                  :> "out6"
+                  :> Nil
+              )
+                { depth = D1024
+                }
+              bitClk
+              (pure True :: Signal Bittide Bool)
+              (isChange bitClk bitRst bitEna (bundle $ rxs2 ++ txs))
+              (rxs2 !! (0 :: Int))
+              (rxs2 !! (1 :: Int))
+              (rxs2 !! (2 :: Int))
+              (rxs2 !! (3 :: Int))
+              (rxs2 !! (4 :: Int))
+              (rxs2 !! (5 :: Int))
+              (rxs2 !! (6 :: Int))
+              (txs !! (0 :: Int))
+              (txs !! (1 :: Int))
+              (txs !! (2 :: Int))
+              (txs !! (3 :: Int))
+              (txs !! (4 :: Int))
+              (txs !! (5 :: Int))
 
     -- Start management unit
     (Fwd lc, muUartBytesBittide, muWbAll) <-
