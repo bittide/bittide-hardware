@@ -142,7 +142,7 @@ vexRiscvTestC =
 
       (uartTx, _uartStatus) <-
         uartInterfaceWb @dom d16 d16 (uartDf baud) -< (uartBus, uartRx)
-      _localCounter <- timeWb -< timeBus
+      _localCounter <- timeWb Nothing -< timeBus
 
       testResult <- statusRegister -< statusRegisterBus
       idC -< (testResult, uartTx)

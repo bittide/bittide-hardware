@@ -124,7 +124,7 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
 
     (pulseCounter, cyclesSinceLastPulse) <- syncInCounterC hasClock hasReset -< syncIn
 
-    localCounter <- timeWb -< timeWbBus
+    localCounter <- timeWb Nothing -< timeWbBus
     syncOut <- syncOutGenerateWbC hasClock hasReset freeClk freeRst -< syncOutGeneratorBus
     Fwd domainDiffs <-
       domainDiffCountersWbC rxClocks rxResets hasClock hasReset -< domainDiffsBus
