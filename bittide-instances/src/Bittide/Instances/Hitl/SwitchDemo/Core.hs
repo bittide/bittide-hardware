@@ -82,7 +82,7 @@ simpleManagementUnitC (SimpleManagementConfig peConfig dumpVcd) =
   circuit $ \(mm, (jtag, _linkIn)) -> do
     peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
     ([timeWbBus], nmuWbs) <- Vec.split -< peWbs
-    localCounter <- timeWb -< timeWbBus
+    localCounter <- timeWb Nothing -< timeWbBus
 
     idC -< (localCounter, nmuWbs)
 

@@ -117,7 +117,7 @@ managementUnit maybeDna =
     ([wbTime, uartWb, dnaWb], wbs1) <- Vec.split -< wbs0
 
     -- Peripherals
-    cnt <- timeWb -< wbTime
+    cnt <- timeWb Nothing -< wbTime
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaWb
@@ -154,7 +154,7 @@ gppe maybeDna linkIn = withBittideByteOrder $ circuit $ \(mm, nmuWbMms, jtag) ->
   linkOut <- gatherUnitWbC gatherConfig -< (wbGath, wbGathCal)
 
   -- Peripherals
-  _cnt <- timeWb -< wbTime
+  _cnt <- timeWb Nothing -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d2 d1 uartBytes -< (uartWb, Fwd (pure Nothing))
   readDnaPortE2WbWorker maybeDna -< dnaWb
 

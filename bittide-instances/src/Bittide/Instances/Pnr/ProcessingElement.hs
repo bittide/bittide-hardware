@@ -51,7 +51,7 @@ vexRiscvUartHelloC ::
 vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jtag)) -> do
   [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d16 (uartDf baudSnat) -< (uartBus, uartRx)
-  _localCounter <- timeWb -< timeBus
+  _localCounter <- timeWb Nothing -< timeBus
   idC -< uartTx
  where
   peConfig
