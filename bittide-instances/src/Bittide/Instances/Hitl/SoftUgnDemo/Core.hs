@@ -259,6 +259,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
               )
                 { depth = D1024
                 , advancedTriggers = True
+                , stages = 2
                 }
               refClk
               ilaBufStable
