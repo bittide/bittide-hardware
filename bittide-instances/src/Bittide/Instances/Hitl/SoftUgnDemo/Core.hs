@@ -29,6 +29,7 @@ import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterface
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Ila
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
+import Clash.Protocols.Wishbone.Extra (xpmCdcHandshakeWbMm)
 import Data.Maybe
 import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
@@ -43,7 +44,7 @@ import qualified Protocols.Vec as Vec
 type FifoSize = 5 -- = 2^5 = 32
 
 type NmuInternalBusses = 3 + PeInternalBusses
-type NmuExternalBusses = (LinkCount * PeripheralsPerLink) + LinkCount + 1 -- +1 for tranceivers
+type NmuExternalBusses = (LinkCount * PeripheralsPerLink) + LinkCount + 1 + 1 -- +1 for tranceivers
 type PeripheralsPerLink = 3 -- Scatter calendar, Gather calendar, UGN component.
 type NmuRemBusWidth = 30 - CLog 2 (NmuExternalBusses + NmuInternalBusses)
 
@@ -222,8 +223,17 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     let
       maybeDna = ilaInst `hwSeqX` readDnaPortE2 bitClk bitRst bitEna simDna2
       counter = register bitClk bitRst bitEna 0 (counter + 1)
+    Fwd (_, _, _, _, unbundle -> linksRef) <-
+      xilinxElasticBufferWb
+        refClk
+        refRst
+        d5
+        bitClk
+        (bundle $ (rxs2 ++ txs) :< fmap pack counter)
+        <| xpmCdcHandshakeWbMm bitClk bitRst refClk refRst
+        -< ilaBuffersWb
 
-    let (ilaInst :: Signal Bittide ()) =
+    let (ilaInst :: Signal Basic125 ()) =
           setName @"CoreIla"
             $ ila
               ( ilaConfig
@@ -248,31 +258,31 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
               )
                 { depth = D1024
                 }
-              bitClk
-              (pure True :: Signal Bittide Bool)
-              (isChange bitClk bitRst bitEna (bundle $ rxs2 ++ txs))
-              counter
-              (rxs2 !! (0 :: Int))
-              (rxs2 !! (1 :: Int))
-              (rxs2 !! (2 :: Int))
-              (rxs2 !! (3 :: Int))
-              (rxs2 !! (4 :: Int))
-              (rxs2 !! (5 :: Int))
-              (rxs2 !! (6 :: Int))
-              (txs !! (0 :: Int))
-              (txs !! (1 :: Int))
-              (txs !! (2 :: Int))
-              (txs !! (3 :: Int))
-              (txs !! (4 :: Int))
-              (txs !! (5 :: Int))
-              (txs !! (6 :: Int))
+              refClk
+              (pure True :: Signal Basic125 Bool)
+              (isChange refClk refRst enableGen (bundle linksRef))
+              (fmap unpack $ linksRef !! (14 :: Int) :: Signal Basic125 (Unsigned 64))
+              (linksRef !! (0 :: Int))
+              (linksRef !! (1 :: Int))
+              (linksRef !! (2 :: Int))
+              (linksRef !! (3 :: Int))
+              (linksRef !! (4 :: Int))
+              (linksRef !! (5 :: Int))
+              (linksRef !! (6 :: Int))
+              (linksRef !! (7 :: Int))
+              (linksRef !! (8 :: Int))
+              (linksRef !! (9 :: Int))
+              (linksRef !! (10 :: Int))
+              (linksRef !! (11 :: Int))
+              (linksRef !! (12 :: Int))
+              (linksRef !! (13 :: Int))
 
     -- Start management unit
     (Fwd lc, muWbAll, muUartBytesBittide) <-
       withBittideClockResetEnable managementUnit counter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (muSgWbs, [muTransceiverBus]) <- Vec.split -< muWbs2
+    (muSgWbs, [muTransceiverBus, ilaBuffersWb]) <- Vec.split -< muWbs2
     -- Stop management unit
 
     -- Start internal links
