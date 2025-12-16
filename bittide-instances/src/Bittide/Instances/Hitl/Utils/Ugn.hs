@@ -470,10 +470,10 @@ parseSoftwareUgns handle = do
   -- Collect all lines until we see the completion marker
   waitForLine handle "[PE] Incoming Link UGNs:"
   incomingLines <- readUntilLine handle "[PE] Outgoing Link UGNs:"
-  let parseResultsIncoming = fmap (runParser parseUgnEdge () "incoming ugn edges") incomingLines
-  validIncomingEdges <- mapM (expectRight . mapLeft show) parseResultsIncoming
   outgoingLines <- readUntilLine handle "[PE] End of UGN Edge edges"
+  let parseResultsIncoming = fmap (runParser parseUgnEdge () "incoming ugn edges") incomingLines
   let parseResultsOutgoing = fmap (runParser parseUgnEdge () "outgoing ugn edges") outgoingLines
+  validIncomingEdges <- mapM (expectRight . mapLeft show) parseResultsIncoming
   validOutgoingEdges <- mapM (expectRight . mapLeft show) parseResultsOutgoing
 
   return (validIncomingEdges, validOutgoingEdges)
