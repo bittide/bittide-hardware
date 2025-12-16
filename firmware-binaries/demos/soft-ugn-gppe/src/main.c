@@ -217,7 +217,9 @@ int c_main(void) {
   dna_read(hal.dna, dna);
 
   // Verify assumptions
-  ASSERT_PERIODS_COPRIME(uart, SEND_PERIOD, RECEIVE_PERIOD);
+  ASSERT_PERIOD_BUFFER_MULTIPLE(uart, SEND_PERIOD, BUFFER_SIZE);
+  ASSERT_PERIOD_BUFFER_MULTIPLE(uart, RECEIVE_PERIOD, BUFFER_SIZE);
+  ASSERT_PERIODS_COPRIME(uart, SEND_PERIOD, RECEIVE_PERIOD, BUFFER_SIZE);
 
   // Initialize UGN protocol context
   // TODO: Get actual node ID from hardware or configuration
