@@ -87,13 +87,13 @@ managementUnit maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
-    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
+    ([timeBus, uartBus, dnaWb], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
     localCounter <- timeWb Nothing -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
-    readDnaPortE2WbWorker maybeDna -< dnaBus
+    readDnaPortE2WbWorker maybeDna -< dnaWb
 
     -- Output
     idC -< (localCounter, uartOut, restBusses)

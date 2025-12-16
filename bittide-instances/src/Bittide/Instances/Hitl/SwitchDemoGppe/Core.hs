@@ -134,13 +134,13 @@ managementUnit maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
-    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
+    ([timeBus, uartBus, dnaWb], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
     localCounter <- timeWb Nothing -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
-    readDnaPortE2WbWorker maybeDna -< dnaBus
+    readDnaPortE2WbWorker maybeDna -< dnaWb
 
     -- Output
     idC -< (localCounter, uartOut, restBusses)
@@ -164,7 +164,7 @@ gppe ::
     )
 gppe maybeDna linkIn = circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Core and interconnect
-  [scatterBus, gatherBus, timeBus, uartBus, dnaBus] <-
+  [scatterBus, gatherBus, timeBus, uartBus, dnaWb] <-
     processingElement NoDumpVcd gppeConfig -< (mm, jtag)
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
@@ -180,7 +180,7 @@ gppe maybeDna linkIn = circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Peripherals
   _cnt <- timeWb Nothing -< timeBus
   (uart, _uartStatus) <- uartInterfaceWb d2 d1 uartBytes -< (uartBus, Fwd (pure Nothing))
-  readDnaPortE2WbWorker maybeDna -< dnaBus
+  readDnaPortE2WbWorker maybeDna -< dnaWb
 
   -- Output
   idC -< (linkOut, uart)
