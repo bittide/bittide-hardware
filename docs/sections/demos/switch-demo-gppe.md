@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # Switch Demo with GPPE
 
 This chapter describes the specific hardware setup used to perform a demonstration of the
-Bittide switch.
+bittide switch.
 
 ## Architecture
 {{#drawio path="diagrams/switchDemoGppe.drawio" page=1}}
@@ -60,7 +60,7 @@ The management unit has access to and is responsible for all scatter/gather cale
 the node, as well as the crossbar calendar.
 
 To change the binary run on this CPU, one may either:
-- Edit `bittide-instances/src/Bittide/Instances/Hitl/SwitchDemoGppe/Driver.hs`, line 215
+- Edit `bittide-instances/src/bittide/Instances/Hitl/SwitchDemoGppe/Driver.hs`, line 215
   (at time of writing) to use another binary instead of `switch-demo2-mu`
 - Edit the source files in `firmware-binaries/switch-demo2-mu/` to change the binary
   pre-selected by the driver function
@@ -92,7 +92,7 @@ One may specifically run the switch demo with GPPE test by making a
 ```
 
 At the time of writing, the clock control CPU stabilizes system. The driver running
-on the host (`bittide-instances/src/Bittide/Instances/Hitl/SwitchDemoGppe/Driver.hs`)
+on the host (`bittide-instances/src/bittide/Instances/Hitl/SwitchDemoGppe/Driver.hs`)
 then releases the reset of the management unit CPU. In turn, this CPU will center
 the elastic buffers and print out the UGNs captured using the hardware UGN capture
 component over UART. Finally, the general purpose processing element has its

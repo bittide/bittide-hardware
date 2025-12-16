@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: 2025 Google LLC
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Example Bittide System
+# Example bittide System
 
-This document describes a concrete example of a Bittide design that can be programmed on the FPGAs of the HITL platform. It showcases the internal architecture and configuration of the system.
+This document describes a concrete example of a bittide design that can be programmed on the FPGAs of the HITL platform. It showcases the internal architecture and configuration of the system.
 
 ## Architecture
 **Requires diagram**
@@ -53,4 +53,4 @@ Calendars:
 Below is a diagram generated from the first page of `bittide_concepts.drawio`:
 
 TODO: Insert diagram
-<!-- ![Bittide System](diagrams/bittide_concepts_0.svg) -->
+<!-- ![bittide System](diagrams/bittide_concepts_0.svg) -->

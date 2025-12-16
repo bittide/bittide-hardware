@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 *   **Receiving Ringbuffer (RX):** Local memory written by hardware using a wrapping counter, read by CPU.
 
 ## Context
-In a Bittide system, nodes operate in a globally synchronous manner despite being asynchronous devices with unknown start times. Communication occurs via ringbuffers. When TX and RX ringbuffers are the same size, the address mapping between them is constant, determined by (logical) network latency and the start time difference between nodes.
+In a bittide system, nodes operate in a globally synchronous manner despite being asynchronous devices with unknown start times. Communication occurs via ringbuffers. When TX and RX ringbuffers are the same size, the address mapping between them is constant, determined by (logical) network latency and the start time difference between nodes.
 
 ## Objective
 Determine the constant offset between the transmit address (TX) and receive address (RX) for each link to enable reliable asynchronous communication.

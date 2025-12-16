@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # Switch Demo with ASIC processing element
 
 This chapter describes the specific hardware setup used to perform a demonstration of the
-Bittide switch.
+bittide switch.
 
 ## Architecture
 {{#drawio path="diagrams/switchDemoAsic.drawio" page=2}}
@@ -61,7 +61,7 @@ The management unit has access to and is responsible for all scatter/gather cale
 the node, as well as the crossbar calendar.
 
 To change the binary run on this CPU, one may either:
-- Edit `bittide-instances/src/Bittide/Instances/Hitl/SwitchDemo/Driver.hs`, line 500
+- Edit `bittide-instances/src/bittide/Instances/Hitl/SwitchDemo/Driver.hs`, line 500
   (at time of writing) to use another binary instead of `switch-demo1-mu`
 - Edit the source files in `firmware-binaries/switch-demo1-mu/` to change the binary
   pre-selected by the driver function
@@ -98,7 +98,7 @@ One may specifically run the switch demo test by making a
 ```
 
 At the time of writing, the clock control CPU stabilizes system. The driver running
-on the host (`bittide-instances/src/Bittide/Instances/Hitl/SwitchDemo/Driver.hs`)
+on the host (`bittide-instances/src/bittide/Instances/Hitl/SwitchDemo/Driver.hs`)
 then releases the reset of the management unit CPU. In turn, this CPU will center
 the elastic buffers and print out the UGNs captured using the hardware UGN capture
 component over UART. The behavior of the application specific processing element is
