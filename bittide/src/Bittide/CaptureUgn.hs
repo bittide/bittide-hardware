@@ -6,19 +6,18 @@ module Bittide.CaptureUgn (captureUgn, sendUgn, sendUgnC) where
 
 import Clash.Explicit.Prelude
 
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (BitboneMm)
 import Bittide.Shutter (shutter)
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.MemoryMap (Access (ReadOnly), Mm)
+import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
   deviceWb,
   registerConfig,
   registerWbI_,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 import Clash.Class.BitPackC (ByteOrder)
 
@@ -53,7 +52,7 @@ captureUgn ::
   -- | Data from link
   Signal dom (Maybe (BitVector 64)) ->
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard addrW (Bytes 4))
+    (BitboneMm dom addrW)
     (CSignal dom (BitVector 64))
 captureUgn localCounter linkIn = circuit $ \bus -> do
   [wbLocalCounter, wbRemoteCounter, wbHasCaptured] <- deviceWb "CaptureUgn" -< bus

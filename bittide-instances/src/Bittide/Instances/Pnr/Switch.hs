@@ -14,7 +14,6 @@ import Bittide.Switch
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.MemoryMap
-import Protocols.Wishbone
 
 switchExample ::
   (HasCallStack) =>
@@ -23,7 +22,7 @@ switchExample ::
   Circuit
     ( ToConstBwd Mm
     , ( Vec 16 (CSignal Basic200 (BitVector 64))
-      , Wishbone Basic200 'Standard 27 (Bytes 4) -- calendar interface
+      , Bitbone Basic200 27 -- calendar interface
       )
     )
     ( Vec 16 (CSignal Basic200 (BitVector 64))

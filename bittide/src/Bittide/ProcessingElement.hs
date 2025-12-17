@@ -166,8 +166,8 @@ rvCircuit ::
   Signal dom Bit ->
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
-    ( Wishbone dom 'Standard 30 (Bytes 4)
-    , (ToConstBwd Mm.Mm, Wishbone dom 'Standard 30 (Bytes 4))
+    ( Bitbone dom 30
+    , BitboneMm dom 30
     )
 rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
   case (?busByteOrder, ?regByteOrder) of

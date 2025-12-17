@@ -181,9 +181,9 @@ gppeC ::
     , -- \| Incoming link from switch
       CSignal dom (BitVector 64)
     , -- \| Scatter unit calendar memory map and Wishbone bus
-      (ToConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+      (BitboneMm dom nmuRemBusWidth)
     , -- \| Gather unit calendar memory map and Wishbone bus
-      (ToConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+      (BitboneMm dom nmuRemBusWidth)
     , -- \| JTAG connection
       Jtag dom
     )
