@@ -40,7 +40,7 @@ ScatterUnit su;
 #define INVALIDATE_DELAY BUFFER_SIZE
 
 // Initial offsets for scheduling events
-#define STARTING_DELAY_WRITE (BUFFER_SIZE * 1000)
+#define STARTING_DELAY_WRITE (BUFFER_SIZE * 10000)
 #define STARTING_DELAY_READ (BUFFER_SIZE * 10)
 
 uint64_t encode_alignment_state(enum RingbufferAlignState state) {
