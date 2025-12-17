@@ -163,6 +163,7 @@ library
     Bittide.Extra.Wishbone
     Clash.Cores.Xilinx.Xpm.Cdc.Extra
     Clash.Explicit.Signal.Extra
+    Clash.Prelude.Extra
     Clash.Sized.Vector.Extra
     Control.Concurrent.Async.Extra
     Control.Exception.Extra
