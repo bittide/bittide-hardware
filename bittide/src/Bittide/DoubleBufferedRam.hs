@@ -126,7 +126,7 @@ wbStorageDPC ::
   InitialContent depth (Bytes 4) ->
   Circuit
     ( ToConstBwd Mm
-    , (Wishbone dom 'Standard awA (Bytes 4), Wishbone dom 'Standard awB (Bytes 4))
+    , (Bitbone dom awA, Bitbone dom awB)
     )
     ()
 wbStorageDPC memoryName content = Circuit go
@@ -234,7 +234,7 @@ wbStorage ::
   ) =>
   String ->
   InitialContent depth (Bytes 4) ->
-  Circuit (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4)) ()
+  Circuit (BitboneMm dom aw) ()
 wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
   ((SimOnly memMap, wbStorage' initContent m2s), ())
  where

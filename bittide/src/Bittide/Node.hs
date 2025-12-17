@@ -18,7 +18,6 @@ import Protocols.MemoryMap (
   locCaller,
  )
 import Protocols.Vec (vecCircuits)
-import Protocols.Wishbone
 import VexRiscv
 
 import Bittide.Calendar
@@ -181,9 +180,9 @@ gppeC ::
     , -- \| Incoming link from switch
       CSignal dom (BitVector 64)
     , -- \| Scatter unit calendar memory map and Wishbone bus
-      (ToConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+      (BitboneMm dom nmuRemBusWidth)
     , -- \| Gather unit calendar memory map and Wishbone bus
-      (ToConstBwd Mm, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+      (BitboneMm dom nmuRemBusWidth)
     , -- \| JTAG connection
       Jtag dom
     )
@@ -229,8 +228,7 @@ Internal busses:
 type NmuBusses linkCount gppes = PeInternalBusses + 7 + linkCount + 2 * gppes
 type NmuPrefixWidth linkCount gppes = CLog 2 (NmuBusses linkCount gppes + 1)
 type NmuRemBusWidth linkCount gppes = 30 - NmuPrefixWidth linkCount gppes
-type NmuWishbone dom linkCount gppes =
-  Wishbone dom 'Standard (NmuRemBusWidth linkCount gppes) (Bytes 4)
+type NmuWishbone dom linkCount gppes = Bitbone dom (NmuRemBusWidth linkCount gppes)
 
 {- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
 The management unit contains the 4 wishbone busses that each pe has

@@ -40,20 +40,18 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Protocols
 
 import Bittide.Arithmetic.Time (PeriodToCycles)
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Class.Counter (Counter (countSuccOverflow))
 import Clash.Cores.Xilinx.Xpm (xpmCdcSingle, xpmCdcSyncRst)
 import Clash.Cores.Xilinx.Xpm.Cdc.SyncRst (Asserted (..))
 import Clash.Explicit.Signal.Extra (changepoints)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   deviceWb,
   registerConfig,
   registerWb,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 type SyncOutGeneratorHalfPeriod = Milliseconds 5
 
@@ -145,7 +143,7 @@ syncOutGenerateWbC ::
   Clock counterDom ->
   Reset counterDom ->
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4))
+    (BitboneMm dom aw)
     (CSignal counterDom Bit)
 syncOutGenerateWbC clk rst counterClk counterRst = circuit $ \(mm, wb) -> do
   [activeWb] <- deviceWb "SyncOutGenerator" -< (mm, wb)

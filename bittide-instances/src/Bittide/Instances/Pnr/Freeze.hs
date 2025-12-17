@@ -5,7 +5,7 @@
 
 module Bittide.Instances.Pnr.Freeze where
 
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (BitboneMm, withBittideByteOrder)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols
@@ -23,7 +23,7 @@ freezeExample ::
   Clock dom ->
   Reset dom ->
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard 4 (Bytes 4))
+    (BitboneMm dom 4)
     ()
 freezeExample clk rst =
   withBittideByteOrder

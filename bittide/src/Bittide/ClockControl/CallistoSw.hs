@@ -13,7 +13,6 @@ import Clash.Prelude hiding (PeriodToCycles)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Functor.Extra ((<<$>>))
 import Protocols
-import Protocols.Wishbone
 import VexRiscv
 
 import Bittide.ClockControl.Callisto.Types (
@@ -74,9 +73,7 @@ callistoSwClockControlC ::
   Circuit
     ( ToConstBwd Mm
     , -- Management unit
-      ( ToConstBwd Mm
-      , Wishbone dom 'Standard otherWbMu (Bytes 4)
-      )
+      BitboneMm dom otherWbMu
     , ( Jtag dom
       , CSignal dom (BitVector nLinks) -- link mask
       , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
@@ -86,9 +83,7 @@ callistoSwClockControlC ::
     , CSignal dom (CallistoResult nLinks)
     , Vec
         otherWb
-        ( ToConstBwd Mm
-        , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
-        )
+        (BitboneMm dom (SwcccRemBusWidth otherWb))
     )
 callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
   circuit $ \(mm, muClockControlBus, (jtag, Fwd linkMask, Fwd linksOk)) -> do

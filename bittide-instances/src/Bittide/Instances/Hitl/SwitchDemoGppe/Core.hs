@@ -24,14 +24,13 @@ import Bittide.ProcessingElement (
   processingElement,
  )
 import Bittide.ScatterGather
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Switch (switchC)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Protocols.MemoryMap (Mm)
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import Protocols.Wishbone.Extra (delayWishbone)
 import VexRiscv (DumpVcd (..), Jtag)
 
@@ -128,7 +127,7 @@ managementUnit ::
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
-        , Wishbone dom 'Standard NmuRemBusWidth (Bytes 4)
+        , Bitbone dom NmuRemBusWidth
         )
     )
 managementUnit maybeDna =
@@ -157,7 +156,7 @@ gppe ::
   Signal dom (BitVector 64) ->
   Circuit
     ( ToConstBwd Mm
-    , Vec 2 (ToConstBwd Mm, Wishbone dom 'Standard NmuRemBusWidth (Bytes 4))
+    , Vec 2 ((BitboneMm dom NmuRemBusWidth))
     , Jtag dom
     )
     ( CSignal dom (BitVector 64)
@@ -248,7 +247,7 @@ core ::
     , "CC_UART" ::: Df Bittide (BitVector 8)
     , "GPPE_UART" ::: Df Bittide (BitVector 8)
     , "MU_TRANSCEIVER"
-        ::: (ToConstBwd Mm.Mm, Wishbone Bittide 'Standard NmuRemBusWidth (Bytes 4))
+        ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMM, ccMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do

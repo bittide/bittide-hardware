@@ -8,7 +8,8 @@ module Bittide.MetaPeConfig where
 
 import Clash.Prelude
 
-import Clash.Class.BitPackC (ByteOrder, Bytes)
+import Bittide.SharedTypes (Bitbone)
+import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.MemoryMap (Access (..), Mm)
@@ -18,7 +19,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWbI_,
  )
-import Protocols.Wishbone
 
 metaPeConfig ::
   forall bufferSize aw dom.
@@ -34,7 +34,7 @@ metaPeConfig ::
   SNat bufferSize ->
   Circuit
     ( ToConstBwd Mm
-    , Wishbone dom 'Standard aw (Bytes 4)
+    , Bitbone dom aw
     )
     ()
 metaPeConfig SNat = circuit $ \(mm, wb) -> do

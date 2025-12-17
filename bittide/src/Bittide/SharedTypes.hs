@@ -16,6 +16,8 @@ import Clash.Class.BitPackC (ByteOrder (..), Bytes)
 import Data.Constraint
 import Data.Constraint.Nat.Lemmas
 import Data.Type.Equality ((:~:) (Refl))
+import Protocols (ToConstBwd)
+import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone
 
 -- | To be used when there are two options.
@@ -59,11 +61,12 @@ type NatFitsInBits n bits = NatRequiredBits n <= bits
 -- | Constraints required to add padding to @a@.
 type Paddable a = (BitPack a, NFDataX a)
 
--- Located i x is a datatype that indicates that data x has a relation with Index i,
--- example usage: write operation of type D to a blockRam with 'i' addresses can
--- be described as: Located i D
+{- | @Located i x@ is a datatype that indicates that data @x@ has a relation with
+@Index i@. Example usage: write operation of type D to a blockRam with 'i' addresses
+can be described as: @Located i D@
 
--- | @writeData@ has a relation with @Index maxIndex@.
+@writeData@ has a relation with @Index maxIndex@.
+-}
 type Located maxIndex writeData = (Index maxIndex, writeData)
 
 -- | @BitVector bits@ has a relation with @Index maxIndex@.
@@ -75,11 +78,19 @@ type LocatedByte maxIndex = Located maxIndex Byte
 -- | 'Bytes' has a relation with @Index maxIndex@.
 type LocatedBytes maxIndex nBytes = Located maxIndex (Bytes nBytes)
 
--- Padding bits added when a is stored in multiples of bw bits.
+-- | Padding bits added when a is stored in multiples of bw bits.
 type Pad a bw = (Regs a bw * bw) - BitSize a
 
--- Amount of bw sized registers required to store a.
+-- | Amount of bw sized registers required to store a.
 type Regs a bw = DivRU (BitSize a) bw
+
+-- | 'Wishbone' hardcoded to the 'Standard' protocol and a 32-bit bus width.
+type Bitbone dom addressWidth = Wishbone dom 'Standard addressWidth (Bytes 4)
+
+{- | A memory map paired with 'Wishbone' hardcoded to the 'Standard' protocol
+and a 32-bit bus width.
+-}
+type BitboneMm dom addressWidth = (ToConstBwd Mm, Bitbone dom addressWidth)
 
 -- | Stores any arbitrary datatype as a vector of registers.
 newtype RegisterBank regSize content (byteOrder :: ByteOrder)
