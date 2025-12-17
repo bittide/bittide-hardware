@@ -18,5 +18,5 @@ SPDX-License-Identifier: Apache-2.0
   - [Soft UGN Demo](sections/demos/soft-ugn-demo.md)
   - [Switch Demo with ASIC](sections/demos/switch-demo-asic.md)
   - [Switch Demo with GPPE](sections/demos/switch-demo-gppe.md)
-- [Ringbuffer aligment](sections/ringbuffer-alignment.md)
+- [Ringbuffer alignment](sections/ringbuffer-alignment.md)
 - [Asynchronous communication](sections/asynchronous-communication.md)
