@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # Experiments
-This chapter describes the existing infrastructure to support the creation and execution of experiments on the example Bittide system.
+This chapter describes the existing infrastructure to support the creation and execution of experiments on the example bittide system.
 
 ## Required components
 - **Example design**: Contains all bittide related FPGA logic.
