@@ -16,7 +16,6 @@ import VexRiscv
 
 import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.ProcessingElement (PeConfig (..), RemainingBusWidth, processingElement)
-import Bittide.SharedTypes (Bytes)
 import Bittide.Wishbone (timeWb, uartBytes, uartInterfaceWb)
 
 type BootPeBusses = 6
@@ -42,7 +41,7 @@ bootPe ::
     , Spi dom
     , "TRANSCEIVER"
         ::: ( ToConstBwd Mm
-            , Wishbone dom 'Standard (RemainingBusWidth BootPeBusses) (Bytes 4)
+            , Wishbone dom 'Standard (RemainingBusWidth BootPeBusses) 4
             )
     )
 bootPe peConfig = circuit $ \(mm, jtag) -> do

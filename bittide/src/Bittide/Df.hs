@@ -8,7 +8,7 @@ import Clash.Prelude
 import Protocols
 
 import Bittide.PacketStream (timeout)
-import Bittide.SharedTypes (Byte, Bytes)
+import Bittide.SharedTypes (Byte)
 import Clash.Class.BitPackC (BitPackC, ByteOrder)
 import Data.Char (ord)
 import Data.Coerce (coerce)
@@ -160,7 +160,7 @@ wbToDf ::
   ) =>
   String ->
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     (Df dom a)
 wbToDf name = circuit $ \(mm, wb) -> do
   [wbData, wbCommit] <- Mm.deviceWb name -< (mm, wb)

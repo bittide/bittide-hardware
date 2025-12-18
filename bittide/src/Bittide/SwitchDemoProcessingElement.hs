@@ -10,9 +10,8 @@ import Data.Tuple (swap)
 import GHC.Stack (HasCallStack)
 
 import Protocols
-import Protocols.Wishbone
 
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (Bitbone)
 import Bittide.Wishbone (wbToVec)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Protocols.MemoryMap
@@ -167,7 +166,7 @@ switchDemoPeWb ::
   Circuit
     ( ToConstBwd Mm
     , ( CSignal dom (Unsigned 64)
-      , Wishbone dom 'Standard addrW (Bytes 4)
+      , Bitbone dom addrW
       , -- \| Device DNA
         CSignal dom (BitVector 96)
       , -- \| Incoming crossbar link

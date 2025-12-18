@@ -5,7 +5,7 @@
 
 module Bittide.Instances.Pnr.Freeze where
 
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (BitboneMm, withBittideByteOrder)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols
@@ -23,7 +23,7 @@ freezeExample ::
   Clock dom ->
   Reset dom ->
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard 4 (Bytes 4))
+    (BitboneMm dom 4)
     ()
 freezeExample clk rst =
   withBittideByteOrder
@@ -60,7 +60,7 @@ freezeMM = getMMAny $ freezeExample @XilinxSystem clk rst
 freeze ::
   Clock XilinxSystem ->
   Reset XilinxSystem ->
-  Signal XilinxSystem (WishboneM2S 4 4 (BitVector 32)) ->
-  Signal XilinxSystem (WishboneS2M (BitVector 32))
+  Signal XilinxSystem (WishboneM2S 4 4) ->
+  Signal XilinxSystem (WishboneS2M 4)
 freeze clk rst m2s =
   snd $ fst $ toSignals (freezeExample @XilinxSystem clk rst) (((), m2s), ())
