@@ -92,7 +92,7 @@ processingElement ::
     (ToConstBwd Mm.Mm, Jtag dom)
     ( Vec
         (nBusses - PeInternalBusses)
-        (ToConstBwd Mm.Mm, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
+        (ToConstBwd Mm.Mm, Wishbone dom 'Standard (RemainingBusWidth nBusses) 4)
     )
 processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
@@ -145,11 +145,11 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
   iMemPfx = rotateR 1 1
   prefixBlacklist = 0 :> iMemPfx :> Nil
   removeMsb ::
-    forall aw a.
+    forall aw dw.
     (KnownNat aw) =>
     Circuit
-      (Wishbone dom 'Standard (aw + 4) a)
-      (Wishbone dom 'Standard aw a)
+      (Wishbone dom 'Standard (aw + 4) dw)
+      (Wishbone dom 'Standard aw dw)
   removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
@@ -198,8 +198,8 @@ rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
 -- | Map a function over the address field of 'WishboneM2S'
 mapAddr ::
   (BitVector aw1 -> BitVector aw2) ->
-  WishboneM2S aw1 selWidth a ->
-  WishboneM2S aw2 selWidth a
+  WishboneM2S aw1 selWidth ->
+  WishboneM2S aw2 selWidth
 mapAddr f wb = wb{addr = f (addr wb)}
 
 {- | Provide a vector of filepaths, and a write operations containing a byteSelect and

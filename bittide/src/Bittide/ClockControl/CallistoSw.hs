@@ -23,7 +23,6 @@ import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.ProcessingElement
-import Bittide.SharedTypes
 import Bittide.Sync (Sync, syncInCounterC, syncOutGenerateWbC, toSync)
 import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
@@ -81,7 +80,7 @@ callistoSwClockControlC ::
     , Vec
         otherWb
         ( ToConstBwd Mm
-        , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
+        , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) 4
         )
     )
 callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =

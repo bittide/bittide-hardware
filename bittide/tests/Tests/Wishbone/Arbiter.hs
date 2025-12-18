@@ -8,7 +8,6 @@ module Tests.Wishbone.Arbiter where
 import Clash.Prelude
 import Protocols
 
-import Bittide.SharedTypes (Bytes)
 import Bittide.Wishbone (WishboneRequest (..), WishboneResponse (..), arbiter)
 import Clash.Explicit.Reset (noReset)
 import Data.Maybe (isJust)
@@ -76,12 +75,12 @@ simple = property $ do
       Circuit
         ()
         ( CSignal dom (Maybe (WishboneRequest addrW n, WishboneResponse n))
-        , CSignal dom (WishboneM2S addrW n (Bytes n))
-        , CSignal dom (WishboneS2M (Bytes n))
-        , CSignal dom (WishboneM2S addrW n (Bytes n))
-        , CSignal dom (WishboneS2M (Bytes n))
-        , CSignal dom (WishboneM2S addrW n (Bytes n))
-        , CSignal dom (WishboneS2M (Bytes n))
+        , CSignal dom (WishboneM2S addrW n)
+        , CSignal dom (WishboneS2M n)
+        , CSignal dom (WishboneM2S addrW n)
+        , CSignal dom (WishboneS2M n)
+        , CSignal dom (WishboneM2S addrW n)
+        , CSignal dom (WishboneS2M n)
         )
     dutC =
       withClockResetEnable clockGen noReset enableGen
@@ -97,12 +96,12 @@ simple = property $ do
           idC -< (transactions, m2s1, s2m1, m2s2, s2m2, m2s, s2m)
 
     ( transactions :: [Maybe (WishboneRequest 8 4, WishboneResponse 4)]
-      , m2s1 :: [WishboneM2S 8 4 (BitVector 32)]
-      , s2m1 :: [WishboneS2M (BitVector 32)]
-      , m2s2 :: [WishboneM2S 8 4 (BitVector 32)]
-      , s2m2 :: [WishboneS2M (BitVector 32)]
-      , m2s :: [WishboneM2S 8 4 (BitVector 32)]
-      , s2m :: [WishboneS2M (BitVector 32)]
+      , m2s1 :: [WishboneM2S 8 4]
+      , s2m1 :: [WishboneS2M 4]
+      , m2s2 :: [WishboneM2S 8 4]
+      , s2m2 :: [WishboneS2M 4]
+      , m2s :: [WishboneM2S 8 4]
+      , s2m :: [WishboneS2M 4]
       ) = L.unzip7 $ sampleN simLength $ bundle $ snd $ toSignals dutC units
 
   footnote ("transactions: " <> ppShow transactions)

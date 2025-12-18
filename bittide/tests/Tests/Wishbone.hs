@@ -13,8 +13,6 @@ import Clash.Prelude hiding (sample)
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector (unsafeFromList)
 import Data.Bifunctor
-import Data.Constraint (Dict (Dict))
-import Data.Constraint.Nat.Lemmas (cancelMulDiv, divWithRemainder)
 import Data.String
 import Hedgehog
 import Hedgehog.Range as Range
@@ -75,7 +73,7 @@ uartMachine ::
   ) =>
   Circuit
     (Df dom (BitVector 8))
-    (Wishbone dom 'Standard addrW Byte, Df dom (BitVector 8))
+    (Wishbone dom 'Standard addrW 1, Df dom (BitVector 8))
 uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
  where
   go ReadStatus (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
@@ -100,7 +98,7 @@ uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
    where
     (nextState, dfAck) = if acknowledge && not err then (ReadStatus, True) else (WriteByte, False)
     wbOut =
-      (emptyWishboneM2S @30 @())
+      (emptyWishboneM2S @30 @1)
         { addr = 0
         , busCycle = True
         , strobe = True
@@ -152,8 +150,16 @@ readingSlaves = property $ do
         SNatLE -> runTest devices0
         _ -> errorX "readingSlaves: number of devices can't be represented with 30 bits."
  where
+  runTest ::
+    forall nSlaves.
+    ( KnownNat nSlaves
+    , 1 <= nSlaves
+    , CLog 2 nSlaves <= 30
+    ) =>
+    SNat nSlaves ->
+    PropertyT IO ()
   runTest devices = do
-    config <- forAll $ genConfig @_ devices
+    config <- forAll $ genConfig devices
     nrOfReads <- forAll $ Gen.enum 1 32
     let nrOfReadsRange = Range.singleton nrOfReads
     readAddresses <- forAll $ Gen.list nrOfReadsRange (genDefinedBitVector @30)
@@ -179,7 +185,7 @@ readingSlaves = property $ do
       withClockResetEnable @System clockGen resetGen enableGen
         $ simpleSlave
         <$> ranges
-        <*> config
+        <*> fmap (pack . resize) config
         <*> unbundle toSlaves
     (toMaster, toSlaves) =
       withClockResetEnable
@@ -195,21 +201,20 @@ readingSlaves = property $ do
     forall nSlaves.
     ( KnownNat nSlaves
     , 1 <= nSlaves
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
+    , CLog 2 nSlaves <= 30
     ) =>
     Vec nSlaves (Unsigned (CLog 2 nSlaves)) ->
     Vec nSlaves (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
-    WishboneM2S 30 (Regs (Unsigned (CLog 2 nSlaves)) 8) (Unsigned (CLog 2 nSlaves)) ->
-    WishboneS2M (Unsigned (CLog 2 nSlaves))
+    WishboneM2S 30 4 ->
+    WishboneS2M 4
   getExpected config ranges WishboneM2S{..}
     | not commAttempt = emptyWishboneS2M
     | Nothing <- maybeIndex = emptyWishboneS2M{err = True}
     | Just index <- maybeIndex, not (inRange index) = emptyWishboneS2M{err = True}
     | otherwise =
-        (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves)))
+        (emptyWishboneS2M @4)
           { acknowledge = True
-          , readData = unpack indexBV
+          , readData = unpack $ resize indexBV
           }
    where
     commAttempt = busCycle && strobe
@@ -230,14 +235,22 @@ writingSlaves = property $ do
         SNatLE -> runTest devices0
         _ -> errorX "readingSlaves: number of devices can't be represented with 30 bits."
  where
+  runTest ::
+    forall nSlaves.
+    ( KnownNat nSlaves
+    , 1 <= nSlaves
+    , CLog 2 nSlaves <= 30
+    ) =>
+    SNat nSlaves ->
+    PropertyT IO ()
   runTest devices = do
-    config <- forAll $ genConfig @_ devices
+    config <- forAll $ genConfig devices
     nrOfWrites <- forAll $ Gen.enum 1 32
     let nrOfWritesRange = Range.singleton nrOfWrites
-    writeAddresses <- forAll $ Gen.list nrOfWritesRange genDefinedBitVector
+    writeAddresses <- forAll $ Gen.list nrOfWritesRange (genDefinedBitVector @30)
     ranges <- forAll $ genVec genDefinedBitVector
     let
-      topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [emptyWishboneM2S]
+      topEntityInput = L.concatMap (wbWriteThenRead devices) writeAddresses <> [emptyWishboneM2S]
       simLength = L.length topEntityInput
       simOut = simulateN simLength (topEntity config ranges) topEntityInput
       realTransactions = wbToTransaction topEntityInput simOut
@@ -258,7 +271,7 @@ writingSlaves = property $ do
       withClockResetEnable @System clockGen resetGen enableGen
         $ simpleSlave
         <$> ranges
-        <*> ranges
+        <*> fmap resize ranges
         <*> unbundle toSlaves
     (toMaster, toSlaves) =
       withClockResetEnable
@@ -270,31 +283,28 @@ writingSlaves = property $ do
         masterIn
         $ bundle slaves
 
-  wbWriteThenRead a = [wbWrite a (resize a), wbRead a]
-
+  wbWriteThenRead (SNat :: SNat devices) a = [wbWrite a (resize (restAddr)), wbRead a]
+   where
+    (_indexBV :: BitVector (CLog 2 devices), restAddr :: BitVector (30 - CLog 2 devices)) = split a
   getExpected ::
     forall nSlaves.
     ( KnownNat nSlaves
     , 1 <= nSlaves
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
+    , CLog 2 nSlaves <= 30
     ) =>
     Vec nSlaves (Unsigned (CLog 2 nSlaves)) ->
     Vec nSlaves (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
-    WishboneM2S
-      30
-      (DivRU (30 - BitSize (Unsigned (CLog 2 nSlaves))) 8)
-      (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
-    WishboneS2M (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves))))
+    WishboneM2S 30 4 ->
+    WishboneS2M 4
   getExpected config ranges WishboneM2S{..}
     | not commAttempt = emptyWishboneS2M
     | Nothing <- maybeIndex = emptyWishboneS2M{err = True}
     | Just index <- maybeIndex, not (inRange index) = emptyWishboneS2M{err = True}
     | writeEnable = emptyWishboneS2M{acknowledge = True}
     | otherwise =
-        (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves)))
+        (emptyWishboneS2M @4)
           { acknowledge = True
-          , readData = restAddr
+          , readData = resize restAddr
           }
    where
     commAttempt = busCycle && strobe
@@ -304,30 +314,29 @@ writingSlaves = property $ do
 
 -- | transforms an address to a 'WishboneM2S' read operation.
 wbRead ::
-  forall addressWidth a.
-  (KnownNat addressWidth, NFDataX a, KnownNat (BitSize a)) =>
+  forall addressWidth nBytes.
+  (KnownNat addressWidth, KnownNat nBytes) =>
   BitVector addressWidth ->
-  WishboneM2S addressWidth (Regs a 8) a
-wbRead address = case cancelMulDiv @(Regs a 8) @8 of
-  Dict ->
-    (emptyWishboneM2S @addressWidth)
-      { addr = address
-      , strobe = True
-      , busCycle = True
-      , busSelect = maxBound
-      }
+  WishboneM2S addressWidth nBytes
+wbRead address =
+  (emptyWishboneM2S @addressWidth)
+    { addr = address
+    , strobe = True
+    , busCycle = True
+    , busSelect = maxBound
+    }
 
 {- | transforms an address to a 'WishboneM2S' write operation that writes the given address
 to the given address.
 -}
 wbWrite ::
-  forall addressWidth a.
-  (KnownNat addressWidth, NFDataX a, KnownNat (BitSize a)) =>
+  forall addressWidth nBytes.
+  (KnownNat addressWidth, KnownNat nBytes) =>
   BitVector addressWidth ->
-  a ->
-  WishboneM2S addressWidth (Regs a 8) a
+  BitVector (nBytes * 8) ->
+  WishboneM2S addressWidth nBytes
 wbWrite address a =
-  (emptyWishboneM2S @addressWidth @a)
+  (emptyWishboneM2S @addressWidth @nBytes)
     { addr = address
     , strobe = True
     , busCycle = True
@@ -348,17 +357,17 @@ prop_dfWishboneMaster =
  where
   gen :: Gen [WishboneRequest 32 4]
   gen = Gen.list (Range.linear 0 100) genWishboneRequest
-  initReg = unpack 0xDEADBEEF
+  initReg = 0xDEADBEEF
   range = 0x5555555
 
-  model :: Vec 4 Byte -> [WishboneRequest 32 4] -> [WishboneResponse 4]
+  model :: Bytes 4 -> [WishboneRequest 32 4] -> [WishboneResponse 4]
   model _ [] = []
   model reg0 (req : reqs) = resp : model reg1 reqs
    where
     (resp, reg1) = case req of
       WB.ReadRequest addr sel
         | addr <= range ->
-            (WB.ReadSuccess $ mux (unpack sel) (map Just reg0) (repeat Nothing), reg0)
+            (WB.ReadSuccess $ mux (unpack sel) (map Just $ unpack reg0) (repeat Nothing), reg0)
       WB.ReadRequest _ _ -> (WB.ReadError, reg0)
       WB.WriteRequest addr _ dat
         | addr <= range ->
@@ -371,17 +380,17 @@ prop_dfWishboneMaster =
     idC -< resps
 
 simpleSlave' ::
-  forall dom aw a.
-  (HiddenClockResetEnable dom, KnownNat aw, NFDataX a, KnownNat (BitSize a), ShowX a) =>
+  forall dom aw nBytes.
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat nBytes) =>
   BitVector aw ->
-  a ->
-  Circuit (Wishbone dom 'Standard aw a) ()
+  BitVector (nBytes * 8) ->
+  Circuit (Wishbone dom 'Standard aw nBytes) ()
 simpleSlave' range readDataInit =
   forceResetSanityGeneric
     |> Circuit (\(wbIn, ()) -> (mealy go readDataInit wbIn, ()))
  where
   go readData1 WishboneM2S{..} =
-    (readData2, (emptyWishboneS2M @a){readData, acknowledge, err})
+    (readData2, (emptyWishboneS2M @nBytes){readData, acknowledge, err})
    where
     masterActive = busCycle && strobe
     addrInRange = addr <= range
@@ -400,14 +409,12 @@ a stored value (initialized by readData0), which can be overwritten by the wishb
 any read/write attempt to an address outside of the supplied range sets the err signal.
 -}
 simpleSlave ::
-  forall dom aw a.
-  (HiddenClockResetEnable dom, KnownNat aw, BitPack a, NFDataX a, ShowX a) =>
+  forall dom aw nBytes.
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat nBytes) =>
   BitVector aw ->
-  a ->
-  Signal dom (WishboneM2S aw (Regs a 8) a) ->
-  Signal dom (WishboneS2M a)
-simpleSlave range readDataInit wbIn =
-  case divWithRemainder @(Regs a 8) @8 @7 of
-    Dict -> fst $ toSignals slaveCircuit (wbIn, ())
+  BitVector (nBytes * 8) ->
+  Signal dom (WishboneM2S aw nBytes) ->
+  Signal dom (WishboneS2M nBytes)
+simpleSlave range readDataInit wbIn = fst $ toSignals slaveCircuit (wbIn, ())
  where
   slaveCircuit = validatorCircuit |> simpleSlave' range readDataInit

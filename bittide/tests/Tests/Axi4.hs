@@ -357,7 +357,7 @@ prop_wishboneS2Axi4 = property $ do
   let
     eOpts = defExpectOptions
     manager = WB.driveStandard @System eOpts requestsAndStalls
-    subordinate :: Circuit (Wishbone System 'Standard 32 (BitVector 32)) ()
+    subordinate :: Circuit (Wishbone System 'Standard 32 4) ()
     subordinate =
       withClockResetEnable clockGen resetGen enableGen
         $ Mm.unMemmap
@@ -377,11 +377,10 @@ prop_wishboneS2Axi4 = property $ do
       m2sMismatch = [SI.i|Mismatch in Wishbone requests: #{m2sActual} /= #{m2sExpected}|]
       s2mMismatch = [SI.i|Mismatch in Wishbone responses: #{s2mActual} /= #{s2mExpected}|]
 
-    impl = withClockResetEnable clockGen resetGen enableGen $ circuit $ \wbIn0 -> do
-      wbIn1 <- Circuit (mapWb bitCoerce bitCoerce) -< wbIn0
-      (ra, wa, wd) <- wbToAxi4MemoryMapped -< (wbIn1, rd, wr)
+    impl = withClockResetEnable clockGen resetGen enableGen $ circuit $ \wbIn -> do
+      (ra, wa, wd) <- wbToAxi4MemoryMapped -< (wbIn, rd, wr)
       (wbOut, rd, wr) <- axiMemoryMappedToWb -< (ra, wa, wd)
-      subordinate <| Circuit (mapWb bitCoerce bitCoerce) -< wbOut
+      subordinate -< wbOut
 
   classify "At least one request" $ not (null requestsAndStalls)
   classify "At least one transaction" $ not (null transactions)
@@ -400,19 +399,8 @@ prop_wishboneS2Axi4 = property $ do
       (pure $ fmap fst requestsAndStalls)
       transactions
  where
-  mapWb ::
-    (BitSize a ~ BitSize b, KnownNat addrW, KnownNat (BitSize b), ShowX a, ShowX b) =>
-    (a -> b) ->
-    (b -> a) ->
-    (Fwd (Wishbone dom mode addrW a), Bwd (Wishbone dom mode addrW b)) ->
-    (Bwd (Wishbone dom mode addrW a), Fwd (Wishbone dom mode addrW b))
-  mapWb f g ~(fwd, bwd) =
-    ( fmap (\wb -> wb{readData = g wb.readData}) bwd
-    , fmap (\wb -> wb{writeData = f wb.writeData}) fwd
-    )
-
   gen = do
-    req <- WB.genWishboneTransfer (Range.linear 0 10) genDefinedBitVector
+    req <- WB.genWishboneTransfer (Range.linear 0 10)
     stall <- Gen.int (Range.linear 0 10)
     pure (req, stall)
 
@@ -424,7 +412,7 @@ prop_wishboneS2Axi4_Handshakes :: Property
 prop_wishboneS2Axi4_Handshakes = property $ do
   let
     gen = do
-      req <- WB.genWishboneTransfer (Range.linear 0 20) $ unpack <$> genDefinedBitVector
+      req <- WB.genWishboneTransfer (Range.linear 0 20)
       stall <- Gen.int (Range.constant 0 100)
       pure (req, stall)
 
@@ -433,7 +421,7 @@ prop_wishboneS2Axi4_Handshakes = property $ do
     eOpts = defExpectOptions{eoSampleMax = 10_000}
     manager = WB.driveStandard @System eOpts requestsAndStalls
 
-    subordinate :: Circuit (Wishbone System 'Standard 32 (Vec 4 Byte)) ()
+    subordinate :: Circuit (Wishbone System 'Standard 32 4) ()
     subordinate = withClockResetEnable clockGen resetGen enableGen $ circuit $ \wb -> do
       (ra0, wa0, wd0) <- wbToAxi4MemoryMapped -< (wb, rd0, wr0)
       (rd0, wr0) <- axiDummySub 10 -< (ra0, wa0, wd0)
@@ -491,7 +479,7 @@ axiDummySub ::
     , Axi.Axi4WriteAddress dom (DummyWriteAddressConf addrWidth) ()
     , Axi.Axi4WriteData dom (DummyWriteDataConf nBytes) ()
     )
-    ( Axi.Axi4ReadData dom DummyReadDataConf () (Vec nBytes (BitVector 8))
+    ( Axi.Axi4ReadData dom DummyReadDataConf () (Bytes nBytes)
     , Axi.Axi4WriteResponse dom DummyWriteResponseConf ()
     )
 axiDummySub addrRange = Circuit go
@@ -508,7 +496,7 @@ axiDummySub addrRange = Circuit go
   mkRdFwd resp =
     Axi.S2M_ReadData
       { _rid = 0
-      , _rdata = repeat 0
+      , _rdata = 0
       , _rresp = Protocols.Internal.toKeepType resp
       , _rlast = True
       , _ruser = ()
