@@ -17,6 +17,7 @@ members = [
   "examples/smoltcp_client",
 
   "sim-tests/addressable_bytes_wb_test",
+  "sim-tests/aligned_ringbuffer_test",
   "sim-tests/axi_stream_self_test",
   "sim-tests/registerwb_test",
   "sim-tests/capture_ugn_test",
