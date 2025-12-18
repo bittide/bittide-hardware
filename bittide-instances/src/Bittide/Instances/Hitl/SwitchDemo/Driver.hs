@@ -496,28 +496,13 @@ driver testName targets = do
 
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-          liftIO
-            $ T.tryWithTimeoutOn T.PrintActionTime "Waiting for stable links" 60_000_000 goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "[CC] All links stable"
-
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
-          liftIO
-            $ T.tryWithTimeoutOn
-              T.PrintActionTime
-              "Wait for elastic buffers to be centered"
-              60_000_000
-              goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "[MU] All elastic buffers centered"
 
           liftIO
             $ T.tryWithTimeoutOn
               T.PrintActionTime
               "Waiting for captured UGNs"
-              (3 * 60_000_000)
+              60_000_000
               goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->

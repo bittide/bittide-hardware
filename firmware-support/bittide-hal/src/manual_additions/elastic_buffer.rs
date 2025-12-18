@@ -36,7 +36,9 @@ impl ElasticBuffer {
     ///
     /// There is no control over which frames are duplicated or dropped, so this function
     /// should only be used during system initialization.
-    pub fn set_occupancy(&self, target: i8) {
+    ///
+    /// Returns the buffer occupancy before adjustment.
+    pub fn set_occupancy(&self, target: i8) -> i8 {
         let current = self.data_count();
         let delta = target - current;
 
@@ -46,6 +48,7 @@ impl ElasticBuffer {
             self.decrease_occupancy((-delta) as u32);
         }
         // If delta == 0, do nothing - already at target
+        delta
     }
 
     /// Clear the underflow flag.

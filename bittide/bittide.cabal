@@ -296,7 +296,7 @@ test-suite unittests
     Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
     Tests.Counter
-    Tests.DelayWishboneC
+    Tests.DelayWishbone
     Tests.Df
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer

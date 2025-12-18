@@ -149,6 +149,8 @@ library
     bytestring,
     clash-cores,
     clash-prelude,
+    clash-protocols,
+    clash-protocols-memmap,
     containers,
     exceptions,
     extra,

@@ -60,8 +60,9 @@ type PeripheralsPerLink = 2
     - ASIC PE
     - Switch calendar
     - Transceivers
+    - Callisto
 -}
-type NmuExternalBusses = 3 + (LinkCount * PeripheralsPerLink)
+type NmuExternalBusses = 4 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
 
 managementUnit ::
@@ -194,13 +195,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     (Fwd lc, muUartBytesBittide, muWbAll) <-
       withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
-    ( ebWbs
-      , [ (peWbMM, peWb)
-          , (switchWbMM, switchWb)
-          , muTransceiverBus
-          ]
-      ) <-
-      Vec.split -< muWbs1
+    (ebWbs, muWbs2) <- Vec.split -< muWbs1
+    [ (peWbMM, peWb)
+      , (switchWbMM, switchWb)
+      , muTransceiverBus
+      , muCallistoBus
+      ] <-
+      idC -< muWbs2
     -- Stop management unit
 
     -- Start internal links
@@ -248,7 +249,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMm, (ccJtag, mask, linksSuitableForCc))
+        -< (ccMm, muCallistoBus, (ccJtag, mask, linksSuitableForCc))
 
     withBittideClockResetEnable
       (wbStorage "SampleMemory")

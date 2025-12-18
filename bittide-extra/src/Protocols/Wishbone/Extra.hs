@@ -2,11 +2,13 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Protocols.Wishbone.Extra (delayWishboneC) where
+module Protocols.Wishbone.Extra (delayWishbone, delayWishboneMm) where
 
 import Clash.Prelude
 import Protocols
 import Protocols.Wishbone
+
+import qualified Protocols.MemoryMap as Mm
 
 data DelayWishboneState aw n a
   = WaitingForManager
@@ -19,11 +21,11 @@ a Moore machine. It introduces two cycles of delay for each transaction, one to 
 the request from manager to subordinate, and one to forward the response from subordinate
 to manager.
 -}
-delayWishboneC ::
+delayWishbone ::
   forall dom aw a.
   (HiddenClockResetEnable dom, KnownNat aw, NFDataX a, BitPack a) =>
   Circuit (Wishbone dom 'Standard aw a) (Wishbone dom 'Standard aw a)
-delayWishboneC = Circuit go
+delayWishbone = Circuit go
  where
   go ::
     forall n.
@@ -53,3 +55,13 @@ delayWishboneC = Circuit go
     mooreOut WaitingForManager = (emptyWishboneS2M, emptyWishboneM2S)
     mooreOut (WaitingForSubordinate m2s) = (emptyWishboneS2M, m2s)
     mooreOut (AcknowledgingManager s2m) = (s2m, emptyWishboneM2S)
+
+delayWishboneMm ::
+  forall dom aw a.
+  (HiddenClockResetEnable dom, KnownNat aw, NFDataX a, BitPack a) =>
+  Circuit
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw a)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw a)
+delayWishboneMm = circuit $ \(mm, wbIn) -> do
+  wbOut <- delayWishbone -< wbIn
+  idC -< (mm, wbOut)
