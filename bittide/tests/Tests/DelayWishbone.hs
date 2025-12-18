@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
-module Tests.DelayWishboneC (tests) where
+module Tests.DelayWishbone (tests) where
 
 import Clash.Explicit.Prelude
 
@@ -21,7 +21,7 @@ import Protocols
 import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
-import Protocols.Wishbone.Extra (delayWishboneC)
+import Protocols.Wishbone.Extra (delayWishbone)
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   wishbonePropWithModel,
@@ -38,23 +38,23 @@ type AddressWidth = 4
 tests :: TestTree
 tests =
   testGroup
-    "Tests.DelayWishboneC"
+    "Tests.DelayWishbone"
     [ testPropertyNamed
-        "delayWishboneC preserves wishbone transactions"
-        "delayWishboneC"
-        prop_delayWishboneC
+        "delayWishbone preserves wishbone transactions"
+        "delayWishbone"
+        prop_delayWishbone
     ]
 
 mergeWithMask :: BitVector 32 -> BitVector 32 -> BitVector 4 -> BitVector 32
 mergeWithMask (unpack -> old) (unpack -> new) (unpack -> mask) =
   pack (mux @(Vec 4) @(BitVector 8) mask new old)
 
-{- | Test that delayWishboneC correctly delays Wishbone transactions
+{- | Test that delayWishbone correctly delays Wishbone transactions
 without data corruption. The test connects the delay circuit to a wishbone
 storage backend and verifies that read/write operations work correctly.
 -}
-prop_delayWishboneC :: Property
-prop_delayWishboneC = property $ do
+prop_delayWishbone :: Property
+prop_delayWishbone = property $ do
   withClockResetEnable clk rst ena
     $ wishbonePropWithModel
       @System
@@ -105,7 +105,7 @@ prop_delayWishboneC = property $ do
   dut :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
   dut =
     withClockResetEnable clk rst ena
-      $ delayWishboneC
+      $ delayWishbone
       |> dutMem
 
   dutMem :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
