@@ -23,8 +23,6 @@ import Clash.Class.BitPackC
 import Protocols
 import Protocols.Wishbone
 
-import Data.Constraint.Nat.Extra
-import Data.Constraint.Nat.Lemmas
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap
 
@@ -70,16 +68,17 @@ scatterUnit ::
   -- | Configuration for the 'calendar'.
   CalendarConfig addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Signal dom (WishboneM2S addrW nBytes) ->
   -- | Incoming frame from Bittide link.
   Signal dom (BitVector frameWidth) ->
   -- | Read address.
   Signal dom (Index memDepth) ->
-  -- | 1. Data at read address delayed 1 cycle
-  --   2. Wishbone (slave -> master) from 'calendar')
-  --   3. End of metacycle.
+  {- | 1. Data at read address delayed 1 cycle
+  2. Wishbone (slave -> master) from 'calendar')
+  3. End of metacycle.
+  -}
   ( Signal dom (BitVector frameWidth)
-  , Signal dom (WishboneS2M (Bytes nBytes))
+  , Signal dom (WishboneS2M nBytes)
   , Signal dom Bool
   , Signal dom (Unsigned 32)
   , Mm
@@ -101,8 +100,6 @@ gatherUnit ::
   , 1 <= memDepth
   , KnownNat frameWidth
   , 1 <= frameWidth
-  , KnownNat (DivRU frameWidth 8)
-  , 1 <= DivRU frameWidth 8
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
@@ -112,16 +109,17 @@ gatherUnit ::
   -- | Configuration for the 'calendar'.
   CalendarConfig addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Signal dom (WishboneM2S addrW nBytes) ->
   -- | Write operation writing a frame.
   Signal dom (Maybe (LocatedBits memDepth frameWidth)) ->
   -- | Byte enable for write operation.
   Signal dom (ByteEnable (BitVector frameWidth)) ->
-  -- | 1. Frame to Bittide Link.
-  --   2. Wishbone (slave -> master) from 'calendar')
-  --   3. End of metacycle.
+  {- | 1. Frame to Bittide Link.
+  2. Wishbone (slave -> master) from 'calendar')
+  3. End of metacycle.
+  -}
   ( Signal dom (BitVector frameWidth)
-  , Signal dom (WishboneS2M (Bytes nBytes))
+  , Signal dom (WishboneS2M nBytes)
   , Signal dom Bool
   , Signal dom (Unsigned 32)
   , Mm
@@ -142,13 +140,13 @@ wbInterface ::
   , KnownNat addrW
   ) =>
   -- | Wishbone (master -> slave) data.
-  WishboneM2S addrW nBytes (Bytes nBytes) ->
+  WishboneM2S addrW nBytes ->
   -- | Read data to be send to over the (slave -> master) port.
   Bytes nBytes ->
   -- | (slave - master data, read address memory element, write data memory element)
-  (WishboneS2M (Bytes nBytes), Index addresses, Maybe (Bytes nBytes))
+  (WishboneS2M nBytes, Index addresses, Maybe (Bytes nBytes))
 wbInterface WishboneM2S{..} readData =
-  ( (emptyWishboneS2M @(Bytes nBytes)){readData, acknowledge, err}
+  ( (emptyWishboneS2M @nBytes){readData, acknowledge, err}
   , wbAddr
   , writeOp
   )
@@ -165,26 +163,29 @@ When this address is accessed, the outgoing 'WishboneS2M' bus' acknowledge is re
 with the @endOfMetacycle@ signal to stall the wishbone master until the end of the metacycle.
 -}
 addStalling ::
-  forall memAddresses wbData a.
-  (KnownNat memAddresses, 1 <= memAddresses, NumConvert (Unsigned 32) wbData) =>
-  -- | Controls the 'acknowledge' of the returned 'WishboneS2M' when the incoming address
-  -- is 'maxBound'.
+  forall memAddresses nBytes a.
+  (KnownNat memAddresses, 1 <= memAddresses, NumConvert (Unsigned 32) (Bytes nBytes)) =>
+  {- | Controls the 'acknowledge' of the returned 'WishboneS2M' when the incoming address
+  is 'maxBound'.
+  -}
   Bool ->
   -- | The current metacycle count.
   Unsigned 32 ->
-  -- |
-  --  1. Incoming 'WishboneS2M' bus.
-  --  2. Incoming wishbone address (stalling address in range).
-  --  3. Incoming write operation.
-  ( WishboneS2M wbData
+  {- |
+  1. Incoming 'WishboneS2M' bus.
+  2. Incoming wishbone address (stalling address in range).
+  3. Incoming write operation.
+  -}
+  ( WishboneS2M nBytes
   , Index (memAddresses + 2)
   , Maybe a
   ) ->
-  -- |
-  --  1. Outgoing 'WishboneS2M' bus (@acknowledge@ replaced with @endOfMetacycle@ when @wbAddr == maxBound@).
-  --  2. Outgoing wishbone address (stalling address not in range).
-  --  3. Outgoing write operation (set to @Nothing@ when @wbAddr == maxBound@).
-  ( WishboneS2M wbData
+  {- |
+  1. Outgoing 'WishboneS2M' bus (@acknowledge@ replaced with @endOfMetacycle@ when @wbAddr == maxBound@).
+  2. Outgoing wishbone address (stalling address not in range).
+  3. Outgoing write operation (set to @Nothing@ when @wbAddr == maxBound@).
+  -}
+  ( WishboneS2M nBytes
   , Index memAddresses
   , Maybe a
   )
@@ -217,80 +218,79 @@ scatterUnitWbC ::
   Signal dom (BitVector 64) ->
   Circuit
     ( (BitboneMm dom awSu)
-    , (ToConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    , (ToConstBwd Mm, Wishbone dom 'Standard awCal nBytesCal)
     )
     ()
-scatterUnitWbC conf@(ScatterConfig memDepthSnat _) linkIn = case cancelMulDiv @nBytesCal @8 of
-  Dict -> Circuit go
-   where
-    go ((((), wbM2SSu), ((), wbM2SCal)), _) =
-      (
-        ( (SimOnly memoryMapScatterMem, wbS2MSu)
-        , (memoryMapCal, wbS2MCal)
-        )
-      , ()
+scatterUnitWbC conf@(ScatterConfig memDepthSnat _) linkIn = Circuit go
+ where
+  go ((((), wbM2SSu), ((), wbM2SCal)), _) =
+    (
+      ( (SimOnly memoryMapScatterMem, wbS2MSu)
+      , (memoryMapCal, wbS2MCal)
       )
-     where
-      (wbS2MSu, wbS2MCal, memoryMapCal) = scatterUnitWb conf wbM2SCal linkIn wbM2SSu
+    , ()
+    )
+   where
+    (wbS2MSu, wbS2MCal, memoryMapCal) = scatterUnitWb conf wbM2SCal linkIn wbM2SSu
 
-    memoryMapScatterMem =
-      let
-        deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
-        deviceDef SNat =
-          DeviceDefinition
-            { registers =
-                [ NamedLoc
-                    { name = Name "scatterMemory" ""
-                    , loc = locHere
-                    , value =
-                        Register
-                          { fieldType = regType @(Vec memDepth (Bytes 8))
-                          , address = 0
-                          , access = ReadOnly
-                          , reset = Nothing
-                          , tags = []
-                          }
-                    }
-                , NamedLoc
-                    { name = Name "metacycleCount" ""
-                    , loc = locHere
-                    , value =
-                        Register
-                          { fieldType = regType @(Bytes 4)
-                          , address = afterMemory
-                          , access = ReadOnly
-                          , reset = Nothing
-                          , tags = []
-                          }
-                    }
-                , NamedLoc
-                    { name = Name "metacycleRegister" ""
-                    , loc = locHere
-                    , value =
-                        Register
-                          { fieldType = regType @(Bytes 4)
-                          , address = afterMemory + snatToInteger (SNat @(ByteSizeC (Bytes 4)))
-                          , access = ReadOnly
-                          , reset = Nothing
-                          , tags = []
-                          }
-                    }
-                ]
-            , deviceName =
-                Name
-                  { name = "ScatterUnit"
-                  , description = ""
+  memoryMapScatterMem =
+    let
+      deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
+      deviceDef SNat =
+        DeviceDefinition
+          { registers =
+              [ NamedLoc
+                  { name = Name "scatterMemory" ""
+                  , loc = locHere
+                  , value =
+                      Register
+                        { fieldType = regType @(Vec memDepth (Bytes 8))
+                        , address = 0
+                        , access = ReadOnly
+                        , reset = Nothing
+                        , tags = []
+                        }
                   }
-            , definitionLoc = locHere
-            , tags = []
-            }
-         where
-          afterMemory = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
-       in
-        MemoryMap
-          { tree = DeviceInstance locCaller "ScatterUnit"
-          , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
+              , NamedLoc
+                  { name = Name "metacycleCount" ""
+                  , loc = locHere
+                  , value =
+                      Register
+                        { fieldType = regType @(Bytes 4)
+                        , address = afterMemory
+                        , access = ReadOnly
+                        , reset = Nothing
+                        , tags = []
+                        }
+                  }
+              , NamedLoc
+                  { name = Name "metacycleRegister" ""
+                  , loc = locHere
+                  , value =
+                      Register
+                        { fieldType = regType @(Bytes 4)
+                        , address = afterMemory + snatToInteger (SNat @(ByteSizeC (Bytes 4)))
+                        , access = ReadOnly
+                        , reset = Nothing
+                        , tags = []
+                        }
+                  }
+              ]
+          , deviceName =
+              Name
+                { name = "ScatterUnit"
+                , description = ""
+                }
+          , definitionLoc = locHere
+          , tags = []
           }
+       where
+        afterMemory = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+     in
+      MemoryMap
+        { tree = DeviceInstance locCaller "ScatterUnit"
+        , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
+        }
 
 {- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
 memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
@@ -309,15 +309,16 @@ scatterUnitWb ::
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
   -- | Wishbone (master -> slave) port 'calendar'.
-  Signal dom (WishboneM2S awCal nBytesCal (Bytes nBytesCal)) ->
+  Signal dom (WishboneM2S awCal nBytesCal) ->
   -- | Incoming frame from Bittide link.
   Signal dom (BitVector 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
-  Signal dom (WishboneM2S awSu 4 (Bytes 4)) ->
-  -- |
-  -- 1. Wishbone (slave -> master) port scatter memory
-  -- 2. Wishbone (slave -> master) port 'calendar'
-  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)), Mm)
+  Signal dom (WishboneM2S awSu 4) ->
+  {- |
+  1. Wishbone (slave -> master) port scatter memory
+  2. Wishbone (slave -> master) port 'calendar'
+  -}
+  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal), Mm)
 scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
   (delayControls wbOutSu, wbOutCal, mm)
  where
@@ -351,96 +352,95 @@ gatherUnitWbC ::
   GatherConfig nBytesCal awCal ->
   Circuit
     ( (BitboneMm dom awGu)
-    , (ToConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    , (ToConstBwd Mm, Wishbone dom 'Standard awCal nBytesCal)
     )
     (CSignal dom (BitVector 64))
-gatherUnitWbC conf@(GatherConfig memDepthSnat _) = case (cancelMulDiv @nBytesCal @8) of
-  Dict -> Circuit go
+gatherUnitWbC conf@(GatherConfig memDepthSnat _) = Circuit go
+ where
+  go ::
+    ( ( ((), Signal dom (WishboneM2S awGu 4))
+      , ( ()
+        , Signal
+            dom
+            (WishboneM2S awCal nBytesCal)
+        )
+      )
+    , ()
+    ) ->
+    ( ( (SimOnly MemoryMap, Signal dom (WishboneS2M 4))
+      , ( SimOnly MemoryMap
+        , Signal dom (WishboneS2M nBytesCal)
+        )
+      )
+    , Signal dom (BitVector 64)
+    )
+  go ((((), wbInGu), ((), wbInCal)), _) =
+    (
+      ( (SimOnly memMapGu, wbOutGu)
+      , (memMapCal, wbOutCal)
+      )
+    , linkOut
+    )
    where
-    go ::
-      ( ( ((), Signal dom (WishboneM2S awGu 4 (BitVector 32)))
-        , ( ()
-          , Signal
-              dom
-              (WishboneM2S awCal nBytesCal (BitVector (nBytesCal * 8)))
-          )
-        )
-      , ()
-      ) ->
-      ( ( (SimOnly MemoryMap, Signal dom (WishboneS2M (BitVector 32)))
-        , ( SimOnly MemoryMap
-          , Signal dom (WishboneS2M (BitVector (nBytesCal * 8)))
-          )
-        )
-      , Signal dom (BitVector 64)
-      )
-    go ((((), wbInGu), ((), wbInCal)), _) =
-      (
-        ( (SimOnly memMapGu, wbOutGu)
-        , (memMapCal, wbOutCal)
-        )
-      , linkOut
-      )
-     where
-      (linkOut, wbOutGu, wbOutCal, memMapCal) = gatherUnitWb conf wbInCal wbInGu
+    (linkOut, wbOutGu, wbOutCal, memMapCal) = gatherUnitWb conf wbInCal wbInGu
 
-    memMapGu =
-      MemoryMap
-        { tree = DeviceInstance locCaller "GatherUnit"
-        , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
-        }
+  memMapGu =
+    MemoryMap
+      { tree = DeviceInstance locCaller "GatherUnit"
+      , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
+      }
 
-    deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
-    deviceDef SNat =
-      DeviceDefinition
-        { registers =
-            [ NamedLoc
-                { name = Name "gatherMemory" ""
-                , loc = locHere
-                , value =
-                    Register
-                      { fieldType = regType @(Vec memDepth (Bytes 8))
-                      , address = 0
-                      , access = WriteOnly
-                      , reset = Nothing
-                      , tags = []
-                      }
-                }
-            , NamedLoc
-                { name = Name "metacycleCount" ""
-                , loc = locHere
-                , value =
-                    Register
-                      { fieldType = regType @(Bytes 4)
-                      , address = afterMemory
-                      , access = ReadOnly
-                      , reset = Nothing
-                      , tags = []
-                      }
-                }
-            , NamedLoc
-                { name = Name "metacycleRegister" ""
-                , loc = locHere
-                , value =
-                    Register
-                      { fieldType = regType @(Bytes 4)
-                      , address = afterMemory + snatToInteger (SNat @(ByteSizeC (Bytes 4)))
-                      , access = ReadOnly
-                      , reset = Nothing
-                      , tags = []
-                      }
-                }
-            ]
-        , deviceName =
-            Name
-              { name = "GatherUnit"
-              , description = ""
+  deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
+  deviceDef SNat =
+    DeviceDefinition
+      { registers =
+          [ NamedLoc
+              { name = Name "gatherMemory" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Vec memDepth (Bytes 8))
+                    , address = 0
+                    , access = WriteOnly
+                    , reset = Nothing
+                    , tags = []
+                    }
               }
-        , definitionLoc = locHere
-        , tags = []
-        }
-     where
-      afterMemory = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+          , NamedLoc
+              { name = Name "metacycleCount" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Bytes 4)
+                    , address = afterMemory
+                    , access = ReadOnly
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
+          , NamedLoc
+              { name = Name "metacycleRegister" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Bytes 4)
+                    , address = afterMemory + snatToInteger (SNat @(ByteSizeC (Bytes 4)))
+                    , access = ReadOnly
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
+          ]
+      , deviceName =
+          Name
+            { name = "GatherUnit"
+            , description = ""
+            }
+      , definitionLoc = locHere
+      , tags = []
+      }
+   where
+    afterMemory = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
 
 {- | Wishbone addressable 'gatherUnit', the wishbone port can write data to this
 memory element as if it has a 32 bit port by controlling the byte enables of the
@@ -459,15 +459,16 @@ gatherUnitWb ::
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
   -- | Wishbone (master -> slave) data 'calendar'.
-  Signal dom (WishboneM2S awCal nBytesCal (Bytes nBytesCal)) ->
+  Signal dom (WishboneM2S awCal nBytesCal) ->
   -- | Wishbone (master -> slave) port gather memory.
-  Signal dom (WishboneM2S awGu 4 (Bytes 4)) ->
-  -- |
-  -- 1. Wishbone (slave -> master) port gather memory
-  -- 2. Wishbone (slave -> master) port 'calendar'
+  Signal dom (WishboneM2S awGu 4) ->
+  {- |
+  1. Wishbone (slave -> master) port gather memory
+  2. Wishbone (slave -> master) port 'calendar'
+  -}
   ( Signal dom (BitVector 64)
-  , Signal dom (WishboneS2M (Bytes 4))
-  , Signal dom (WishboneS2M (Bytes nBytesCal))
+  , Signal dom (WishboneS2M 4)
+  , Signal dom (WishboneS2M nBytesCal)
   , Mm
   )
 gatherUnitWb (GatherConfig _memDepth calConfig) wbInCal wbInGu =

@@ -8,10 +8,7 @@ module Bittide.Switch where
 import Clash.Prelude
 
 import Bittide.Calendar
-import Bittide.SharedTypes
 import Clash.Class.BitPackC
-import Data.Constraint.Nat.Extra
-import Data.Constraint.Nat.Lemmas
 import Protocols
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone
@@ -40,18 +37,17 @@ switchC ::
   Circuit
     ( ToConstBwd Mm
     , ( Vec links (CSignal dom (BitVector frameWidth))
-      , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
+      , Wishbone dom 'Standard addrW nBytes -- calendar interface
       )
     )
     ( Vec links (CSignal dom (BitVector frameWidth))
     , CSignal dom (Vec links (Index (links + 1)))
     )
-switchC conf = case (cancelMulDiv @nBytes @8) of
-  Dict -> Circuit go
+switchC conf = Circuit go
+ where
+  go (((), (streamsIn, calM2S)), _) = ((memMap, (repeat (), calS2M)), (streamsOut, cal))
    where
-    go (((), (streamsIn, calM2S)), _) = ((memMap, (repeat (), calS2M)), (streamsOut, cal))
-     where
-      (streamsOut, calS2M, cal, memMap) = switch conf calM2S streamsIn
+    (streamsOut, calS2M, cal, memMap) = switch conf calM2S streamsIn
 
 {-# OPAQUE switch #-}
 
@@ -80,12 +76,12 @@ switch ::
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Signal dom (WishboneM2S addrW nBytes) ->
   -- | All incoming data links
   Vec links (Signal dom (BitVector frameWidth)) ->
   -- | All outgoing data links
   ( Vec links (Signal dom (BitVector frameWidth))
-  , Signal dom (WishboneS2M (Bytes nBytes))
+  , Signal dom (WishboneS2M nBytes)
   , Signal dom (Vec links (Index (links + 1)))
   , Mm
   )

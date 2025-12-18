@@ -13,7 +13,7 @@ import Protocols.Wishbone
 
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ElasticBuffer
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (withBittideByteOrder)
 
 createDomain vXilinxSystem{vPeriod = hzToPeriod 201e6, vName = "Fast"}
 createDomain vXilinxSystem{vPeriod = hzToPeriod 199e6, vName = "Slow"}
@@ -22,9 +22,9 @@ elasticBufferWb ::
   "clkRead" ::: Clock Fast ->
   "resetRead" ::: Reset Fast ->
   "clkWrite" ::: Clock Slow ->
-  "wbIn" ::: Signal Fast (WishboneM2S 30 4 (Bytes 4)) ->
+  "wbIn" ::: Signal Fast (WishboneM2S 30 4) ->
   "writeData" ::: Signal Slow (Unsigned 64) ->
-  ( "wbOut" ::: Signal Fast (WishboneS2M (Bytes 4))
+  ( "wbOut" ::: Signal Fast (WishboneS2M 4)
   , "dataCount" ::: Signal Fast (RelDataCount 5)
   , "underflow" ::: Signal Fast Underflow
   , "overflow" ::: Signal Fast Overflow

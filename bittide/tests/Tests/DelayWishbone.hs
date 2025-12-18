@@ -70,8 +70,8 @@ prop_delayWishbone = property $ do
 
   -- Behavioral model: track memory state
   model ::
-    WishboneMasterRequest AddressWidth (BitVector 32) ->
-    WishboneS2M (BitVector 32) ->
+    WishboneMasterRequest AddressWidth 4 ->
+    WishboneS2M 4 ->
     Map (BitVector AddressWidth) (BitVector 32) ->
     Either String (Map (BitVector AddressWidth) (BitVector 32))
   model _ resp _mem | resp.err = Left "Unexpected bus error"
@@ -92,7 +92,7 @@ prop_delayWishbone = property $ do
   model _ _ mem = Right mem
 
   -- Generate wishbone requests
-  genInputs :: Gen [WishboneMasterRequest AddressWidth (BitVector 32)]
+  genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
   genInputs = Gen.list (Range.linear 0 32) $ do
     Gen.choice
       [ Read <$> genBoundedIntegral <*> genBoundedIntegral
@@ -102,13 +102,13 @@ prop_delayWishbone = property $ do
   genBoundedIntegral :: forall a. (Integral a, Bounded a) => Gen a
   genBoundedIntegral = Gen.integral Range.constantBounded
 
-  dut :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
+  dut :: Circuit (Wishbone System 'Standard AddressWidth 4) ()
   dut =
     withClockResetEnable clk rst ena
       $ delayWishbone
       |> dutMem
 
-  dutMem :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
+  dutMem :: Circuit (Wishbone System 'Standard AddressWidth 4) ()
   dutMem =
     withClockResetEnable clk rst ena
       $ unMemmap

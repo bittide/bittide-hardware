@@ -222,7 +222,7 @@ wbAxisRxBufferCircuit ::
   -- | Number of bytes that can be stored in the buffer.
   SNat bufferBytes ->
   Circuit
-    ( Wishbone dom 'Standard wbAddrW (Bytes wbBytes)
+    ( Wishbone dom 'Standard wbAddrW wbBytes
     , Axi4Stream dom ('Axi4StreamConfig wbBytes 0 0) Bool
     )
     (CSignal dom (EndOfPacket, BufferFull))
@@ -232,10 +232,9 @@ wbAxisRxBufferCircuit bytes =
     wb1 <- WB.forceResetSanity -< wb0
     circ0 -< (wb1, axi1)
  where
-  circ0 = case cancelMulDiv @wbBytes @8 of
-    Dict -> Circuit $ \((wbM2S, axiM2S), _) -> do
-      let (wbS2M, axiS2M, status) = wbAxisRxBuffer bytes wbM2S axiM2S
-       in ((wbS2M, axiS2M), status)
+  circ0 = Circuit $ \((wbM2S, axiM2S), _) -> do
+    let (wbS2M, axiS2M, status) = wbAxisRxBuffer bytes wbM2S axiM2S
+     in ((wbS2M, axiS2M), status)
 
 wbAxisRxBuffer ::
   forall dom wbAddrW wbBytes bufferBytes.
@@ -245,19 +244,21 @@ wbAxisRxBuffer ::
   , 1 <= wbBytes
   , 1 <= bufferBytes
   ) =>
-  -- | Minimum number of bytes that can be stored in the buffer, will be rounded up
-  -- to the nearest multiple of wbBytes.
+  {- | Minimum number of bytes that can be stored in the buffer, will be rounded up
+  to the nearest multiple of wbBytes.
+  -}
   SNat bufferBytes ->
   -- | Wishbone master bus.
-  "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes (Bytes wbBytes)) ->
+  "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes) ->
   -- | Axi4 Stream master bus.
   "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)) ->
-  -- |
-  -- 1. Wishbone slave bus
-  -- 2. Axi4 Stream slave bus
-  -- 3. Status
+  {- |
+  1. Wishbone slave bus
+  2. Axi4 Stream slave bus
+  3. Status
+  -}
   ""
-    ::: ( "wbS2M" ::: Signal dom (WishboneS2M (Bytes wbBytes))
+    ::: ( "wbS2M" ::: Signal dom (WishboneS2M wbBytes)
         , "axisS2M" ::: Signal dom Axi4StreamS2M
         , "status" ::: Signal dom (EndOfPacket, BufferFull)
         )
@@ -294,15 +295,16 @@ wbAxisRxBuffer# ::
   -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
   SNat fifoDepth ->
   -- | Wishbone master bus.
-  "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes (Bytes wbBytes)) ->
+  "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes) ->
   -- | Axi4 Stream master bus.
   "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)) ->
-  -- |
-  -- 1. Wishbone slave bus
-  -- 2. Axi4 Stream slave bus
-  -- 3. Status
+  {- |
+  1. Wishbone slave bus
+  2. Axi4 Stream slave bus
+  3. Status
+  -}
   ""
-    ::: ( "wbS2M" ::: Signal dom (WishboneS2M (Bytes wbBytes))
+    ::: ( "wbS2M" ::: Signal dom (WishboneS2M wbBytes)
         , "axisS2M" ::: Signal dom Axi4StreamS2M
         , "status" ::: Signal dom (EndOfPacket, BufferFull)
         )
@@ -327,12 +329,12 @@ wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
       }
   go ::
     WbAxisRxBufferState fifoDepth wbBytes ->
-    ( WishboneM2S wbAddrW wbBytes (Bytes wbBytes)
+    ( WishboneM2S wbAddrW wbBytes
     , Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)
     , Bytes wbBytes
     ) ->
     ( WbAxisRxBufferState fifoDepth wbBytes
-    , ( WishboneS2M (Bytes wbBytes)
+    , ( WishboneS2M wbBytes
       , Axi4StreamS2M
       , Index fifoDepth
       , Maybe (Index fifoDepth, Bytes wbBytes)
@@ -365,7 +367,7 @@ wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
       axisHandshake = axisReady && isJust maybeAxisM2S
 
       output =
-        ( (emptyWishboneS2M @(Bytes wbBytes)){readData, err, acknowledge = wbAcknowledge}
+        ( (emptyWishboneS2M @0){readData, err, acknowledge = wbAcknowledge}
         , Axi4StreamS2M axisReady
         , unpack . resize $ pack internalAddress
         , maybeAxisM2S >>= orNothing axisHandshake . (writeCounter,) . pack . reverse . _tdata
@@ -445,11 +447,10 @@ rxReadMasterC ::
   SNat bufferBytes ->
   Circuit
     ()
-    ( Wishbone dom 'Standard addrWidth (Bytes nBytes)
+    ( Wishbone dom 'Standard addrWidth nBytes
     , Axi4Stream dom ('Axi4StreamConfig nBytes 0 0) ()
     )
-rxReadMasterC s = case cancelMulDiv @nBytes @8 of
-  Dict -> fromSignals $ \(_, bwd) -> ((), rxReadMaster s bwd)
+rxReadMasterC s = fromSignals $ \(_, bwd) -> ((), rxReadMaster s bwd)
 
 {- | Circuit capable of reading the wishbone interface of @wbAxisRxBuffer@ and
 extracting Axi packets. Mostly useful for verification, but can be synthesized.
@@ -470,10 +471,10 @@ rxReadMaster ::
   , KnownNat wbBytes
   ) =>
   SNat bufferBytes ->
-  ( Signal dom (WishboneS2M (Bytes wbBytes))
+  ( Signal dom (WishboneS2M wbBytes)
   , Signal dom Axi4StreamS2M
   ) ->
-  ( Signal dom (WishboneM2S addrWidth wbBytes (Bytes wbBytes))
+  ( Signal dom (WishboneM2S addrWidth wbBytes)
   , Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) ()))
   )
 rxReadMaster SNat = case strictlyPositiveDivRu @bufferBytes @wbBytes of
@@ -499,10 +500,10 @@ rxReadMaster# ::
   , KnownNat wbBytes
   ) =>
   SNat fifoDepth ->
-  ( Signal dom (WishboneS2M (Bytes wbBytes))
+  ( Signal dom (WishboneS2M wbBytes)
   , Signal dom Axi4StreamS2M
   ) ->
-  ( Signal dom (WishboneM2S addrWidth wbBytes (Bytes wbBytes))
+  ( Signal dom (WishboneM2S addrWidth wbBytes)
   , Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) ()))
   )
 rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
@@ -599,32 +600,31 @@ wbToAxi4StreamTx ::
   forall dom addrW nBytes.
   (KnownNat addrW, KnownNat nBytes) =>
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Wishbone dom 'Standard addrW nBytes)
     (Axi4Stream dom (AxiStreamBytesOnly nBytes) ())
-wbToAxi4StreamTx = case cancelMulDiv @nBytes @8 of
-  Dict -> Circuit $ unbundle . fmap go . bundle
+wbToAxi4StreamTx = Circuit $ unbundle . fmap go . bundle
+ where
+  go (WishboneM2S{..}, Axi4StreamS2M{..}) =
+    (WishboneS2M{readData, err, acknowledge, retry, stall}, axiM2S)
    where
-    go (WishboneM2S{..}, Axi4StreamS2M{..}) =
-      (WishboneS2M{readData, err, acknowledge, retry, stall}, axiM2S)
-     where
-      masterActive = busCycle && strobe
-      addrValid = addr <= 1
-      err = masterActive && not (addrValid && writeEnable)
-      acknowledge = masterActive && not err && _tready
-      readData = 0
-      retry = False
-      stall = False
-      (_tkeep, _tlast)
-        | lsb addr == 0 = (reverse $ unpack busSelect, False)
-        | otherwise = (repeat False, True)
+    masterActive = busCycle && strobe
+    addrValid = addr <= 1
+    err = masterActive && not (addrValid && writeEnable)
+    acknowledge = masterActive && not err && _tready
+    readData = 0
+    retry = False
+    stall = False
+    (_tkeep, _tlast)
+      | lsb addr == 0 = (reverse $ unpack busSelect, False)
+      | otherwise = (repeat False, True)
 
-      _tstrb = repeat False
-      _tid = 0
-      _tdest = 0
-      _tuser = ()
-      _tdata = reverse $ unpack writeData
-      axiM2S :: Maybe (Axi4StreamM2S (AxiStreamBytesOnly nBytes) ())
-      axiM2S = orNothing (masterActive && not err) $ Axi4StreamM2S{..}
+    _tstrb = repeat False
+    _tid = 0
+    _tdest = 0
+    _tuser = ()
+    _tdata = reverse $ unpack writeData
+    axiM2S :: Maybe (Axi4StreamM2S (AxiStreamBytesOnly nBytes) ())
+    axiM2S = orNothing (masterActive && not err) $ Axi4StreamM2S{..}
 
 data AxiPacketFifoState maxPackets = AxiPacketFifoState
   { packetCount :: Index (maxPackets + 1)
@@ -745,11 +745,13 @@ axiPacking = AS.forceResetSanity |> Circuit (mealyB go Nothing)
 ilaAxi4Stream ::
   forall dom conf userType.
   (HiddenClock dom, KnownAxi4StreamConfig conf) =>
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  {- | Number of registers to insert at each probe. Supported values: 0-6.
+  Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  -}
   Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  -- by 'ilaConfig' equals 'D4096'.
+  {- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  by 'ilaConfig' equals 'D4096'.
+  -}
   Depth ->
   Circuit
     (Axi4Stream dom conf userType)
@@ -1036,22 +1038,21 @@ wbToAxi4MemoryMapped ::
   , KnownNat nBytes
   ) =>
   Circuit
-    ( Wishbone dom 'Standard addrW (Vec nBytes Byte)
-    , Axi4ReadData dom Axi4ReadDataFromWishbone () (Vec nBytes Byte)
+    ( Wishbone dom 'Standard addrW nBytes
+    , Axi4ReadData dom Axi4ReadDataFromWishbone () (Bytes nBytes)
     , Axi4WriteResponse dom Axi4WriteResponseFromWishbone ()
     )
     ( Axi4ReadAddress dom (Axi4ReadAddressFromWishbone addrW) ()
     , Axi4WriteAddress dom (Axi4WriteAddressFromWishbone addrW) ()
     , Axi4WriteData dom (Axi4WriteDataFromWishbone nBytes) ()
     )
-wbToAxi4MemoryMapped = case cancelMulDiv @nBytes @8 of
-  Dict ->
-    Circuit
-      $ bimap unbundle unbundle
-      . unbundle
-      . mealy go initState
-      . bundle
-      . bimap bundle bundle
+wbToAxi4MemoryMapped =
+  Circuit
+    $ bimap unbundle unbundle
+    . unbundle
+    . mealy go initState
+    . bundle
+    . bimap bundle bundle
  where
   initState = WishboneToAxiState False False False
   go state (~(wbM2S, rdFwd, wrFwd), ~(raBwd, waBwd, wdBwd)) =
@@ -1080,26 +1081,30 @@ wbToAxi4MemoryMapped = case cancelMulDiv @nBytes @8 of
 
 mkWishboneS2M ::
   (KnownNat nBytes) =>
-  S2M_ReadData Axi4ReadDataFromWishbone () (Vec nBytes Byte) ->
+  S2M_ReadData Axi4ReadDataFromWishbone () (Bytes nBytes) ->
   S2M_WriteResponse Axi4WriteResponseFromWishbone () ->
-  WishboneS2M (Vec nBytes Byte)
+  WishboneS2M nBytes
 mkWishboneS2M rdFwd wrFwd = case (rdFwd, wrFwd) of
   (rd@S2M_ReadData{}, _) ->
     let okay = maybe True (== ROkay) (fromKeepType rd._rresp)
-     in (emptyWishboneS2M @())
-          { readData = bitCoerce rd._rdata
+     in (emptyWishboneS2M @0)
+          { readData = rd._rdata
           , err = not okay
           , acknowledge = okay
           }
   (_, wr@S2M_WriteResponse{}) ->
     let okay = wr._bresp == toKeepType ROkay
-     in (emptyWishboneS2M @()){err = not okay, acknowledge = okay, readData = repeat 0x55555555}
+     in (emptyWishboneS2M @0)
+          { err = not okay
+          , acknowledge = okay
+          , readData = deepErrorX "wbToAxi4MemoryMapped: write readData"
+          }
   _ -> emptyWishboneS2M
 
 mkReadAddress ::
-  forall addrW n a.
+  forall addrW nBytes.
   Bool ->
-  WishboneM2S addrW n a ->
+  WishboneM2S addrW nBytes ->
   M2S_ReadAddress (Axi4ReadAddressFromWishbone addrW) ()
 mkReadAddress done wbM2S
   | not done && wbM2S.busCycle && wbM2S.strobe && not wbM2S.writeEnable =
@@ -1119,9 +1124,9 @@ mkReadAddress done wbM2S
   | otherwise = M2S_NoReadAddress
 
 mkWriteAddress ::
-  forall addrW n a.
+  forall addrW nBytes.
   Bool ->
-  WishboneM2S addrW n a ->
+  WishboneM2S addrW nBytes ->
   M2S_WriteAddress (Axi4WriteAddressFromWishbone addrW) ()
 mkWriteAddress done wbM2S
   | not done && wbM2S.busCycle && wbM2S.strobe && wbM2S.writeEnable =
@@ -1141,14 +1146,12 @@ mkWriteAddress done wbM2S
   | otherwise = M2S_NoWriteAddress
 
 mkWriteData ::
-  forall conf addrW n a.
+  forall conf addrW nBytes.
   ( KnownAxi4WriteDataConfig conf
-  , BitPack a
-  , WNBytes conf ~ n
-  , BitSize a ~ n * 8
+  , WNBytes conf ~ nBytes
   ) =>
   Bool ->
-  WishboneM2S addrW n a ->
+  WishboneM2S addrW nBytes ->
   M2S_WriteData conf ()
 mkWriteData done wbM2S
   | not done && wbM2S.busCycle && wbM2S.strobe && wbM2S.writeEnable =
@@ -1181,14 +1184,14 @@ axi4ToWishboneRequests = Circuit $ first unbundle . unbundle . fmap go . bundle 
       _ -> (False, False, False, Nothing)
     maybeWrites = fromStrobeDataType <$> wdFwd._wdata
     writeSel = pack $ isJust <$> maybeWrites
-    writeData = fromMaybe 0 <$> maybeWrites
+    writeData = pack $ fromMaybe 0 <$> maybeWrites
 
 -- | Receives a `Df` stream of `WishboneResponse` and converts it into respective AXI4 channels
 axi4FromWishboneResponse ::
   (KnownNat nBytes) =>
   Circuit
     (Df dom (WishboneResponse nBytes))
-    ( Axi4ReadData dom Axi4ReadDataFromWishbone () (Vec nBytes Byte)
+    ( Axi4ReadData dom Axi4ReadDataFromWishbone () (Bytes nBytes)
     , Axi4WriteResponse dom Axi4WriteResponseFromWishbone ()
     )
 axi4FromWishboneResponse = Circuit $ second unbundle . unbundle . fmap go . bundle . second bundle
@@ -1200,7 +1203,7 @@ axi4FromWishboneResponse = Circuit $ second unbundle . unbundle . fmap go . bund
       ReadSuccess dat ->
         S2M_ReadData
           { _rid = 0
-          , _rdata = fromMaybe 0 <$> dat
+          , _rdata = pack $ fromMaybe 0 <$> dat
           , _rresp = toKeepType ROkay
           , _ruser = ()
           , _rlast = True
@@ -1208,7 +1211,7 @@ axi4FromWishboneResponse = Circuit $ second unbundle . unbundle . fmap go . bund
       ReadError ->
         S2M_ReadData
           { _rid = 0
-          , _rdata = repeat 0
+          , _rdata = 0
           , _rresp = toKeepType RSlaveError
           , _ruser = ()
           , _rlast = True
@@ -1238,8 +1241,8 @@ axiMemoryMappedToWb ::
     , Axi4WriteAddress dom (Axi4WriteAddressFromWishbone addrW) ()
     , Axi4WriteData dom (Axi4WriteDataFromWishbone nBytes) ()
     )
-    ( Wishbone dom 'Standard addrW (Vec nBytes Byte)
-    , Axi4ReadData dom Axi4ReadDataFromWishbone () (Vec nBytes Byte)
+    ( Wishbone dom 'Standard addrW nBytes
+    , Axi4ReadData dom Axi4ReadDataFromWishbone () (Bytes nBytes)
     , Axi4WriteResponse dom Axi4WriteResponseFromWishbone ()
     )
 axiMemoryMappedToWb = circuit $ \(ra, wa, wd) -> do

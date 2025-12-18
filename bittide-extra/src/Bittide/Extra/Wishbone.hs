@@ -26,7 +26,7 @@ The storage is byte addressable.
 wishboneStorage ::
   String ->
   I.IntMap (BitVector 8) ->
-  Circuit (Wishbone dom 'Standard 32 DWord) ()
+  Circuit (Wishbone dom 'Standard 32 4) ()
 wishboneStorage name initial =
   Circuit $ \(input, ()) -> (wishboneStorage' name state input, ())
  where
@@ -35,8 +35,8 @@ wishboneStorage name initial =
 wishboneStorage' ::
   String ->
   (I.IntMap (BitVector 8), Bool) ->
-  Signal dom (WishboneM2S 32 (BitSize DWord `DivRU` 8) DWord) ->
-  Signal dom (WishboneS2M DWord)
+  Signal dom (WishboneM2S 32 4) ->
+  Signal dom (WishboneS2M 4)
 wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' inputs')
  where
   input :- inputs' = inputs
@@ -84,7 +84,7 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
   half1 = [byte2, byte3]
   word0 = [byte0, byte1, byte2, byte3]
   dataOut =
-    (emptyWishboneS2M @DWord)
+    (emptyWishboneS2M @4)
       { readData = readData
       , acknowledge = ack
       , err = False
@@ -97,7 +97,7 @@ Writing from port A is illegal and write attempts will set the err signal.
 instructionStorage ::
   String ->
   I.IntMap (BitVector 8) ->
-  Circuit (Wishbone dom 'Standard 32 DWord, Wishbone dom 'Standard 32 DWord) ()
+  Circuit (Wishbone dom 'Standard 32 4, Wishbone dom 'Standard 32 4) ()
 instructionStorage name initial = Circuit go
  where
   go ((aM2S, bM2S), ()) = ((aS2M, bS2M), ())

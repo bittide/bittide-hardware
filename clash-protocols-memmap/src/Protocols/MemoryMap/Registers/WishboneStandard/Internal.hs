@@ -60,7 +60,7 @@ type RegisterWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
   , -- \^ Offset from the base address of the device, produced by 'deviceWb'
     ToConstBwd (RegisterMeta aw)
   , -- \^ Meta information about the register, produced by the register
-    Wishbone dom 'Standard aw (Bytes wordSize)
+    Wishbone dom 'Standard aw wordSize
     -- \^ A register is a Wishbone subordinate
   )
 
@@ -72,7 +72,7 @@ type RegisterWithOffsetWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
   , -- \^ Offset from the base address of the device, provided by the user
     ToConstBwd (RegisterMeta aw)
   , -- \^ Meta information about the register, produced by the register
-    Wishbone dom 'Standard aw (Bytes wordSize)
+    Wishbone dom 'Standard aw wordSize
     -- \^ A register is a Wishbone subordinate
   )
 
@@ -108,8 +108,9 @@ data RegisterMeta aw = RegisterMeta
   , srcLoc :: SimOnly SrcLoc
   , register :: SimOnly Register
   , nWords :: BitVector (aw + 1)
-  -- ^ Number of words occupied by this register. Note that it is (+1) because we need
-  -- to be able to represent registers that occupy the full address space.
+  {- ^ Number of words occupied by this register. Note that it is (+1) because we need
+  to be able to represent registers that occupy the full address space.
+  -}
   }
 
 {- | Meta information for a zero-width register. Zero-width registers do not take up
@@ -147,12 +148,14 @@ zeroWidthRegisterMeta Proxy conf =
 
 -- | What to do when a bus read occurs at the same time as a circuit write.
 data BusReadBehavior
-  = -- | When a bus read occurs at the same time as a circuit write, read the
-    -- value still in the register.
+  = {- | When a bus read occurs at the same time as a circuit write, read the
+    value still in the register.
+    -}
     PreferRegister
-  | -- | When a bus read occurs at the same time as a circuit write, read the
-    -- value being written by the circuit. Selecting this option introduces an
-    -- extra mux and, depending on the type, packing logic.
+  | {- | When a bus read occurs at the same time as a circuit write, read the
+    value being written by the circuit. Selecting this option introduces an
+    extra mux and, depending on the type, packing logic.
+    -}
     PreferCircuit
   deriving (Show)
 
@@ -164,11 +167,13 @@ data RegisterConfig = RegisterConfig
   , tags :: [String]
   -- ^ Tags included for code generation
   , access :: Access
-  -- ^ Access rights for this register, also propagated to code generation. Default:
-  -- 'ReadWrite'.
+  {- ^ Access rights for this register, also propagated to code generation. Default:
+  'ReadWrite'.
+  -}
   , busRead :: BusReadBehavior
-  -- ^ Behavior when a bus read occurs at the same time as a circuit write. Default:
-  -- 'PreferRegister'.
+  {- ^ Behavior when a bus read occurs at the same time as a circuit write. Default:
+  'PreferRegister'.
+  -}
   }
   deriving (Show)
 
@@ -211,10 +216,9 @@ deviceWithOffsetsWb ::
   String ->
   Circuit
     ( ToConstBwd Mm
-    , Wishbone dom 'Standard aw (Bytes wordSize)
+    , Wishbone dom 'Standard aw wordSize
     )
-    ( Vec n (RegisterWithOffsetWb dom aw wordSize)
-    )
+    (Vec n (RegisterWithOffsetWb dom aw wordSize))
 deviceWithOffsetsWb deviceName =
   case divWithRemainder @wordSize @8 @7 of
     Dict ->
@@ -223,22 +227,22 @@ deviceWithOffsetsWb deviceName =
   -- This behemoth of a type signature because the inferred type signature is
   -- too general, confusing the type checker.
   go ::
-    ( ((), Signal dom (WishboneM2S aw wordSize (Bytes wordSize)))
+    ( ((), Signal dom (WishboneM2S aw wordSize))
     , Vec
         n
         ( BitVector aw
         , RegisterMeta aw
-        , Signal dom (WishboneS2M (Bytes wordSize))
+        , Signal dom (WishboneS2M wordSize)
         )
     ) ->
     ( ( SimOnly MemoryMap
-      , Signal dom (WishboneS2M (Bytes wordSize))
+      , Signal dom (WishboneS2M wordSize)
       )
     , Vec
         n
         ( ()
         , ()
-        , Signal dom (WishboneM2S aw wordSize (Bytes wordSize))
+        , Signal dom (WishboneM2S aw wordSize)
         )
     )
   go ((_, wbM2S), unzip3 -> (offsets, metas, wbS2Ms)) =
@@ -305,10 +309,10 @@ deviceWithOffsetsWb deviceName =
 
     selectSubordinate ::
       Maybe (Index n) ->
-      WishboneM2S aw wordSize (Bytes wordSize) ->
-      Vec n (WishboneS2M (Bytes wordSize)) ->
-      ( WishboneS2M (Bytes wordSize)
-      , Vec n (WishboneM2S aw wordSize (Bytes wordSize))
+      WishboneM2S aw wordSize ->
+      Vec n (WishboneS2M wordSize) ->
+      ( WishboneS2M wordSize
+      , Vec n (WishboneM2S aw wordSize)
       )
     selectSubordinate index m2s s2ms
       | m2s.strobe && m2s.busCycle =
@@ -383,7 +387,7 @@ registerWbDf clk rst regConfig resetValue =
                 | m2s1.writeEnable = (Just (BusWrite resetValue), emptyWishboneS2M{acknowledge})
                 | otherwise =
                     ( Just (BusRead resetValue)
-                    , (emptyWishboneS2M @(BitVector (wordSize * 8))){acknowledge, readData = 0}
+                    , (emptyWishboneS2M @wordSize){acknowledge, readData = 0}
                     )
 
               (unbundle -> (busActivity, s2m)) = update <$> m2s0 <*> coerce ack
@@ -417,12 +421,12 @@ registerWbDf clk rst regConfig resetValue =
     , KnownNat nWords
     , 1 <= nWords
     ) =>
-    ( ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize (Bytes wordSize)))
+    ( ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize))
       , Signal dom (Maybe a)
       )
     , ((), Signal dom Ack)
     ) ->
-    ( ( ((), RegisterMeta aw, Signal dom (WishboneS2M (Bytes wordSize)))
+    ( ( ((), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
       , ()
       )
     , (Signal dom a, Signal dom (Maybe (BusActivity a)))
@@ -510,10 +514,10 @@ registerWbDf clk rst regConfig resetValue =
         PreferRegister -> wbS2M1
 
     setReadData ::
-      WishboneS2M (Bytes wordSize) ->
+      WishboneS2M wordSize ->
       Maybe a ->
       Index nWords ->
-      WishboneS2M (Bytes wordSize)
+      WishboneS2M wordSize
     setReadData s2m ma relOffset =
       case ma of
         Just a ->
@@ -540,9 +544,9 @@ registerWbDf clk rst regConfig resetValue =
     ) =>
     Access ->
     Index nWords ->
-    WishboneM2S aw wordSize (Bytes wordSize) ->
+    WishboneM2S aw wordSize ->
     Vec (SizeInWordsC wordSize a) (Bytes wordSize) ->
-    ( WishboneS2M (Bytes wordSize)
+    ( WishboneS2M wordSize
     , Maybe (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
     )
   goBus busAccess offset wbM2S packedFromReg =
@@ -555,12 +559,12 @@ registerWbDf clk rst regConfig resetValue =
       `seqX` err
       `seqX` wbWrite
       `seqX` ( WishboneS2M
-                { readData
-                , acknowledge
-                , err
-                , retry = False
-                , stall = False
-                }
+                 { readData
+                 , acknowledge
+                 , err
+                 , retry = False
+                 , stall = False
+                 }
              , wbWrite
              )
    where

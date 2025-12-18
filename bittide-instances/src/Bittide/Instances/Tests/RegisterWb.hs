@@ -23,7 +23,7 @@ import Bittide.ProcessingElement.Util (
   vecFromElfData,
   vecFromElfInstr,
  )
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone (uartBytes, uartInterfaceWb)
 import Project.FilePath (
   CargoBuildType (Release),
@@ -142,7 +142,7 @@ manyTypesWb ::
   , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes wordSize))
+    (ToConstBwd Mm, Wishbone dom 'Standard aw wordSize)
     ()
 manyTypesWb = circuit $ \(mm, wb) -> do
   [ wbS0

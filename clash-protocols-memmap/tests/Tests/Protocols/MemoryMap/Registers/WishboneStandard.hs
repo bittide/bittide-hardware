@@ -108,7 +108,7 @@ deviceExample ::
   Clock dom ->
   Reset dom ->
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes wordSize))
+    (ToConstBwd Mm, Wishbone dom 'Standard aw wordSize)
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
   [float, double, u32, readOnly, writeOnly, prio, prioPreferCircuit, delayed, delayedError] <-
@@ -207,9 +207,9 @@ genWishboneTransfer ::
   , KnownNat n
   ) =>
   Gen (BitVector aw) ->
-  Gen (BitVector (DivRU n 8)) ->
   Gen (BitVector n) ->
-  Gen (WishboneMasterRequest aw (BitVector n))
+  Gen (BitVector (n * 8)) ->
+  Gen (WishboneMasterRequest aw n)
 genWishboneTransfer genAddr genMask genData =
   Gen.choice
     [ Read <$> genAddr <*> genMask
@@ -248,8 +248,8 @@ prop_wb =
   ena = enableGen
 
   model ::
-    WishboneMasterRequest AddressWidth (BitVector 32) ->
-    WishboneS2M (BitVector 32) ->
+    WishboneMasterRequest AddressWidth 4 ->
+    WishboneS2M 4 ->
     Map.Map (BitVector AddressWidth) (BitVector 32) ->
     Either String (Map.Map (BitVector AddressWidth) (BitVector 32))
   model instr WishboneS2M{err = True} s =
@@ -316,7 +316,7 @@ prop_wb =
     update :: BitVector 32 -> BitVector 32
     update oldDat = head $ maskWriteData @4 @1 0 m newDat (oldDat :> Nil)
 
-  genInputs :: Gen [WishboneMasterRequest AddressWidth (Bytes 4)]
+  genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
   genInputs = Gen.list (Range.linear 0 300) (genWishboneTransfer genAddr genMask genData)
 
   genMask :: Gen (BitVector 4)
@@ -330,7 +330,7 @@ prop_wb =
     -- We do plus one to test unmapped addresses
     Gen.integral (Range.constant 0 (1 + P.maximum (Map.keys initState)))
 
-  dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
+  dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
   dut =
     let
       ?regByteOrder = regByteOrder

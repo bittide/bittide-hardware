@@ -77,7 +77,7 @@ clockControlWb ::
   Vec nLinks (Signal dom (RelDataCount m)) ->
   -- | Wishbone accessible clock control circuitry
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard addrW (BitVector 32))
+    (ToConstBwd Mm, Wishbone dom 'Standard addrW 4)
     (CSignal dom (ClockControlData nLinks))
 clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   [ wbNumLinks

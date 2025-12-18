@@ -21,8 +21,6 @@ import Clash.Functor.Extra ((<<$>>))
 import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
 import Data.Bool (bool)
-import Data.Constraint.Nat.Extra
-import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Protocols
@@ -60,7 +58,7 @@ import qualified Protocols.Wishbone as Wishbone
 type MemoryMap nSlaves pfxWidth = Vec nSlaves (Unsigned pfxWidth)
 
 singleMasterInterconnectC ::
-  forall dom nSlaves addrW pfxWidth a.
+  forall dom nSlaves addrW pfxWidth nBytes.
   ( HiddenClockResetEnable dom
   , HasCallStack
   , KnownNat nSlaves
@@ -68,29 +66,29 @@ singleMasterInterconnectC ::
   , KnownNat addrW
   , KnownNat pfxWidth
   , (pfxWidth <= addrW)
-  , BitPack a
-  , NFDataX a
+  , KnownNat nBytes
+  , 1 <= nBytes
   ) =>
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     ( Vec
         nSlaves
         ( ToConstBwd (Unsigned pfxWidth)
-        , (ToConstBwd Mm.Mm, Wishbone dom 'Standard (addrW - pfxWidth) a)
+        , (ToConstBwd Mm.Mm, Wishbone dom 'Standard (addrW - pfxWidth) nBytes)
         )
     )
 singleMasterInterconnectC = Circuit go
  where
   go ::
-    ( ((), Signal dom (WishboneM2S addrW (Div (BitSize a + 7) 8) a))
+    ( ((), Signal dom (WishboneM2S addrW nBytes))
     , Vec
         nSlaves
-        (Unsigned pfxWidth, (SimOnly Mm.MemoryMap, Signal dom (WishboneS2M a)))
+        (Unsigned pfxWidth, (SimOnly Mm.MemoryMap, Signal dom (WishboneS2M nBytes)))
     ) ->
-    ( (SimOnly Mm.MemoryMap, Signal dom (WishboneS2M a))
+    ( (SimOnly Mm.MemoryMap, Signal dom (WishboneS2M nBytes))
     , Vec
         nSlaves
-        ((), ((), Signal dom (WishboneM2S (addrW - pfxWidth) (Div (BitSize a + 7) 8) a)))
+        ((), ((), Signal dom (WishboneM2S (addrW - pfxWidth) nBytes)))
     )
   go (((), m2s), unzip -> (prefixes, unzip -> (slaveMms, s2ms))) = ((SimOnly memMap, s2m), (\x -> ((), ((), x))) <$> m2ss)
    where
@@ -117,20 +115,19 @@ bus. It routes the incoming control signals to a slave device based on the 'Memo
 a vector of base addresses.
 -}
 singleMasterInterconnect ::
-  forall dom nSlaves addrW pfxWidth a.
+  forall dom nSlaves addrW pfxWidth nBytes.
   ( HiddenClockResetEnable dom
   , KnownNat nSlaves
   , 1 <= nSlaves
   , KnownNat addrW
   , KnownNat pfxWidth
   , pfxWidth <= addrW
-  , BitPack a
-  , NFDataX a
+  , KnownNat nBytes
   ) =>
   MemoryMap nSlaves pfxWidth ->
   Circuit
-    (Wishbone dom 'Standard addrW a)
-    (Vec nSlaves (Wishbone dom 'Standard (addrW - pfxWidth) a))
+    (Wishbone dom 'Standard addrW nBytes)
+    (Vec nSlaves (Wishbone dom 'Standard (addrW - pfxWidth) nBytes))
 singleMasterInterconnect (fmap pack -> config) =
   Circuit go
  where
@@ -165,8 +162,8 @@ dupWb ::
   Circuit
     (Bitbone dom aw)
     ( Bitbone dom aw
-    , ( CSignal dom (WishboneM2S aw 4 (Bytes 4))
-      , CSignal dom (WishboneS2M (Bytes 4))
+    , ( CSignal dom (WishboneM2S aw 4)
+      , CSignal dom (WishboneS2M 4)
       )
     )
 dupWb = Circuit go
@@ -174,9 +171,9 @@ dupWb = Circuit go
   go (m2s0, (s2m0, _)) =
     (s2m0, (m2s0, (m2s0, s2m0)))
 
-type WbToBool dom mode addrW a =
-  Fwd (Wishbone dom mode addrW a) ->
-  Bwd (Wishbone dom mode addrW a) ->
+type WbToBool dom mode addrW nBytes =
+  Fwd (Wishbone dom mode addrW nBytes) ->
+  Bwd (Wishbone dom mode addrW nBytes) ->
   Signal dom Bool
 
 -- | busCycle && strobe
@@ -203,23 +200,26 @@ transaction, while capture will be active for as long as trigger and a cycle
 after it.
 -}
 ilaWb ::
-  forall name dom addrW a.
+  forall name dom addrW nBytes.
   (HiddenClock dom) =>
-  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
-  -- unreliable when more than one ILA is used with the same arguments, but the
-  -- module name can be set reliably.
+  {- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  unreliable when more than one ILA is used with the same arguments, but the
+  module name can be set reliably.
+  -}
   SSymbol name ->
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  {- | Number of registers to insert at each probe. Supported values: 0-6.
+  Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  -}
   Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  -- by 'ilaConfig' equals 'D4096'.
+  {- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  by 'ilaConfig' equals 'D4096'.
+  -}
   Depth ->
-  WbToBool dom 'Standard addrW a ->
-  WbToBool dom 'Standard addrW a ->
+  WbToBool dom 'Standard addrW nBytes ->
+  WbToBool dom 'Standard addrW nBytes ->
   Circuit
-    (Wishbone dom 'Standard addrW a)
-    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW nBytes)
+    (Wishbone dom 'Standard addrW nBytes)
 ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
   let
     counter :: Signal dom (Unsigned 32)
@@ -278,49 +278,56 @@ ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
 'True' or 'False'.
 -}
 maybeIlaWb ::
-  forall name dom addrW a.
+  forall name dom addrW nBytes.
   (HiddenClock dom) =>
-  -- | Whether or not this ILA instance should be real or not. 'True' actually creates
-  -- the ILA, 'False' makes this circuit element a no-op.
+  {- | Whether or not this ILA instance should be real or not. 'True' actually creates
+  the ILA, 'False' makes this circuit element a no-op.
+  -}
   Bool ->
-  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
-  -- unreliable when more than one ILA is used with the same arguments, but the
-  -- module name can be set reliably.
+  {- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  unreliable when more than one ILA is used with the same arguments, but the
+  module name can be set reliably.
+  -}
   SSymbol name ->
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  {- | Number of registers to insert at each probe. Supported values: 0-6.
+  Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  -}
   Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  -- by 'ilaConfig' equals 'D4096'.
+  {- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  by 'ilaConfig' equals 'D4096'.
+  -}
   Depth ->
-  WbToBool dom 'Standard addrW a ->
-  WbToBool dom 'Standard addrW a ->
+  WbToBool dom 'Standard addrW nBytes ->
+  WbToBool dom 'Standard addrW nBytes ->
   Circuit
-    (Wishbone dom 'Standard addrW a)
-    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW nBytes)
+    (Wishbone dom 'Standard addrW nBytes)
 maybeIlaWb True a b c d e = ilaWb a b c d e
 maybeIlaWb False _ _ _ _ _ = circuit $ \left -> do
   idC -< left
 
 -- | Like 'ilaWb', but also handles memory maps.
 ilaWbMm ::
-  forall name dom addrW a.
+  forall name dom addrW nBytes.
   (HiddenClock dom) =>
-  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
-  -- unreliable when more than one ILA is used with the same arguments, but the
-  -- module name can be set reliably.
+  {- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  unreliable when more than one ILA is used with the same arguments, but the
+  module name can be set reliably.
+  -}
   SSymbol name ->
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  {- | Number of registers to insert at each probe. Supported values: 0-6.
+  Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  -}
   Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  -- by 'ilaConfig' equals 'D4096'.
+  {- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  by 'ilaConfig' equals 'D4096'.
+  -}
   Depth ->
-  WbToBool dom 'Standard addrW a ->
-  WbToBool dom 'Standard addrW a ->
+  WbToBool dom 'Standard addrW nBytes ->
+  WbToBool dom 'Standard addrW nBytes ->
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
 ilaWbMm name stages depth trigger capture = circuit $ \(mm, wbIn) -> do
   wbOut <- ilaWb name stages depth trigger capture -< wbIn
   idC -< (mm, wbOut)
@@ -357,36 +364,33 @@ foldMaybes dflt v@(Cons _ _) = fromMaybe dflt $ fold (<|>) v
 from @clash-protocols@ but exposes 'Signal's directly.
 -}
 singleMasterInterconnect' ::
-  forall dom nSlaves addrW pfxWidth a.
+  forall dom nSlaves addrW pfxWidth nBytes.
   ( HiddenClockResetEnable dom
   , KnownNat nSlaves
   , 1 <= nSlaves
   , KnownNat addrW
   , KnownNat pfxWidth
+  , KnownNat nBytes
   , pfxWidth <= addrW
-  , BitPack a
-  , NFDataX a
   ) =>
   MemoryMap nSlaves pfxWidth ->
-  Signal dom (WishboneM2S addrW (Regs a 8) a) ->
-  Signal dom (Vec nSlaves (WishboneS2M a)) ->
-  ( Signal dom (WishboneS2M a)
-  , Signal dom (Vec nSlaves (WishboneM2S (addrW - pfxWidth) (Regs a 8) a))
+  Signal dom (WishboneM2S addrW nBytes) ->
+  Signal dom (Vec nSlaves (WishboneS2M nBytes)) ->
+  ( Signal dom (WishboneS2M nBytes)
+  , Signal dom (Vec nSlaves (WishboneM2S (addrW - pfxWidth) nBytes))
   )
 singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
  where
-  Circuit f = singleMasterInterconnect @dom @nSlaves @addrW @pfxWidth @a config
-  (toMaster, toSlaves) =
-    case divWithRemainder @(Regs a 8) @8 @7 of
-      Dict ->
-        f (master, unbundle slaves)
+  Circuit f = singleMasterInterconnect config
+  (toMaster, toSlaves) = f (master, unbundle slaves)
 
 -- | 'Df' version of 'uart'.
 uartDf ::
   (HiddenClockResetEnable dom, ValidBaud dom baud) =>
   SNat baud ->
-  -- | Left side of circuit: word to send, receive bit
-  -- Right side of circuit: received word, transmit bit
+  {- | Left side of circuit: word to send, receive bit
+  Right side of circuit: received word, transmit bit
+  -}
   Circuit
     ( Df dom (BitVector 8)
     , CSignal dom Bit
@@ -406,8 +410,9 @@ uartDf baud = Circuit go
 -- | Component compatible with `uartInterfaceWb` for simulation purposes.
 uartBytes ::
   (HiddenClockResetEnable dom) =>
-  -- | Left side of circuit: word to send, receive interface
-  -- Right side of circuit: received word, transmit interface
+  {- | Left side of circuit: word to send, receive interface
+  Right side of circuit: received word, transmit interface
+  -}
   Circuit
     ( Df dom (BitVector 8)
     , Df dom (BitVector 8)
@@ -444,16 +449,18 @@ uartInterfaceWb ::
   , KnownNat nBytes
   , 1 <= nBytes
   ) =>
-  -- | Recommended value: 16. This seems to be a good balance between resource
-  -- usage and usability.
+  {- | Recommended value: 16. This seems to be a good balance between resource
+  usage and usability.
+  -}
   SNat transmitBufferDepth ->
-  -- | Recommended value: 16. This seems to be a good balance between resource
-  -- usage and usability.
+  {- | Recommended value: 16. This seems to be a good balance between resource
+  usage and usability.
+  -}
   SNat receiveBufferDepth ->
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    ((ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes)), uartIn)
+    ((ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes), uartIn)
     (uartOut, CSignal dom (Bool, Bool))
 uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
@@ -506,7 +513,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
 
   wbToDf ::
     Circuit
-      ( Wishbone dom 'Standard addrW (Bytes nBytes)
+      ( Wishbone dom 'Standard addrW nBytes
       , Df dom (BitVector 8)
       , CSignal dom (FifoMeta txFifoDepth)
       )
@@ -523,21 +530,21 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
     go1 (WishboneM2S{..}, rxData, (.fifoFull) -> txFull, Ack txAck)
       -- not in cycle
       | not (busCycle && strobe) =
-          ( (emptyWishboneS2M @()){readData = invalidReq}
+          ( (emptyWishboneS2M @0){readData = invalidReq}
           , Ack False
           , Nothing
           , status
           )
       -- illegal addr
       | not addrLegal =
-          ( (emptyWishboneS2M @()){err = True, readData = invalidReq}
+          ( (emptyWishboneS2M @0){err = True, readData = invalidReq}
           , Ack False
           , Nothing
           , status
           )
       -- read at 0
       | not writeEnable && internalAddr == 0 =
-          ( (emptyWishboneS2M @())
+          ( (emptyWishboneS2M @0)
               { acknowledge = True
               , readData = resize $ fromMaybe 0 rxData
               }
@@ -547,7 +554,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
           )
       -- write at 0
       | writeEnable && internalAddr == 0 =
-          ( (emptyWishboneS2M @())
+          ( (emptyWishboneS2M @0)
               { acknowledge = txAck
               , readData = invalidReq
               }
@@ -557,7 +564,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
           )
       -- read at 1
       | not writeEnable && internalAddr == 1 =
-          ( (emptyWishboneS2M @())
+          ( (emptyWishboneS2M @0)
               { acknowledge = True
               , readData = resize $ pack status
               }
@@ -683,12 +690,13 @@ wbToVec ::
   -- | Readable data.
   Vec nRegisters (Bytes nBytes) ->
   -- | Wishbone bus (master to slave)
-  WishboneM2S addrW nBytes (Bytes nBytes) ->
-  -- |
-  -- 1. Written data
-  -- 2. Outgoing wishbone bus (slave to master)
+  WishboneM2S addrW nBytes ->
+  {- |
+  1. Written data
+  2. Outgoing wishbone bus (slave to master)
+  -}
   ( Vec nRegisters (Maybe (Bytes nBytes))
-  , WishboneS2M (Bytes nBytes)
+  , WishboneS2M nBytes
   )
 wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
  where
@@ -701,7 +709,7 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
   writtenData
     | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
     | otherwise = repeat Nothing
-  wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
+  wbS2M = (emptyWishboneS2M @4){acknowledge, readData, err}
 
 data TimeCmd = Capture | WaitForCmp
   deriving (Eq, Generic, Show, NFDataX, BitPack, BitPackC)
@@ -773,8 +781,8 @@ timeWb = circuit $ \mmWb -> do
 andAck ::
   Signal dom Bool ->
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes nBytes))
-    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Wishbone dom 'Standard addrW nBytes)
+    (Wishbone dom 'Standard addrW nBytes)
 andAck extraAck = Circuit go
  where
   go (m2s, s2m0) = (s2m1, m2s)
@@ -788,16 +796,15 @@ manager with the lowest index.
 XXX: This arbiter does not support @LOCK@ cycles.
 -}
 arbiter ::
-  forall dom addrW a n.
+  forall dom addrW nBytes n.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , BitPack a
-  , NFDataX a
   , KnownNat n
+  , KnownNat nBytes
   ) =>
   Circuit
-    (Vec n (Wishbone dom 'Standard addrW a))
-    (Wishbone dom 'Standard addrW a)
+    (Vec n (Wishbone dom 'Standard addrW nBytes))
+    (Wishbone dom 'Standard addrW nBytes)
 arbiter = Circuit goArbitrate0
  where
   -- Bundler / unbundler for 'goArbitrate1'
@@ -815,7 +822,7 @@ arbiter = Circuit goArbitrate0
     -- Always route the read data from the subordinate to all managers to prevent
     -- muxing. Managers will only look at the read data when they get an
     -- acknowledgement.
-    emptyS2Ms = repeat (emptyWishboneS2M @a){readData = s2m.readData}
+    emptyS2Ms = repeat (emptyWishboneS2M @0){readData = s2m.readData}
     s2ms = case selected of
       Nothing -> emptyS2Ms
       Just idx -> replace idx s2m emptyS2Ms
@@ -828,18 +835,16 @@ arbiter = Circuit goArbitrate0
 
 -- | Like 'arbiter', but also handles memory maps.
 arbiterMm ::
-  forall dom addrW a n.
+  forall dom addrW nBytes n.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , BitPack a
-  , NFDataX a
   , KnownNat n
+  , KnownNat nBytes
   ) =>
   Circuit
-    ( Vec n (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW a)
-    )
+    (Vec n (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes))
     ( ToConstBwd Mm.Mm
-    , Wishbone dom 'Standard addrW a
+    , Wishbone dom 'Standard addrW nBytes
     )
 arbiterMm = circuit $ \mmWbs -> do
   (mms, wbs) <- Vec.unzip -< mmWbs
@@ -852,7 +857,7 @@ arbiterMm = circuit $ \mmWbs -> do
 -- | Extend the address width of a Wishbone bus manager interface.
 extendAddressWidthWb ::
   (KnownNat awOut, KnownNat awIn, awIn <= awOut) =>
-  Circuit (Wishbone dom mode awIn a) (Wishbone dom mode awOut a)
+  Circuit (Wishbone dom mode awIn nBytes) (Wishbone dom mode awOut nBytes)
 extendAddressWidthWb = Circuit (unbundle . fmap go . bundle)
  where
   go (WishboneM2S{..}, s2m) = (s2m, WishboneM2S{addr = resize addr, ..})
@@ -861,8 +866,8 @@ extendAddressWidthWb = Circuit (unbundle . fmap go . bundle)
 extendAddressWidthWbMm ::
   (KnownNat awOut, KnownNat awIn, awIn <= awOut) =>
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom mode awIn a)
-    (ToConstBwd Mm.Mm, Wishbone dom mode awOut a)
+    (ToConstBwd Mm.Mm, Wishbone dom mode awIn nBytes)
+    (ToConstBwd Mm.Mm, Wishbone dom mode awOut nBytes)
 extendAddressWidthWbMm = circuit $ \(mm, wbIn) -> do
   wbOut <- extendAddressWidthWb -< wbIn
   idC -< (mm, wbOut)
@@ -884,7 +889,7 @@ readDnaPortE2Wb ::
   -- | Simulation DNA value
   BitVector 96 ->
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = circuit $ \wb -> do
   [maybeDnaWb] <- Mm.deviceWb "Dna" -< wb
@@ -914,7 +919,7 @@ readDnaPortE2WbWorker ::
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     ()
 readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
   [maybeDnaWb] <- Mm.deviceWb "Dna" -< wb
@@ -936,8 +941,8 @@ watchDogWb ::
   String ->
   SNat timeout ->
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes nBytes))
-    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Wishbone dom 'Standard addrW nBytes)
+    (Wishbone dom 'Standard addrW nBytes)
 watchDogWb name timeout@SNat
   | snatToNatural timeout == 0 = idC
   | otherwise = Circuit $ unbundle . mealy go (0 :: Index (timeout + 1)) . bundle
@@ -969,14 +974,14 @@ wbAlwaysAckWith ::
   , KnownNat addrW
   ) =>
   Bytes nBytes ->
-  WishboneM2S addrW nBytes (Bytes nBytes) ->
-  WishboneS2M (Bytes nBytes)
-wbAlwaysAckWith dat _ = (emptyWishboneS2M @(Bytes nBytes)){acknowledge = True, readData = dat}
+  WishboneM2S addrW nBytes ->
+  WishboneS2M nBytes
+wbAlwaysAckWith dat _ = (emptyWishboneS2M @0){acknowledge = True, readData = dat}
 
 -- | Simple type for wishbone requests supporting byte enables.
 data WishboneRequest addrW nBytes
   = ReadRequest (BitVector addrW) (BitVector nBytes)
-  | WriteRequest (BitVector addrW) (BitVector nBytes) (Vec nBytes Byte)
+  | WriteRequest (BitVector addrW) (BitVector nBytes) (Bytes nBytes)
   deriving (Generic, NFData, NFDataX, Show, ShowX, Eq)
 
 deriving instance
@@ -1003,66 +1008,65 @@ dfWishboneMaster ::
   ) =>
   Circuit
     (Df dom (WishboneRequest addrW nBytes))
-    ( Wishbone dom 'Standard addrW (Vec nBytes Byte)
+    ( Wishbone dom 'Standard addrW nBytes
     , Df dom (WishboneResponse nBytes)
     )
 dfWishboneMaster =
-  forceResetSanityGeneric |> case cancelMulDiv @nBytes @8 of
-    Dict -> Circuit go0
-     where
-      initState = Nothing
+  forceResetSanityGeneric |> Circuit go0
+ where
+  initState = Nothing
 
-      go0 (req, (s2m, ackIn)) = (ackOut, (m2s, resp))
-       where
-        (ackOut, m2s, resp) = mealyB go1 initState (req, s2m, ackIn)
+  go0 (req, (s2m, ackIn)) = (ackOut, (m2s, resp))
+   where
+    (ackOut, m2s, resp) = mealyB go1 initState (req, s2m, ackIn)
 
-      go1 state ~(reqFwd, wbS2M, Ack respBwd) = (nextState, (Ack reqBwd, wbM2S, respFwd))
-       where
-        emptyM2S :: WishboneM2S addrW nBytes (Vec nBytes Byte)
-        emptyM2S =
-          WishboneM2S
-            { addr = 0
-            , writeData = repeat 0
-            , busCycle = False
-            , strobe = False
-            , writeEnable = False
-            , busSelect = 0
-            , lock = False
-            , cycleTypeIdentifier = Classic
-            , burstTypeExtension = LinearBurst
-            }
+  go1 state ~(reqFwd, wbS2M, Ack respBwd) = (nextState, (Ack reqBwd, wbM2S, respFwd))
+   where
+    emptyM2S :: WishboneM2S addrW nBytes
+    emptyM2S =
+      WishboneM2S
+        { addr = 0
+        , writeData = 0
+        , busCycle = False
+        , strobe = False
+        , writeEnable = False
+        , busSelect = 0
+        , lock = False
+        , cycleTypeIdentifier = Classic
+        , burstTypeExtension = LinearBurst
+        }
 
-        respStalled = isJust state && not respBwd
+    respStalled = isJust state && not respBwd
 
-        nextState
-          | respStalled = state
-          | otherwise = do
-              req <- reqFwd
-              case req of
-                ReadRequest _ sel
-                  | wbS2M.acknowledge ->
-                      Just $ ReadSuccess $ mux (unpack sel) (map Just wbS2M.readData) (repeat Nothing)
-                WriteRequest{} | wbS2M.acknowledge -> Just WriteSuccess
-                ReadRequest{} | wbS2M.err -> Just ReadError
-                WriteRequest{} | wbS2M.err -> Just WriteError
-                _ -> Nothing
+    nextState
+      | respStalled = state
+      | otherwise = do
+          req <- reqFwd
+          case req of
+            ReadRequest _ sel
+              | wbS2M.acknowledge ->
+                  Just $ ReadSuccess $ mux (unpack sel) (map Just $ unpack wbS2M.readData) (repeat Nothing)
+            WriteRequest{} | wbS2M.acknowledge -> Just WriteSuccess
+            ReadRequest{} | wbS2M.err -> Just ReadError
+            WriteRequest{} | wbS2M.err -> Just WriteError
+            _ -> Nothing
 
-        reqBwd = wbDone
-        respFwd = state
-        masterActive = wbM2S.busCycle && wbM2S.strobe
-        wbDone = masterActive && hasTerminateFlag wbS2M
+    reqBwd = wbDone
+    respFwd = state
+    masterActive = wbM2S.busCycle && wbM2S.strobe
+    wbDone = masterActive && hasTerminateFlag wbS2M
 
-        wbM2S
-          | respStalled = emptyM2S
-          | otherwise = case reqFwd of
-              Just (ReadRequest addr sel) -> emptyM2S{busCycle = True, strobe = True, addr = addr, busSelect = sel}
-              Just (WriteRequest addr sel dat) ->
-                emptyM2S
-                  { busCycle = True
-                  , strobe = True
-                  , writeEnable = True
-                  , addr = addr
-                  , writeData = dat
-                  , busSelect = sel
-                  }
-              Nothing -> emptyM2S
+    wbM2S
+      | respStalled = emptyM2S
+      | otherwise = case reqFwd of
+          Just (ReadRequest addr sel) -> emptyM2S{busCycle = True, strobe = True, addr = addr, busSelect = sel}
+          Just (WriteRequest addr sel dat) ->
+            emptyM2S
+              { busCycle = True
+              , strobe = True
+              , writeEnable = True
+              , addr = addr
+              , writeData = pack dat
+              , busSelect = sel
+              }
+          Nothing -> emptyM2S
