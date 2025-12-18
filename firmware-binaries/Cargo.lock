@@ -12,6 +12,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aligned_ringbuffer_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "axi_stream_self_test"
 version = "0.1.0"
 dependencies = [

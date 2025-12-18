@@ -82,11 +82,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1756819995,
-        "narHash": "sha256-hXhJX2C7jKYeYh0DLUyNQoCIIxG1nJgZnUywa7FhO7k=",
+        "lastModified": 1765898843,
+        "narHash": "sha256-BvfU+yKYB+rq0Qde9ETOmIXzr6CoL36UrbX0FTnJJ9Q=",
         "owner": "QBayLogic",
         "repo": "mdbook-drawio",
-        "rev": "71cbaf30ea9a93ced95bdf079c8e3a341d483846",
+        "rev": "326693f8d7141a3cd6ccf09c05bf0282e11cfb6c",
         "type": "github"
       },
       "original": {
