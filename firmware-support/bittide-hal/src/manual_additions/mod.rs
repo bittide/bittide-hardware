@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod addressable_buffer;
-pub mod aligned;
+pub mod aligned_ringbuffer;
 pub mod calendar;
 pub mod capture_ugn;
 pub mod dna;
