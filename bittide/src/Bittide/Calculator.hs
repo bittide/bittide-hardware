@@ -23,15 +23,22 @@ import qualified Data.Map as Map
 
 type FpgaId = String
 
--- TODO: find a way to derive this 4 from the code instead of using a magic number.
+-- TODO: find a way to derive the delays from the code instead of using a magic number.
 --
--- This is currently '4', because we traverse two switches and each switch has registered
--- inputs and outputs.
+-- '4', because we traverse two switches and each switch has registered inputs and outputs.
+-- The other delays are derived from the type synonyms defined in the Core.
+-- However, we can't import them because it would create a cyclic dependency.
+rxPreSwitch, rxPostSwitch, txPreSwitch, txPostSwitch :: (Num a) => a
+rxPreSwitch = 1
+rxPostSwitch = 1
+txPreSwitch = 1
+txPostSwitch = 1
+
 iNTERNAL_SWITCH_DELAY :: (Num a) => a
-iNTERNAL_SWITCH_DELAY = 4
+iNTERNAL_SWITCH_DELAY = 4 + rxPreSwitch + rxPostSwitch + txPreSwitch + txPostSwitch + 2 -- Extra pipelining registers
 
 dELAY_CROSSBAR_TO_PE :: (Num a) => a
-dELAY_CROSSBAR_TO_PE = 1
+dELAY_CROSSBAR_TO_PE = 1 + rxPostSwitch
 
 {- | Convert a table (fpga_nr x link_nr) to a vector of maps mapping an fpga index
 (instead of a link index) to the value.
