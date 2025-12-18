@@ -230,7 +230,7 @@ type NmuBusses linkCount gppes = PeInternalBusses + 7 + linkCount + 2 * gppes
 type NmuPrefixWidth linkCount gppes = CLog 2 (NmuBusses linkCount gppes + 1)
 type NmuRemBusWidth linkCount gppes = 30 - NmuPrefixWidth linkCount gppes
 type NmuWishbone dom linkCount gppes =
-  Wishbone dom 'Standard (NmuRemBusWidth linkCount gppes) (Bytes 4)
+  Wishbone dom 'Standard (NmuRemBusWidth linkCount gppes) 4
 
 {- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
 The management unit contains the 4 wishbone busses that each pe has

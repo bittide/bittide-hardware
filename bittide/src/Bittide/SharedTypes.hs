@@ -31,15 +31,15 @@ swapAorB B = A
 -- | Polymorphic record update of 'addr'.
 updateM2SAddr ::
   BitVector addressWidthNew ->
-  WishboneM2S addressWidthOld selWidth dat ->
-  WishboneM2S addressWidthNew selWidth dat
+  WishboneM2S addressWidthOld selWidth ->
+  WishboneM2S addressWidthNew selWidth
 updateM2SAddr newAddr WishboneM2S{..} = WishboneM2S{addr = newAddr, ..}
 
 -- | Resize 'WishboneM2S's 'addr' field.
 resizeM2SAddr ::
   (KnownNat addressWidthOld, KnownNat addressWidthNew) =>
-  WishboneM2S addressWidthOld selWidth dat ->
-  WishboneM2S addressWidthNew selWidth dat
+  WishboneM2S addressWidthOld selWidth ->
+  WishboneM2S addressWidthNew selWidth
 resizeM2SAddr WishboneM2S{..} = WishboneM2S{addr = resize addr, ..}
 
 -- | A single byte.
@@ -85,7 +85,7 @@ type Pad a bw = (Regs a bw * bw) - BitSize a
 type Regs a bw = DivRU (BitSize a) bw
 
 -- | 'Wishbone' hardcoded to the 'Standard' protocol and a 32-bit bus width.
-type Bitbone dom addressWidth = Wishbone dom 'Standard addressWidth (Bytes 4)
+type Bitbone dom addressWidth = Wishbone dom 'Standard addressWidth 4
 
 {- | A memory map paired with 'Wishbone' hardcoded to the 'Standard' protocol
 and a 32-bit bus width.

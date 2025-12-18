@@ -53,18 +53,18 @@ genDefinedBitVector :: forall n m. (MonadGen m, KnownNat n) => m (BitVector n)
 genDefinedBitVector = pack <$> genUnsigned Range.constantBounded
 
 -- | Single datatype to represent successful and unsuccessful Wishbone transactions.
-data Transaction addrW selWidth a
-  = WriteSuccess (WishboneM2S addrW selWidth a) (WishboneS2M a)
-  | ReadSuccess (WishboneM2S addrW selWidth a) (WishboneS2M a)
-  | Error (WishboneM2S addrW selWidth a)
-  | Retry (WishboneM2S addrW selWidth a)
-  | Stall (WishboneM2S addrW selWidth a)
-  | Ignored (WishboneM2S addrW selWidth a)
-  | Illegal (WishboneM2S addrW selWidth a) (WishboneS2M a)
+data Transaction addrW nBytes
+  = WriteSuccess (WishboneM2S addrW nBytes) (WishboneS2M nBytes)
+  | ReadSuccess (WishboneM2S addrW nBytes) (WishboneS2M nBytes)
+  | Error (WishboneM2S addrW nBytes)
+  | Retry (WishboneM2S addrW nBytes)
+  | Stall (WishboneM2S addrW nBytes)
+  | Ignored (WishboneM2S addrW nBytes)
+  | Illegal (WishboneM2S addrW nBytes) (WishboneS2M nBytes)
   deriving (Generic)
 
 -- | Show Instance for 'Transaction' that hides fields irrelevant for the transaction.
-instance (KnownNat addrW, Show a) => Show (Transaction addrW selWidth a) where
+instance (KnownNat addrW, KnownNat nBytes) => Show (Transaction addrW nBytes) where
   show (WriteSuccess WishboneM2S{..} _) =
     "WriteSuccess: (addr: "
       <> show addr
@@ -84,7 +84,7 @@ instance (KnownNat addrW, Show a) => Show (Transaction addrW selWidth a) where
   show (Ignored _) = "Ignored"
 
 -- | Show Instance for 'Transaction' that hides fields irrelevant for the transaction.
-instance (KnownNat addrW, KnownNat selWidth, ShowX a) => ShowX (Transaction addrW selWidth a) where
+instance (KnownNat addrW, KnownNat nBytes) => ShowX (Transaction addrW nBytes) where
   showX (WriteSuccess WishboneM2S{..} _) =
     "WriteSuccess: (addr: "
       <> showX addr
@@ -107,8 +107,8 @@ instance (KnownNat addrW, KnownNat selWidth, ShowX a) => ShowX (Transaction addr
 transaction (e.g. 'writeData' is not relevant during a read transaction).
 -}
 instance
-  (KnownNat addrW, KnownNat selWidth, Eq a, NFDataX a) =>
-  Eq (Transaction addrW selWidth a)
+  (KnownNat addrW, KnownNat nBytes) =>
+  Eq (Transaction addrW nBytes)
   where
   (WriteSuccess mA _) == (WriteSuccess mB _) =
     checkField "addr" addr mA mB
@@ -135,10 +135,10 @@ checkField str f a b
 and transforms them to a list of 'Transaction'.
 -}
 wbToTransaction ::
-  (Eq a, KnownNat addressWidth, KnownNat selWidth, ShowX a) =>
-  [WishboneM2S addressWidth selWidth a] ->
-  [WishboneS2M a] ->
-  [Transaction addressWidth selWidth a]
+  (KnownNat addressWidth, KnownNat nBytes) =>
+  [WishboneM2S addressWidth nBytes] ->
+  [WishboneS2M nBytes] ->
+  [Transaction addressWidth nBytes]
 wbToTransaction (m@WishboneM2S{..} : restM@(nextM : _)) (s@WishboneS2M{..} : restS)
   | not strobe || not busCycle = nextTransaction
   | hasMultipleTrues [acknowledge, err, retry, stall] = Illegal m s : nextTransaction
@@ -161,11 +161,11 @@ wbToTransaction _ _ = []
 
 -- | Take a wishbone master and a wishbone slave and return their transactions.
 exposeWbTransactions ::
-  (KnownDomain dom, Eq a, KnownNat addrW, ShowX a, KnownNat (BitSize a)) =>
+  (KnownDomain dom, KnownNat addrW, KnownNat nBytes) =>
   Maybe Int ->
-  Circuit () (Wishbone dom mode addrW a) ->
-  Circuit (Wishbone dom mode addrW a) () ->
-  [Transaction addrW (DivRU (BitSize a) 8) a]
+  Circuit () (Wishbone dom mode addrW nBytes) ->
+  Circuit (Wishbone dom mode addrW nBytes) () ->
+  [Transaction addrW nBytes]
 exposeWbTransactions maybeSampleLength (Circuit master) (Circuit slave) =
   let ~((), m2s) = master ((), s2m)
       ~(s2m, ()) = slave (m2s, ())
@@ -177,16 +177,15 @@ exposeWbTransactions maybeSampleLength (Circuit master) (Circuit slave) =
 
 -- | Transform a `WishboneMasterRequest` into `WishboneM2S`
 wbMasterRequestToM2S ::
-  forall addrW a.
+  forall addrW nBytes.
   ( KnownNat addrW
-  , KnownNat (BitSize a)
-  , NFDataX a
+  , KnownNat nBytes
   ) =>
-  WishboneMasterRequest addrW a ->
-  WishboneM2S addrW (DivRU (BitSize a) 8) a
+  WishboneMasterRequest addrW nBytes ->
+  WishboneM2S addrW nBytes
 wbMasterRequestToM2S = \case
   Read i busSelect ->
-    (emptyWishboneM2S @addrW @a)
+    (emptyWishboneM2S @addrW @nBytes)
       { addr = resize (pack i)
       , busCycle = True
       , strobe = True
@@ -194,7 +193,7 @@ wbMasterRequestToM2S = \case
       , writeEnable = True
       }
   Write i busSelect a ->
-    (emptyWishboneM2S @addrW @a)
+    (emptyWishboneM2S @addrW @0)
       { addr = resize (pack i)
       , busCycle = True
       , strobe = True
@@ -207,30 +206,29 @@ wbMasterRequestToM2S = \case
 them into a list of 'Transaction's.
 -}
 wbOpToTransaction ::
-  forall addrW a.
+  forall addrW nBytes.
   ( KnownNat addrW
-  , KnownNat (BitSize a)
-  , NFDataX a
+  , KnownNat nBytes
   ) =>
-  WishboneMasterRequest addrW a ->
-  a ->
-  Transaction addrW (DivRU (BitSize a) 8) a
+  WishboneMasterRequest addrW nBytes ->
+  Bytes nBytes ->
+  Transaction addrW nBytes
 wbOpToTransaction ramOp response = case ramOp of
   Read _ _ -> ReadSuccess wbM2S slaveResponse
   Write _ _ _ -> WriteSuccess wbM2S slaveResponse
  where
   wbM2S = wbMasterRequestToM2S ramOp
-  slaveResponse = (emptyWishboneS2M @a){acknowledge = True, readData = response}
+  slaveResponse = (emptyWishboneS2M @0){acknowledge = True, readData = response}
 
 validateWb ::
   forall dom aw bs.
   (HasCallStack, HiddenClockResetEnable dom, KnownNat aw, KnownNat bs) =>
-  Signal dom (WishboneM2S aw bs (Bytes bs)) ->
-  Signal dom (WishboneS2M (Bytes bs)) ->
-  (Signal dom (WishboneM2S aw bs (Bytes bs)), Signal dom (WishboneS2M (Bytes bs)))
+  Signal dom (WishboneM2S aw bs) ->
+  Signal dom (WishboneS2M bs) ->
+  (Signal dom (WishboneM2S aw bs), Signal dom (WishboneS2M bs))
 validateWb m2s0 s2m0 = (m2s1, s2m1)
  where
-  validate = toSignals $ validatorCircuit @dom @aw @(Bytes bs)
+  validate = toSignals $ validatorCircuit @dom @aw @bs
   (s2m1, m2s1) =
     case divWithRemainder @bs @8 @7 of
       Dict ->
