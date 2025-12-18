@@ -16,6 +16,7 @@ members = [
   "examples/c_hello",
   "examples/smoltcp_client",
 
+  "sim-tests/aligned_ringbuffer_test",
   "sim-tests/axi_stream_self_test",
   "sim-tests/registerwb_test",
   "sim-tests/capture_ugn_test",
