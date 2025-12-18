@@ -216,7 +216,7 @@ scatterUnitWbC ::
   ScatterConfig nBytesCal awCal ->
   Signal dom (BitVector 64) ->
   Circuit
-    ( (ToConstBwd Mm, Wishbone dom 'Standard awSu (Bytes 4))
+    ( (BitboneMm dom awSu)
     , (ToConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     ()
@@ -350,7 +350,7 @@ gatherUnitWbC ::
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
   Circuit
-    ( (ToConstBwd Mm, Wishbone dom 'Standard awGu (Bytes 4))
+    ( (BitboneMm dom awGu)
     , (ToConstBwd Mm, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     (CSignal dom (BitVector 64))

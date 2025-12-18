@@ -14,6 +14,7 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Prelude
 
+import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
@@ -27,7 +28,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
  )
 import Protocols.MemoryMap.TypeDescription.TH
-import Protocols.Wishbone
 import System.Environment (lookupEnv)
 import VexRiscv
 
@@ -100,7 +100,7 @@ statusRegister ::
   , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4))
+    (BitboneMm dom aw)
     (CSignal dom TestStatus)
 statusRegister = circuit $ \(mm, wb) -> do
   [statusWb] <- deviceWb "StatusRegister" -< (mm, wb)

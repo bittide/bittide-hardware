@@ -6,14 +6,14 @@ module Bittide.Transceiver.Wishbone where
 import Clash.Explicit.Prelude
 import Protocols
 
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (BitboneMm)
 import Bittide.Transceiver (CInputs (..), COutputs (..), Config, transceiverPrbsNC)
 
 import Bittide.Transceiver.ResetManager (emptyStatistics)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Access (ReadOnly), Mm)
+import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -21,7 +21,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWb_,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 import qualified Clash.Cores.Xilinx.Gth as Gth
 
@@ -53,7 +52,7 @@ transceiverPrbsNWb ::
   Reset free ->
   Config free ->
   Circuit
-    ( (ToConstBwd Mm, Wishbone free 'Standard aw (Bytes 4))
+    ( (BitboneMm free aw)
     , Gth.Gths rx rxS tx txS ref n
     , CSignal tx (Vec n (BitVector 64))
     )

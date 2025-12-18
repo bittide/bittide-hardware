@@ -163,8 +163,8 @@ dupWb ::
   forall dom aw.
   (KnownDomain dom, KnownNat aw) =>
   Circuit
-    (Wishbone dom 'Standard aw (Bytes 4))
-    ( Wishbone dom 'Standard aw (Bytes 4)
+    (Bitbone dom aw)
+    ( Bitbone dom aw
     , ( CSignal dom (WishboneM2S aw 4 (Bytes 4))
       , CSignal dom (WishboneS2M (Bytes 4))
       )
@@ -721,7 +721,7 @@ timeWb ::
   , 1 <= DomainPeriod dom
   ) =>
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW (Bytes 4))
+    (BitboneMm dom addrW)
     (CSignal dom (Unsigned 64))
 timeWb = circuit $ \mmWb -> do
   [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- Mm.deviceWb "Timer" -< mmWb

@@ -11,13 +11,13 @@ module Bittide.Counter (
 import Clash.Explicit.Prelude
 import Protocols
 
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Xpm (xpmCdcGray)
 import Clash.Functor.Extra ((<<$>>))
 import Clash.Sized.Extra (concatUnsigneds, unsignedToSigned)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Access (ReadOnly), Mm)
+import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceWb,
@@ -25,7 +25,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWb_,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 -- | State of 'domainDiffCounter'
 data DdcState
@@ -122,7 +121,7 @@ domainDiffCountersWbC ::
   Clock dst ->
   Reset dst ->
   Circuit
-    (ToConstBwd Mm, Wishbone dst 'Standard addrW (Bytes 4))
+    (BitboneMm dst addrW)
     (CSignal dst (Vec n (Signed 32, Active)))
 domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
   [enableWb, countersWb, activesWb] <- deviceWb "DomainDiffCounters" -< bus
