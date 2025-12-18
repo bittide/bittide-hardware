@@ -12,8 +12,6 @@ import Bittide.Wishbone
 import Clash.Annotations.Primitive
 import Clash.Class.BitPackC
 import Clash.Cores.Xilinx.Ethernet.Gmii.Internal
-import Data.Constraint.Nat.Extra
-import Data.Constraint.Nat.Lemmas
 import Data.List.Infinite (Infinite ((:<)), (...))
 import Data.Maybe
 import Data.String.Interpolate (__i)
@@ -56,47 +54,46 @@ macStatusInterfaceWb ::
   -- | Number of bits of the counters
   SNat counterWidth ->
   Circuit
-    (ToConstBwd Mm, (Wishbone dom 'Standard aw (Bytes nBytes), CSignal dom EthMacStatus))
+    (ToConstBwd Mm, (Wishbone dom 'Standard aw nBytes, CSignal dom EthMacStatus))
     ()
-macStatusInterfaceWb SNat = case (cancelMulDiv @nBytes @8) of
-  Dict -> withMemoryMap mm $ Circuit circuitGo
+macStatusInterfaceWb SNat = withMemoryMap mm $ Circuit circuitGo
+ where
+  circuitGo ((wbM2S, macStatus), _) = ((wbS2M, ()), ())
    where
-    circuitGo ((wbM2S, macStatus), _) = ((wbS2M, ()), ())
+    (_, wbS2M) = unbundle $ wbToVec <$> counts <*> wbM2S
+    pulses = fmap bitCoerce macStatus :: Signal dom (Vec (BitSize EthMacStatus) Bool)
+    extendF = signExtend @_ @_ @(nBytes * 8 - counterWidth)
+    counts = bundle $ fmap (fmap (pack . extendF)) $ pulseCount <$> unbundle pulses
+    pulseCount :: Signal dom Bool -> Signal dom (Unsigned counterWidth)
+    pulseCount pulse = cnt
      where
-      (_, wbS2M) = unbundle $ wbToVec <$> counts <*> wbM2S
-      pulses = fmap bitCoerce macStatus :: Signal dom (Vec (BitSize EthMacStatus) Bool)
-      extendF = signExtend @_ @_ @(nBytes * 8 - counterWidth)
-      counts = bundle $ fmap (fmap (pack . extendF)) $ pulseCount <$> unbundle pulses
-      pulseCount :: Signal dom Bool -> Signal dom (Unsigned counterWidth)
-      pulseCount pulse = cnt
-       where
-        cnt = CP.regEn 0 (CP.isRising True pulse) (succ <$> cnt)
+      cnt = CP.regEn 0 (CP.isRising True pulse) (succ <$> cnt)
 
-    mm =
-      MemoryMap
-        { tree = DeviceInstance locCaller "MacStatus"
-        , deviceDefs = deviceSingleton deviceDef
-        }
-    deviceDef =
-      DeviceDefinition
-        { tags = []
-        , registers =
-            [ NamedLoc
-                { name = Name "status" ""
-                , loc = locHere
-                , value =
-                    Register
-                      { fieldType = regType @EthMacStatus
-                      , address = 0x0
-                      , access = ReadOnly
-                      , tags = []
-                      , reset = Nothing
-                      }
-                }
-            ]
-        , deviceName = Name "MacStatus" ""
-        , definitionLoc = locHere
-        }
+  mm =
+    MemoryMap
+      { tree = DeviceInstance locCaller "MacStatus"
+      , deviceDefs = deviceSingleton deviceDef
+      }
+  deviceDef =
+    DeviceDefinition
+      { tags = []
+      , registers =
+          [ NamedLoc
+              { name = Name "status" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @EthMacStatus
+                    , address = 0x0
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          ]
+      , deviceName = Name "MacStatus" ""
+      , definitionLoc = locHere
+      }
 
 ethMac1GFifoC ::
   ( KnownDomain sys

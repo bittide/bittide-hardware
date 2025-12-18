@@ -10,10 +10,10 @@ import Protocols.Wishbone
 
 import qualified Protocols.MemoryMap as Mm
 
-data DelayWishboneState aw n a
+data DelayWishboneState aw n
   = WaitingForManager
-  | WaitingForSubordinate (WishboneM2S aw n a)
-  | AcknowledgingManager (WishboneS2M a)
+  | WaitingForSubordinate (WishboneM2S aw n)
+  | AcknowledgingManager (WishboneS2M n)
   deriving (Generic, NFDataX)
 
 {- | Breaks the combinatorial path between a Wishbone manager and subordinate by inserting
@@ -22,26 +22,24 @@ the request from manager to subordinate, and one to forward the response from su
 to manager.
 -}
 delayWishbone ::
-  forall dom aw a.
-  (HiddenClockResetEnable dom, KnownNat aw, NFDataX a, BitPack a) =>
-  Circuit (Wishbone dom 'Standard aw a) (Wishbone dom 'Standard aw a)
+  forall dom aw n.
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat n, 1 <= n) =>
+  Circuit (Wishbone dom 'Standard aw n) (Wishbone dom 'Standard aw n)
 delayWishbone = Circuit go
  where
   go ::
-    forall n.
-    (KnownNat n, n ~ BitSize a `DivRU` 8) =>
-    ( Signal dom (WishboneM2S aw n a)
-    , Signal dom (WishboneS2M a)
+    ( Signal dom (WishboneM2S aw n)
+    , Signal dom (WishboneS2M n)
     ) ->
-    ( Signal dom (WishboneS2M a)
-    , Signal dom (WishboneM2S aw n a)
+    ( Signal dom (WishboneS2M n)
+    , Signal dom (WishboneM2S aw n)
     )
   go = mooreB mooreTransfer mooreOut WaitingForManager
    where
     mooreTransfer ::
-      DelayWishboneState aw n a ->
-      (WishboneM2S aw n a, WishboneS2M a) ->
-      DelayWishboneState aw n a
+      DelayWishboneState aw n ->
+      (WishboneM2S aw n, WishboneS2M n) ->
+      DelayWishboneState aw n
     mooreTransfer WaitingForManager (m2s, _s2m)
       | m2s.busCycle && m2s.strobe = WaitingForSubordinate m2s
     mooreTransfer (WaitingForSubordinate _) (_m2s, s2m)
@@ -50,18 +48,18 @@ delayWishbone = Circuit go
     mooreTransfer s _ = s
 
     mooreOut ::
-      DelayWishboneState aw n a ->
-      (WishboneS2M a, WishboneM2S aw n a)
+      DelayWishboneState aw n ->
+      (WishboneS2M n, WishboneM2S aw n)
     mooreOut WaitingForManager = (emptyWishboneS2M, emptyWishboneM2S)
     mooreOut (WaitingForSubordinate m2s) = (emptyWishboneS2M, m2s)
     mooreOut (AcknowledgingManager s2m) = (s2m, emptyWishboneM2S)
 
 delayWishboneMm ::
-  forall dom aw a.
-  (HiddenClockResetEnable dom, KnownNat aw, NFDataX a, BitPack a) =>
+  forall dom aw n.
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat n, 1 <= n) =>
   Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw a)
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw a)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw n)
+    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw n)
 delayWishboneMm = circuit $ \(mm, wbIn) -> do
   wbOut <- delayWishbone -< wbIn
   idC -< (mm, wbOut)

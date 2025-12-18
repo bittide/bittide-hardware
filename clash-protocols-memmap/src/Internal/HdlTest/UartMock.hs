@@ -64,14 +64,14 @@ deriveTypeDescription ''FakeType
 
 magicUart ::
   (HasCallStack, HiddenClockResetEnable dom, KnownNat addrWidth) =>
-  Circuit (ToConstBwd Mm, Wishbone dom 'Standard addrWidth (BitVector 32)) ()
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard addrWidth 4) ()
 magicUart = Circuit go
  where
   ((_, callLoc) : _) = getCallStack callStack
 
   go ::
-    (((), Signal dom (WishboneM2S addrWidth 4 (BitVector 32))), ()) ->
-    ((SimOnly MemoryMap, Signal dom (WishboneS2M (BitVector 32))), ())
+    (((), Signal dom (WishboneM2S addrWidth 4)), ()) ->
+    ((SimOnly MemoryMap, Signal dom (WishboneS2M 4)), ())
   go (((), _m2s), ()) = ((SimOnly memoryMap, pure s2m), ())
    where
     deviceName = "MagicUART"
@@ -126,7 +126,7 @@ magicUart = Circuit go
 
 someCircuit ::
   (HasCallStack, HiddenClockResetEnable dom, HasCallStack) =>
-  Circuit (ToConstBwd Mm, Wishbone dom 'Standard 32 (BitVector 32)) ()
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard 32 4) ()
 someCircuit = circuit $ \(mm, master) -> do
   [a, b] <- interconnect -< (mm, master)
   withPrefix 0b01 (withName "A" magicUart) -< a
@@ -134,7 +134,7 @@ someCircuit = circuit $ \(mm, master) -> do
 
 someCircuit' ::
   (HasCallStack, HiddenClockResetEnable dom) =>
-  Circuit (ToConstBwd Mm, Wishbone dom 'Standard 32 (BitVector 32)) ()
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard 32 4) ()
 someCircuit' = withName "top" $ circuit $ \(mm, master) -> do
   [a, b] <- interconnectImplicit -< (mm, master)
   withName "A" magicUart -< a
@@ -144,7 +144,7 @@ someOtherCircuit ::
   (HasCallStack, HiddenClockResetEnable dom) =>
   Circuit
     ( ToConstBwd Mm
-    , ( Wishbone dom 'Standard 32 (BitVector 32)
+    , ( Wishbone dom 'Standard 32 4
       , CSignal dom Bit
       )
     )
@@ -184,7 +184,7 @@ moreRealUart' ::
   SNat transmitBufferDepth ->
   SNat receiveBufferDepth ->
   Circuit
-    (ToConstBwd Mm, (Wishbone dom 'Standard addrW (BitVector (8 * nBytes)), CSignal dom Bit))
+    (ToConstBwd Mm, (Wishbone dom 'Standard addrW nBytes, CSignal dom Bit))
     (CSignal dom Bit, CSignal dom (Bool, Bool))
 moreRealUart' tD rD = withMemoryMap mm (moreRealUart tD rD)
  where
@@ -207,23 +207,23 @@ moreRealUart ::
   -- , 1 <= nBytes
   ) =>
   -- | Recommended value: 16. This seems to be a good balance between resource
-  -- usage and usability.
+  --   usage and usability.
   SNat transmitBufferDepth ->
   -- | Recommended value: 16. This seems to be a good balance between resource
-  -- usage and usability.
+  --   usage and usability.
   SNat receiveBufferDepth ->
   Circuit
-    (Wishbone dom 'Standard addrW (BitVector (8 * nBytes)), CSignal dom Bit)
+    (Wishbone dom 'Standard addrW nBytes, CSignal dom Bit)
     (CSignal dom Bit, CSignal dom (Bool, Bool))
 moreRealUart SNat SNat = Circuit go
  where
   go ::
-    ( ( Signal dom (WishboneM2S addrW (Div (8 * nBytes + 7) 8) (BitVector (8 * nBytes)))
+    ( ( Signal dom (WishboneM2S addrW nBytes)
       , Signal dom Bit
       )
     , ((), ())
     ) ->
-    ( ( Signal dom (WishboneS2M (BitVector (8 * nBytes)))
+    ( ( Signal dom (WishboneS2M nBytes)
       , ()
       )
     , (Signal dom Bit, Signal dom (Bool, Bool))
@@ -235,48 +235,48 @@ moreRealUart SNat SNat = Circuit go
     status = pure (False, False)
 
 interconnectImplicit ::
-  forall dom addrWidth a n.
+  forall dom addrWidth nBytes n.
   ( HasCallStack
   , KnownNat n
   , KnownNat addrWidth
-  , NFDataX a
-  , KnownNat (BitSize a)
+  , KnownNat nBytes
+  , 1 <= nBytes
   , (CLog 2 n <= addrWidth)
   , 1 <= n
   , KnownNat (addrWidth - CLog 2 n)
   ) =>
   Circuit
     ( ToConstBwd Mm
-    , Wishbone dom 'Standard addrWidth a
+    , Wishbone dom 'Standard addrWidth nBytes
     )
     ( Vec
         n
         ( ToConstBwd Mm
-        , Wishbone dom 'Standard (addrWidth - CLog 2 n) a
+        , Wishbone dom 'Standard (addrWidth - CLog 2 n) nBytes
         )
     )
 interconnectImplicit = error ""
 
 interconnect ::
-  forall dom addrWidth a n.
+  forall dom addrWidth nBytes n.
   ( HasCallStack
   , KnownNat n
   , KnownNat addrWidth
-  , NFDataX a
-  , KnownNat (BitSize a)
+  , KnownNat nBytes
+  , 1 <= nBytes
   , (CLog 2 n <= addrWidth)
   , 1 <= n
   , KnownNat (addrWidth - CLog 2 n)
   ) =>
   Circuit
     ( ToConstBwd Mm
-    , Wishbone dom 'Standard addrWidth a
+    , Wishbone dom 'Standard addrWidth nBytes
     )
     ( Vec
         n
         ( ToConstBwd (BitVector (CLog 2 n))
         , ( ToConstBwd Mm
-          , Wishbone dom 'Standard (addrWidth - CLog 2 n) a
+          , Wishbone dom 'Standard (addrWidth - CLog 2 n) nBytes
           )
         )
     )
@@ -285,13 +285,13 @@ interconnect = Circuit go
   (_, loc) : _ = getCallStack callStack
 
   go ::
-    ( ((), Signal dom (WishboneM2S addrWidth (Div (BitSize a + 7) 8) a))
-    , Vec n (BitVector (CLog 2 n), (SimOnly MemoryMap, Signal dom (WishboneS2M a)))
+    ( ((), Signal dom (WishboneM2S addrWidth nBytes))
+    , Vec n (BitVector (CLog 2 n), (SimOnly MemoryMap, Signal dom (WishboneS2M nBytes)))
     ) ->
-    ( (SimOnly MemoryMap, Signal dom (WishboneS2M a))
+    ( (SimOnly MemoryMap, Signal dom (WishboneS2M nBytes))
     , Vec
         n
-        ((), ((), Signal dom (WishboneM2S (addrWidth - CLog 2 n) (Div (BitSize a + 7) 8) a)))
+        ((), ((), Signal dom (WishboneM2S (addrWidth - CLog 2 n) nBytes)))
     )
   go (((), m2s), unzip -> (prefs, unzip -> (mms, s2ms))) = ((SimOnly memoryMap, s2m), m2ss)
    where
@@ -314,9 +314,9 @@ interconnect = Circuit go
 
   inner ::
     Vec n (BitVector (CLog 2 n)) ->
-    WishboneM2S addrWidth (Div (BitSize a + 7) 8) a ->
-    Vec n (WishboneS2M a) ->
-    (WishboneS2M a, Vec n (WishboneM2S (addrWidth - CLog 2 n) (Div (BitSize a + 7) 8) a))
+    WishboneM2S addrWidth nBytes ->
+    Vec n (WishboneS2M nBytes) ->
+    (WishboneS2M nBytes, Vec n (WishboneM2S (addrWidth - CLog 2 n) nBytes))
   inner prefixes m2s@WishboneM2S{..} s2ms
     | not (busCycle && strobe) = (emptyWishboneS2M, m2ss)
     -- no valid index selected
