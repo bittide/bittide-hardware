@@ -14,8 +14,6 @@ import Clash.Prelude
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
-import Data.Constraint.Nat.Extra
-import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Data.Proxy
 import Data.String
@@ -372,7 +370,7 @@ registerWbSigToWb = property $ do
       writes === wbDecoding (L.drop 1 fstOut)
     _ -> error "registerWbSigToWb: Registers required to store bitvector == 0."
    where
-    wbDecoding :: ([WishboneS2M (BitVector 32)] -> [BitVector bits])
+    wbDecoding :: ([WishboneS2M 4] -> [BitVector bits])
     wbDecoding (wbNow : wbRest)
       | acknowledge wbNow = entry : wbDecoding rest
       | otherwise = wbDecoding wbRest
@@ -456,9 +454,9 @@ bv2WbWrite ::
   (BitPack a, Enum a) =>
   a ->
   ("DAT_MOSI" ::: BitVector 32) ->
-  WishboneM2S 30 4 (BitVector 32)
+  WishboneM2S 30 4
 bv2WbWrite i v =
-  (emptyWishboneM2S @30 @(BitVector 32))
+  (emptyWishboneM2S @30 @4)
     { addr = resize (pack i)
     , writeData = v
     , writeEnable = True
@@ -529,13 +527,13 @@ registerWbSpecVal ::
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Signal dom (WishboneM2S addrW nBytes) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- |
-  -- 1. Outgoing stored value
-  -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M (Bytes nBytes)))
+  --   1. Outgoing stored value
+  --   2. Outgoing wishbone bus (slave to master)
+  (Signal dom a, Signal dom (WishboneS2M nBytes))
 registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
  where
   (storedVal, s2m0) = registerWb @dom @a @nBytes @addrW writePriority initVal m2s1 sigIn
@@ -558,11 +556,11 @@ wbStorageSpecCompliance = property $ do
         (genRequests (snatToNum (SNat @v) - 1))
         ()
 
-  genRequests :: Unsigned 30 -> Gen [WishboneMasterRequest 30 (BitVector 32)]
+  genRequests :: Unsigned 30 -> Gen [WishboneMasterRequest 30 4]
   genRequests size =
     Gen.list (Range.linear 0 32) $ do
       upperBound <- Gen.choice $ fmap pure [size, maxBound]
-      WB.genWishboneTransfer (Range.constant 0 upperBound) genDefinedBitVector
+      WB.genWishboneTransfer (Range.constant 0 upperBound)
 
 deriving instance (ShowX a) => ShowX (RamOp i a)
 
@@ -586,10 +584,9 @@ wbStorageBehavior = property $ do
         $ do
           valid <- Gen.bool
           let upperBound = if valid then (natToNum @words - 1) else maxBound :: Unsigned 30
-          req <- WB.genWishboneTransfer (Range.constant 0 upperBound) genDefinedBitVector
+          req <- WB.genWishboneTransfer (Range.constant 0 upperBound)
           stall <- Gen.int $ Range.constant 0 10
           pure (valid, (req, stall))
-    -- (genWishboneTransfer @30 (natToNum @words) (genDefinedBitVector @32))
 
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
@@ -609,36 +606,35 @@ wbStorageBehaviorModel ::
   (1 <= addrW, KnownNat bytes) =>
   (KnownNat addrW) =>
   [Bytes bytes] ->
-  [(Bool, WishboneMasterRequest addrW (Bytes bytes))] ->
-  [Transaction addrW bytes (Bytes bytes)]
-wbStorageBehaviorModel initList initWbOps = case (cancelMulDiv @bytes @8) of
-  Dict -> snd $ L.mapAccumL f initList initWbOps
+  [(Bool, WishboneMasterRequest addrW bytes)] ->
+  [Transaction addrW bytes]
+wbStorageBehaviorModel initList initWbOps = snd $ L.mapAccumL f initList initWbOps
+ where
+  -- Invalid request
+  f storedList (False, op) = (storedList, Error (wbMasterRequestToM2S op))
+  -- Successful Read
+  f storedList (True, op@(Read i _)) = (storedList, ReadSuccess wbM2S wbS2M)
    where
-    -- Invalid request
-    f storedList (False, op) = (storedList, Error (wbMasterRequestToM2S op))
-    -- Successful Read
-    f storedList (True, op@(Read i _)) = (storedList, ReadSuccess wbM2S wbS2M)
-     where
-      dat = storedList L.!! (fromIntegral i)
-      wbM2S = wbMasterRequestToM2S op
-      wbS2M = (emptyWishboneS2M @(Bytes bytes)){acknowledge = True, readData = dat}
+    dat = storedList L.!! (fromIntegral i)
+    wbM2S = wbMasterRequestToM2S op
+    wbS2M = (emptyWishboneS2M @4){acknowledge = True, readData = dat}
 
-    -- Successful Write
-    f storedList (True, op@(Write i bs a)) = (newList, WriteSuccess wbM2S wbS2M)
-     where
-      wbM2S = wbMasterRequestToM2S op
-      wbS2M = emptyWishboneS2M{acknowledge = True}
-      (preEntry, postEntry) = L.splitAt (fromIntegral i) storedList
-      oldEntry = L.head postEntry
-      newList = preEntry <> (pack newEntry : L.drop 1 postEntry)
+  -- Successful Write
+  f storedList (True, op@(Write i bs a)) = (newList, WriteSuccess wbM2S wbS2M)
+   where
+    wbM2S = wbMasterRequestToM2S op
+    wbS2M = emptyWishboneS2M{acknowledge = True}
+    (preEntry, postEntry) = L.splitAt (fromIntegral i) storedList
+    oldEntry = L.head postEntry
+    newList = preEntry <> (pack newEntry : L.drop 1 postEntry)
 
-      newEntry :: Vec bytes Byte
-      newEntry =
-        zipWith3
-          (\b old new -> if b then new else old)
-          (unpack bs)
-          (unpack oldEntry)
-          (unpack a)
+    newEntry :: Vec bytes Byte
+    newEntry =
+      zipWith3
+        (\b old new -> if b then new else old)
+        (unpack bs)
+        (unpack oldEntry)
+        (unpack a)
 
 wbStorageRangeErrors :: Property
 wbStorageRangeErrors = property $ do
@@ -650,7 +646,7 @@ wbStorageRangeErrors = property $ do
   go depth@SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
-      $ wishbonePropWithModel @System @_ @30
+      $ wishbonePropWithModel @System @30
         defExpectOptions
         model
         (unMemmap $ wbStorage "" depth (Just (Vec content)))
@@ -662,7 +658,7 @@ wbStorageRangeErrors = property $ do
       (Range.linear 0 32)
       $ do
         upperBound <- Gen.choice $ fmap pure [size, 0]
-        WB.genWishboneTransfer (Range.constant 0 upperBound) genDefinedBitVector
+        WB.genWishboneTransfer (Range.constant 0 upperBound)
 
   model (Read addr _) s2m@WishboneS2M{..} st0
     | addr >= fromIntegral st0 && err = Right st0
@@ -713,7 +709,7 @@ wbStorageProtocolsModel = property $ do
   go depth@SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
-      $ wishbonePropWithModel @System @_ @30
+      $ wishbonePropWithModel @System @30
         defExpectOptions
         model
         (unMemmap $ wbStorage "" depth (Just (Vec content)))
@@ -723,7 +719,7 @@ wbStorageProtocolsModel = property $ do
   genRequests size =
     Gen.list (Range.linear 0 32) $ do
       -- only generate valid requests here
-      WB.genWishboneTransfer (Range.constant 0 (size - 1)) genDefinedBitVector
+      WB.genWishboneTransfer (Range.constant 0 (size - 1))
 
   model (Read addr sel) s2m@WishboneS2M{..} st0
     | err || retry =

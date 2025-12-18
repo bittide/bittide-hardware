@@ -22,7 +22,7 @@ import Bittide.ProcessingElement.Util (
   vecFromElfData,
   vecFromElfInstr,
  )
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone (singleMasterInterconnectC, uartBytes, uartInterfaceWb)
 import Project.FilePath (
   CargoBuildType (Release),
@@ -63,7 +63,7 @@ simplePeripheral ::
   ) =>
   String ->
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard aw (Bytes 4))
+    (ToConstBwd Mm, Wishbone dom 'Standard aw 4)
     ()
 simplePeripheral name = withName name $ circuit $ \(mm, wb) -> do
   [(offset0, meta0, wb0), (offset1, meta1, wb1)] <- deviceWb "somePeripheral" -< (mm, wb)

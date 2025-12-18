@@ -57,14 +57,14 @@ data PeConfig nBusses where
     -- ^ Initial content of the data memory, can be smaller than its total depth.
     , iBusTimeout :: SNat iBusTimeout
     -- ^ Number of clock cycles after which the a transaction on the instruction bus times out.
-    -- Set to 0 to disable timeouts on the instruction bus.
+    --     Set to 0 to disable timeouts on the instruction bus.
     , dBusTimeout :: SNat dBusTimeout
     -- ^ Number of clock cycles after which the a transaction on the data bus times out.
-    -- Set to 0 to disable timeouts on the data bus.
+    --     Set to 0 to disable timeouts on the data bus.
     , includeIlaWb :: Bool
     -- ^ Indicates whether or not to include the Wishbone ILA component probes. Should be set
-    -- to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
-    -- given system should have this set to 'True' in order to avoid probe name conflicts.
+    --     to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
+    --     given system should have this set to 'True' in order to avoid probe name conflicts.
     , cpu :: forall dom. BittideCpu dom
     -- ^ The CPU to use in this processing element.
     } ->
@@ -149,11 +149,11 @@ processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dB
   iMemPfx = rotateR 1 1
   prefixBlacklist = 0 :> iMemPfx :> Nil
   removeMsb ::
-    forall aw a.
+    forall aw dw.
     (KnownNat aw) =>
     Circuit
-      (Wishbone dom 'Standard (aw + 4) a)
-      (Wishbone dom 'Standard aw a)
+      (Wishbone dom 'Standard (aw + 4) dw)
+      (Wishbone dom 'Standard aw dw)
   removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
@@ -202,8 +202,8 @@ rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
 -- | Map a function over the address field of 'WishboneM2S'
 mapAddr ::
   (BitVector aw1 -> BitVector aw2) ->
-  WishboneM2S aw1 selWidth a ->
-  WishboneM2S aw2 selWidth a
+  WishboneM2S aw1 selWidth ->
+  WishboneM2S aw2 selWidth
 mapAddr f wb = wb{addr = f (addr wb)}
 
 {- | Provide a vector of filepaths, and a write operations containing a byteSelect and

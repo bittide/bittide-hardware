@@ -23,11 +23,8 @@ import Protocols
 
 import Protocols.Wishbone
 
-import Bittide.SharedTypes (Byte, Bytes)
+import Bittide.SharedTypes (Byte)
 import Bittide.Wishbone (WishboneRequest (..), WishboneResponse (..))
-import Clash.Hedgehog.Sized.Vector (genVec)
-import Data.Constraint (Dict (..))
-import Data.Constraint.Nat.Lemmas (cancelMulDiv)
 import Hedgehog (Gen)
 import Tests.Shared (genDefinedBitVector)
 
@@ -39,14 +36,13 @@ through without delays.
 -}
 forwardPressure ::
   ( HiddenClockResetEnable dom
-  , NFDataX a
   , KnownNat addrW
-  , KnownNat (BitSize a)
+  , KnownNat nBytes
   ) =>
   [Int] ->
   Circuit
-    (Wishbone dom 'Standard addrW a)
-    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW nBytes)
+    (Wishbone dom 'Standard addrW nBytes)
 forwardPressure delays = Circuit (mealyB go delays)
  where
   go [] (m2s, s2m) = ([], (s2m, m2s))
@@ -63,14 +59,13 @@ passed through without delays.
 -}
 backPressure ::
   ( HiddenClockResetEnable dom
-  , NFDataX a
   , KnownNat addrW
-  , KnownNat (BitSize a)
+  , KnownNat nBytes
   ) =>
   [Int] ->
   Circuit
-    (Wishbone dom 'Standard addrW a)
-    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW nBytes)
+    (Wishbone dom 'Standard addrW nBytes)
 backPressure delays = Circuit (mealyB go delays)
  where
   go [] (m2s, s2m) = ([], (s2m, m2s))
@@ -89,16 +84,14 @@ driver ::
   , KnownNat n
   ) =>
   [WishboneRequest addrW n] ->
-  Circuit () (Wishbone dom 'Standard addrW (Bytes n))
-driver requests = case cancelMulDiv @n @8 of
-  Dict -> Circuit (((),) . mealy go requests . snd)
+  Circuit () (Wishbone dom 'Standard addrW n)
+driver requests = Circuit (((),) . mealy go requests . snd)
  where
   go ::
-    (DivRU (n * 8) 8 ~ n) =>
     [WishboneRequest addrW n] ->
-    WishboneS2M (Bytes n) ->
+    WishboneS2M n ->
     ( [WishboneRequest addrW n]
-    , WishboneM2S addrW n (Bytes n)
+    , WishboneM2S addrW n
     )
   go [] _ = ([], emptyWishboneM2S @addrW)
   go (req : reqs) s2m = (newReqs, wishboneRequestToM2S req)
@@ -114,11 +107,8 @@ sink ::
   , KnownNat addrW
   , KnownNat n
   ) =>
-  Circuit (Wishbone dom 'Standard addrW (Bytes n)) ()
-sink =
-  case cancelMulDiv @n @8 of
-    Dict ->
-      Circuit (\_ -> (pure emptyWishboneS2M{acknowledge = True}, ()))
+  Circuit (Wishbone dom 'Standard addrW n) ()
+sink = Circuit (\_ -> (pure emptyWishboneS2M{acknowledge = True}, ()))
 
 {- | Monitor that exposes the Wishbone requests and responses whenever there is
 a valid transaction.
@@ -127,11 +117,11 @@ monitor ::
   forall dom addrW n.
   (KnownNat n, KnownNat addrW) =>
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes n))
-    ( Wishbone dom 'Standard addrW (Bytes n)
+    (Wishbone dom 'Standard addrW n)
+    ( Wishbone dom 'Standard addrW n
     , CSignal dom (Maybe (WishboneRequest addrW n, WishboneResponse n))
     )
-monitor = case cancelMulDiv @n @8 of Dict -> Circuit go0
+monitor = Circuit go0
  where
   go0 (m2s0, (s2m0, _)) = (s2m1, (m2s1, resp))
    where
@@ -144,12 +134,12 @@ raw ::
   forall dom addrW n.
   (KnownNat n, KnownNat addrW) =>
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes n))
-    ( Wishbone dom 'Standard addrW (Bytes n)
-    , CSignal dom (WishboneM2S addrW n (Bytes n))
-    , CSignal dom (WishboneS2M (Bytes n))
+    (Wishbone dom 'Standard addrW n)
+    ( Wishbone dom 'Standard addrW n
+    , CSignal dom (WishboneM2S addrW n)
+    , CSignal dom (WishboneS2M n)
     )
-raw = case cancelMulDiv @n @8 of Dict -> Circuit go
+raw = Circuit go
  where
   go (m2s, (s2m, _, _)) = (s2m, (m2s, m2s, s2m))
 
@@ -158,7 +148,7 @@ wishboneRequestToM2S ::
   forall addrW n.
   (KnownNat n, KnownNat addrW) =>
   WishboneRequest addrW n ->
-  WishboneM2S addrW n (Bytes n)
+  WishboneM2S addrW n
 wishboneRequestToM2S = \case
   ReadRequest addr sel ->
     (emptyWishboneM2S @addrW)
@@ -168,7 +158,7 @@ wishboneRequestToM2S = \case
       , busSelect = sel
       }
   WriteRequest addr sel dat ->
-    (emptyWishboneM2S @addrW @(Bytes n))
+    (emptyWishboneM2S @addrW @n)
       { busCycle = True
       , strobe = True
       , writeEnable = True
@@ -183,8 +173,8 @@ wishboneRequestToM2S = \case
 pairToWishboneRequestResponse ::
   forall addrW n.
   (KnownNat n, KnownNat addrW) =>
-  WishboneM2S addrW n (Bytes n) ->
-  WishboneS2M (Bytes n) ->
+  WishboneM2S addrW n ->
+  WishboneS2M n ->
   Maybe (WishboneRequest addrW n, WishboneResponse n)
 pairToWishboneRequestResponse m2s s2m
   | m2s.busCycle && m2s.strobe && hasTerminateFlag s2m =
@@ -216,5 +206,5 @@ genWishboneRequest =
     , WriteRequest
         <$> genDefinedBitVector
         <*> genDefinedBitVector
-        <*> genVec genDefinedBitVector
+        <*> genDefinedBitVector
     ]

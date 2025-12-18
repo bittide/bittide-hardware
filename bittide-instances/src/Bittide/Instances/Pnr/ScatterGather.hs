@@ -63,11 +63,11 @@ gatherCal1K = GatherConfig SNat cal
 scatterUnit1K ::
   Clock Basic200 ->
   Reset Basic200 ->
-  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
+  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth) ->
   Signal Basic200 (BitVector 64) ->
-  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
-  ( Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
-  , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
+  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth) ->
+  ( Signal Basic200 (WishboneS2M WishboneWidth)
+  , Signal Basic200 (WishboneS2M WishboneWidth)
   )
 scatterUnit1K clk rst wbCal linkIn wbScat =
   withBigEndian
@@ -105,11 +105,11 @@ scatterUnit1KReducedPins clk rst =
 gatherUnit1K ::
   Clock Basic200 ->
   Reset Basic200 ->
-  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
-  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
+  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth) ->
+  Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth) ->
   ( Signal Basic200 (BitVector 64)
-  , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
-  , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
+  , Signal Basic200 (WishboneS2M WishboneWidth)
+  , Signal Basic200 (WishboneS2M WishboneWidth)
   )
 gatherUnit1K clk rst wbCal wbGat =
   withBigEndian

@@ -27,8 +27,6 @@ module Bittide.Calendar (
 import Clash.Prelude
 
 import Bittide.Extra.Maybe
-import Data.Constraint.Nat.Extra
-import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import GHC.Stack
 
@@ -67,8 +65,8 @@ data ValidEntry a repetitionBits = ValidEntry
   -- ^ Calendar entry
   , veRepeat :: Unsigned repetitionBits
   -- ^ Number of times the calendar entry should be repeated:
-  -- 0 = no repetition, entry is valid for one cycle.
-  -- 1 = repeated once, entry is valid for two cycles.
+  --   0 = no repetition, entry is valid for one cycle.
+  --   1 = repeated once, entry is valid for two cycles.
   }
   deriving (BitPack, Eq, Generic, NFDataX, Show, ShowX, BitPackC, Lift)
 
@@ -312,8 +310,8 @@ data CalendarControl calDepth calEntry = CalendarControl
 andAck ::
   Signal dom Bool ->
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes nBytes))
-    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Wishbone dom 'Standard addrW nBytes)
+    (Wishbone dom 'Standard addrW nBytes)
 andAck extraAck = Circuit go
  where
   go (m2s, s2m0) = (s2m1, m2s)
@@ -338,7 +336,7 @@ mkCalendarC ::
   -- | Calendar configuration for 'calendar'.
   CalendarConfig addrW a ->
   Circuit
-    (ToConstBwd Mm, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (ToConstBwd Mm, Wishbone dom 'Standard addrW nBytes)
     (CSignal dom a, CSignal dom Bool, CSignal dom (Unsigned 32))
 mkCalendarC
   compName
@@ -446,19 +444,18 @@ mkCalendar ::
   -- | Calendar configuration for 'calendar'.
   CalendarConfig addrW calEntry ->
   -- | Wishbone interface (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Signal dom (WishboneM2S addrW nBytes) ->
   -- |
   -- 1. Currently active entry
   -- 2. Metacycle indicator
   -- 3. Wishbone interface. (slave to master)
   ( Signal dom calEntry
   , Signal dom Bool
-  , Signal dom (WishboneS2M (Bytes nBytes))
+  , Signal dom (WishboneS2M nBytes)
   , Signal dom (Unsigned 32)
   , Mm
   )
-mkCalendar compName cfg m2s = case cancelMulDiv @nBytes @8 of
-  Dict -> (entry, endOfMetacycle, s2m, metacycleCount, mm)
+mkCalendar compName cfg m2s = (entry, endOfMetacycle, s2m, metacycleCount, mm)
    where
     ~((mm, s2m), (entry, endOfMetacycle, metacycleCount)) =
       toSignals (mkCalendarC compName cfg) (((), m2s), ((), (), ()))

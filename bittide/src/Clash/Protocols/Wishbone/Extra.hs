@@ -24,13 +24,13 @@ data HandshakeWbManagerState
     HwmWaitForResponse
   deriving (Generic, NFDataX, Show, ShowX)
 
-data HandshakeWbSubordinateState a
+data HandshakeWbSubordinateState nBytes
   = -- | Reset state; waiting to accept first request.
     HwsInReset
   | -- | Ready to accept requests; waiting for valid transfer.
     HwsForwarding
   | -- | Request received; forwarding response to manager.
-    HwsResponding (WishboneS2M a)
+    HwsResponding (WishboneS2M nBytes)
   deriving (Generic, NFDataX, Show, ShowX)
 
 {- | CDC Wishbone bridge using XPM handshake primitives.
@@ -44,21 +44,20 @@ sees them asserted only while there is a transfer (@strobe@).
 XXX: I want to add this to @bittide-extra@, but the tests depend on @wbStorage@.
 -}
 xpmCdcHandshakeWb ::
-  forall mgr sub aw a.
+  forall mgr sub aw nBytes.
   ( KnownDomain mgr
   , KnownDomain sub
   , KnownNat aw
-  , NFDataX a
-  , ShowX a
-  , BitPack a
+  , KnownNat nBytes
+  , 1 <= nBytes
   ) =>
   Clock mgr ->
   Reset mgr ->
   Clock sub ->
   Reset sub ->
   Circuit
-    (Wishbone mgr 'Standard aw a)
-    (Wishbone sub 'Standard aw a)
+    (Wishbone mgr 'Standard aw nBytes)
+    (Wishbone sub 'Standard aw nBytes)
 xpmCdcHandshakeWb clkM rstM clkS rstS =
   case (m2sBitSize `compareSNat` SNat @1024, s2mBitSize `compareSNat` SNat @1024) of
     (SNatLE, SNatLE) ->
@@ -87,15 +86,15 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
       -- reimplement the Xilinx IP because this is INCREDIBLY dumb.
       clashCompileError "xpmCdcHandshakeWb: BitSize out of range (1-1024 bits)"
  where
-  m2sBitSize = SNat @(BitSize (WishboneM2S aw (BitSize a `DivRU` 8) a))
-  s2mBitSize = SNat @(BitSize (WishboneS2M a))
+  m2sBitSize = SNat @(BitSize (WishboneM2S aw nBytes))
+  s2mBitSize = SNat @(BitSize (WishboneS2M nBytes))
 
   managerC ::
     Circuit
-      ( Wishbone mgr 'Standard aw a
-      , Df mgr (WishboneS2M a)
+      ( Wishbone mgr 'Standard aw nBytes
+      , Df mgr (WishboneS2M nBytes)
       )
-      (Df mgr (WishboneM2S aw (BitSize a `DivRU` 8) a))
+      (Df mgr (WishboneM2S aw nBytes))
   managerC = Circuit $ \((wbIn, dfS2Mm), ackIn) -> do
     let
       (wbOut, ackOut, dfM2Sm) =
@@ -106,14 +105,14 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
 
   goManager ::
     HandshakeWbManagerState ->
-    ( WishboneM2S aw (Div (BitSize a + 7) 8) a
-    , Maybe (WishboneS2M a)
+    ( WishboneM2S aw nBytes
+    , Maybe (WishboneS2M nBytes)
     , Ack
     ) ->
     ( HandshakeWbManagerState
-    , ( WishboneS2M a
+    , ( WishboneS2M nBytes
       , Ack
-      , Maybe (WishboneM2S aw (Div (BitSize a + 7) 8) a)
+      , Maybe (WishboneM2S aw nBytes)
       )
     )
   goManager HwmInReset (_m2sIn, _s2mIn, _ackIn) =
@@ -138,9 +137,9 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
 
   subordinateC ::
     Circuit
-      (Df sub (WishboneM2S aw (BitSize a `DivRU` 8) a))
-      ( Wishbone sub 'Standard aw a
-      , Df sub (WishboneS2M a)
+      (Df sub (WishboneM2S aw nBytes))
+      ( Wishbone sub 'Standard aw nBytes
+      , Df sub (WishboneS2M nBytes)
       )
   subordinateC = Circuit $ \(m2sIn, (s2mIn, ackIn)) -> do
     let
@@ -151,15 +150,15 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
     (ackOut, (m2sOut, s2mOut))
 
   goSubordinate ::
-    HandshakeWbSubordinateState a ->
-    ( Maybe (WishboneM2S aw (Div (BitSize a + 7) 8) a)
-    , WishboneS2M a
+    HandshakeWbSubordinateState nBytes ->
+    ( Maybe (WishboneM2S aw nBytes)
+    , WishboneS2M nBytes
     , Ack
     ) ->
-    ( HandshakeWbSubordinateState a
+    ( HandshakeWbSubordinateState nBytes
     , ( Ack
-      , WishboneM2S aw (Div (BitSize a + 7) 8) a
-      , Maybe (WishboneS2M a)
+      , WishboneM2S aw nBytes
+      , Maybe (WishboneS2M nBytes)
       )
     )
   goSubordinate HwsInReset (_m2sIn, _s2mIn, _ackIn) =
@@ -183,21 +182,20 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
 
 -- | Like 'xpmCdcHandshakeWb', but also handles memory maps.
 xpmCdcHandshakeWbMm ::
-  forall mgr sub aw a.
+  forall mgr sub aw nBytes.
   ( KnownDomain mgr
   , KnownDomain sub
   , KnownNat aw
-  , NFDataX a
-  , ShowX a
-  , BitPack a
+  , KnownNat nBytes
+  , 1 <= nBytes
   ) =>
   Clock mgr ->
   Reset mgr ->
   Clock sub ->
   Reset sub ->
   Circuit
-    (ToConstBwd Mm, Wishbone mgr 'Standard aw a)
-    (ToConstBwd Mm, Wishbone sub 'Standard aw a)
+    (ToConstBwd Mm, Wishbone mgr 'Standard aw nBytes)
+    (ToConstBwd Mm, Wishbone sub 'Standard aw nBytes)
 xpmCdcHandshakeWbMm clkM rstM clkS rstS = circuit $ \(mm, wbIn) -> do
   wbOut <- xpmCdcHandshakeWb clkM rstM clkS rstS -< wbIn
   idC -< (mm, wbOut)

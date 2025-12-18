@@ -7,14 +7,12 @@ module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
-import Data.Constraint
 import Data.Maybe
 import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df)
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
-import Data.Constraint.Nat.Lemmas
 import Data.Typeable
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (
@@ -146,14 +144,14 @@ wbStorageDP ::
   ) =>
   SNat depth ->
   Maybe (ContentType depth (Bytes 4)) ->
-  Signal dom (WishboneM2S awA 4 (Bytes 4)) ->
-  Signal dom (WishboneM2S awB 4 (Bytes 4)) ->
-  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes 4)))
+  Signal dom (WishboneM2S awA 4) ->
+  Signal dom (WishboneM2S awB 4) ->
+  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M 4))
 wbStorageDP depth initial aM2S bM2S = (aS2M, bS2M)
  where
   storageOut = wbStorage' @_ @_ @(Max awA awB) depth initial storageIn
 
-  storageIn :: Signal dom (WishboneM2S (Max awA awB) 4 (Bytes 4))
+  storageIn :: Signal dom (WishboneM2S (Max awA awB) 4)
   storageIn = mux (nowActive .==. pure A) (resizeM2SAddr <$> aM2S) (resizeM2SAddr <$> bM2S)
 
   -- We keep track of ongoing transactions to respect Read-modify-write operations.
@@ -233,8 +231,8 @@ wbStorage' ::
   ) =>
   SNat depth ->
   Maybe (ContentType depth (Bytes 4)) ->
-  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
-  Signal dom (WishboneS2M (Bytes 4))
+  Signal dom (WishboneM2S aw 4) ->
+  Signal dom (WishboneS2M 4)
 wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
  where
   readData = ram readAddr writeEntry wbIn.busSelect
@@ -251,7 +249,7 @@ wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
   go (WishboneM2S{..}, readDataGo) =
     ( wbAddr
     , writeEntryGo
-    , (emptyWishboneS2M @(Bytes 4)){acknowledge, readData = readDataGo, err}
+    , (emptyWishboneS2M @4){acknowledge, readData = readDataGo, err}
     )
    where
     wbAddr = unpack $ resize addr :: Index depth
@@ -272,10 +270,10 @@ wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
 
   -- \| Delays the output controls to align them with the actual read / write timing.
   delayControls ::
-    (NFDataX a) =>
-    Signal dom (WishboneM2S aw selWidth a) -> -- current M2S signal
-    Signal dom (WishboneS2M a) ->
-    Signal dom (WishboneS2M a)
+    (KnownNat selWidth) =>
+    Signal dom (WishboneM2S aw selWidth) -> -- current M2S signal
+    Signal dom (WishboneS2M selWidth) ->
+    Signal dom (WishboneS2M selWidth)
   delayControls m2s s2m0 = mux inCycle s2m1 (pure emptyWishboneS2M)
    where
     inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
@@ -366,16 +364,15 @@ registerWbC ::
   RegisterWritePriority ->
   -- | Initial value.
   a ->
-  Circuit (Wishbone dom 'Standard aw (Bytes nBytes), Df dom a) (CSignal dom a)
-registerWbC prio initVal = case cancelMulDiv @nBytes @8 of
-  Dict -> Circuit go
+  Circuit (Wishbone dom 'Standard aw nBytes, Df dom a) (CSignal dom a)
+registerWbC prio initVal = Circuit go
+ where
+  go ((wbM2S, dfM2S), _) = ((wbS2M, fmap Ack dfS2M), aOut)
    where
-    go ((wbM2S, dfM2S), _) = ((wbS2M, fmap Ack dfS2M), aOut)
-     where
-      (aOut, wbS2M) = registerWb prio initVal wbM2S dfM2S
-      dfS2M
-        | prio == WishbonePriority = (\WishboneM2S{..} -> not (strobe && busCycle)) <$> wbM2S
-        | otherwise = pure True
+    (aOut, wbS2M) = registerWb prio initVal wbM2S dfM2S
+    dfS2M
+      | prio == WishbonePriority = (\WishboneM2S{..} -> not (strobe && busCycle)) <$> wbM2S
+      | otherwise = pure True
 
 {- | Register with additional wishbone interface, this component has a configurable
 priority that determines which value gets stored in the register during a write conflict.
@@ -397,13 +394,13 @@ registerWb ::
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Signal dom (WishboneM2S addrW nBytes) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- |
-  -- 1. Outgoing stored value
-  -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M (Bytes nBytes)))
+  --   1. Outgoing stored value
+  --   2. Outgoing wishbone bus (slave to master)
+  (Signal dom a, Signal dom (WishboneS2M nBytes))
 registerWb writePriority initVal wbIn sigIn =
   registerWbE writePriority initVal wbIn sigIn (pure maxBound)
 
@@ -430,15 +427,15 @@ registerWbE ::
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Signal dom (WishboneM2S addrW nBytes) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- | Explicit Byte enables for new circuit value
   Signal dom (ByteEnable a) ->
   -- |
-  -- 1. Outgoing stored value
-  -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M (Bytes nBytes)))
+  --   1. Outgoing stored value
+  --   2. Outgoing wishbone bus (slave to master)
+  (Signal dom a, Signal dom (WishboneS2M nBytes))
 registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
  where
   regOut = registerByteAddressable initVal regIn byteEnables
@@ -447,11 +444,11 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
     a ->
     Maybe a ->
     BitVector (Regs a 8) ->
-    WishboneM2S addrW nBytes (Bytes nBytes) ->
-    (BitVector (Regs a 8), WishboneS2M (Bytes nBytes), a)
+    WishboneM2S addrW nBytes ->
+    (BitVector (Regs a 8), WishboneS2M nBytes, a)
   go regOut0 sigIn0 sigbyteEnables0 WishboneM2S{..} =
     ( byteEnables0
-    , (emptyWishboneS2M @(Bytes nBytes)){acknowledge, err, readData}
+    , (emptyWishboneS2M @nBytes){acknowledge, err, readData}
     , regIn0
     )
    where
@@ -531,8 +528,8 @@ updateAddrs ::
   -- | A boolean that will be used for the addresses LSBs.
   AorB ->
   -- |
-  -- 1. Updated address
-  -- 2. Write operation with updated address.
+  --   1. Updated address
+  --   2. Write operation with updated address.
   (Index (n * 2), Maybe (Index (m * 2), b))
 updateAddrs rdAddr (Just (i, a)) bufSelect =
   (mul2Index rdAddr bufSelect, Just (mul2Index i (swapAorB bufSelect), a))

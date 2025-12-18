@@ -122,9 +122,9 @@ type DMemWords = DivRU (32 * 1024) 4
 data TestResult = TestResult String (Maybe String) deriving (Show, Eq)
 
 wbAlwaysAck ::
-  (NFDataX a) =>
+  (KnownNat nBytes) =>
   Circuit
-    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW nBytes)
     ()
 wbAlwaysAck = Circuit (const (pure $ emptyWishboneS2M{acknowledge = True}, ()))
 
