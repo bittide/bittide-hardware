@@ -35,7 +35,7 @@ txPreSwitch = 1
 txPostSwitch = 1
 
 iNTERNAL_SWITCH_DELAY :: (Num a) => a
-iNTERNAL_SWITCH_DELAY = 2 * (2 + rxPreSwitch + rxPostSwitch + txPreSwitch + txPostSwitch)
+iNTERNAL_SWITCH_DELAY = 4 + rxPreSwitch + rxPostSwitch + txPreSwitch + txPostSwitch + 2 -- Extra pipelining registers
 
 dELAY_CROSSBAR_TO_PE :: (Num a) => a
 dELAY_CROSSBAR_TO_PE = 1 + rxPostSwitch
