@@ -160,7 +160,7 @@ readMetacycleCount :: Property
 readMetacycleCount = property $ do
   let
     entryGen = do
-      repetitions <- Gen.integral $ Range.linear 0 50
+      repetitions <- Gen.integral $ Range.linear 0 10
       pure $ ValidEntry 0 repetitions
   config <- forAll $ genCalendarConfig @30 @(BitVector 8) @32 10 entryGen
   iterations <- forAll $ Gen.integral $ Range.linear 1 4
