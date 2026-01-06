@@ -31,13 +31,14 @@ import Control.Monad (forM_, unless, when)
 import Data.Either.Extra (mapLeft)
 import Data.Functor (void)
 import Data.List (findIndex)
-import Data.Maybe (fromJust, mapMaybe)
+import Data.Maybe (catMaybes, fromJust, mapMaybe)
 import Numeric (showHex)
 import Project.Handle
 import Text.Parsec
 import Text.Parsec.String (Parser)
 
 import qualified Clash.Prelude as CP
+import Data.Either.Extra (eitherToMaybe)
 import qualified Data.List as L
 import qualified System.IO as IO
 
@@ -471,10 +472,11 @@ parseSoftwareUgns handle = do
   waitForLine handle "[PE] Incoming Link UGNs:"
   incomingLines <- readUntilLine handle "[PE] Outgoing Link UGNs:"
   outgoingLines <- readUntilLine handle "[PE] End of UGN Edge edges"
-  let parseResultsIncoming = fmap (runParser parseUgnEdge () "incoming ugn edges") incomingLines
-  let parseResultsOutgoing = fmap (runParser parseUgnEdge () "outgoing ugn edges") outgoingLines
-  validIncomingEdges <- mapM (expectRight . mapLeft show) parseResultsIncoming
-  validOutgoingEdges <- mapM (expectRight . mapLeft show) parseResultsOutgoing
+  let
+    parseResultsIncoming = fmap (runParser parseUgnEdge () "incoming ugn edges") incomingLines
+    parseResultsOutgoing = fmap (runParser parseUgnEdge () "outgoing ugn edges") outgoingLines
+    validIncomingEdges = catMaybes $ fmap (eitherToMaybe . mapLeft show) parseResultsIncoming
+    validOutgoingEdges = catMaybes $ fmap (eitherToMaybe . mapLeft show) parseResultsOutgoing
 
   return (validIncomingEdges, validOutgoingEdges)
 
