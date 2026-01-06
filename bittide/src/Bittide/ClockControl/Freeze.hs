@@ -7,11 +7,11 @@ module Bittide.ClockControl.Freeze where
 import Clash.Explicit.Prelude
 import Protocols
 
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (BitboneMm)
 import Bittide.Shutter (shutter)
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), Mm)
+import Protocols.MemoryMap (Access (ReadOnly, WriteOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
@@ -20,7 +20,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWb_,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 {- | Component that can freeze a bunch of incoming signals related to clock
 control measurements. This makes sure the clock control algorithm works on
@@ -39,9 +38,7 @@ freeze ::
   Clock dom ->
   Reset dom ->
   Circuit
-    ( ( ToConstBwd Mm
-      , Wishbone dom 'Standard aw (Bytes 4)
-      )
+    ( BitboneMm dom aw
     , "domain_diff_counters" ::: CSignal dom (Vec nLinks (Signed 32))
     , "local_clock_counter" ::: CSignal dom (Unsigned 64)
     , "sync_in_counter" ::: CSignal dom (Unsigned 32)

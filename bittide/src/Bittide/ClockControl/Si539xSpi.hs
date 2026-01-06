@@ -26,7 +26,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.MemoryMap.TypeDescription.TH
 import Protocols.Spi (Spi)
-import Protocols.Wishbone
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
@@ -161,7 +160,7 @@ si539xSpiWb ::
   SNat minTargetPeriodPs ->
   Circuit
     ( ToConstBwd Mm
-    , Wishbone dom 'Standard aw (Bytes 4)
+    , Bitbone dom aw
     )
     ( "spiDone" ::: CSignal dom Bool
     , Spi dom

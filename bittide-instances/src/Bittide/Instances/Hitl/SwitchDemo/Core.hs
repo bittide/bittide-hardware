@@ -23,7 +23,7 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
 import Bittide.Sync (Sync)
@@ -32,7 +32,6 @@ import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Maybe (fromMaybe)
 import Protocols.MemoryMap (Mm)
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
@@ -81,7 +80,7 @@ managementUnit ::
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
-        , Wishbone dom 'Standard NmuRemBusWidth (Bytes 4)
+        , Bitbone dom NmuRemBusWidth
         )
     )
 managementUnit maybeDna =
@@ -183,7 +182,7 @@ core ::
     , "MU_UART" ::: Df Bittide (BitVector 8)
     , "CC_UART" ::: Df Bittide (BitVector 8)
     , "MU_TRANSCEIVER"
-        ::: (ToConstBwd Mm.Mm, Wishbone Bittide 'Standard NmuRemBusWidth (Bytes 4))
+        ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do

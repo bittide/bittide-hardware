@@ -11,12 +11,11 @@ import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Mm)
 import Protocols.Spi (Spi)
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import VexRiscv
 
 import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.ProcessingElement (PeConfig (..), RemainingBusWidth, processingElement)
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (BitboneMm)
 import Bittide.Wishbone (timeWb, uartBytes, uartInterfaceWb)
 
 type BootPeBusses = 6
@@ -40,10 +39,7 @@ bootPe ::
     ( "UART_BYTES" ::: Df dom (BitVector 8)
     , "SPI_DONE" ::: CSignal dom Bool
     , Spi dom
-    , "TRANSCEIVER"
-        ::: ( ToConstBwd Mm
-            , Wishbone dom 'Standard (RemainingBusWidth BootPeBusses) (Bytes 4)
-            )
+    , "TRANSCEIVER" ::: BitboneMm dom (RemainingBusWidth BootPeBusses)
     )
 bootPe peConfig = circuit $ \(mm, jtag) -> do
   [timeBus, uartBus, siBus, transceiverBus] <-

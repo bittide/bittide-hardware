@@ -92,7 +92,7 @@ processingElement ::
     (ToConstBwd Mm.Mm, Jtag dom)
     ( Vec
         (nBusses - PeInternalBusses)
-        (ToConstBwd Mm.Mm, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
+        (BitboneMm dom (RemainingBusWidth nBusses))
     )
 processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
@@ -166,8 +166,8 @@ rvCircuit ::
   Signal dom Bit ->
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
-    ( Wishbone dom 'Standard 30 (Bytes 4)
-    , (ToConstBwd Mm.Mm, Wishbone dom 'Standard 30 (Bytes 4))
+    ( Bitbone dom 30
+    , BitboneMm dom 30
     )
 rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
   case (?busByteOrder, ?regByteOrder) of

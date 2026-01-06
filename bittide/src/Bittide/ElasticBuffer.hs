@@ -7,14 +7,15 @@ module Bittide.ElasticBuffer where
 import Bittide.ClockControl (RelDataCount, targetDataCount)
 import Bittide.Df
 import Bittide.Extra.Maybe (orNothing)
-import Clash.Class.BitPackC (BitPackC, ByteOrder, Bytes)
+import Bittide.SharedTypes (BitboneMm)
+import Clash.Class.BitPackC (BitPackC, ByteOrder)
 import Clash.Cores.Xilinx.DcFifo
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
 import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
 import Clash.Prelude
 import GHC.Stack
 import Protocols (Ack (..), CSignal, Circuit (..), applyC)
-import Protocols.MemoryMap (Access (..), Mm, ToConstBwd)
+import Protocols.MemoryMap (Access (..))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
   busActivityWrite,
@@ -24,7 +25,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbDf,
  )
 import Protocols.MemoryMap.TypeDescription.TH
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 import qualified Clash.Explicit.Prelude as E
 
@@ -170,7 +170,7 @@ xilinxElasticBufferWb ::
   Clock writeDom ->
   Signal writeDom a ->
   Circuit
-    (ToConstBwd Mm, Wishbone readDom 'Standard addrW (Bytes 4))
+    (BitboneMm readDom addrW)
     ( CSignal readDom (RelDataCount n)
     , CSignal readDom Underflow
     , CSignal readDom Overflow
