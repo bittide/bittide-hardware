@@ -82,7 +82,7 @@ $( do
     let absResults =
           flip map (memoryMaps `zip` normalizedTrees) $
             \((_name, mm), normalised) ->
-              makeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) normalised
+              runMakeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) normalised
 
     forM_ (memoryMaps `zip` absResults) $ \((mmName, mm), (absTree, errors)) -> do
       if not $ null errors

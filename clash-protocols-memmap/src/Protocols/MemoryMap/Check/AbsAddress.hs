@@ -13,7 +13,9 @@ import Prelude
 
 import Protocols.MemoryMap
 
-import Data.List (sortBy)
+import Control.Monad (forM, when)
+import Control.Monad.Writer
+import Data.List (sortOn)
 import GHC.Stack (SrcLoc)
 
 import qualified Data.Map.Strict as Map
@@ -36,44 +38,68 @@ data AddressError
       }
   deriving (Show)
 
+data AbsNormData = AbsNormData
+  { tags :: [(SrcLoc, String)]
+  , path :: Path
+  , absoluteAddr :: Address
+  }
+  deriving (Show)
+
 type MemoryMapTreeAbsNorm =
-  MemoryMapTreeAnn ([(SrcLoc, String)], Path, Address) 'Normalized
+  MemoryMapTreeAnn AbsNormData 'Normalized
+
+runMakeAbsolute ::
+  DeviceDefinitions ->
+  AddressRange ->
+  MemoryMapTreeRelNorm ->
+  (MemoryMapTreeAbsNorm, [AddressError])
+runMakeAbsolute ctx range tree = runWriter (makeAbsolute ctx range tree)
 
 makeAbsolute ::
   DeviceDefinitions ->
   AddressRange ->
   MemoryMapTreeRelNorm ->
-  (MemoryMapTreeAbsNorm, [AddressError])
-makeAbsolute ctx (start, size) (AnnDeviceInstance (tags, path, assertedAddr) srcLoc deviceName) =
-  checkAssertedAddr start assertedAddr path $
+  Writer [AddressError] MemoryMapTreeAbsNorm
+makeAbsolute ctx (start, size) (AnnDeviceInstance relData srcLoc deviceName) =
+  checkAssertedAddr start relData.absoluteAddr relData.path $
     case Map.lookup deviceName ctx of
       Nothing -> error $ "DeviceDefinition " <> show deviceName <> " not found (" <> show srcLoc <> ")"
-      Just def ->
+      Just def -> do
         let
           devSize = deviceSize def
-          newDevInstance = AnnDeviceInstance (tags, path, start) srcLoc deviceName
-         in
-          if devSize > size
-            then
-              let err =
-                    SizeExceedsError
-                      { startAddr = start
-                      , availableSize = size
-                      , requestedSize = devSize
-                      , path
-                      , location = srcLoc
-                      }
-               in (newDevInstance, [err])
-            else (newDevInstance, [])
-makeAbsolute ctx (start, size) (AnnInterconnect (tags, path, assertedAddr) srcLoc comps0) =
-  checkAssertedAddr start assertedAddr path $
-    let (unzip -> (comps2, concat -> errs)) = flip map componentList $ \((start', size'), comp) -> do
-          let (comp1, errs1) = makeAbsolute ctx (start + start', size') comp
-          ((start', comp1), errs1)
-     in (AnnInterconnect (tags, path, start) srcLoc comps2, errs)
+          newDevInstance =
+            AnnDeviceInstance
+              (AbsNormData{tags = relData.tags, path = relData.path, absoluteAddr = start})
+              srcLoc
+              deviceName
+
+        when (devSize > size) $ do
+          let err =
+                SizeExceedsError
+                  { startAddr = start
+                  , availableSize = size
+                  , requestedSize = devSize
+                  , path = relData.path
+                  , location = srcLoc
+                  }
+          tell [err]
+
+        pure newDevInstance
+makeAbsolute ctx (start, size) (AnnInterconnect relData srcLoc comps0) =
+  checkAssertedAddr start relData.absoluteAddr relData.path $ do
+    comps2 <- forM componentList $ \((start', size'), comp0) -> do
+      comp1 <- makeAbsolute ctx (start + start', size') comp0
+      pure (start', comp1)
+
+    pure
+      ( AnnInterconnect
+          (AbsNormData{tags = relData.tags, path = relData.path, absoluteAddr = start})
+          srcLoc
+          comps2
+      )
  where
-  comps1 = sortBy (\(a, _) (b, _) -> a `compare` b) comps0
-  compRelStart = relAddrs `zip` (drop 1 $ (relAddrs <> [size]))
+  comps1 = sortOn fst comps0
+  compRelStart = relAddrs `zip` (drop 1 (relAddrs <> [size]))
    where
     relAddrs = fst <$> comps1
 
@@ -82,19 +108,24 @@ makeAbsolute ctx (start, size) (AnnInterconnect (tags, path, assertedAddr) srcLo
   componentList = compRelStartSize `zip` (snd <$> comps1)
 
 checkAssertedAddr ::
-  Address -> Maybe (SrcLoc, Address) -> Path -> (a, [AddressError]) -> (a, [AddressError])
+  Address ->
+  Maybe (SrcLoc, Address) ->
+  Path ->
+  Writer [AddressError] a ->
+  Writer [AddressError] a
 checkAssertedAddr _ Nothing _ action = action
 checkAssertedAddr addr (Just (srcLoc, asserted)) path action
   | addr == asserted = action
   | otherwise =
-      let
-        err =
-          AddressDifferentThanExpected
-            { expected = asserted
-            , actual = addr
-            , path
-            , location = srcLoc
-            }
-        (res, errors) = action
-       in
-        (res, err : errors)
+      do
+        let
+          err =
+            AddressDifferentThanExpected
+              { expected = asserted
+              , actual = addr
+              , path
+              , location = srcLoc
+              }
+        res <- action
+        tell [err]
+        pure res

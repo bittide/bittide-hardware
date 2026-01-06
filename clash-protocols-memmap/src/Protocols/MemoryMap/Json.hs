@@ -50,7 +50,7 @@ import Protocols.MemoryMap (
   regByteSizeC,
   regFieldType,
  )
-import Protocols.MemoryMap.Check.AbsAddress (MemoryMapTreeAbsNorm)
+import Protocols.MemoryMap.Check.AbsAddress (AbsNormData (..), MemoryMapTreeAbsNorm)
 import Protocols.MemoryMap.TypeCollect
 import Protocols.MemoryMap.TypeDescription
 
@@ -202,11 +202,11 @@ generateTypeRef (TupleType _ args) = do
   pure $ object ["tuple" .= args1]
 
 generateTree :: MemoryMapTreeAbsNorm -> JsonGenerator Value
-generateTree (AnnInterconnect (tags, path, absAddr) srcLoc comps) = do
+generateTree (AnnInterconnect absData srcLoc comps) = do
   comps' <- mapM generateComp comps
   loc <- location srcLoc
-  tags' <- genTags tags
-  path1 <- pathVal path
+  tags' <- genTags absData.tags
+  path1 <- pathVal absData.path
   pure
     $ object
       [ "interconnect"
@@ -214,7 +214,7 @@ generateTree (AnnInterconnect (tags, path, absAddr) srcLoc comps) = do
             [ "path" .= path1
             , "tags" .= tags'
             , "src_location" .= loc
-            , "absolute_address" .= absAddr
+            , "absolute_address" .= absData.absoluteAddr
             , "components" .= comps'
             ]
       ]
@@ -226,10 +226,10 @@ generateTree (AnnInterconnect (tags, path, absAddr) srcLoc comps) = do
         [ "relative_address" .= addr
         , "tree" .= tree'
         ]
-generateTree (AnnDeviceInstance (tags, path, absAddr) srcLoc deviceName) = do
+generateTree (AnnDeviceInstance absData srcLoc deviceName) = do
   loc <- location srcLoc
-  tags' <- genTags tags
-  path1 <- pathVal path
+  tags' <- genTags absData.tags
+  path1 <- pathVal absData.path
   pure
     $ object
       [ "device_instance"
@@ -238,7 +238,7 @@ generateTree (AnnDeviceInstance (tags, path, absAddr) srcLoc deviceName) = do
             , "tags" .= tags'
             , "device_name" .= deviceName
             , "src_location" .= loc
-            , "absolute_address" .= absAddr
+            , "absolute_address" .= absData.absoluteAddr
             ]
       ]
 

@@ -39,8 +39,15 @@ data MemoryMapTree
   | DeviceInstance SrcLoc DeviceName
   deriving (Show)
 
+data RelNormData = RelNormData
+  { tags :: [(SrcLoc, String)]
+  , path :: Path
+  , absoluteAddr :: Maybe (SrcLoc, Address)
+  }
+  deriving (Show)
+
 type MemoryMapTreeRelNorm =
-  MemoryMapTreeAnn ([(SrcLoc, String)], Path, Maybe (SrcLoc, Address)) 'Normalized
+  MemoryMapTreeAnn RelNormData 'Normalized
 
 type AbsAddressList = [(Path, Address)]
 
@@ -102,10 +109,18 @@ normalizeRelTree = go [] 0 [] Nothing Nothing
     Maybe (SrcLoc, Address) ->
     MemoryMapTreeAnn () norm ->
     MemoryMapTreeRelNorm
-  go path n tags prevName prevAddr (AnnDeviceInstance () srcLoc name) = AnnDeviceInstance (tags, reverse newName, prevAddr) srcLoc name
+  go path n tags prevName prevAddr (AnnDeviceInstance () srcLoc name) =
+    AnnDeviceInstance
+      (RelNormData{tags, path = reverse newName, absoluteAddr = prevAddr})
+      srcLoc
+      name
    where
     newName = nextName path n prevName
-  go path n tags prevName prevAddr (AnnInterconnect () srcLoc comps) = AnnInterconnect (tags, reverse path', prevAddr) srcLoc comps'
+  go path n tags prevName prevAddr (AnnInterconnect () srcLoc comps) =
+    AnnInterconnect
+      (RelNormData{tags, path = reverse path', absoluteAddr = prevAddr})
+      srcLoc
+      comps'
    where
     path' = nextName path n prevName
     comps' = flip map ([0 ..] `zip` comps) $ \(i, (pre, comp)) ->
@@ -119,9 +134,9 @@ normalizeRelTree = go [] 0 [] Nothing Nothing
   go path n tags prevName prevAddr (AnnNormWrapper tree') = go path n tags prevName prevAddr tree'
 
 absAddresses :: MemoryMapTreeRelNorm -> AbsAddressList
-absAddresses (AnnDeviceInstance (_, _, Nothing) _ _) = []
-absAddresses (AnnDeviceInstance (_, path, Just (_, addr)) _ _) = [(path, addr)]
-absAddresses (AnnInterconnect (_, _, Nothing) _ comps) = comps >>= (absAddresses . snd)
-absAddresses (AnnInterconnect (_, path, Just (_, addr)) _ comps) =
+absAddresses (AnnDeviceInstance (RelNormData _ _ Nothing) _ _) = []
+absAddresses (AnnDeviceInstance (RelNormData _ path (Just (_, addr))) _ _) = [(path, addr)]
+absAddresses (AnnInterconnect (RelNormData _ _ Nothing) _ comps) = comps >>= (absAddresses . snd)
+absAddresses (AnnInterconnect (RelNormData _ path (Just (_, addr))) _ comps) =
   let rest = comps >>= (absAddresses . snd)
    in (path, addr) : rest
