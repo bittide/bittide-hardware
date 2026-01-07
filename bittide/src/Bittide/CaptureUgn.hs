@@ -11,7 +11,7 @@ import Bittide.Shutter (shutter)
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.MemoryMap (Access (ReadOnly))
+import Protocols.MemoryMap (Access (ReadOnly, WriteOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
   deviceWb,
@@ -33,11 +33,11 @@ Assumes that:
 - When a link comes up, the first frame will contain the remote counter value.
 - When a link goes down, it will start producing consistently `Nothing`
 
-The register layout is as follows:
-- Address 0: lsbs local counter
-- Address 1: msbs local counter
-- Address 2: lsbs remote counter
-- Address 3: msbs remote counter
+When doing UGN capture while clock control is still running the captured UGN needs to be
+compensated for the number of frames added or removed from the elastic buffer between the
+time the frame was received and the time clock control is finished. This delta can be
+stored in the register 'elastic_buffer_delta' for easy access. This information is not
+used on hardware, but since it is needed for UGN calculation it is exposed here.
 -}
 captureUgn ::
   forall dom addrW.
@@ -55,7 +55,8 @@ captureUgn ::
     (BitboneMm dom addrW)
     (CSignal dom (BitVector 64))
 captureUgn localCounter linkIn = circuit $ \bus -> do
-  [wbLocalCounter, wbRemoteCounter, wbHasCaptured] <- deviceWb "CaptureUgn" -< bus
+  [wbLocalCounter, wbRemoteCounter, wbEbDelta, wbHasCaptured] <-
+    deviceWb "CaptureUgn" -< bus
 
   let trigger = C.isRising False (isJust <$> linkIn)
   capturedLocalCounter <- shutter trigger -< Fwd localCounter
@@ -64,12 +65,15 @@ captureUgn localCounter linkIn = circuit $ \bus -> do
 
   registerWbI_ localCounterConfig 0 -< (wbLocalCounter, capturedLocalCounter)
   registerWbI_ remoteCounterConfig 0 -< (wbRemoteCounter, capturedRemoteCounter)
+  registerWbI_ elasticBufferDeltaConfig (0 :: Signed 8) -< (wbEbDelta, Fwd noWrite)
   registerWbI_ hasCapturedConfig False -< (wbHasCaptured, capturedHasCaptured)
 
   idC -< Fwd (fromJust <$> linkIn)
  where
+  noWrite = pure Nothing
   localCounterConfig = (registerConfig "local_counter"){access = ReadOnly}
   remoteCounterConfig = (registerConfig "remote_counter"){access = ReadOnly}
+  elasticBufferDeltaConfig = (registerConfig "elastic_buffer_delta"){access = WriteOnly}
   hasCapturedConfig = (registerConfig "has_captured"){access = ReadOnly}
 
 {- | Outputs the local counter when the link is *not* sampling and the very first
