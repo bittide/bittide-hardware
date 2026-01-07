@@ -41,10 +41,9 @@ import Protocols.MemoryMap (
   normalizeRelTree,
  )
 import Protocols.MemoryMap.Check (
-  MemoryMapTreeAbsNorm,
   MemoryMapTreeAnn (..),
-  makeAbsolute,
  )
+import Protocols.MemoryMap.Check.AbsAddress
 import System.Exit
 import System.FilePath
 import System.IO
@@ -135,7 +134,7 @@ getPathAddress mm = traverseTree annAbsTree1
  where
   annRelTree = convert mm.tree
   annRelNormTree = normalizeRelTree annRelTree
-  (annAbsTree0, _) = makeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) annRelNormTree
+  (annAbsTree0, _) = runMakeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) annRelNormTree
   annAbsTree1 = canonicalizeDevNames annAbsTree0
 
   canonicalizeDevNames :: (HasCallStack) => MemoryMapTreeAbsNorm -> MemoryMapTreeAbsNorm
@@ -180,30 +179,32 @@ getPathAddress mm = traverseTree annAbsTree1
   showPathComponent (PathUnnamed n) = show n
 
   getTreeName :: (HasCallStack) => MemoryMapTreeAbsNorm -> String
-  getTreeName (AnnInterconnect (_, showPathComponent . L.last -> name, _) _ _) = name
+  getTreeName (AnnInterconnect absData _ _) = showPathComponent (L.last absData.path)
   getTreeName (AnnDeviceInstance _ _ name) = name
 
   traverseTree :: (HasCallStack, Num a) => MemoryMapTreeAbsNorm -> [String] -> a
   traverseTree (AnnInterconnect _ _ _) [] = error "Empty path given!"
-  traverseTree (AnnInterconnect (_, showPathComponent . L.last -> name0, addr) _ _) [name1] =
-    if name0 /= name1
-      then error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
-      else fromIntegral addr
+  traverseTree (AnnInterconnect absData _ _) [name1] =
+    let name0 = showPathComponent (L.last absData.path)
+     in if name0 /= name1
+          then error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
+          else fromIntegral absData.absoluteAddr
   traverseTree
-    (AnnInterconnect (_, showPathComponent . L.last -> name0, _) _ (fmap snd -> components))
+    (AnnInterconnect absData _ (fmap snd -> components))
     (name1 : next : t) =
-      if name0 == name1
-        then case L.find (\tree -> next == getTreeName tree) components of
-          Just comp -> traverseTree comp t
-          Nothing -> error [i|Failed to find device #{next} in interconnect.|]
-        else error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
-  traverseTree (AnnDeviceInstance (_, _, address) _ _) [] = fromIntegral address
-  traverseTree (AnnDeviceInstance (_, _, _) _ name) (a : b : c) =
+      let name0 = showPathComponent (L.last absData.path)
+       in if name0 == name1
+            then case L.find (\tree -> next == getTreeName tree) components of
+              Just comp -> traverseTree comp t
+              Nothing -> error [i|Failed to find device #{next} in interconnect.|]
+            else error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
+  traverseTree (AnnDeviceInstance absData _ _) [] = fromIntegral absData.absoluteAddr
+  traverseTree (AnnDeviceInstance _ _ name) (a : b : c) =
     error
       [i|Cannot index into #{name} farther than #{a}, but path continues: #{ppShow $ b : c}|]
-  traverseTree (AnnDeviceInstance (_, _, addr) _ devName) [regName] =
+  traverseTree (AnnDeviceInstance absData _ devName) [regName] =
     case L.find (\regNL -> regName == regNL.name.name) devDef.registers of
-      Just regNL -> fromIntegral (addr + regNL.value.address)
+      Just regNL -> fromIntegral (absData.absoluteAddr + regNL.value.address)
       Nothing -> error [i|Failed to find register #{regName} in device #{devName}|]
    where
     devDef :: DeviceDefinition

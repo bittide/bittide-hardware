@@ -22,6 +22,7 @@ import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
+import qualified Wishbone.NestedInterconnect as NestedInterconnect
 import qualified Wishbone.RegisterWb as RegisterWb
 import qualified Wishbone.ScatterGather as ScatterGather
 import qualified Wishbone.SwitchCalendar as Wishbone.SwitchCalendar
@@ -71,6 +72,7 @@ tests =
         , ClockControlWb.tests
         , DnaPortE2.tests
         , ElasticBufferWb.tests
+        , NestedInterconnect.tests
         , OpenOcd.tests
         , ScatterGather.tests
         , SwitchDemoProcessingElement.tests

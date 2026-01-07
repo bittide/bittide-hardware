@@ -22,7 +22,7 @@ import Clash.Prelude
 import Internal.HdlTest.UartMock (someOtherCircuit)
 
 import Protocols.MemoryMap
-import Protocols.MemoryMap.Check.AbsAddress (makeAbsolute)
+import Protocols.MemoryMap.Check.AbsAddress (runMakeAbsolute)
 
 import qualified Data.ByteString.Lazy as BS
 import Protocols.MemoryMap.Json (LocationStorage (LocationSeparate))
@@ -36,7 +36,7 @@ main = do
   let tree0 = convert memoryMap.tree
   let tree1 = normalizeRelTree tree0
   print tree1
-  let (absTree, _errs) = makeAbsolute memoryMap.deviceDefs (0x0000_0000, 0xFFFF_FFFF) tree1
+  let (absTree, _errs) = runMakeAbsolute memoryMap.deviceDefs (0x0000_0000, 0xFFFF_FFFF) tree1
   print absTree
 
   putStrLn "\n\n\n"
