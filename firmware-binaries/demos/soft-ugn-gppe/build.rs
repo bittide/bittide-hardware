@@ -18,6 +18,7 @@ fn main() {
     // Compile C code with clang (has built-in RISC-V support)
     cc::Build::new()
         .file("src/main.c")
+        .file("src/ringbuffer_align.c")
         .files(bittide_hal_c::manual_source_files())
         .compiler("clang")
         .include("src") // Add src directory for our custom stdint.h
