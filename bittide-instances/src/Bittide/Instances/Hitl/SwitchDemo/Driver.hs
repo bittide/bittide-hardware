@@ -17,6 +17,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
+import Clash.Functor.Extra ((<<$>>))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
@@ -348,11 +349,20 @@ driver testName targets = do
           | n <- [0 .. natToNum @(LinkCount - 1)]
           ]
 
-        readUgnMmio :: Integer -> IO (Unsigned 64, Unsigned 64)
+        readUgnMmio :: Integer -> IO (Unsigned 64, Unsigned 64, Signed 8)
         readUgnMmio addr = Gdb.readLe gdb addr
 
+        -- Adjust the local counter for the frames added/removed from the elastic
+        -- buffer after capturing the UGN. Leaves the remote counter untouched.
+        adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 8) -> (Unsigned 64, Unsigned 64)
+        adjustLocalCounter (localCounter, remoteCounter, delta) =
+          (addSigned localCounter delta, remoteCounter)
+         where
+          addSigned :: Unsigned 64 -> Signed 8 -> Unsigned 64
+          addSigned u s = if s < 0 then u - fromIntegral (negate s) else u + fromIntegral s
+
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      mapM readUgnMmio mmioAddrs
+      adjustLocalCounter <<$>> mapM readUgnMmio mmioAddrs
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
