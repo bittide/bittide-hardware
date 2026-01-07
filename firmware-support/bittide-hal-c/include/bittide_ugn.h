@@ -456,10 +456,12 @@ static inline void invalidate_port(UgnContext *ctx, Timer timer, Event *event) {
   if (port >= ctx->num_ports)
     return;
 
-  uint64_t zeros[6] = {0, 0, 0, 0, 0, 0};
+  // Corrupt only the first 32-bit word
+  uint32_t corrupt_value = 0xDEADBEEF;
 
   timer_wait_until_cycles(timer, event->event_time);
-  gather_unit_write_slice_wrapping(*gather_unit, zeros, offset, 6);
+  memcpy_volatile((gather_unit->base + 0) + (offset * sizeof(uint64_t)),
+                  &corrupt_value, sizeof(uint32_t));
   CompareResult cmp_result = timer_compare_cycles(timer, deadline);
 
   if (cmp_result == COMPARE_LESS) {
