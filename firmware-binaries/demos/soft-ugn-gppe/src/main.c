@@ -23,19 +23,19 @@
 
 ScatterUnit su;
 // Number of event loop iterations
-#define NUM_PERIODS 1000
+#define NUM_PERIODS 10000
 #define NUM_PORTS 7
 
 // Protocol timing parameter
-#define BUFFER_SIZE 4000
+#define BUFFER_SIZE 1000
 
 // SEND timing parameters
-#define SEND_SPACING (2 * BUFFER_SIZE) // Spacing between SEND events
+#define SEND_SPACING (10 * BUFFER_SIZE) // Spacing between SEND events
 #define SEND_PERIOD (SEND_SPACING * NUM_PORTS)
 #define FINAL_SEND_DELAY (2 * SEND_PERIOD + BUFFER_SIZE)
 
 // RECEIVE timing parameters
-#define RECEIVE_SPACING BUFFER_SIZE // Spacing between RECEIVE events
+#define RECEIVE_SPACING (9 * BUFFER_SIZE) // Spacing between RECEIVE events
 #define RECEIVE_PERIOD (RECEIVE_SPACING * (2 * NUM_PORTS + 1))
 
 // INVALIDATE timing parameters

@@ -89,7 +89,7 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
 
     // Clear rest of buffer
     uint64_t empty_msg = (uint64_t)(RINGBUFFER_ALIGN_EMPTY);
-    for (int16_t i = 1; i < 4000; i++) {
+    for (int16_t i = 1; i < 1000; i++) {
       gather_unit_set_gather_memory_unchecked(gather, i,
                                               (uint8_t const *)&empty_msg);
     }
@@ -117,7 +117,7 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
       // Use the scan function to search for alignment messages
       int16_t found_offset;
       enum RingbufferAlignState found_state;
-      if (ringbuffer_find_alignment(scatter, 4000, &found_offset,
+      if (ringbuffer_find_alignment(scatter, 1000, &found_offset,
                                     &found_state)) {
         // Found message
         if (found_state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {

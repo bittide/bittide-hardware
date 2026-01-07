@@ -17,9 +17,9 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 use riscv_rt::entry;
 
 /// Initialize scatter and gather calendars with incrementing counter entries.
-/// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
+/// Each calendar entry has a duration of 0 (no repeat), with 1000 entries total.
 fn initialize_calendars(uart: &mut Uart) {
-    const NUM_ENTRIES: usize = 4000;
+    const NUM_ENTRIES: usize = 1000;
 
     // Initialize all scatter calendars
     let calendars = [

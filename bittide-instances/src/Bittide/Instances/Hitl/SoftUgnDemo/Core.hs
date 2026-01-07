@@ -207,11 +207,11 @@ gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Output
   idC -< (linksOut, uart)
  where
-  scatterConfig = ScatterConfig (SNat @4000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig (SNat @4000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  maxCalDepth = SNat @4096
+  scatterConfig = ScatterConfig (SNat @1000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  gatherConfig = GatherConfig (SNat @1000) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  maxCalDepth = SNat @1024
   repetitionBits = d16
-  sgCal = ValidEntry 0 3999 :> Nil
+  sgCal = ValidEntry 0 999 :> Nil
 
 core ::
   ( ?busByteOrder :: ByteOrder
