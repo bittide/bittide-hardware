@@ -182,16 +182,16 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
 
   uart_puts(uart, "Phase 2 complete! All ports acknowledged.\n");
 
-  // Clear address 0 in all gather buffers
-  uint64_t empty_msg = encode_alignment_state(RINGBUFFER_ALIGN_EMPTY);
-  for (int32_t port = 0; port < NUM_PORTS; port++) {
-    GatherUnit gather = ugn_ctx->gather_units[port];
-    gather_unit_set_gather_memory_unchecked(gather, 0,
-                                            (uint8_t const *)&empty_msg);
-  }
-  for (int32_t port = 0; port < NUM_PORTS; port++) {
-    gather_unit_clear(ugn_ctx->gather_units[port]);
-  }
+  // // Clear address 0 in all gather buffers
+  // uint64_t empty_msg = encode_alignment_state(RINGBUFFER_ALIGN_EMPTY);
+  // for (int32_t port = 0; port < NUM_PORTS; port++) {
+  //   GatherUnit gather = ugn_ctx->gather_units[port];
+  //   gather_unit_set_gather_memory_unchecked(gather, 0,
+  //                                           (uint8_t const *)&empty_msg);
+  // }
+  // for (int32_t port = 0; port < NUM_PORTS; port++) {
+  //   gather_unit_clear(ugn_ctx->gather_units[port]);
+  // }
   PRINT_ALIGN_COMPLETE(uart, incoming_offsets, NUM_PORTS);
 }
 
