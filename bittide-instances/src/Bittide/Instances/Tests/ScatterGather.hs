@@ -101,5 +101,5 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
         }
 {-# OPAQUE dutWithBinary #-}
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (300 * 1024) 4
+type DMemWords = DivRU (256 * 1024) 4
