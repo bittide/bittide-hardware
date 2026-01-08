@@ -352,17 +352,13 @@ driver testName targets = do
         readUgnMmio :: Integer -> IO (Unsigned 64, Unsigned 64, Signed 8)
         readUgnMmio addr = Gdb.readLe gdb addr
 
-        -- Adjust the local counter for the frames added/removed from the elastic
-        -- buffer after capturing the UGN. Leaves the remote counter untouched.
-        adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 8) -> (Unsigned 64, Unsigned 64)
-        adjustLocalCounter (localCounter, remoteCounter, delta) =
-          (addSigned localCounter delta, remoteCounter)
-         where
-          addSigned :: Unsigned 64 -> Signed 8 -> Unsigned 64
-          addSigned u s = if s < 0 then u - fromIntegral (negate s) else u + fromIntegral s
+        -- Ignore the elastic buffer delta, instead of adding it to the local counter.
+        ignoreElasticBufferDelta ::
+          (Unsigned 64, Unsigned 64, Signed 8) -> (Unsigned 64, Unsigned 64)
+        ignoreElasticBufferDelta (lc, rc, _delta) = (lc, rc)
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      adjustLocalCounter <<$>> mapM readUgnMmio mmioAddrs
+      ignoreElasticBufferDelta <<$>> mapM readUgnMmio mmioAddrs
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
