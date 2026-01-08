@@ -29,13 +29,14 @@ accomplished through the firmware on the GPPE.
 3. Management unit CPU
     1. Gets programmed by the host
     2. Centers elastic buffers
-    3. Sets the channels to "user" mode. This makes the channels accept data from the outside world instead of their negotiation state machinery.
-    4. Prints UGNs captured by hardware component to UART.
+    3. Initializes the [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md).
+    4. Sets the channels to "user" mode. This makes the channels accept data from the outside world instead of their negotiation state machinery.
+    5. Prints UGNs captured by hardware component to UART.
 4. General purpose procesisng element (PE)
     1. Gets programmed by the host
-    2. Prints "Hello!" message over UART
-    3. Calls the "c_main"
-    4. Prints "Hello from C!" over UART
+    2. Waits for the management unit to initialize the calendars
+    3. Calls the "c_main" and runs the software UGN discovery protocol
+    4. Prints the discovered UGNs over UART
 
 ### Domain related
 Components:
@@ -50,7 +51,7 @@ Components:
 Components:
 - Management unit (MU)
 - 1x general purpose processing element (PE)
-- 7 scatter and gather units, one of each per elastic buffer
+- 7 [scatter](../components/scatter-unit.md) and [gather](../components/gather-unit.md) units, one of each per elastic buffer
 
 ### Management unit
 Connected components:
@@ -58,8 +59,10 @@ Connected components:
 - UART (for debugging)
 - FPGA DNA register
 
-The management unit has access to and is responsible for all scatter/gather calendars in
-the node.
+The management unit has access to and is responsible for all [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md) in
+the node. In this demo, it programs the calendars with increasing values (0, 1, 2, ...),
+effectively creating a transparent link for the GPPE to access the scatter/gather units directly.
+It also centers the elastic buffers to ensure stable communication.
 
 To change the binary run on this CPU, one may either:
 - Edit `bittide-instances/src/bittide/Instances/Hitl/SoftUgnDemo/Driver.hs`, line 215 (at
@@ -69,13 +72,13 @@ To change the binary run on this CPU, one may either:
 
 ### General purpose processing element
 This component is labeled as "PE" in the diagram above. Connected components:
-- 7 scatter and gather units, one of each per elastic buffer
+- 7 [scatter](../components/scatter-unit.md) and [gather](../components/gather-unit.md) units, one of each per elastic buffer
 - UART (for debugging)
 - Timer
 - FPGA DNA register
 
-The general purpose processing element has no functionality other than printing "Hello
-from C!" over UART.
+The general purpose processing element runs the `soft-ugn-gppe` firmware, which implements a distributed protocol to discover the Uninterpretable Garbage Numbers (UGNs) of the network links. For a detailed description of the procedure, see [Software UGN Discovery Procedure](soft-ugn-procedure.md). It uses the scatter/gather units (enabled by the MU) to exchange timestamped messages with neighbors,
+calculating the propagation delays in software.
 
 ### Debugging related
 - UART arbiter
@@ -96,9 +99,7 @@ One may specifically run the software UGN demo test by making a
 At the time of writing, the clock control CPU stabilizes system. The driver running
 on the host (`bittide-instances/src/bittide/Instances/Hitl/SoftUgnDemo/Driver.hs`)
 then releases the reset of the management unit CPU. In turn, this CPU will center
-the elastic buffers and print out the UGNs captured using the hardware UGN capture
-component over UART. Finally, the general purpose processing element has its
-reset deasserted. It simply prints "Hello from C!".
+the elastic buffers, initialize the scatter/gather calendars, and print out the UGNs captured using the hardware UGN capture component over UART. Finally, the general purpose processing element is started. It executes the software UGN discovery protocol and prints the results over UART. The host driver then compares the hardware-captured UGNs with the software-discovered UGNs to verify correctness.
 
 Tests are configured to run the following binaries on the system's CPUs:
 - Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
