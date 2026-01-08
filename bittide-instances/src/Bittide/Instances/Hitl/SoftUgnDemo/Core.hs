@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-module Bittide.Instances.Hitl.SoftUgnDemo.Core (core) where
+module Bittide.Instances.Hitl.SoftUgnDemo.Core (core, ExtraPipeliningRx, ExtraPipeliningTx) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -15,6 +15,7 @@ import Bittide.DoubleBufferedRam (InitialContent (Undefined), wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (LinkCount)
+import Bittide.Instances.Hitl.Utils.Protocols (delayLinks)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
@@ -37,6 +38,18 @@ import VexRiscv (DumpVcd (..), Jtag)
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
+
+type ExtraPipeliningRx = 2
+type ExtraPipeliningTx = 2
+
+rxDelay
+  , txDelay ::
+    forall dom a m.
+    (KnownDomain dom, NFDataX a, KnownNat m) =>
+    Clock dom ->
+    Circuit (Vec m (CSignal dom a)) (Vec m (CSignal dom a))
+rxDelay clk = delayLinks (SNat @ExtraPipeliningRx) (repeat clk)
+txDelay clk = delayLinks (SNat @ExtraPipeliningTx) (repeat clk)
 
 type FifoSize = 5 -- = 2^5 = 32
 
@@ -224,7 +237,7 @@ core ::
         ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
@@ -238,7 +251,8 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     -- Stop management unit
 
     -- Start internal links
-    (_relDatCount, _underflow, _overflow, _ebStables, Fwd rxs1) <-
+    Fwd rxs1 <- delayLinks d1 rxClocks -< rxs0 -- alleviate timing, included in hw UGN
+    (_relDatCount, _underflow, _overflow, _ebStables, rxs2) <-
       unzip5Vec
         <| ( Vec.vecCircuits
               $ xilinxElasticBufferWb
@@ -246,17 +260,18 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 bitRst
                 (SNat @FifoSize)
               <$> rxClocks
-              <*> rxs0
+              <*> rxs1
            )
         -< ebWbs
-
-    Fwd rxs2 <-
-      withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+    Fwd rxs3 <- delayLinks d1 (repeat bitClk) -< rxs2 -- alleviate timing, included in hw UGN
+    rxs4 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs3) -< ugnWbs
+    Fwd rxs5 <- rxDelay bitClk -< rxs4 -- alleviate timing, not included in hw UGN
     -- Stop internal links
 
     -- Start general purpose processing element
-    (txs, gppeUartBytesBittide) <-
-      withBittideClockResetEnable gppe maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
+    (txs0, gppeUartBytesBittide) <-
+      withBittideClockResetEnable gppe maybeDna rxs5 -< (gppeMm, muSgWbs, gppeJtag)
+    txs1 <- txDelay bitClk -< txs0 -- alleviate timing, not included in hw UGN
     -- Stop general purpose processing element
 
     -- Start Clock control
@@ -311,7 +326,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     idC
       -< ( Fwd swCcOut1
          , Fwd lc
-         , txs
+         , txs1
          , sync
          , muUartBytesBittide
          , ccUartBytesBittide

@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-module Bittide.Instances.Hitl.SwitchDemo.Core (core) where
+module Bittide.Instances.Hitl.SwitchDemo.Core (core, ExtraPipeliningRx, ExtraPipeliningTx) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -15,6 +15,7 @@ import Bittide.DoubleBufferedRam (InitialContent (Undefined), wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
+import Bittide.Instances.Hitl.Utils.Protocols (delayLinks)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
@@ -39,6 +40,27 @@ import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
 type FifoSize = 5 -- = 2^5 = 32
+
+type ExtraPipeliningRxPreSwitch = 1
+type ExtraPipeliningRxPostSwitch = 1
+type ExtraPipeliningRx = ExtraPipeliningRxPreSwitch + ExtraPipeliningRxPostSwitch
+
+type ExtraPipeliningTxPreSwitch = 1
+type ExtraPipeliningTxPostSwitch = 1
+type ExtraPipeliningTx = ExtraPipeliningTxPreSwitch + ExtraPipeliningTxPostSwitch
+
+rxDelayPre
+  , rxDelayPost
+  , txDelayPre
+  , txDelayPost ::
+    forall dom a m.
+    (KnownDomain dom, NFDataX a, KnownNat m) =>
+    Clock dom ->
+    Circuit (Vec m (CSignal dom a)) (Vec m (CSignal dom a))
+rxDelayPre clk = delayLinks (SNat @ExtraPipeliningRxPreSwitch) (repeat clk)
+rxDelayPost clk = delayLinks (SNat @ExtraPipeliningRxPostSwitch) (repeat clk)
+txDelayPre clk = delayLinks (SNat @ExtraPipeliningTxPreSwitch) (repeat clk)
+txDelayPost clk = delayLinks (SNat @ExtraPipeliningTxPostSwitch) (repeat clk)
 
 {- Internal busses:
     - Instruction memory
@@ -185,7 +207,7 @@ core ::
         ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, rxs0) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
@@ -204,7 +226,8 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     -- Stop management unit
 
     -- Start internal links
-    (_relDatCount, _underflow, _overflow, _ebStables, Fwd rxs1) <-
+    Fwd rxs1 <- delayLinks d1 rxClocks -< rxs0 -- alleviate timing, included in hw UGN
+    (_relDatCount, _underflow, _overflow, _ebStables, rxs2) <-
       unzip5Vec
         <| ( Vec.vecCircuits
               $ xilinxElasticBufferWb
@@ -212,24 +235,34 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 bitRst
                 (SNat @FifoSize)
               <$> rxClocks
-              <*> rxs0
+              <*> rxs1
            )
         -< ebWbs
 
-    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+    Fwd rxs3 <- delayLinks d1 (repeat bitClk) -< rxs2 -- alleviate timing, included in hw UGN
+    rxs4 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs3) -< ugnWbs
 
-    rxs3 <- Vec.append -< ([Fwd peOut], rxs2)
+    -- alleviate timing, not included in hw UGN
+    switchInRx <- rxDelayPre bitClk -< rxs4
+    switchInTx <- txDelayPre bitClk -< [peOut]
+    switchIn <- Vec.append -< (switchInRx, switchInTx)
+
     (switchOut, _calEntry) <-
-      withBittideClockResetEnable $ switchC calendarConfig -< (switchWbMM, (rxs3, switchWb))
-    ([Fwd peIn], txs) <- Vec.split -< switchOut
+      withBittideClockResetEnable $ switchC calendarConfig -< (switchWbMM, (switchIn, switchWb))
+    (switchOutRx, switchOutTx) <- Vec.split -< switchOut
+
+    -- alleviate timing, not included in hw UGN
+    txs <- txDelayPost bitClk -< switchOutTx
+    [Fwd peIn] <- rxDelayPost bitClk -< switchOutRx
     -- Stop internal links
 
     -- Start ASIC processing element
     -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
     --      use it until the DNA is actually read out.
-    (Fwd peOut, _peState) <-
+    (peOut, _peState) <-
       withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount))
         -< (peWbMM, (Fwd lc, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
+
     -- Stop ASIC processing element
 
     -- Start clock control

@@ -207,6 +207,7 @@ library
     Bittide.Instances.Hitl.Utils.OpenOcd
     Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
+    Bittide.Instances.Hitl.Utils.Protocols
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.MemoryMaps
