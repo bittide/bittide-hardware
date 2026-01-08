@@ -207,6 +207,7 @@ library
     Bittide.Instances.Hitl.Utils.OpenOcd
     Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
+    Bittide.Instances.Hitl.Utils.Ugn
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.MemoryMaps
@@ -268,6 +269,7 @@ library
     matplotlib,
     monad-control,
     network-simple,
+    parsec,
     pretty-show,
     process,
     streaming-bytestring,
@@ -333,6 +335,7 @@ test-suite unittests
     clash-prelude-hedgehog >=1.6 && <1.10,
     clash-protocols-memmap,
     clash-vexriscv,
+    directory,
     extra,
     filepath,
     ghc-typelits-extra-lemmas,

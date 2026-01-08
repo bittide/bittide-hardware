@@ -80,7 +80,7 @@ dut = withBittideByteOrder
     ToConst.toBwd todoMM -< mmIdleB
 
     timeBus1 <- watchDogWb @_ @_ @4 "" d0 -< timeBus0
-    _localCounter <- timeWb -< (mmTime, timeBus1)
+    _localCounter <- timeWb Nothing -< (mmTime, timeBus1)
     (uartTx, _uartStatus) <-
       (uartInterfaceWb @_ @_ @4) d2 d2 uartBytes -< (uartBus, uartRx)
     idC -< uartTx

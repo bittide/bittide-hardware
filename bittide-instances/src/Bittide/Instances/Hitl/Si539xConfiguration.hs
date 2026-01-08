@@ -130,7 +130,8 @@ dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, jtag) -> do
     withClockResetEnable freeClk freeRst enableGen
       $ si539xSpiWb (SNat @(Microseconds 10))
       -< siBus
-  Fwd _localCounter <- withClockResetEnable freeClk freeRst enableGen timeWb -< timeBus
+  Fwd _localCounter <-
+    withClockResetEnable freeClk freeRst enableGen (timeWb Nothing) -< timeBus
   (uartOut, _uartStatus) <-
     withClockResetEnable freeClk freeRst enableGen
       $ uartInterfaceWb d16 d16 uartBytes

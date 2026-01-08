@@ -720,10 +720,11 @@ timeWb ::
   , KnownNat addrW
   , 1 <= DomainPeriod dom
   ) =>
+  Maybe (Signal dom (Unsigned 64)) ->
   Circuit
     (BitboneMm dom addrW)
     (CSignal dom (Unsigned 64))
-timeWb = circuit $ \mmWb -> do
+timeWb externalCounter = circuit $ \mmWb -> do
   [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- Mm.deviceWb "Timer" -< mmWb
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdMeta, cmdWb1)
@@ -745,7 +746,7 @@ timeWb = circuit $ \mmWb -> do
   -- Independent declarations
   freq = natToNum @(DomainToHz dom) :: Unsigned 64
   noWrite = pure Nothing
-  count = register 0 (count + 1)
+  count = fromMaybe (register 0 (count + 1)) externalCounter
 
   -- Register configurations
   cmdCfg =

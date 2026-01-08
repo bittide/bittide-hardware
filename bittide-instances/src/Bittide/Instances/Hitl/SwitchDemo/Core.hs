@@ -90,7 +90,7 @@ managementUnit maybeDna =
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    localCounter <- timeWb -< timeBus
+    localCounter <- timeWb Nothing -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus

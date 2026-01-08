@@ -307,7 +307,7 @@ managementUnitC (ManagementConfig{scatterConfig, gatherConfig, peConfig, dumpVcd
       ) <-
       Vec.split -< peWbs
 
-    localCounter <- timeWb -< timeMMWb
+    localCounter <- timeWb Nothing -< timeMMWb
 
     withNamesSG "ScatterUnitMu" "ScatterCalMu" (scatterUnitWbC scatterConfig linkIn)
       -< ((myScatterMM, myScatterWb), myScatterCalMMWb)

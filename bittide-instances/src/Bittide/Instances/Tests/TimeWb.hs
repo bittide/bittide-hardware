@@ -46,7 +46,7 @@ dutCpu = withBittideByteOrder $ circuit $ \mm -> do
   [uartBus, (mmTime, timeBus)] <-
     processingElement NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-  _localCounter <- timeWb -< (mmTime, timeBus)
+  _localCounter <- timeWb Nothing -< (mmTime, timeBus)
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
