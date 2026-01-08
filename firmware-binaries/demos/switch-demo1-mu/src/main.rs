@@ -18,13 +18,22 @@ pub enum UgnCaptureState {
     WaitForChannelNegotiation,
     SwitchUserMode,
     WaitForUgnCapture,
+    WaitForStability,
     Done,
 }
 
-#[derive(Debug, Copy, Clone)]
+impl UgnCaptureState {
+    pub fn as_index(&self) -> usize {
+        *self as usize
+    }
+}
+
+#[derive(Copy, Clone)]
 pub struct LinkStartup {
     pub state: UgnCaptureState,
     pub eb_delta: i8,
+
+    pub statistics: [u8; 4],
 }
 
 impl LinkStartup {
@@ -33,6 +42,7 @@ impl LinkStartup {
         Self {
             state: UgnCaptureState::WaitForChannelNegotiation,
             eb_delta: 0,
+            statistics: [0; 4],
         }
     }
 
@@ -50,7 +60,9 @@ impl LinkStartup {
         channel: usize,
         elastic_buffer: &ElasticBuffer,
         captured_ugn: bool,
+        all_stable: bool,
     ) {
+        self.statistics[self.state.as_index()] += 1;
         self.state = match self.state {
             UgnCaptureState::WaitForChannelNegotiation => {
                 if transceivers.handshakes_done(channel).unwrap_or(false) {
@@ -58,7 +70,7 @@ impl LinkStartup {
                     uwriteln!(uart, "{:?}", transceivers.statistics(channel)).unwrap();
                     UgnCaptureState::SwitchUserMode
                 } else {
-                    UgnCaptureState::WaitForChannelNegotiation
+                    self.state
                 }
             }
             UgnCaptureState::SwitchUserMode => {
@@ -77,21 +89,37 @@ impl LinkStartup {
             UgnCaptureState::WaitForUgnCapture => {
                 if captured_ugn {
                     uwriteln!(uart, "Captured UGN for channel {}", channel).unwrap();
-                    UgnCaptureState::Done
+                    UgnCaptureState::WaitForStability
                 } else {
-                    UgnCaptureState::WaitForUgnCapture
+                    self.state
                 }
             }
-            UgnCaptureState::Done => {
+            UgnCaptureState::WaitForStability => {
                 // Continously center the elastic buffer to avoid over/under-flows.
                 self.center_eb(elastic_buffer);
-                UgnCaptureState::Done
+                if all_stable {
+                    elastic_buffer.set_stable(true);
+                    UgnCaptureState::Done
+                } else {
+                    self.state
+                }
             }
+            UgnCaptureState::Done => self.state,
         };
     }
 
     pub fn is_done(&self) -> bool {
         self.state == UgnCaptureState::Done
+    }
+
+    pub fn print_statistics(&self, uart: &mut Uart, channel: usize) {
+        uwriteln!(
+            uart,
+            "Channel {} startup statistics: {:?}",
+            channel,
+            self.statistics,
+        )
+        .unwrap();
     }
 }
 
@@ -107,6 +135,7 @@ use riscv_rt::entry;
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
+    let timer = INSTANCES.timer;
     let transceivers = &INSTANCES.transceivers;
     let cc = INSTANCES.clock_control;
     let elastic_buffers = [
@@ -128,8 +157,19 @@ fn main() -> ! {
         INSTANCES.capture_ugn_6,
     ];
 
+    let start = timer.now();
+
     let mut link_startups = [LinkStartup::new(); 7];
     while !link_startups.iter().all(|ls| ls.is_done()) {
+        // We don't update the stability here, but leave that to callisto. Although
+        // we also have access to the 'links_settled' register, we don't want to
+        // flood the CC bus.
+        let stability = Stability {
+            stable: cc.links_stable()[0],
+            settled: 0,
+        };
+        let all_stable = stability.all_stable();
+
         for (i, link_startup) in link_startups.iter_mut().enumerate() {
             link_startup.next(
                 &mut uart,
@@ -137,27 +177,14 @@ fn main() -> ! {
                 i,
                 elastic_buffers[i],
                 capture_ugns[i].has_captured(),
+                all_stable,
             );
         }
     }
-
-    // Wait until clock control is finished and all links are stable
-    loop {
-        // We don't update the stability here, but leave that to callisto. Although
-        // we also have access to the 'links_settled' register, we don't want to
-        // flood the CC bus.
-        let stable = cc.links_stable();
-        let stability = Stability {
-            stable: stable[0],
-            settled: 0,
-        };
-        if stability.all_stable() {
-            uwriteln!(uart, "All links stable").unwrap();
-            for eb in elastic_buffers.iter() {
-                eb.set_stable(true);
-            }
-            break;
-        }
+    let duration = timer.now() - start;
+    uwriteln!(uart, "Link startups completed in {}", duration).unwrap();
+    for (i, link_startup) in link_startups.iter().enumerate() {
+        link_startup.print_statistics(&mut uart, i);
     }
 
     let eb_deltas = link_startups.iter().map(|ls| ls.eb_delta);
