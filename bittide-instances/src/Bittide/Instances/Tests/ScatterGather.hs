@@ -84,12 +84,12 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
       PeConfig
         { cpu = vexRiscv0
         , initI =
-            Reloadable @IMemWords
+            NonReloadable @IMemWords
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
         , initD =
-            Reloadable @DMemWords
+            NonReloadable @DMemWords
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
