@@ -36,7 +36,7 @@ features = ["max_level_trace", "release_max_level_info"]
 [dependencies.smoltcp]
 version = "0.12.0"
 default-features = false
-features = ["medium-ethernet", "proto-ipv4", "socket-tcp", "socket-dhcpv4"]
+features = ["medium-ip", "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-dhcpv4"]
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
