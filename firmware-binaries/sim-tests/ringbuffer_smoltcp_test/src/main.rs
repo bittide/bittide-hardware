@@ -122,103 +122,91 @@ fn main() -> ! {
         .unwrap();
     writeln!(uart, "  Connection initiated").ok();
 
-    // Step 7: Poll until connection established
-    writeln!(uart, "Step 7: Waiting for connection...").ok();
+    // Main event loop
+    writeln!(uart, "Step 7: Running main event loop...").ok();
+    let test_data = b"Hello from smoltcp!";
+    let mut received_data = [0u8; 64];
+    let mut received_len = 0;
+    let mut data_sent = false;
     let mut connection_established = false;
-    for _ in 0..100 {
+
+    for _ in 0..200 {
         let timestamp = to_smoltcp_instant(timer.now());
         iface.poll(timestamp, &mut device, &mut sockets);
 
+        // Check if connection is established
         let client = sockets.get::<tcp::Socket>(client_handle);
         if client.is_active() && !connection_established {
             writeln!(uart, "  Connection established!").ok();
             connection_established = true;
-            break;
         }
-    }
 
-    if !connection_established {
-        writeln!(uart, "  FAILURE: Connection timeout!").ok();
-        loop {
-            unsafe { riscv::asm::wfi() };
-        }
-    }
-
-    // Step 8: Send data from client
-    writeln!(uart, "Step 8: Sending test data...").ok();
-    let test_data = b"Hello from smoltcp!";
-    for _ in 0..50 {
-        let timestamp = to_smoltcp_instant(timer.now());
-        iface.poll(timestamp, &mut device, &mut sockets);
-
-        let client = sockets.get_mut::<tcp::Socket>(client_handle);
-        if client.can_send() {
-            match client.send_slice(test_data) {
-                Ok(sent) => {
+        // Send data from client
+        if client.is_active() && !data_sent {
+            let client = sockets.get_mut::<tcp::Socket>(client_handle);
+            if client.can_send() {
+                if let Ok(sent) = client.send_slice(test_data) {
                     writeln!(uart, "  Sent {} bytes", sent).ok();
-                    break;
+                    data_sent = true;
                 }
-                Err(_) => continue,
             }
         }
-    }
 
-    // Step 9: Receive data on server
-    writeln!(uart, "Step 9: Receiving data on server...").ok();
-    let mut received_data = [0u8; 64];
-    let mut received_len = 0;
-
-    for _ in 0..50 {
-        let timestamp = to_smoltcp_instant(timer.now());
-        iface.poll(timestamp, &mut device, &mut sockets);
-
-        let server = sockets.get_mut::<tcp::Socket>(server_handle);
-        if server.can_recv() {
-            match server.recv_slice(&mut received_data) {
-                Ok(len) => {
+        // Receive data on server
+        if data_sent && received_len == 0 {
+            let server = sockets.get_mut::<tcp::Socket>(server_handle);
+            if server.can_recv() {
+                if let Ok(len) = server.recv_slice(&mut received_data) {
                     received_len = len;
                     writeln!(uart, "  Received {} bytes", len).ok();
                     break;
                 }
-                Err(_) => continue,
             }
         }
     }
 
-    // Step 10: Verify data
-    writeln!(uart, "Step 10: Verifying data...").ok();
-    let received_slice = &received_data[..received_len];
+    // Verify results
+    writeln!(uart, "Step 8: Verifying results...").ok();
 
-    if received_len == test_data.len() && received_slice == test_data {
-        writeln!(uart, "  SUCCESS: Data matches!").ok();
-        writeln!(
-            uart,
-            "  Sent:     {:?}",
-            core::str::from_utf8(test_data).unwrap()
-        )
-        .ok();
-        writeln!(
-            uart,
-            "  Received: {:?}",
-            core::str::from_utf8(received_slice).unwrap()
-        )
-        .ok();
+    if !connection_established {
+        writeln!(uart, "  FAILURE: Connection timeout!").ok();
+    } else if !data_sent {
+        writeln!(uart, "  FAILURE: Failed to send data!").ok();
+    } else if received_len == 0 {
+        writeln!(uart, "  FAILURE: Failed to receive data!").ok();
     } else {
-        writeln!(uart, "  FAILURE: Data mismatch!").ok();
-        writeln!(
-            uart,
-            "  Expected {} bytes: {:?}",
-            test_data.len(),
-            test_data
-        )
-        .ok();
-        writeln!(uart, "  Got {} bytes: {:?}", received_len, received_slice).ok();
+        let received_slice = &received_data[..received_len];
+        if received_len == test_data.len() && received_slice == test_data {
+            writeln!(uart, "  SUCCESS: Data matches!").ok();
+            writeln!(
+                uart,
+                "  Sent:     {:?}",
+                core::str::from_utf8(test_data).unwrap()
+            )
+            .ok();
+            writeln!(
+                uart,
+                "  Received: {:?}",
+                core::str::from_utf8(received_slice).unwrap()
+            )
+            .ok();
+        } else {
+            writeln!(uart, "  FAILURE: Data mismatch!").ok();
+            writeln!(
+                uart,
+                "  Expected {} bytes: {:?}",
+                test_data.len(),
+                test_data
+            )
+            .ok();
+            writeln!(uart, "  Got {} bytes: {:?}", received_len, received_slice).ok();
+        }
     }
 
     writeln!(uart, "\n=== Test Complete ===").ok();
 
     loop {
-        unsafe { riscv::asm::wfi() };
+        continue;
     }
 }
 
@@ -227,7 +215,5 @@ fn main() -> ! {
 fn panic(info: &core::panic::PanicInfo) -> ! {
     let mut uart = INSTANCES.uart;
     writeln!(uart, "PANIC: {}", info).ok();
-    loop {
-        unsafe { riscv::asm::wfi() };
-    }
+    loop {}
 }
