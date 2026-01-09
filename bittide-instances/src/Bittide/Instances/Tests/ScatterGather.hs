@@ -58,7 +58,7 @@ dutMM =
 
 -- | Parameterized DUT that loads a specific firmware binary.
 dutWithBinary ::
-  (HasCallStack, HiddenClockResetEnable dom) =>
+  (HasCallStack, HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
   String ->
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
 dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
@@ -68,11 +68,13 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
     , wbGu
     , wbSuCal
     , wbGuCal
+    , timeBus
     ] <-
     processingElement NoDumpVcd (peConfig binaryName) -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   Fwd link <- gatherUnitWbC gatherConfig -< (wbGu, wbGuCal)
   scatterUnitWbC scatterConfig link -< (wbSu, wbSuCal)
+  _cnt <- timeWb -< timeBus
   idC -< uartTx
  where
   peConfig binary = unsafePerformIO $ do
