@@ -21,6 +21,7 @@ log = "0.4.21"
 ufmt = "0.2.0"
 bittide-hal = { path = "../bittide-hal" }
 itertools = { version = "0.14.0", default-features = false }
+crc = { version = "3.0", default-features = false }
 
 [dependencies.heapless]
 version = "0.8"
@@ -34,7 +35,7 @@ default-features = false
 [dependencies.smoltcp]
 version = "0.12.0"
 default-features = false
-features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"]
+features = ["log", "medium-ip", "medium-ethernet", "proto-ipv4", "socket-tcp"]
 
 [dev-dependencies]
 proptest = "1.0"
