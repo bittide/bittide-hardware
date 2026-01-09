@@ -74,7 +74,7 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   Fwd link <- gatherUnitWbC gatherConfig -< (wbGu, wbGuCal)
   scatterUnitWbC scatterConfig link -< (wbSu, wbSuCal)
-  _cnt <- timeWb -< timeBus
+  _cnt <- timeWb Nothing -< timeBus
   idC -< uartTx
  where
   peConfig binary = unsafePerformIO $ do

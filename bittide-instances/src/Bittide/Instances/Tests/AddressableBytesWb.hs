@@ -7,7 +7,7 @@ module Bittide.Instances.Tests.AddressableBytesWb where
 import Clash.Prelude
 
 -- Local
-import Bittide.Cpus.Riscv32 (riscv32Imc0)
+import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
   blockRamByteAddressableU,
@@ -130,7 +130,7 @@ dutWithBinary binaryName =
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> binary
     pure
       PeConfig
-        { cpu = riscv32Imc0
+        { cpu = vexRiscv0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI =

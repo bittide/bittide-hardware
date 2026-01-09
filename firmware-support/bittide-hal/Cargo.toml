@@ -19,7 +19,7 @@ ufmt = "0.2.0"
 git = "https://github.com/smoltcp-rs/smoltcp.git"
 rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03"
 default-features = false
-features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"]
+features = ["log", "medium-ip", "medium-ethernet", "proto-ipv4", "socket-tcp"]
 
 [dependencies.subst_macros]
 git = "https://github.com/QBayLogic/subst_macros.git"
