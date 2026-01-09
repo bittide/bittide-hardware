@@ -121,15 +121,11 @@ impl Device for RingbufferDevice {
         let mut header_buf: [[u8; 8]; 1] = [[0u8; 8]; 1];
         self.rx_buffer.read_slice(&mut header_buf, 0);
 
-        // Extract CRC, sequence number, and length from header
-        let _stored_crc = u32::from_le_bytes([
-            header_buf[0][0],
-            header_buf[0][1],
-            header_buf[0][2],
-            header_buf[0][3],
-        ]);
-        let seq_num = u16::from_le_bytes([header_buf[0][4], header_buf[0][5]]);
-        let packet_len = u16::from_le_bytes([header_buf[0][6], header_buf[0][7]]) as usize;
+        // Extract CRC, sequence number, and length from header using direct pointer reads
+        let header_ptr = header_buf[0].as_ptr();
+        let _stored_crc = unsafe { (header_ptr as *const u32).read_unaligned() };
+        let seq_num = unsafe { (header_ptr.add(4) as *const u16).read_unaligned() };
+        let packet_len = unsafe { (header_ptr.add(6) as *const u16).read_unaligned() } as usize;
 
         // Check if this is the same packet we saw before (based on sequence number)
         if seq_num == self.last_rx_seq {
@@ -151,29 +147,19 @@ impl Device for RingbufferDevice {
         // Calculate total packet size: header + payload
         let total_len = PACKET_HEADER_SIZE + packet_len;
         let num_words = total_len.div_ceil(8);
-        let mut buffer = [[0u8; 8]; ScatterUnit::SCATTER_MEMORY_LEN];
-        let words = &mut buffer[..num_words];
+
+        // Allocate aligned buffer for reading from ringbuffer
+        // Use a flat byte buffer and cast it to [[u8; 8]] for the API
+        let mut packet_buffer = [0u8; ScatterUnit::SCATTER_MEMORY_LEN * 8];
+
+        let word_slice = unsafe {
+            core::slice::from_raw_parts_mut(packet_buffer.as_mut_ptr() as *mut [u8; 8], num_words)
+        };
 
         // Copy entire packet from ringbuffer (header + payload)
-        self.rx_buffer.read_slice(words, 0);
+        self.rx_buffer.read_slice(word_slice, 0);
 
-        // Convert to contiguous byte buffer
-        let mut packet_buffer = [0u8; ScatterUnit::SCATTER_MEMORY_LEN * 8];
-        let mut idx = 0;
-        for word in words.iter() {
-            for &byte in word.iter() {
-                packet_buffer[idx] = byte;
-                idx += 1;
-                if idx >= total_len {
-                    break;
-                }
-            }
-            if idx >= total_len {
-                break;
-            }
-        }
-
-        // Validate CRC
+        // Validate CRC (packet_buffer is already in the right format)
         if !is_valid(&packet_buffer[..total_len]) {
             trace!("CRC validation failed for packet seq {}", seq_num);
             return None;
@@ -253,36 +239,33 @@ impl phy::TxToken for TxToken<'_> {
         // Prepare buffer: header + payload
         let mut buffer = [0u8; GatherUnit::GATHER_MEMORY_LEN * 8];
 
+        // Write header fields using direct pointer writes
         // Header format: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)
-        // Checksum added later
-        buffer[4..6].copy_from_slice(&(self.seq_num.to_le_bytes()));
-        buffer[6..8].copy_from_slice(&(len as u16).to_le_bytes());
+        let header_ptr = buffer.as_mut_ptr();
+        unsafe {
+            // Write sequence and length (CRC written later after payload)
+            (header_ptr.add(4) as *mut u16).write_unaligned(self.seq_num.to_le());
+            (header_ptr.add(6) as *mut u16).write_unaligned((len as u16).to_le());
+        }
 
         // Let smoltcp fill the packet data
         let result = f(&mut buffer[PACKET_HEADER_SIZE..PACKET_HEADER_SIZE + len]);
+
         // Calculate total length and seal packet with CRC in header
         let total_len = PACKET_HEADER_SIZE + len;
-
         let crc = CRC.checksum(&buffer[4..total_len]);
-        buffer[0..4].copy_from_slice(&(crc.to_le_bytes()));
-
-        // Convert to word array for ringbuffer
-        let num_words = total_len.div_ceil(8);
-        let max_words = GatherUnit::GATHER_MEMORY_LEN;
-        let mut word_buffer = [[0u8; 8]; GatherUnit::GATHER_MEMORY_LEN];
-
-        for (i, chunk) in buffer[..total_len].chunks(8).enumerate() {
-            if i >= max_words {
-                break;
-            }
-            for (j, &byte) in chunk.iter().enumerate() {
-                word_buffer[i][j] = byte;
-            }
+        unsafe {
+            (header_ptr as *mut u32).write_unaligned(crc.to_le());
         }
 
+        // Convert to word array for ringbuffer using pointer cast
+        let num_words = total_len.div_ceil(8);
+        // The buffer is correctly sized and alignment is maintained.
+        let word_slice =
+            unsafe { core::slice::from_raw_parts(buffer.as_ptr() as *const [u8; 8], num_words) };
+
         // Write to ringbuffer starting at offset 0
-        let words = &word_buffer[..num_words.min(max_words)];
-        self.tx_buffer.write_slice(words, 0);
+        self.tx_buffer.write_slice(word_slice, 0);
 
         trace!(
             "Transmitted packet: checksum {}, seq {}, total length {}",
