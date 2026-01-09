@@ -8,13 +8,13 @@
 use bittide_hal::manual_additions::aligned_ringbuffer::{
     find_alignment_offset, ReceiveRingbuffer, TransmitRingbuffer,
 };
+use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::scatter_gather_pe::DeviceInstances;
 use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
 use core::fmt::Write;
 use log::LevelFilter;
 use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
-use smoltcp::time::Instant as SmolInstant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 
 #[cfg(not(test))]
@@ -25,9 +25,14 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 const SERVER_PORT: u16 = 8080;
 const CLIENT_PORT: u16 = 49152;
 
+fn to_smoltcp_instant(instant: Instant) -> smoltcp::time::Instant {
+    smoltcp::time::Instant::from_micros(instant.micros() as i64)
+}
+
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
+    let timer = INSTANCES.timer;
 
     writeln!(uart, "\n=== Ringbuffer smoltcp Loopback Test ===").ok();
 
@@ -36,6 +41,7 @@ fn main() -> ! {
         use bittide_sys::uart::log::LOGGER;
         let logger = &mut (*LOGGER.get());
         logger.set_logger(uart.clone());
+        logger.set_timer(INSTANCES.timer);
         logger.display_source = LevelFilter::Debug;
         log::set_logger_racy(logger).ok();
         log::set_max_level_racy(LevelFilter::Trace);
@@ -67,7 +73,7 @@ fn main() -> ! {
     let mac_addr = EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
     let ip_addr = IpCidr::new(IpAddress::v4(127, 0, 0, 1), 8); // Loopback address
     let config = Config::new(mac_addr.into());
-    let now = SmolInstant::from_millis(0);
+    let now = to_smoltcp_instant(timer.now());
     let mut iface = Interface::new(config, &mut device, now);
     iface.update_ip_addrs(|addrs| {
         addrs.push(ip_addr).unwrap();
@@ -119,8 +125,8 @@ fn main() -> ! {
     // Step 7: Poll until connection established
     writeln!(uart, "Step 7: Waiting for connection...").ok();
     let mut connection_established = false;
-    for tick in 0..100 {
-        let timestamp = SmolInstant::from_millis(tick * 10);
+    for _ in 0..100 {
+        let timestamp = to_smoltcp_instant(timer.now());
         iface.poll(timestamp, &mut device, &mut sockets);
 
         let client = sockets.get::<tcp::Socket>(client_handle);
@@ -141,8 +147,8 @@ fn main() -> ! {
     // Step 8: Send data from client
     writeln!(uart, "Step 8: Sending test data...").ok();
     let test_data = b"Hello from smoltcp!";
-    for tick in 100..150 {
-        let timestamp = SmolInstant::from_millis(tick * 10);
+    for _ in 0..50 {
+        let timestamp = to_smoltcp_instant(timer.now());
         iface.poll(timestamp, &mut device, &mut sockets);
 
         let client = sockets.get_mut::<tcp::Socket>(client_handle);
@@ -162,8 +168,8 @@ fn main() -> ! {
     let mut received_data = [0u8; 64];
     let mut received_len = 0;
 
-    for tick in 150..200 {
-        let timestamp = SmolInstant::from_millis(tick * 10);
+    for _ in 0..50 {
+        let timestamp = to_smoltcp_instant(timer.now());
         iface.poll(timestamp, &mut device, &mut sockets);
 
         let server = sockets.get_mut::<tcp::Socket>(server_handle);
