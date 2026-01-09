@@ -15,7 +15,7 @@ use core::fmt::Write;
 use log::LevelFilter;
 use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
+use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -70,9 +70,9 @@ fn main() -> ! {
 
     // Step 3: Configure interface with static IP
     writeln!(uart, "Step 3: Configuring network interface...").ok();
-    let mac_addr = EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
+    let hw_addr = HardwareAddress::Ip;
     let ip_addr = IpCidr::new(IpAddress::v4(127, 0, 0, 1), 8); // Loopback address
-    let config = Config::new(mac_addr.into());
+    let config = Config::new(hw_addr);
     let now = to_smoltcp_instant(timer.now());
     let mut iface = Interface::new(config, &mut device, now);
     iface.update_ip_addrs(|addrs| {
