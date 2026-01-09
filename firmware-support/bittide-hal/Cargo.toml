@@ -13,6 +13,7 @@ edition = "2021"
 ufmt = "0.2.0"
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03", default-features = false, features = [
   "log",
+  "medium-ip",
   "medium-ethernet",
   "proto-ipv4",
   "socket-tcp",
