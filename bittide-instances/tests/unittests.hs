@@ -20,6 +20,7 @@ import qualified Df.WbToDf as WbToDf
 import qualified Tests.Bittide.Instances.Hitl.Utils.MemoryMap as MemoryMap
 import qualified Tests.Bittide.Instances.Hitl.Utils.OpenOcd as OpenOcd
 import qualified Tests.ClockControlWb as ClockControlWb
+import qualified Wishbone.AddressableBytesWb as AddressableBytesWb
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
@@ -68,7 +69,8 @@ tests =
         ]
     , testGroup
         "Unittests"
-        [ Axi.tests
+        [ AddressableBytesWb.tests
+        , Axi.tests
         , CaptureUgn.tests
         , ClockControlWb.tests
         , DnaPortE2.tests

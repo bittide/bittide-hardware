@@ -222,6 +222,7 @@ library
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
+    Bittide.Instances.Tests.AddressableBytesWb
     Bittide.Instances.Tests.ElasticBufferWb
     Bittide.Instances.Tests.NestedInterconnect
     Bittide.Instances.Tests.RegisterWb
@@ -313,6 +314,7 @@ test-suite unittests
     Tests.Bittide.Instances.Hitl.Utils.MemoryMap
     Tests.Bittide.Instances.Hitl.Utils.OpenOcd
     Tests.ClockControlWb
+    Wishbone.AddressableBytesWb
     Wishbone.Axi
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
