@@ -24,6 +24,7 @@ import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.NestedInterconnect as NestedInterconnect
 import qualified Wishbone.RegisterWb as RegisterWb
+import qualified Wishbone.Ringbuffer as Ringbuffer
 import qualified Wishbone.ScatterGather as ScatterGather
 import qualified Wishbone.SwitchCalendar as Wishbone.SwitchCalendar
 import qualified Wishbone.SwitchDemoProcessingElement as SwitchDemoProcessingElement
@@ -74,6 +75,7 @@ tests =
         , ElasticBufferWb.tests
         , NestedInterconnect.tests
         , OpenOcd.tests
+        , Ringbuffer.tests
         , ScatterGather.tests
         , SwitchDemoProcessingElement.tests
         , Time.tests

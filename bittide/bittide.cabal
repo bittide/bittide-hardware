@@ -220,6 +220,7 @@ library
     Bittide.ProcessingElement.ProgramStream
     Bittide.ProcessingElement.ReadElf
     Bittide.ProcessingElement.Util
+    Bittide.Ringbuffer
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Shutter
