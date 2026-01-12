@@ -3,6 +3,19 @@
 version = 4
 
 [[package]]
+name = "addressable_bytes_wb_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "heapless",
+ "memmap-generate",
+ "riscv 0.11.1",
+ "riscv-rt 0.12.2",
+ "ufmt",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -18,7 +31,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -91,7 +104,7 @@ dependencies = [
  "bittide-hal-c",
  "cc",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
 ]
 
 [[package]]
@@ -102,7 +115,7 @@ dependencies = [
  "bittide-sys",
  "cc",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -114,7 +127,7 @@ dependencies = [
  "bittide-sys",
  "cc",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -126,7 +139,7 @@ dependencies = [
  "bittide-sys",
  "cc",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -137,7 +150,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -165,7 +178,7 @@ dependencies = [
  "bittide-macros",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -177,7 +190,7 @@ dependencies = [
  "bittide-sys",
  "itertools",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -189,7 +202,7 @@ dependencies = [
  "bittide-sys",
  "memmap-generate",
  "rand",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -217,7 +230,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -234,7 +247,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -374,7 +387,7 @@ dependencies = [
  "bittide-sys",
  "heapless",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -460,7 +473,7 @@ dependencies = [
  "bittide-sys",
  "heapless",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -473,6 +486,16 @@ dependencies = [
  "bit_field",
  "critical-section",
  "embedded-hal 0.2.7",
+]
+
+[[package]]
+name = "riscv"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f5c1b8bf41ea746266cdee443d1d1e9125c86ce1447e1a2615abd34330d33a9"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
 ]
 
 [[package]]
@@ -518,6 +541,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "riscv-rt"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0d35e32cf1383183e8885d8a9aa4402a087fd094dc34c2cb6df6687d0229dfe"
+dependencies = [
+ "riscv 0.11.1",
+ "riscv-rt-macros",
+]
+
+[[package]]
 name = "riscv-rt-macros"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -551,7 +584,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -648,7 +681,7 @@ dependencies = [
  "log",
  "memmap-generate",
  "riscv 0.10.1",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "smoltcp 0.12.0",
  "ufmt",
 ]
@@ -662,7 +695,7 @@ dependencies = [
  "bittide-sys",
  "cc",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -673,7 +706,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -691,7 +724,7 @@ dependencies = [
  "bittide-macros",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -702,7 +735,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -713,7 +746,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -724,7 +757,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -736,7 +769,7 @@ dependencies = [
  "bittide-sys",
  "heapless",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -748,7 +781,7 @@ dependencies = [
  "bittide-sys",
  "log",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -781,7 +814,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -825,7 +858,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -842,7 +875,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 
@@ -853,6 +886,6 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
