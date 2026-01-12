@@ -424,6 +424,122 @@ case_memoryMap = do
   regDelayed.value.address @?= 32
   regDelayedError.value.address @?= 36
 
+-- | Test the addressableBytesWb circuit using wishbonePropWithModel
+prop_addressableBytesWb :: Property
+prop_addressableBytesWb =
+  property
+    $ withClockResetEnable clk rst ena
+    $ wishbonePropWithModel @XilinxSystem
+      defExpectOptions{eoSampleMax = 1_000}
+      model
+      dut
+      genInputs
+      mempty
+ where
+  clk = clockGen
+  rst = resetGen
+  ena = enableGen
+  depth = d8
+  maxAddress = snatToNum depth - 1
+
+  model ::
+    WishboneMasterRequest AddressWidth 4 ->
+    WishboneS2M 4 ->
+    Map.Map (BitVector AddressWidth) (BitVector 32) ->
+    Either String (Map.Map (BitVector AddressWidth) (BitVector 32))
+  model req@(Write address mask newData) response mapState
+    | address <= maxAddress && response.acknowledge = Right newMapState
+    | address <= maxAddress =
+        Left $ "Write to valid address not acknowledged: " <> show (req, response)
+    | response.err = Right mapState
+    | otherwise = Left $ "Write to invalid address not erroring: " <> show (req, response)
+   where
+    newMapState = Map.insert address updatedData mapState
+    updatedData =
+      pack
+        $ mux (unpack mask :: Vec 4 Bool) (unpack newData :: Vec 4 (BitVector 8)) (unpack oldData)
+    oldData = Map.findWithDefault 0 address mapState
+  model req@(Read address mask) response mapState
+    | address <= maxAddress && response.acknowledge && dataValid = Right mapState
+    | address <= maxAddress && response.acknowledge =
+        Left $ "Read data mismatch: " <> show (req, response, expectedVec, actaulVec)
+    | address <= maxAddress =
+        Left $ "Read from valid address not acknowledged: " <> show (req, response)
+    | response.err = Right mapState
+    | otherwise = Left $ "Read from invalid address not erroring: " <> show (req, response)
+   where
+    mapData = Map.findWithDefault 0 address mapState
+    maskVec = unpack mask
+    expectedVec = unpack mapData :: Vec 4 (BitVector 8)
+    actaulVec = unpack response.readData :: Vec 4 (BitVector 8)
+    dataValid = all (\(m, exp', act) -> not m || exp' == act) (zip3 maskVec expectedVec actaulVec)
+
+  genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
+  genInputs = Gen.list (Range.linear 0 100) (genWishboneTransfer genAddr genMask genData)
+
+  genMask :: Gen (BitVector 4)
+  genMask = Gen.integral Range.linearBounded
+
+  genData :: Gen (BitVector 32)
+  genData = Gen.integral Range.linearBounded
+
+  genAddr :: Gen (BitVector AddressWidth)
+  genAddr = Gen.integral Range.linearBounded
+
+  dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
+  dut =
+    let
+      ?regByteOrder = regByteOrder
+      ?busByteOrder = busByteOrder
+     in
+      circuit $ \wb -> do
+        mm <- ignoreMM
+        [wb0] <- deviceWb "test" -< (mm, wb)
+        memoryWb clockGen resetGen memConf prim depth -< wb0
+   where
+    prim = blockRamByteAddressable clk ena depth
+    memConf = registerConfig "buffer"
+
+---------------------
+-- Copied from Bittide
+blockRamByteAddressable ::
+  forall dom memDepth wordSize.
+  (KnownDomain dom, KnownNat memDepth, KnownNat wordSize, 1 <= memDepth) =>
+  Clock dom ->
+  Enable dom ->
+  SNat memDepth ->
+  -- | Read address.
+  Signal dom (Index memDepth) ->
+  -- | Write operation.
+  Signal dom (Maybe (Index memDepth, Bytes wordSize)) ->
+  -- | Byte enables that determine which nBytes get replaced.
+  Signal dom (BitVector wordSize) ->
+  -- | Data at read address (1 cycle delay).
+  Signal dom (Bytes wordSize)
+blockRamByteAddressable clk ena memDepth readAddr newEntry byteSelect = fmap pack readBytes
+ where
+  writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
+  readBytes = bundle $ ram <$> writeBytes
+  ram = blockRam clk ena (replicate memDepth 0) readAddr
+
+splitWriteInBytes ::
+  forall maxIndex wordSize.
+  (KnownNat wordSize) =>
+  -- | Incoming write operation.
+  Maybe (Index maxIndex, Bytes wordSize) ->
+  -- | Incoming byte enables.
+  BitVector wordSize ->
+  -- | Per byte write operation.
+  Vec wordSize (Maybe (Index maxIndex, BitVector 8))
+splitWriteInBytes (Just (addr, writeData)) byteSelect = mux byteEnable justs nothings
+ where
+  byteEnable = unpack byteSelect :: Vec wordSize Bool
+  justs = fmap (Just . (addr,)) (unpack writeData :: Vec wordSize (BitVector 8))
+  nothings = repeat Nothing
+splitWriteInBytes Nothing _ = repeat Nothing
+
+---------------------
+
 tests :: TestTree
 tests =
   testGroup
@@ -431,4 +547,8 @@ tests =
     [ testCase "case_maskWriteData" case_maskWriteData
     , testCase "case_memoryMap" case_memoryMap
     , testPropertyNamed "prop_wb" "prop_wb" prop_wb
+    , testPropertyNamed
+        "prop_addressableBytesWb"
+        "prop_addressableBytesWb"
+        prop_addressableBytesWb
     ]
