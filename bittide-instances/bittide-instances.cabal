@@ -226,6 +226,7 @@ library
     Bittide.Instances.Tests.ElasticBufferWb
     Bittide.Instances.Tests.NestedInterconnect
     Bittide.Instances.Tests.RegisterWb
+    Bittide.Instances.Tests.Ringbuffer
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
     Bittide.Instances.Tests.TimeWb
@@ -320,6 +321,7 @@ test-suite unittests
     Wishbone.DnaPortE2
     Wishbone.NestedInterconnect
     Wishbone.RegisterWb
+    Wishbone.Ringbuffer
     Wishbone.ScatterGather
     Wishbone.SwitchCalendar
     Wishbone.SwitchDemoProcessingElement
