@@ -54,8 +54,8 @@ driver testName targets = do
   forM_ targets (assertProbe "probe_test_start")
 
   let
-    -- BOOT / MU / CC / GPPE IDs
-    expectedJtagIds = [0x0514C001, 0x1514C001, 0x2514C001, 0x3514C001]
+    -- BOOT / MU / CC IDs
+    expectedJtagIds = [0x0514C001, 0x1514C001, 0x2514C001]
     toInitArgs (_, deviceInfo) targetIndex =
       Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
     initArgs = L.zipWith toInitArgs targets [0 ..]
@@ -88,11 +88,11 @@ driver testName targets = do
     let
       allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-      _bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos :: [Ocd.TapInfo]
-      (_bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos)
+      _bootTapInfos, muTapInfos, ccTapInfos :: [Ocd.TapInfo]
+      (_bootTapInfos, muTapInfos, ccTapInfos)
         | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
-        , [boots, mus, ccs, gppes] <- L.transpose allTapInfos =
-            (boots, mus, ccs, gppes)
+        , [boots, mus, ccs] <- L.transpose allTapInfos =
+            (boots, mus, ccs)
         | otherwise =
             error
               $ "Unexpected number of OpenOCD taps initialized. Expected: "
@@ -108,39 +108,21 @@ driver testName targets = do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
-        Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
+        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue muGdbs
+
           liftIO
-            $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppeTapInfos targets
-          liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gppeGdbs
+            $ T.tryWithTimeoutOn
+              T.PrintActionTime
+              "Waiting for UGN discovery to complete"
+              120_000_000
+              goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico.stdoutHandle "[MU] === Discovery Complete ==="
 
-          brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-            liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-            liftIO $ mapConcurrently_ Gdb.continue muGdbs
+          liftIO goDumpCcSamples
 
-            liftIO
-              $ T.tryWithTimeoutOn
-                T.PrintActionTime
-                "Waiting for captured UGNs"
-                60_000_000
-                goDumpCcSamples
-              $ forConcurrently_ picocoms
-              $ \pico ->
-                waitForLine pico.stdoutHandle "[MU] All UGNs captured"
-
-            -- From here the actual test should be done, but for now it's just going to be
-            -- waiting for the devices to print out over UART.
-            liftIO $ mapConcurrently_ Gdb.continue gppeGdbs
-            liftIO
-              $ T.tryWithTimeoutOn
-                T.PrintActionTime
-                "Waiting for GPPE hello"
-                (5_000_000)
-                goDumpCcSamples
-              $ forConcurrently_ picocoms
-              $ \pico ->
-                waitForLine pico.stdoutHandle "[PE] Hello from C!"
-
-            liftIO goDumpCcSamples
-
-            pure ExitSuccess
+          pure ExitSuccess

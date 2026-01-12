@@ -58,13 +58,12 @@ type Baud = 921_600
 baud :: SNat Baud
 baud = SNat
 
-uartLabels :: Vec 4 (Vec 2 Byte)
+uartLabels :: Vec 3 (Vec 2 Byte)
 uartLabels =
   fmap (fromIntegral . ord)
     <$> ( $(listToVecTH "BT")
             :> $(listToVecTH "MU")
             :> $(listToVecTH "CC")
-            :> $(listToVecTH "PE")
             :> Nil
         )
 
@@ -90,7 +89,6 @@ bringUp ::
     ( "BOOT" ::: ToConstBwd Mm
     , "MU" ::: ToConstBwd Mm
     , "CC" ::: ToConstBwd Mm
-    , "GPPE" ::: ToConstBwd Mm
     , Jtag Basic125
     , Gth.Gths GthRx GthRxS Bittide GthTxS Ext200 LinkCount
     )
@@ -99,7 +97,7 @@ bringUp ::
     , "UART_TX" ::: CSignal Basic125 Bit
     , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
-bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, gppeMm, jtag, gths) -> do
+bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, jtag, gths) -> do
   (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
     withRefClockResetEnable
       $ bootPe bootPeConfig
@@ -118,15 +116,13 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
   uartTxBytes <-
     withRefClockResetEnable
       $ asciiDebugMux d1024 uartLabels
-      -< [bootUartBytes, muUartBytes, ccUartBytes, gppeUartBytes]
+      -< [bootUartBytes, muUartBytes, ccUartBytes]
   (_uartInBytes, uartTx) <- withRefClockResetEnable $ uartDf baud -< (uartTxBytes, Fwd 0)
 
   muUartBytes <-
     dcFifoDf d5 bittideClk bittideRst refClk refRst -< muUartBytesBittide
   ccUartBytes <-
     dcFifoDf d5 bittideClk bittideRst refClk refRst -< ccUartBytesBittide
-  gppeUartBytes <-
-    dcFifoDf d5 bittideClk bittideRst refClk refRst -< gppeUartBytesBittide
   -- Stop UART multiplexing
 
   Fwd tOutputs <-
@@ -149,7 +145,6 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
     , sync
     , muUartBytesBittide
     , ccUartBytesBittide
-    , gppeUartBytesBittide
     , muTransceiverWbBittide
     ) <-
     core
@@ -159,7 +154,6 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
       (unsafeFromActiveLow <$> tOutputs.handshakesDone)
       -< ( muMm
          , ccMm
-         , gppeMm
          , otherJtagBittide
          , Fwd (pure maxBound)
          , Fwd linksSuitableForCc

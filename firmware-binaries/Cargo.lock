@@ -695,19 +695,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "soft-ugn-gppe"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-hal-c",
- "bittide-sys",
- "cc",
- "memmap-generate",
- "riscv-rt",
- "ufmt",
-]
-
-[[package]]
 name = "soft-ugn-mu"
 version = "0.1.0"
 dependencies = [

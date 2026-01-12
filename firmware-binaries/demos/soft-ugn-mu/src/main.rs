@@ -6,12 +6,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
+use bittide_hal::manual_additions::soft_ugn_demo_mu::{
+    aligned_ringbuffer::{find_alignment_offset, ReceiveRingbuffer, TransmitRingbuffer},
+    soft_ugn_discovery::discover_ugn,
+};
 use bittide_hal::shared_devices::Transceivers;
+use bittide_hal::types::TimeCmd;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
+const NUM_LINKS: usize = 7;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -19,6 +25,7 @@ use riscv_rt::entry;
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
+    let timer = &INSTANCES.timer;
     let transceivers = &INSTANCES.transceivers;
     let cc = INSTANCES.clock_control;
     let elastic_buffers = [
@@ -31,87 +38,97 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_6,
     ];
 
-    uwriteln!(uart, "Hello from management unit..").unwrap();
+    let scatter_units = [
+        INSTANCES.scatter_unit_0,
+        INSTANCES.scatter_unit_1,
+        INSTANCES.scatter_unit_2,
+        INSTANCES.scatter_unit_3,
+        INSTANCES.scatter_unit_4,
+        INSTANCES.scatter_unit_5,
+        INSTANCES.scatter_unit_6,
+    ];
 
-    // Keep centering elastic buffers to avoid over/under-flows. Keep track of
-    // number of frames changed while centering.
-    //
-    // TODO: Implement asynchronous communication. The idea is that we center
-    //       the elastic buffers and capture the UGNs. From that point on, the
-    //       links can be used for arbitrary communication. We'll keep on
-    //       moving the buffers to their midpoints to prevent overflows (given
-    //       that clock control still might be correcting clocks), so we'll
-    //       use `eb_changes` to calculate the final UGN once we determine
-    //       the whole network is up and therefore stop modifying the buffer
-    //       occupancy.
-    uwriteln!(uart, "Continuously center buffer occupancies").unwrap();
-    let mut eb_changes: [i8; 7] = [0; 7];
+    let gather_units = [
+        INSTANCES.gather_unit_0,
+        INSTANCES.gather_unit_1,
+        INSTANCES.gather_unit_2,
+        INSTANCES.gather_unit_3,
+        INSTANCES.gather_unit_4,
+        INSTANCES.gather_unit_5,
+        INSTANCES.gather_unit_6,
+    ];
+
+    uwriteln!(uart, "=== Soft UGN Discovery Demo ===").unwrap();
+    uwriteln!(uart, "Management Unit with integrated scatter/gather").unwrap();
+
+    // Step 1: Center elastic buffers
+    uwriteln!(uart, "\nStep 1: Centering elastic buffers...").unwrap();
+    let mut eb_changes: [i8; NUM_LINKS] = [0; NUM_LINKS];
     loop {
         for (i, eb) in elastic_buffers.iter().enumerate() {
             eb_changes[i] += eb.set_occupancy(0);
         }
 
-        // We don't update the stability here, but leave that to callisto. Although
-        // we also have access to the 'links_settled' register, we don't want to
-        // flood the CC bus.
         let stable = cc.links_stable();
         let stability = Stability {
             stable: stable[0],
             settled: 0,
         };
         if stability.all_stable() {
-            uwriteln!(uart, "All links stable").unwrap();
+            uwriteln!(uart, "  All links stable").unwrap();
             break;
         }
     }
 
     for (i, eb) in elastic_buffers.iter().enumerate() {
-        uwriteln!(
-            uart,
-            "Elastic Buffer {}, frames changed: {}",
-            i,
-            eb_changes[i]
-        )
-        .unwrap();
+        uwriteln!(uart, "  EB {}: frames changed = {}", i, eb_changes[i]).unwrap();
         eb.set_stable(true);
     }
 
-    uwriteln!(uart, "Switch transceiver channels to user mode..").unwrap();
+    // Step 2: Switch transceivers to user mode
+    uwriteln!(uart, "\nStep 2: Switching to user mode...").unwrap();
     for channel in 0..Transceivers::RECEIVE_READYS_LEN {
         transceivers.set_receive_readys(channel, true);
         transceivers.set_transmit_starts(channel, true);
     }
-    uwriteln!(uart, "Done").unwrap();
+    uwriteln!(uart, "  Transceivers in user mode").unwrap();
 
-    uwriteln!(uart, "Starting UGN captures").unwrap();
-    let mut capture_ugns = [
-        (INSTANCES.capture_ugn_0, false),
-        (INSTANCES.capture_ugn_1, false),
-        (INSTANCES.capture_ugn_2, false),
-        (INSTANCES.capture_ugn_3, false),
-        (INSTANCES.capture_ugn_4, false),
-        (INSTANCES.capture_ugn_5, false),
-        (INSTANCES.capture_ugn_6, false),
-    ];
-    while capture_ugns.iter().any(|(_, done)| !done) {
-        for (i, (capture_ugn, done)) in capture_ugns.iter_mut().enumerate() {
-            if *done {
-                continue;
-            }
-            if capture_ugn.has_captured() {
-                uwriteln!(
-                    uart,
-                    "Capture UGN {}: local = {}, remote = {}",
-                    i,
-                    capture_ugn.local_counter(),
-                    u64::from_ne_bytes(capture_ugn.remote_counter())
-                )
-                .unwrap();
-                *done = true;
-            }
-        }
+    // Step 3: Align ringbuffers for each link
+    uwriteln!(uart, "\nStep 3: Aligning ringbuffers...").unwrap();
+    let mut rx_offsets = [0usize; NUM_LINKS];
+
+    for link in 0..NUM_LINKS {
+        let tx = TransmitRingbuffer::new(&gather_units[link]);
+        let rx = ReceiveRingbuffer::new(&scatter_units[link], 0);
+
+        let offset = find_alignment_offset(&tx, &rx);
+        rx_offsets[link] = offset;
+        uwriteln!(uart, "  Link {}: aligned at offset {}", link, offset).unwrap();
     }
-    uwriteln!(uart, "All UGNs captured").unwrap();
+
+    // Step 4: Perform soft UGN discovery
+    uwriteln!(uart, "\nStep 4: Discovering UGNs...").unwrap();
+    // Get local counter by freezing and reading scratchpad
+    timer.set_command(TimeCmd::Capture);
+    let local_counter = timer.scratchpad();
+
+    for link in 0..NUM_LINKS {
+        let tx = TransmitRingbuffer::new(&gather_units[link]);
+        let rx = ReceiveRingbuffer::new(&scatter_units[link], rx_offsets[link]);
+
+        let ugn = discover_ugn(&tx, &rx, local_counter);
+        uwriteln!(
+            uart,
+            "  Link {}: UGN = {} (local={}, remote={})",
+            link,
+            ugn.value(),
+            ugn.local_counter,
+            ugn.remote_counter
+        )
+        .unwrap();
+    }
+
+    uwriteln!(uart, "\n=== Discovery Complete ===").unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {}

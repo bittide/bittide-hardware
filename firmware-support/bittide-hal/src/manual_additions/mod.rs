@@ -9,6 +9,6 @@ pub mod dna;
 pub mod elastic_buffer;
 pub mod scatter_gather_pe;
 pub mod si539x_spi;
-pub mod soft_ugn_demo_gppe;
+pub mod soft_ugn_demo_mu;
 pub mod timer;
 pub mod uart;

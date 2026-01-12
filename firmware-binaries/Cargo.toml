@@ -39,7 +39,6 @@ members = [
   "hitl-tests/clock-board",
 
   "demos/clock-control",
-  "demos/soft-ugn-gppe",
   "demos/soft-ugn-mu",
   "demos/switch-demo1-boot",
   "demos/switch-demo1-mu",
