@@ -32,6 +32,7 @@ import Protocols.MemoryMap (
   regType,
  )
 import Protocols.MemoryMap.TypeDescription
+import Protocols.ReqResp
 import Protocols.Wishbone (
   Wishbone,
   WishboneM2S (..),
@@ -334,6 +335,131 @@ deviceWithOffsetsWb deviceName =
       | clashSimulation = foldl (\b a -> a `seqX` b) () v `seqX` v
       | otherwise = v
 
+{- | Stateless circuit that converts a Wishbone into a ReqResp useful for accessing ranges of memory.
+
+It does not store any data - it purely translates protocol messages and enforces
+access permissions (ReadOnly/WriteOnly/ReadWrite).
+-}
+addressableBytesWb ::
+  forall n dom wordSize aw.
+  ( KnownDomain dom
+  , HasCallStack
+  , KnownNat n
+  , KnownNat wordSize
+  , KnownNat aw
+  , 1 <= n
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  Circuit
+    (RegisterWb dom aw wordSize)
+    ( ReqResp
+        dom
+        ( Either
+            (Index n)
+            (Index n, BitVector wordSize, Bytes wordSize) -- Write (index, mask, data)
+        )
+        (Bytes wordSize)
+    )
+addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
+  Dict -> Circuit go
+ where
+  meta =
+    RegisterMeta
+      { name = SimOnly $ Name{name = regConfig.name, description = regConfig.description}
+      , srcLoc = SimOnly locCaller
+      , nWords = natToNum @n
+      , register =
+          SimOnly
+            $ Register
+              { fieldType = regType @(Vec n (Bytes wordSize))
+              , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWb'
+              , access = regConfig.access
+              , tags = regConfig.tags
+              , reset = Nothing
+              }
+      }
+
+  go ::
+    ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize))
+    , Signal dom (Maybe (Bytes wordSize))
+    ) ->
+    ( ((), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
+    , Signal
+        dom
+        ( Maybe (Either (Index n) (Index n, BitVector wordSize, Bytes wordSize))
+        )
+    )
+  go ((offset, _, wbM2S), respData) = (((), meta, wbS2M), req)
+   where
+    (wbS2M, req) = unbundle $ wbInterface offset regConfig.access <$> wbM2S <*> respData
+
+{- | Stateless Wishbone interface that converts Wishbone transactions into
+ReqResp read/write operations, handling byte order conversion and access control.
+-}
+wbInterface ::
+  forall n wordSize aw.
+  ( KnownNat n
+  , 1 <= n
+  , KnownNat wordSize
+  , KnownNat aw
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Base offset to this register
+  BitVector aw ->
+  -- | Access permissions
+  Access ->
+  -- | Wishbone master-to-slave
+  WishboneM2S aw wordSize ->
+  -- | Response data (from ReqResp)
+  Maybe (Bytes wordSize) ->
+  -- | (Wishbone slave-to-master, Request to ReqResp)
+  ( WishboneS2M wordSize
+  , Maybe (Either (Index n) (Index n, BitVector wordSize, Bytes wordSize))
+  )
+wbInterface offset access wbM2S respData
+  | addrMaxInteger < indexMaxInteger =
+      clashCompileError
+        [I.__i| Address range (#{addrMaxInteger}) is too small to address all #{indexMaxInteger} words of the register.
+
+    Consider increasing the address width or reducing the number of words.|]
+  | otherwise = (wbS2M, req)
+ where
+  addrMaxInteger = toInteger (maxBound :: BitVector aw)
+  indexMaxInteger = toInteger (maxBound :: Index n)
+  -- Wishbone
+  wbS2M =
+    (emptyWishboneS2M @0)
+      { acknowledge = masterActive && not fault && isJust respData
+      , err = masterActive && fault
+      , readData = fromJustX respData
+      }
+
+  masterActive = wbM2S.busCycle && wbM2S.strobe
+  fault = readFault || writeFault || not inRange
+
+  -- Access control
+  readFault = access == ReadOnly && wbM2S.writeEnable
+  writeFault = access == WriteOnly && not wbM2S.writeEnable
+
+  -- Address calculation: compute index within addressable range
+  relativeAddress = wbM2S.addr - offset
+  inRange = relativeAddress <= resize (bitCoerce (maxBound :: Index n))
+  wbAddr = unpack $ resize relativeAddress
+
+  -- Request Response
+  validRead = masterActive && not wbM2S.writeEnable && inRange && not readFault
+  validWrite = masterActive && wbM2S.writeEnable && inRange && not writeFault
+
+  req
+    | validRead = Just $ Left wbAddr
+    | validWrite = Just $ Right (wbAddr, wbM2S.busSelect, wbM2S.writeData)
+    | otherwise = Nothing
+
 {- | Circuit writes always take priority over bus writes. Bus writes rejected with
 an error if access rights are set to 'ReadOnly'. Similarly, bus reads are rejected
 if access rights are set to 'WriteOnly'.
@@ -605,9 +731,10 @@ reverseBits ::
   BitVector n
 reverseBits = pack . reverse . unpack @(Vec n Bit)
 
--- | If `busByteOrder` and `regByteOrder` match, this is a no-op. If they don't, this will
--- reverse the byte order of the data and byte enables in both directions. Note that this
--- only affects the data and byte enables.
+{- | If `busByteOrder` and `regByteOrder` match, this is a no-op. If they don't, this will
+reverse the byte order of the data and byte enables in both directions. Note that this
+only affects the data and byte enables.
+-}
 matchEndianness ::
   forall dom mode aw wordSize.
   ( KnownNat wordSize
