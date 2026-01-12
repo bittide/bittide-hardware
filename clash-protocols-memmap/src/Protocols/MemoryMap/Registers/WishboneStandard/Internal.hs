@@ -32,6 +32,7 @@ import Protocols.MemoryMap (
   regType,
  )
 import Protocols.MemoryMap.TypeDescription
+import Protocols.ReqResp
 import Protocols.Wishbone (
   Wishbone,
   WishboneM2S (..),
@@ -333,6 +334,129 @@ deviceWithOffsetsWb deviceName =
     strictV v
       | clashSimulation = foldl (\b a -> a `seqX` b) () v `seqX` v
       | otherwise = v
+
+{- | Stateless circuit that converts a Wishbone into a ReqResp useful for accessing ranges of memory.
+
+It does not store any data - it purely translates protocol messages and enforces
+access permissions (ReadOnly/WriteOnly/ReadWrite).
+-}
+addressableBytesWb ::
+  forall nWords dom wordSize aw.
+  ( HasCallStack
+  , KnownDomain dom
+  , KnownNat nWords
+  , KnownNat wordSize
+  , KnownNat aw
+  , 1 <= nWords
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  Circuit
+    (RegisterWb dom aw wordSize)
+    ( ReqResp
+        dom
+        (RamOp nWords (BitVector wordSize, Bytes wordSize))
+        (Bytes wordSize)
+    )
+addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
+  Dict -> Circuit go
+ where
+  meta =
+    RegisterMeta
+      { name = SimOnly $ Name{name = regConfig.name, description = regConfig.description}
+      , srcLoc = SimOnly locCaller
+      , nWords = natToNum @nWords
+      , register =
+          SimOnly
+            $ Register
+              { fieldType = regType @(Vec nWords (Bytes wordSize))
+              , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWb'
+              , access = regConfig.access
+              , tags = regConfig.tags
+              , reset = Nothing
+              }
+      }
+
+  go ::
+    ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize))
+    , Signal dom (Maybe (Bytes wordSize))
+    ) ->
+    ( ((), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
+    , Signal
+        dom
+        (Maybe (RamOp nWords (BitVector wordSize, Bytes wordSize)))
+    )
+  go ((offset, _, wbM2S0), respData) = (((), meta, wbS2M), fmap maybeRamOp req)
+   where
+    maybeRamOp RamNoOp = Nothing
+    maybeRamOp op = Just op
+
+    (wbS2M, req) = unbundle $ wishboneToRequestResponse regConfig.access <$> wbM2S1 <*> respData
+    wbM2S1 = fmap (\wb -> wb{addr = wb.addr - offset}) wbM2S0
+
+{- | Stateless Wishbone interface that converts Wishbone transactions into
+ReqResp read/write operations, handling byte order conversion and access control.
+-}
+wishboneToRequestResponse ::
+  forall n wordSize aw.
+  ( HasCallStack
+  , KnownNat n
+  , 1 <= n
+  , KnownNat wordSize
+  , KnownNat aw
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Access permissions
+  Access ->
+  -- | Wishbone master-to-slave
+  WishboneM2S aw wordSize ->
+  -- | Response data (from ReqResp)
+  Maybe (Bytes wordSize) ->
+  -- | (Wishbone slave-to-master, Request to ReqResp)
+  ( WishboneS2M wordSize
+  , RamOp n (BitVector wordSize, Bytes wordSize)
+  )
+wishboneToRequestResponse access wbM2S respData
+  | addrMaxInteger < indexMaxInteger =
+      clashCompileError
+        [I.__i| Address range (#{addrMaxInteger}) is too small to address all #{indexMaxInteger} words of the register.
+
+    Consider increasing the address width or reducing the number of words.|]
+  | otherwise = (wbS2M, req)
+ where
+  addrMaxInteger = toInteger (maxBound :: BitVector aw)
+  indexMaxInteger = toInteger (maxBound :: Index n)
+  -- Wishbone
+  wbS2M =
+    (emptyWishboneS2M @0)
+      { acknowledge = masterActive && not fault && isJust respData
+      , err = masterActive && fault
+      , readData = fromJustX respData
+      }
+
+  masterActive = wbM2S.busCycle && wbM2S.strobe
+  fault = readFault || writeFault || not inRange
+
+  -- Access control
+  readFault = access == ReadOnly && wbM2S.writeEnable
+  writeFault = access == WriteOnly && not wbM2S.writeEnable
+
+  -- Address calculation: compute index within addressable range
+  inRange = wbM2S.addr <= resize (bitCoerce (maxBound :: Index n))
+  wbAddr = unpack $ resize wbM2S.addr
+
+  -- Request Response
+  validRead = masterActive && not wbM2S.writeEnable && inRange && not readFault
+  validWrite = masterActive && wbM2S.writeEnable && inRange && not writeFault
+
+  req
+    | validRead = RamRead wbAddr
+    | validWrite = RamWrite wbAddr (wbM2S.busSelect, wbM2S.writeData)
+    | otherwise = RamNoOp
 
 {- | Circuit writes always take priority over bus writes. Bus writes rejected with
 an error if access rights are set to 'ReadOnly'. Similarly, bus reads are rejected
