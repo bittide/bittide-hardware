@@ -160,6 +160,7 @@ library
     aeson,
     aeson-pretty,
     base >=4.19.0.0,
+    bittide-extra,
     bytestring >=0.10 && <0.13,
     clash-bitpackc,
     clash-prelude,
