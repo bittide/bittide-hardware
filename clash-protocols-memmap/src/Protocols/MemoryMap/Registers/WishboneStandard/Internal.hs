@@ -5,6 +5,7 @@
 module Protocols.MemoryMap.Registers.WishboneStandard.Internal where
 
 import Clash.Explicit.Prelude
+import Clash.Prelude (withClockResetEnable)
 import Protocols
 
 import Clash.Class.BitPackC (BitPackC (..), ByteOrder, Bytes)
@@ -32,6 +33,7 @@ import Protocols.MemoryMap (
   regType,
  )
 import Protocols.MemoryMap.TypeDescription
+import Protocols.ReqResp
 import Protocols.Wishbone (
   Wishbone,
   WishboneM2S (..),
@@ -43,6 +45,7 @@ import Protocols.Wishbone (
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.String.Interpolate as I
+import qualified Protocols.ReqResp as ReqResp
 
 data BusActivity a = BusRead a | BusWrite a
   deriving (Show, Eq, Functor, Generic, NFDataX)
@@ -333,6 +336,156 @@ deviceWithOffsetsWb deviceName =
     strictV v
       | clashSimulation = foldl (\b a -> a `seqX` b) () v `seqX` v
       | otherwise = v
+
+memoryWb ::
+  forall memDepth dom wordSize aw.
+  ( KnownDomain dom
+  , KnownNat memDepth
+  , KnownNat wordSize
+  , KnownNat aw
+  , 1 <= memDepth
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  RegisterConfig ->
+  ( Signal dom (Index memDepth) ->
+    Signal dom (Maybe (Index memDepth, Bytes wordSize)) ->
+    Signal dom (BitVector wordSize) ->
+    Signal dom (Bytes wordSize)
+  ) ->
+  SNat memDepth ->
+  Circuit (RegisterWb dom aw wordSize) ()
+memoryWb clk rst regConfig primitive SNat = circuit $ \wb -> do
+  reqresp <- addressableBytesWb @memDepth regConfig -< wb
+  (reads, writes0) <- ReqResp.partitionEithers -< reqresp
+  writes1 <- dropResponseData 0 -< writes0
+  _vecUnit <- ram -< (reads, writes1)
+  idC -< ()
+ where
+  ram = withClockResetEnable clk rst enableGen (ReqResp.fromBlockramWithMask primitive)
+
+{- | Stateless circuit that translates between a Wishbone register interface and a
+ReqResp protocol. This is the lovechild of the wbInterface pattern from wbStorage
+and the access control logic from registerWbDf.
+
+It does not store any data - it purely translates protocol messages and enforces
+access permissions (ReadOnly/WriteOnly/ReadWrite).
+-}
+addressableBytesWb ::
+  forall n dom wordSize aw.
+  ( KnownDomain dom
+  , HasCallStack
+  , KnownNat n
+  , KnownNat wordSize
+  , KnownNat aw
+  , 1 <= n
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  Circuit
+    (RegisterWb dom aw wordSize)
+    ( ReqResp
+        dom
+        ( Either
+            (Index n)
+            (Index n, BitVector wordSize, Bytes wordSize) -- Write (index, mask, data)
+        )
+        (Bytes wordSize)
+    )
+addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
+  Dict -> Circuit go
+ where
+  meta =
+    RegisterMeta
+      { name = SimOnly $ Name{name = regConfig.name, description = regConfig.description}
+      , srcLoc = SimOnly locCaller
+      , nWords = natToNum @n
+      , register =
+          SimOnly
+            $ Register
+              { fieldType = regType @(Vec n (Bytes wordSize))
+              , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWb'
+              , access = regConfig.access
+              , tags = regConfig.tags
+              , reset = Nothing
+              }
+      }
+
+  go ::
+    ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize))
+    , Signal dom (Maybe (Bytes wordSize))
+    ) ->
+    ( ((), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
+    , Signal
+        dom
+        ( Maybe (Either (Index n) (Index n, BitVector wordSize, Bytes wordSize))
+        )
+    )
+  go ((offset, _, wbM2S), respData) = (((), meta, wbS2M), req)
+   where
+    (wbS2M, req) = unbundle $ wbInterface offset regConfig.access <$> wbM2S <*> respData
+
+{- | Stateless Wishbone interface translation. Converts Wishbone transactions into
+ReqResp read/write operations, handling byte order conversion and access control.
+Pattern inspired by wbStorage and the wbInterface helper in Bittide.Ringbuffer.
+-}
+wbInterface ::
+  forall n wordSize aw.
+  ( KnownNat n
+  , 1 <= n
+  , KnownNat wordSize
+  , KnownNat aw
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Base offset for this register
+  BitVector aw ->
+  -- | Access permissions
+  Access ->
+  -- | Wishbone master-to-slave
+  WishboneM2S aw wordSize ->
+  -- | Response data (from ReqResp)
+  Maybe (Bytes wordSize) ->
+  -- | (Wishbone slave-to-master, Request to ReqResp)
+  ( WishboneS2M wordSize
+  , Maybe (Either (Index n) (Index n, BitVector wordSize, Bytes wordSize))
+  )
+wbInterface offset access wbM2S respData = (wbS2M, req)
+ where
+  -- Wishbone
+  wbS2M =
+    (emptyWishboneS2M @0)
+      { acknowledge = masterActive && not fault && isJust respData
+      , err = masterActive && fault
+      , readData = fromJustX respData
+      }
+
+  masterActive = wbM2S.busCycle && wbM2S.strobe
+  fault = readFault || writeFault || not inRange
+
+  -- Access control
+  readFault = access == ReadOnly && wbM2S.writeEnable
+  writeFault = access == WriteOnly && not wbM2S.writeEnable
+
+  -- Address calculation: compute index within addressable range
+  relativeAddress = wbM2S.addr - offset
+  inRange = relativeAddress <= resize (bitCoerce (maxBound :: Index n))
+  wbAddr = unpack $ resize relativeAddress
+
+  -- Request Response
+  validRead = masterActive && not wbM2S.writeEnable && inRange && not readFault
+  validWrite = masterActive && wbM2S.writeEnable && inRange && not writeFault
+
+  req
+    | validRead = Just $ Left wbAddr
+    | validWrite = Just $ Right (wbAddr, wbM2S.busSelect, wbM2S.writeData)
+    | otherwise = Nothing
 
 {- | Circuit writes always take priority over bus writes. Bus writes rejected with
 an error if access rights are set to 'ReadOnly'. Similarly, bus reads are rejected

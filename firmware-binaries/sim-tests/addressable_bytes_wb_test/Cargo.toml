@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "addressable_bytes_wb_test"
+version = "0.1.0"
+authors = ["Google LLC"]
+edition = "2021"
+
+[dependencies]
+bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+heapless = "0.8.0"
+riscv = { version = "0.11.1", features = ["critical-section-single-hart"] }
+riscv-rt = "0.12.2"
+ufmt = "0.2.0"
+
+[build-dependencies]
+memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+debug = true
+lto = true
+opt-level = "z"
+panic = "abort"

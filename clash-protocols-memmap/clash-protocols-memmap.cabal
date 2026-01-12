@@ -155,6 +155,7 @@ library
     Protocols.MemoryMap.TypeCollect
     Protocols.MemoryMap.TypeDescription
     Protocols.MemoryMap.TypeDescription.TH
+    Protocols.ReqResp
 
   build-depends:
     aeson,
