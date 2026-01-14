@@ -21,12 +21,9 @@
   "[rust]": {
     "editor.tabSize": 4
   },
-  "haskell.toolchain": {
-    "hls": "2.8.0.0",
-    "ghc": null,
-    "cabal": null,
-    "stack": null
-  },
+  "haskell.manageHLS": "PATH",
+  "haskell.plugin.hlint.codeActionsOn": false,
+  "haskell.plugin.hlint.diagnosticsOn": false,
   "[haskell]": {
     "editor.formatOnSave": false
   },
