@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+set -e
+
+if [ -z "$1" ]; then
+    echo "Please provide the path to the .tix file:"
+    read -r TIX_FILE
+else
+    TIX_FILE="$1"
+fi
+
+if [ ! -f "$TIX_FILE" ]; then
+    echo "Error: $TIX_FILE not found. Run the tests first."
+    exit 1
+fi
+
+mkdir -p _build/coverage
+
+echo "Finding .mix files..."
+# Find all mix directories
+MIX_DIRS=$(find dist-newstyle -type d -name "mix" | sed 's/^/--hpcdir=/')
+
+echo "Generating report from $TIX_FILE..."
+# Generate the report
+hpc markup "$TIX_FILE" $MIX_DIRS \
+  --srcdir=. \
+  --srcdir=bittide \
+  --srcdir=bittide-instances \
+  --srcdir=clash-protocols-memmap \
+  --srcdir=clash-bitpackc \
+  --srcdir=bittide-cpus \
+  --srcdir=bittide-experiments \
+  --srcdir=bittide-extra \
+  --srcdir=ghc-typelits-extra-lemmas \
+  --srcdir=gdb-hs \
+  --srcdir=clash-vexriscv \
+  --srcdir=clash-vexriscv/clash-vexriscv \
+  --srcdir=vivado-hs \
+  --destdir=_build/coverage
+
+echo "Report generated at $(realpath _build/coverage/hpc_index.html)"
