@@ -34,7 +34,7 @@ fn main() -> ! {
             uwriteln!(uart, "Done.").unwrap();
         }
         Err(WriteError::NotConfirmed { entry, read_data }) => {
-            uwriteln!(uart, "ERROR: failed to write Si539x configuration:").unwrap();
+            uwriteln!(uart, "[ERROR] failed to write Si539x configuration:").unwrap();
             uwriteln!(
                 uart,
                 "At 0x{:02X}{:02X} wrote 0x{:02X}, but read back 0x{:02X}",

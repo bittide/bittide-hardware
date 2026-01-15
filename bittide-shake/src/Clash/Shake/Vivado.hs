@@ -391,7 +391,7 @@ resolveHwTRefs v requestedHwTRefs = do
           pure $ fromList $ zip requestedHwTRefs (rights matchingTargets)
         else do
           putStrLn $
-            "WARNING: The connected hardware servers did not host the requested "
+            "[WARNING] The connected hardware servers did not host the requested "
               <> "hardware targets with IDs "
               <> show (lefts matchingTargets)
           if numTries < 0
@@ -412,7 +412,7 @@ resolveHwTRefs v requestedHwTRefs = do
     let foundFpgaIds = idFromHwT <$> foundTargets
     when (sort foundFpgaIds /= sort knownFpgaIds) $
       putStrLn $
-        "WARNING: The IDs of the hosted hardware targets do not match the known ones."
+        "[WARNING] The IDs of the hosted hardware targets do not match the known ones."
           <> "\n\tNot found but expected: "
           <> show (knownFpgaIds \\ foundFpgaIds)
           <> "\n\tFound but unexpected: "
@@ -432,7 +432,7 @@ programBitstream ::
 programBitstream outputDir hwTRefs url hasProbesFile = with $ \v -> do
   putStrLn "Starting programming of given hardware targets..."
   if null hwTRefs
-    then putStrLn "WARNING: Not programming as no hardware target references were given."
+    then putStrLn "[WARNING] Not programming as no hardware target references were given."
     else do
       execCmd_ v "set_msg_config" ["-severity {CRITICAL WARNING}", "-new_severity ERROR"]
       execCmd_ v "open_hw_manager" []
@@ -483,7 +483,7 @@ verifyHitlVio v paramBitSize = do
        where
         requiredProbeSimpleNames = map (last . split (== '/') . probeName) requiredProbes
   unless (null unexpectedProbes) $ do
-    putStrLn "WARNING: Encountered unexpected HITL VIO probes, they will be ignored:"
+    putStrLn "[WARNING] Encountered unexpected HITL VIO probes, they will be ignored:"
     mapM_ (putStrLn . ('\t' :)) unexpectedProbes
   mapM_ (`verifyHitlProbe` vioProbes) requiredProbes
  where
@@ -820,7 +820,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
   if null parameters
     then do
       putStrLn
-        "WARNING: The HITL test case does not reference any hardware targets. Exiting."
+        "[WARNING] The HITL test case does not reference any hardware targets. Exiting."
       pure ExitSuccess
     else do
       openHwTarget v $ fst $ case keys parameters of
