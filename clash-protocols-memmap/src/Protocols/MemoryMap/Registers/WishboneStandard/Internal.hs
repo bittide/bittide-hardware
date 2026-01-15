@@ -16,7 +16,7 @@ import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
 import Data.Data (Proxy (Proxy))
 import Data.Kind (Type)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromJust, fromMaybe, isJust)
 import GHC.Stack (HasCallStack, SrcLoc)
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
@@ -42,6 +42,7 @@ import Protocols.Wishbone (
   emptyWishboneS2M,
  )
 
+import Data.Either.Extra (fromLeft')
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.String.Interpolate as I
@@ -427,9 +428,10 @@ addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
         ( Maybe (Either (Index n) (Index n, BitVector wordSize, Bytes wordSize))
         )
     )
-  go ((offset, _, wbM2S), respData) = (((), meta, wbS2M), req)
+  go ((offset, _, wbM2S0), respData) = (((), meta, wbS2M), req)
    where
-    (wbS2M, req) = unbundle $ wbInterface offset regConfig.access <$> wbM2S <*> respData
+    (wbS2M, req) = unbundle $ wbInterface regConfig.access <$> wbM2S1 <*> respData
+    wbM2S1 = fmap (\wb -> wb{addr = wb.addr - offset}) wbM2S0
 
 {- | Stateless Wishbone interface translation. Converts Wishbone transactions into
 ReqResp read/write operations, handling byte order conversion and access control.
@@ -444,8 +446,6 @@ wbInterface ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
-  -- | Base offset for this register
-  BitVector aw ->
   -- | Access permissions
   Access ->
   -- | Wishbone master-to-slave
@@ -456,7 +456,7 @@ wbInterface ::
   ( WishboneS2M wordSize
   , Maybe (Either (Index n) (Index n, BitVector wordSize, Bytes wordSize))
   )
-wbInterface offset access wbM2S respData = (wbS2M, req)
+wbInterface access wbM2S respData = (wbS2M, req)
  where
   -- Wishbone
   wbS2M =
@@ -474,9 +474,8 @@ wbInterface offset access wbM2S respData = (wbS2M, req)
   writeFault = access == WriteOnly && not wbM2S.writeEnable
 
   -- Address calculation: compute index within addressable range
-  relativeAddress = wbM2S.addr - offset
-  inRange = relativeAddress <= resize (bitCoerce (maxBound :: Index n))
-  wbAddr = unpack $ resize relativeAddress
+  inRange = wbM2S.addr <= resize (bitCoerce (maxBound :: Index n))
+  wbAddr = unpack $ resize wbM2S.addr
 
   -- Request Response
   validRead = masterActive && not wbM2S.writeEnable && inRange && not readFault
@@ -579,10 +578,9 @@ registerWbDf clk rst regConfig resetValue =
       )
     , (Signal dom a, Signal dom (Maybe (BusActivity a)))
     )
-  go (((offset, _, wbM2S), aIn0), (_, coerce -> dfAck)) =
+  go (((offset, _, wbM2S0), aIn0), (_, coerce -> dfAck)) =
     ((((), reg, wbS2M2), ()), (aOut, busActivity))
    where
-    relativeOffset = goRelativeOffset . addr <$> wbM2S
     aOut = unpackC <$> packedOut
     packedIn0 = fmap (packWordC @wordSize ?regByteOrder) <$> aIn0
 
@@ -617,12 +615,10 @@ registerWbDf clk rst regConfig resetValue =
     -- once the user acknowledges the bus activity.
     busActivity = getBusActivity <$> wbS2M0 <*> aOut <*> aInFromBus0
     aInFromBus0 = fmap unpackC <$> packedInFromBus0
-    (wbS2M0, packedInFromBus0) =
-      unbundle
-        $ goBus regConfig.access
-        <$> relativeOffset
-        <*> wbM2S
-        <*> packedOut
+    wbM2S1 = fmap (\wb -> wb{addr = pack $ goRelativeOffset wb.addr}) wbM2S0
+    (wbS2M0, requestS) = unbundle $ wbInterface regConfig.access <$> wbM2S1 <*> responseS
+    packedInFromBus0 :: Signal dom (Maybe (Vec (SizeInWordsC wordSize a) (Bytes wordSize)))
+    (responseS, packedInFromBus0) = unbundle $ goResponse <$> packedOut <*> requestS
 
     -- Drop any circuit writes while we're waiting for the bus activity to get
     -- acknowledged. This makes sure that 'packedOut' remains stable in turn making
@@ -658,91 +654,41 @@ registerWbDf clk rst regConfig resetValue =
     --      on a 'Df' stream.
     wbS2M2 =
       case regConfig.busRead of
-        PreferCircuit -> setReadData <$> wbS2M1 <*> aIn0 <*> relativeOffset
+        PreferCircuit -> setReadData <$> wbS2M1 <*> aIn0 <*> requestS
         PreferRegister -> wbS2M1
 
-    setReadData ::
-      WishboneS2M wordSize ->
-      Maybe a ->
-      Index nWords ->
-      WishboneS2M wordSize
-    setReadData s2m ma relOffset =
+    setReadData s2m ma req =
       case ma of
         Just a ->
           let
-            packed = packWordC @wordSize ?regByteOrder a !! relOffset
+            packed = packWordC @wordSize ?regByteOrder a !! (fromLeft' $ fromJust req)
             readData = if needReverse then reverseBytes packed else packed
            in
             s2m{readData}
         Nothing -> s2m
 
-    goRelativeOffset :: BitVector aw -> Index nWords
+    goRelativeOffset :: BitVector aw -> Index (SizeInWordsC wordSize a)
     goRelativeOffset addr = fromMaybe 0 (elemIndex addrLsbs expectedOffsets)
      where
       expectedOffsets = iterateI succ offsetLsbs
       offsetLsbs = resize offset :: BitVector (BitSize (Index nWords))
-      addrLsbs = resize addr :: BitVector (BitSize (Index nWords))
+      addrLsbs = resize addr
 
-  -- Handle bus transactions. Note that this function assumes that the bus transaction
-  -- is actually targeting this register. I.e., the address has already been checked.
-  goBus ::
-    forall nWords.
-    ( nWords ~ SizeInWordsC wordSize a
-    , KnownNat nWords
-    ) =>
-    Access ->
-    Index nWords ->
-    WishboneM2S aw wordSize ->
-    Vec (SizeInWordsC wordSize a) (Bytes wordSize) ->
-    ( WishboneS2M wordSize
-    , Maybe (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
-    )
-  goBus busAccess offset wbM2S packedFromReg =
-    ()
-      `seqX` offset
-      `seqX` wbM2S
-      `seqX` packedFromReg
-      `seqX` readData
-      `seqX` acknowledge
-      `seqX` err
-      `seqX` wbWrite
-      `seqX` ( WishboneS2M
-                { readData
-                , acknowledge
-                , err
-                , retry = False
-                , stall = False
-                }
-             , wbWrite
-             )
-   where
-    managerActive = wbM2S.strobe && wbM2S.busCycle
-    err = managerActive && accessFault
-    acknowledge = managerActive && not err
-
-    -- Note that these "faults" are only considered in context of an active bus
-    readOnlyFault = busAccess == ReadOnly && wbM2S.writeEnable
-    writeOnlyFault = busAccess == WriteOnly && not wbM2S.writeEnable
-    accessFault = readOnlyFault || writeOnlyFault
-
-    readData
-      | not wbM2S.writeEnable
-      , acknowledge =
-          (if needReverse then reverseBytes else id) (packedFromReg !! offset)
-      | otherwise = 0
-
-    maskedWriteData =
-      maskWriteData
-        offset
-        (if needReverse then reverseBits wbM2S.busSelect else wbM2S.busSelect)
-        (if needReverse then reverseBytes wbM2S.writeData else wbM2S.writeData)
-        packedFromReg
-
-    wbWrite
-      | wbM2S.writeEnable
-      , acknowledge =
-          Just maskedWriteData
-      | otherwise = Nothing
+    goResponse _ Nothing = (Nothing, Nothing)
+    goResponse packedFromReg (Just (Right (addr, mask, dataIn))) = (response, wbWrite)
+     where
+      maskedWriteData =
+        maskWriteData
+          addr
+          (if needReverse then reverseBits mask else mask)
+          (if needReverse then reverseBytes dataIn else dataIn)
+          packedFromReg
+      wbWrite = Just maskedWriteData
+      response = Just (deepErrorX "readData not defined on write")
+    goResponse packedFromReg (Just (Left addr)) = (response, Nothing)
+     where
+      readData = (if needReverse then reverseBytes else id) (packedFromReg !! addr)
+      response = Just readData
 
 reverseBytes ::
   forall wordSize.
