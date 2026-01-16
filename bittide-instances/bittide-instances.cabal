@@ -310,6 +310,7 @@ test-suite unittests
   other-modules:
     Df.ElasticBufferWb
     Df.WbToDf
+    Tests.Bittide.Instances.Hitl.Utils.MemoryMap
     Tests.Bittide.Instances.Hitl.Utils.OpenOcd
     Tests.ClockControlWb
     Wishbone.Axi
