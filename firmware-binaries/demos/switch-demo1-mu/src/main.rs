@@ -119,6 +119,10 @@ fn main() -> ! {
         elastic_buffers[6].eb_fill_count(),
     ];
 
+    elastic_buffers
+        .iter()
+        .for_each(|eb| eb.increase_occupancy(5));
+
     for (i, eb) in elastic_buffers.iter().enumerate() {
         if eb.overflow() {
             uwriteln!(uart, "[ERROR]: Channel {} elastic buffer overflowed", i).unwrap();

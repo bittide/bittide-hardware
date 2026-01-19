@@ -23,6 +23,7 @@ import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
+import Data.Bifunctor (first)
 import Data.Maybe (fromJust)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -217,7 +218,11 @@ driver testName targets = do
           pure (localCounter, remoteCounter)
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
+      ugnComponents <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
+      liftIO $ forM_ ugnComponents $ \components -> putStrLn $ "Raw UGN components: " <> show components
+      -- We incremented the occupancy 5 times after UGNs were captured, so we compensate
+      -- by adding 5 to the local_counter here.
+      pure $ first (+ 5) <$> ugnComponents
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
