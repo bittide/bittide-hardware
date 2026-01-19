@@ -206,17 +206,18 @@ driver testName targets = do
     muGetUgns :: (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
     muGetUgns (_, d) gdb = do
       let
-        mmioAddrs :: [Integer]
-        mmioAddrs =
-          [ getPathAddress MemoryMaps.mu ["0", "CaptureUgn" <> show @Integer n]
-          | n <- [0 .. natToNum @(LinkCount - 1)]
-          ]
+        captureUgnPrefixed :: Int -> String -> [String]
+        captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
 
-        readUgnMmio :: Integer -> IO (Unsigned 64, Unsigned 64)
-        readUgnMmio addr = Gdb.readLe gdb addr
+        readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64)
+        readUgnMmio linkNr = do
+          let getUgnRegister = getPathAddress MemoryMaps.mu . captureUgnPrefixed linkNr
+          localCounter <- Gdb.readLe gdb (getUgnRegister "local_counter")
+          remoteCounter <- Gdb.readLe gdb (getUgnRegister "remote_counter")
+          pure (localCounter, remoteCounter)
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      mapM readUgnMmio mmioAddrs
+      mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
@@ -226,7 +227,7 @@ driver testName targets = do
         bufferSize = (snatToNum (SNat @FpgaCount)) * 3
       output <-
         Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 @Integer muSwitchDemoPeBuffer}|]
-      putStrLn [i|PE buffer readout: #{output}|]
+      putStrLn [i|PE buffer readout:\n#{output}|]
 
     muGetCurrentTime :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
