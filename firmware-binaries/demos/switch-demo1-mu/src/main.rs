@@ -128,8 +128,6 @@ fn main() -> ! {
         }
     }
 
-    uwriteln!(uart, "All UGNs captured").unwrap();
-
     // Collect EB drain and fill counts after "All UGNs captured" and calculate differences
     for (i, eb) in elastic_buffers.iter().enumerate() {
         let eb_drains_after = eb.eb_drain_count();
@@ -149,6 +147,8 @@ fn main() -> ! {
         uwriteln!(uart, "[INFO]: Channel {} EB fills:  {}", i, fill_diff).unwrap();
         uwriteln!(uart, "[INFO]: Channel {} count:     {}", i, eb.data_count()).unwrap();
     }
+
+    uwriteln!(uart, "All UGNs captured").unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {
