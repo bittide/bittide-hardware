@@ -12,6 +12,7 @@ import Bittide.DoubleBufferedRam (
   InitialContent (NonReloadable),
   wbStorage,
  )
+import Clash.Class.BitPackC (ByteOrder (..))
 import Clash.Prelude (withClockResetEnable)
 import Clash.Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import Data.Map (Map)
@@ -108,6 +109,7 @@ prop_xpmCdcHandshakeWb = property $ do
 
   dutMem :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
   dutMem =
-    withClockResetEnable clk rst ena
-      $ unMemmap
-      $ wbStorage "test" (NonReloadable (Vec (repeat @(2 ^ AddressWidth) 0)))
+    let ?busByteOrder = BigEndian
+     in withClockResetEnable clk rst ena
+          $ unMemmap
+          $ wbStorage "test" (NonReloadable (Vec (repeat @(2 ^ AddressWidth) 0)))

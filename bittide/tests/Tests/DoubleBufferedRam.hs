@@ -11,6 +11,7 @@ module Tests.DoubleBufferedRam (tests) where
 
 import Clash.Prelude
 
+import Clash.Class.BitPackC (ByteOrder (..))
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
@@ -579,13 +580,14 @@ wbStorageSpecCompliance = property $ do
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-    wcre
-      $ wishbonePropWithModel @System
-        defExpectOptions
-        (\_ _ () -> Right ())
-        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v) - 1))
-        ()
+    let ?busByteOrder = BigEndian
+     in wcre
+          $ wishbonePropWithModel @System
+            defExpectOptions
+            (\_ _ () -> Right ())
+            (unMemmap $ wbStorage "" (Reloadable $ Vec content))
+            (genRequests (snatToNum (SNat @v) - 1))
+            ()
 
   genRequests :: Unsigned 30 -> Gen [WishboneMasterRequest 30 (BitVector 32)]
   genRequests size =
@@ -622,7 +624,9 @@ wbStorageBehavior = property $ do
 
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
-      slave = wcre $ unMemmap (wbStorage @System @_ @30 "" (NonReloadable $ Vec content))
+      slave =
+        let ?busByteOrder = BigEndian
+         in wcre $ unMemmap (wbStorage @System @_ @30 "" (NonReloadable $ Vec content))
       simTransactions = exposeWbTransactions (Just 1000) master slave
       goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
@@ -678,13 +682,14 @@ wbStorageRangeErrors = property $ do
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-    wcre
-      $ wishbonePropWithModel @System @_ @30
-        defExpectOptions
-        model
-        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v)))
-        (snatToInteger (SNat @v))
+    let ?busByteOrder = BigEndian
+     in wcre
+          $ wishbonePropWithModel @System @_ @30
+            defExpectOptions
+            model
+            (unMemmap $ wbStorage "" (Reloadable $ Vec content))
+            (genRequests (snatToNum (SNat @v)))
+            (snatToInteger (SNat @v))
 
   genRequests size =
     Gen.list
@@ -741,13 +746,14 @@ wbStorageProtocolsModel = property $ do
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-    wcre
-      $ wishbonePropWithModel @System @_ @30
-        defExpectOptions
-        model
-        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v)))
-        (I.fromAscList $ L.zip [0 ..] (toList content))
+    let ?busByteOrder = BigEndian
+     in wcre
+          $ wishbonePropWithModel @System @_ @30
+            defExpectOptions
+            model
+            (unMemmap $ wbStorage "" (Reloadable $ Vec content))
+            (genRequests (snatToNum (SNat @v)))
+            (I.fromAscList $ L.zip [0 ..] (toList content))
 
   genRequests size =
     Gen.list (Range.linear 0 32) $ do
