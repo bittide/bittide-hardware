@@ -125,7 +125,7 @@ fn main() -> ! {
 
     elastic_buffers
         .iter()
-        .for_each(|eb| eb.decrease_occupancy(1));
+        .for_each(|eb| eb.increase_occupancy(5));
 
     for (i, eb) in elastic_buffers.iter().enumerate() {
         if eb.overflow() {
