@@ -11,9 +11,11 @@ import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC (BitPackC, ByteOrder)
 import Clash.Cores.Xilinx.DcFifo
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
+import Clash.Cores.Xilinx.Xpm.Cdc.Gray (xpmCdcGray)
 import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
 import Clash.Prelude
 import Data.Coerce (coerce)
+import Data.Maybe (isJust)
 import GHC.Stack
 import Protocols (Ack (..), CSignal, Circuit (..), applyC)
 import Protocols.MemoryMap (Access (..))
@@ -24,6 +26,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWb,
   registerWbDf,
+  registerWb_,
  )
 import Protocols.MemoryMap.TypeDescription.TH
 
@@ -81,6 +84,10 @@ xilinxElasticBuffer ::
   , Signal readDom a
   , -- Acknowledgement for EbMode
     Signal readDom Ack
+  , -- Number of elements drained from the buffer (in write domain)
+    Signal writeDom (Unsigned 32)
+  , -- Number of elements filled into the buffer (in read domain)
+    Signal readDom (Unsigned 32)
   )
 xilinxElasticBuffer clkRead clkWrite command wdata =
   ( -- Note that this is chosen to work for 'RelDataCount' either being
@@ -96,6 +103,8 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
   , isOverflow
   , fifoData
   , commandAck
+  , drainCount0
+  , fillCount0
   )
  where
   FifoOut{readCount, isUnderflow, isOverflow, fifoData} =
@@ -118,9 +127,14 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
   otherAck = pure $ Ack True
   readEnable = command ./= Just Fill
 
+  fillCount0 = mux readEnable fillCount1 (fillCount1 + 1)
+  fillCount1 = E.register clkRead noResetRead enableGen 0 fillCount0
+
   -- TODO: Instead of hoisting over a flag to drain a single element, we could
   --       hoist over a count to drain multiple elements at once. This would
   --       significantly reduce the overhead induced by the handshake.
+  drainCount0 = mux (isJust <$> writeData) drainCount1 (drainCount1 + 1)
+  drainCount1 = E.register clkWrite noResetWrite enableGen 0 drainCount0
   drainFlag = orNothing <$> drain <*> pure high
   drainSynced = drainFlagSynced .== Just high
   writeData = mux drainSynced (pure Nothing) (Just <$> wdata)
@@ -179,7 +193,16 @@ xilinxElasticBufferWb ::
     , CSignal readDom a
     )
 xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
-  [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable, wbFillCount, wbDrainCount] <-
+  [ wbCommand
+    , wbDataCount
+    , wbUnderflow
+    , wbOverflow
+    , wbStable
+    , wbFillCount
+    , wbDrainCount
+    , wbEbFillCount
+    , wbEbDrainCount
+    ] <-
     deviceWb "ElasticBuffer" -< wb
 
   -- Command register: Writing to this register adds or removes a single element
@@ -194,8 +217,11 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
 
   ebCommandDf <- applyC (fmap busActivityWrite) id -< ebCommandDfActivity
 
-  let (dataCount, underflow, overflow0, readData, commandAck) =
-        xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
+  let
+    (dataCount, underflow, overflow0, readData, commandAck, ebDrainCount, ebFillCount) =
+      xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
+
+    ebDrainCountSynced = xpmCdcGray clkWrite clkRead ebDrainCount
 
   Fwd ebCommandSig <- unsafeFromDf -< (ebCommandDf, Fwd commandAck)
 
@@ -246,6 +272,20 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
       (registerConfig "drain_count")
       (0 :: Unsigned 32)
       -< (wbDrainCount, Fwd drainCountUpdated)
+
+  registerWb_
+    clkRead
+    rstRead
+    (registerConfig "eb_fill_count"){access = ReadOnly}
+    0
+    -< (wbEbFillCount, Fwd (Just <$> ebFillCount))
+
+  registerWb_
+    clkRead
+    rstRead
+    (registerConfig "eb_drain_count"){access = ReadOnly}
+    0
+    -< (wbEbDrainCount, Fwd (Just <$> ebDrainCountSynced))
 
   -- Stable register: Software can set this to indicate buffer is ready
   (stableOut, _stableActivity) <-

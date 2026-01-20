@@ -99,6 +99,26 @@ fn main() -> ! {
         }
     }
 
+    // Collect EB drain and fill counts before decrease_occupancy
+    let eb_drains_before: [u32; 7] = [
+        elastic_buffers[0].eb_drain_count(),
+        elastic_buffers[1].eb_drain_count(),
+        elastic_buffers[2].eb_drain_count(),
+        elastic_buffers[3].eb_drain_count(),
+        elastic_buffers[4].eb_drain_count(),
+        elastic_buffers[5].eb_drain_count(),
+        elastic_buffers[6].eb_drain_count(),
+    ];
+    let eb_fills_before: [u32; 7] = [
+        elastic_buffers[0].eb_fill_count(),
+        elastic_buffers[1].eb_fill_count(),
+        elastic_buffers[2].eb_fill_count(),
+        elastic_buffers[3].eb_fill_count(),
+        elastic_buffers[4].eb_fill_count(),
+        elastic_buffers[5].eb_fill_count(),
+        elastic_buffers[6].eb_fill_count(),
+    ];
+
     for (i, eb) in elastic_buffers.iter().enumerate() {
         if eb.overflow() {
             uwriteln!(uart, "[ERROR]: Channel {} elastic buffer overflowed", i).unwrap();
@@ -110,10 +130,24 @@ fn main() -> ! {
 
     uwriteln!(uart, "All UGNs captured").unwrap();
 
+    // Collect EB drain and fill counts after "All UGNs captured" and calculate differences
     for (i, eb) in elastic_buffers.iter().enumerate() {
-        uwriteln!(uart, "[INFO]: Channel {} drains: {}", i, eb.drain_count()).unwrap();
-        uwriteln!(uart, "[INFO]: Channel {} fills: {}", i, eb.fill_count()).unwrap();
-        uwriteln!(uart, "[INFO]: Channel {} count: {}", i, eb.data_count()).unwrap();
+        let eb_drains_after = eb.eb_drain_count();
+        let eb_fills_after = eb.eb_fill_count();
+        let drain_diff = eb_drains_after.wrapping_sub(eb_drains_before[i]);
+        let fill_diff = eb_fills_after.wrapping_sub(eb_fills_before[i]);
+
+        uwriteln!(uart, "[INFO]: Channel {} EB drains: {}", i, drain_diff).unwrap();
+        uwriteln!(
+            uart,
+            "[INFO]: Channel {} drains:    {}",
+            i,
+            eb.drain_count()
+        )
+        .unwrap();
+        uwriteln!(uart, "[INFO]: Channel {} fills:     {}", i, eb.fill_count()).unwrap();
+        uwriteln!(uart, "[INFO]: Channel {} EB fills:  {}", i, fill_diff).unwrap();
+        uwriteln!(uart, "[INFO]: Channel {} count:     {}", i, eb.data_count()).unwrap();
     }
 
     #[allow(clippy::empty_loop)]
