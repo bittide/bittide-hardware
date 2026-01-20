@@ -42,6 +42,7 @@ import Protocols.Wishbone (
   emptyWishboneS2M,
  )
 
+import qualified Clash.Prelude as CP
 import Data.Either.Extra (fromLeft')
 import qualified Data.List as L
 import qualified Data.Map as Map
@@ -360,7 +361,8 @@ memoryWb ::
   SNat memDepth ->
   Circuit (RegisterWb dom aw wordSize) ()
 memoryWb clk rst regConfig primitive SNat = circuit $ \wb -> do
-  reqresp <- addressableBytesWb @memDepth regConfig -< wb
+  reqresp <-
+    CP.withReset rst forceResetSanity <| addressableBytesWb @memDepth regConfig -< wb
   (reads, writes0) <- ReqResp.partitionEithers -< reqresp
   writes1 <- dropResponseData 0 -< writes0
   _vecUnit <- ram -< (reads, writes1)
@@ -703,6 +705,24 @@ reverseBits ::
   BitVector n ->
   BitVector n
 reverseBits = pack . reverse . unpack @(Vec n Bit)
+
+matchEndianness ::
+  forall dom mode aw wordSize.
+  ( KnownNat wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Circuit
+    (Wishbone dom mode aw (Bytes wordSize))
+    (Wishbone dom mode aw (Bytes wordSize))
+matchEndianness
+  | needReverse = applyC (fmap reverseWrite) (fmap reverseRead)
+  | otherwise = idC
+ where
+  reverseWrite m2s = m2s{writeData = reverseBytes m2s.writeData, busSelect = reverseBits m2s.busSelect}
+  reverseRead s2m = s2m{readData = reverseBytes s2m.readData}
+
+  needReverse = ?busByteOrder /= ?regByteOrder
 
 {- | Takes the data from the bus and the register and combines them based on the
 byte enables and word index we're writing to.
