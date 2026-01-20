@@ -33,6 +33,8 @@ wrappingCounter upper = counter
   go 0 = upper
   go n = pred n
 
+-- type RelDataCount n = Signed n
+
 {- | A version of 'sum' that is guaranteed not to overflow.
 (works for both: 'RelDataCount' being 'Signed' or 'Unsigned')
 -}
@@ -41,8 +43,8 @@ safeSum ::
   , KnownNat m
   , 1 <= n
   ) =>
-  Vec n (RelDataCount m) ->
-  RelDataCount (m + n - 1)
+  Vec n (Signed m) ->
+  Signed (m + n - 1)
 safeSum = sum . map extend
 
 {- | Sum a bunch of 'RelDataCount's to a @Signed 32@, without overflowing.
