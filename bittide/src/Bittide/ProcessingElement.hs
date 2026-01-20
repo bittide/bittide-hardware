@@ -132,11 +132,11 @@ processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dB
     $ wbStorage "DataMemory" depthD initD
     -< dMemBus
 
-  iBus2 <- removeMsb <| watchDogWb "iBus" iBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
+  iBus2 <- removeMsbs <| watchDogWb "iBus" iBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   Mm.withTag "no-generate"
     $ Mm.withDeviceTag "no-generate"
-    $ wbStorageDPC "InstructionMemory" depthI initI
-    -< (mmI, (iBus2, iMemBus))
+    $ wbStorage "InstructionMemory" depthI initI -< (mmI, iBus3)
+  iBus3 <- arbiter -< [iMemBus, iBus2]
 
   idC -< extBusses
  where
@@ -148,13 +148,13 @@ processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dB
   -- memory
   iMemPfx = rotateR 1 1
   prefixBlacklist = 0 :> iMemPfx :> Nil
-  removeMsb ::
+  removeMsbs ::
     forall aw a.
     (KnownNat aw) =>
     Circuit
-      (Wishbone dom 'Standard (aw + 4) a)
       (Wishbone dom 'Standard aw a)
-  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
+      (Wishbone dom 'Standard (RemainingBusWidth nBusses) a)
+  removeMsbs = wbMap (mapAddr resize) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
 
