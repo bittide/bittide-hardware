@@ -50,19 +50,16 @@ fn main() -> ! {
     //       use `eb_changes` to calculate the final UGN once we determine
     //       the whole network is up and therefore stop modifying the buffer
     //       occupancy.
-    uwriteln!(uart, "Continuously center buffer occupancies").unwrap();
-    let mut eb_changes: [i8; 7] = [0; 7];
     loop {
-        for (i, eb) in elastic_buffers.iter().enumerate() {
-            eb_changes[i] += eb.set_occupancy(0);
-        }
+        elastic_buffers.iter().for_each(|eb| {
+            eb.set_occupancy(0);
+        });
 
         // We don't update the stability here, but leave that to callisto. Although
         // we also have access to the 'links_settled' register, we don't want to
         // flood the CC bus.
-        let stable = cc.links_stable();
         let stability = Stability {
-            stable: stable[0],
+            stable: cc.links_stable()[0],
             settled: 0,
         };
         if stability.all_stable() {
@@ -71,25 +68,15 @@ fn main() -> ! {
         }
     }
 
-    for (i, eb) in elastic_buffers.iter().enumerate() {
-        uwriteln!(
-            uart,
-            "Elastic Buffer {}, frames changed: {}",
-            i,
-            eb_changes[i]
-        )
-        .unwrap();
-        eb.set_stable(true);
-    }
+    elastic_buffers.iter().for_each(|eb| eb.set_stable(true));
+    elastic_buffers.iter().for_each(|eb| eb.clear_flags());
 
     uwriteln!(uart, "Switch transceiver channels to user mode..").unwrap();
     for channel in 0..Transceivers::RECEIVE_READYS_LEN {
         transceivers.set_receive_readys(channel, true);
         transceivers.set_transmit_starts(channel, true);
     }
-    uwriteln!(uart, "Done").unwrap();
 
-    uwriteln!(uart, "Starting UGN captures").unwrap();
     let mut capture_ugns = [
         (INSTANCES.capture_ugn_0, false),
         (INSTANCES.capture_ugn_1, false),
@@ -100,27 +87,40 @@ fn main() -> ! {
         (INSTANCES.capture_ugn_6, false),
     ];
     while capture_ugns.iter().any(|(_, done)| !done) {
-        for (i, (capture_ugn, done)) in capture_ugns.iter_mut().enumerate() {
+        for (capture_ugn, done) in capture_ugns.iter_mut() {
             if *done {
                 continue;
             }
             if capture_ugn.has_captured() {
-                uwriteln!(
-                    uart,
-                    "Capture UGN {}: local = {}, remote = {}",
-                    i,
-                    capture_ugn.local_counter(),
-                    u64::from_ne_bytes(capture_ugn.remote_counter())
-                )
-                .unwrap();
                 *done = true;
             }
         }
     }
+
+    for (i, eb) in elastic_buffers.iter().enumerate() {
+        if eb.overflow() {
+            uwriteln!(uart, "[ERROR]: Channel {} elastic buffer overflowed", i).unwrap();
+        }
+        if eb.underflow() {
+            uwriteln!(uart, "[ERROR]: Channel {} elastic buffer underflowed", i).unwrap();
+        }
+    }
+
     uwriteln!(uart, "All UGNs captured").unwrap();
 
     #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        for (i, eb) in elastic_buffers.iter().enumerate() {
+            if eb.overflow() {
+                uwriteln!(uart, "[ERROR]: Channel {} elastic buffer overflowed", i).unwrap();
+                panic!();
+            }
+            if eb.underflow() {
+                uwriteln!(uart, "[ERROR]: Channel {} elastic buffer underflowed", i).unwrap();
+                panic!();
+            }
+        }
+    }
 }
 
 #[panic_handler]
