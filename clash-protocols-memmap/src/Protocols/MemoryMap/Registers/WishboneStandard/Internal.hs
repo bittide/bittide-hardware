@@ -713,8 +713,8 @@ matchEndianness ::
   , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
-    (Wishbone dom mode aw (Bytes wordSize))
-    (Wishbone dom mode aw (Bytes wordSize))
+    (Wishbone dom mode aw wordSize)
+    (Wishbone dom mode aw wordSize)
 matchEndianness
   | needReverse = applyC (fmap reverseWrite) (fmap reverseRead)
   | otherwise = idC
