@@ -605,6 +605,28 @@ reverseBits ::
   BitVector n
 reverseBits = pack . reverse . unpack @(Vec n Bit)
 
+{- | If `busByteOrder` and `regByteOrder` match, this is a no-op. If they don't, this will
+reverse the byte order of the data and byte enables in both directions. Note that this
+only affects the data and byte enables.
+-}
+matchEndianness ::
+  forall dom mode aw wordSize.
+  ( KnownNat wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Circuit
+    (Wishbone dom mode aw wordSize)
+    (Wishbone dom mode aw wordSize)
+matchEndianness
+  | needReverse = applyC (fmap reverseWrite) (fmap reverseRead)
+  | otherwise = idC
+ where
+  reverseWrite m2s = m2s{writeData = reverseBytes m2s.writeData, busSelect = reverseBits m2s.busSelect}
+  reverseRead s2m = s2m{readData = reverseBytes s2m.readData}
+
+  needReverse = ?busByteOrder /= ?regByteOrder
+
 {- | Takes the data from the bus and the register and combines them based on the
 byte enables and word index we're writing to.
 -}
