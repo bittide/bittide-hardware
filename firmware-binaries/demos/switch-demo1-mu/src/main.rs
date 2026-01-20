@@ -73,12 +73,6 @@ fn main() -> ! {
     elastic_buffers.iter().for_each(|eb| eb.set_stable(true));
     elastic_buffers.iter().for_each(|eb| eb.clear_flags());
 
-    uwriteln!(uart, "Switch transceiver channels to user mode..").unwrap();
-    for channel in 0..Transceivers::RECEIVE_READYS_LEN {
-        transceivers.set_receive_readys(channel, true);
-        transceivers.set_transmit_starts(channel, true);
-    }
-
     let mut capture_ugns = [
         (INSTANCES.capture_ugn_0, false),
         (INSTANCES.capture_ugn_1, false),
@@ -88,6 +82,16 @@ fn main() -> ! {
         (INSTANCES.capture_ugn_5, false),
         (INSTANCES.capture_ugn_6, false),
     ];
+    capture_ugns.iter().enumerate().for_each(|(i, (ugn, _))| {
+        uwriteln!(uart, "Captured UGN for {}: {}", i, ugn.has_captured()).unwrap();
+    });
+
+    uwriteln!(uart, "Switch transceiver channels to user mode..").unwrap();
+    for channel in 0..Transceivers::RECEIVE_READYS_LEN {
+        transceivers.set_receive_readys(channel, true);
+        transceivers.set_transmit_starts(channel, true);
+    }
+
     while capture_ugns.iter().any(|(_, done)| !done) {
         for (capture_ugn, done) in capture_ugns.iter_mut() {
             if *done {
