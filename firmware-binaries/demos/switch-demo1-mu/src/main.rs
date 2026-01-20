@@ -68,6 +68,8 @@ fn main() -> ! {
         }
     }
 
+    elastic_buffers.iter().for_each(|eb| eb.set_drain_count(0));
+    elastic_buffers.iter().for_each(|eb| eb.set_fill_count(0));
     elastic_buffers.iter().for_each(|eb| eb.set_stable(true));
     elastic_buffers.iter().for_each(|eb| eb.clear_flags());
 
@@ -107,6 +109,12 @@ fn main() -> ! {
     }
 
     uwriteln!(uart, "All UGNs captured").unwrap();
+
+    for (i, eb) in elastic_buffers.iter().enumerate() {
+        uwriteln!(uart, "[INFO]: Channel {} drains: {}", i, eb.drain_count()).unwrap();
+        uwriteln!(uart, "[INFO]: Channel {} fills: {}", i, eb.fill_count()).unwrap();
+        uwriteln!(uart, "[INFO]: Channel {} count: {}", i, eb.data_count()).unwrap();
+    }
 
     #[allow(clippy::empty_loop)]
     loop {

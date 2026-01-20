@@ -13,6 +13,7 @@ import Clash.Cores.Xilinx.DcFifo
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
 import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
 import Clash.Prelude
+import Data.Coerce (coerce)
 import GHC.Stack
 import Protocols (Ack (..), CSignal, Circuit (..), applyC)
 import Protocols.MemoryMap (Access (..))
@@ -207,7 +208,7 @@ xilinxElasticBufferWb ::
     , CSignal readDom (ElasticBufferData a)
     )
 xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
-  [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
+  [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable, wbFillCount, wbDrainCount] <-
     deviceWb "ElasticBuffer" -< wb
 
   -- Command register: Writing to this register adds or removes a single element
@@ -253,6 +254,27 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
       (registerConfig "overflow"){access = ReadWrite}
       False
       -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
+
+  let fillCountUpdated = orNothing <$> (ebCommandSig .== Just Fill) <*> (fillCount + 1)
+  (Fwd fillCount, _fillCountActivity) <-
+    registerWb
+      clkRead
+      rstRead
+      (registerConfig "fill_count")
+      (0 :: Unsigned 32)
+      -< (wbFillCount, Fwd fillCountUpdated)
+
+  let drainCountUpdated =
+        orNothing
+          <$> (ebCommandSig .== Just Drain .&&. fmap coerce commandAck)
+          <*> (drainCount + 1)
+  (Fwd drainCount, _drainCountActivity) <-
+    registerWb
+      clkRead
+      rstRead
+      (registerConfig "drain_count")
+      (0 :: Unsigned 32)
+      -< (wbDrainCount, Fwd drainCountUpdated)
 
   -- Stable register: Software can set this to indicate buffer is ready
   (stableOut, _stableActivity) <-
