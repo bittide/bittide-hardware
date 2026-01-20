@@ -222,7 +222,7 @@ driver testName targets = do
       liftIO $ forM_ ugnComponents $ \components -> putStrLn $ "Raw UGN components: " <> show components
       -- We incremented the occupancy after UGNs were captured, so we compensate by
       -- adding 1 to the local_counter here.
-      pure $ first (+ 5) <$> ugnComponents
+      pure $ first (\i_ -> i_ - 5) <$> ugnComponents
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
