@@ -7,7 +7,8 @@
 use ufmt::uwriteln;
 
 use bittide_hal::{
-    manual_additions::timer::Instant, shared_devices::uart::Uart, shared_devices::Timer,
+    manual_additions::timer::{Duration, Instant, WaitResult},
+    shared_devices::{uart::Uart, Timer},
 };
 
 #[cfg(not(test))]
@@ -24,15 +25,35 @@ fn main() -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
     let timer = unsafe { Timer::new(TIMER_ADDR) };
 
-    let t0: Instant = timer.now();
+    let mut t0: Instant = timer.now();
+
+    // Align to start of a whole microsecond
+    let wait_result = timer.wait_until(t0 + Duration::from_micros(10));
+    t0 = timer.now();
     unsafe { (IDLE_A_ADDR as *mut u8).write_volatile(0) };
     let t1: Instant = timer.now();
 
+    if wait_result == WaitResult::AlreadyPassed {
+        uwriteln!(uart, "[ERROR] wait already passed").unwrap();
+        loop {
+            continue;
+        }
+    }
     let diff_a = t1 - t0;
 
-    let t0: Instant = timer.now();
+    let mut t0: Instant = timer.now();
+    // Align to start of a whole microsecond
+    let wait_result = timer.wait_until(t0 + Duration::from_micros(10));
+    t0 = timer.now();
     unsafe { (IDLE_B_ADDR as *mut u8).write_volatile(0) };
     let t1: Instant = timer.now();
+
+    if wait_result == WaitResult::AlreadyPassed {
+        uwriteln!(uart, "[ERROR] wait already passed").unwrap();
+        loop {
+            continue;
+        }
+    }
 
     let diff_b = t1 - t0;
     uwriteln!(
