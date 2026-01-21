@@ -52,7 +52,7 @@ The test returns names of tests and a boolean indicating if the test passed.
 case_time_rust_self_test :: Assertion
 case_time_rust_self_test = do
   let result = L.head $ lines simResult
-  assertEqual "Measured timeout wrong " result "Timeout took 50 microseconds"
+  assertEqual "Measured timeout wrong " "Timeout took 50 microseconds" result
 
 {- | A simple instance containing just VexRisc and UART as peripheral.
 Runs the `hello` binary from `firmware-binaries`.

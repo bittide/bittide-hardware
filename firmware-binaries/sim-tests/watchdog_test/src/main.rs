@@ -7,7 +7,8 @@
 use ufmt::uwriteln;
 
 use bittide_hal::{
-    manual_additions::timer::Instant, shared_devices::uart::Uart, shared_devices::Timer,
+    manual_additions::timer::{Duration, Instant, WaitResult},
+    shared_devices::{uart::Uart, Timer},
 };
 
 #[cfg(not(test))]
@@ -24,17 +25,39 @@ fn main() -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
     let timer = unsafe { Timer::new(TIMER_ADDR) };
 
-    let t0: Instant = timer.now();
+    // Align to start of a whole microsecond
+    let wait_result = timer.wait_until(timer.now() + Duration::from_micros(10));
+    let t0 = timer.now();
     unsafe { (IDLE_A_ADDR as *mut u8).write_volatile(0) };
     let t1: Instant = timer.now();
-
     let diff_a = t1 - t0;
 
-    let t0: Instant = timer.now();
+    if wait_result == WaitResult::AlreadyPassed {
+        uwriteln!(uart, "[ERROR] wait already passed").unwrap();
+        loop {
+            continue;
+        }
+    }
+
+    // Align to start of a whole microsecond
+    let wait_result = timer.wait_until(timer.now() + Duration::from_micros(10));
+    let t0 = timer.now();
     unsafe { (IDLE_B_ADDR as *mut u8).write_volatile(0) };
     let t1: Instant = timer.now();
-
     let diff_b = t1 - t0;
+
+    // Throw error if we missed our wait deadline
+    if wait_result == WaitResult::AlreadyPassed {
+        uwriteln!(uart, "[ERROR] wait already passed").unwrap();
+        loop {
+            continue;
+        }
+    }
+
+    // We consider the 1 cycle timeout to be "instant" since our timing peripheral stores
+    // time as microseconds, so subtracting these durations should compensate for the
+    // overheads induced by talking to the timer peripheral and we can expect
+    // subtracting them to yield the 50us delay induced by the second watchdog timeout.
     uwriteln!(
         uart,
         "Timeout took {} microseconds",
