@@ -11,7 +11,7 @@ Welcome to the bittide documentation book! Bittide is a inter-chip communication
 The benefits include:
  - eliminating tail latency
  - allowing compilers to statically schedule workloads across physical chips
- - scaling to an arbitrary number of nodes
+ - scaling to an arbitrary number of nodes without in-band loss
 
 This book serves as an introduction to bittide and its concepts. Our goal is to provide the necessary information to develop and deploy experiments on bittide-based systems.
 
@@ -65,7 +65,14 @@ Any engineering implementation requires tradeoffs. For bittide,
 The bittide project is Apache 2.0 licensed and is being developed by [QBayLogic](https://qbaylogic.com/) and [Google DeepMind](https://deepmind.google/).
 
 ### Timeline
+**Mar 2025** - Paper on 8 node full bittide setup published ([arXiv](https://arxiv.org/abs/2503.05033))
 
-**2025** - Physical proof-of-concept demo completed
+**Aug 2024** - 8 node demo extended to handle logical latency and scheduling between nodes
 
-**2016** - Project start
+**June 2023** - 8 node proof-of-concept demo completed for clock synchronization
+
+**Jan 2023** - 2 node proof-of-concept demo completed for clock synchronization
+
+**Sep 2021** - Paper on bittide system theory published ([arXiv](https://arxiv.org/pdf/2109.14111))
+
+**Aug 2021** - Project start
