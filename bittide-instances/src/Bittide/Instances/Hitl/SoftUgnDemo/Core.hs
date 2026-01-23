@@ -117,32 +117,32 @@ managementUnit ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
+  Signal dom (Unsigned 64) ->
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
-    ( CSignal dom (Unsigned 64)
-    , Df dom (BitVector 8)
+    ( Df dom (BitVector 8)
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
         , Bitbone dom NmuRemBusWidth
         )
     )
-managementUnit maybeDna =
+managementUnit externalCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    localCounter <- timeWb -< timeBus
+    _cnt <- timeWb (Just externalCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
 
     -- Output
-    idC -< (localCounter, uartOut, restBusses)
+    idC -< (uartOut, restBusses)
 
 gppe ::
   ( HiddenClockResetEnable dom
@@ -151,6 +151,7 @@ gppe ::
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | DNA value
+  Signal dom (Unsigned 64) ->
   Signal dom (Maybe (BitVector 96)) ->
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
@@ -161,7 +162,7 @@ gppe ::
     ( Vec LinkCount (CSignal dom (BitVector 64))
     , Df dom (BitVector 8)
     )
-gppe maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
+gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
   -- Core and interconnect
   (scatterBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
   (gatherBusses, wbs1) <- Vec.split -< wbs0
@@ -183,18 +184,18 @@ gppe maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
     repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (gatherBusses, gatherCalendarBusses)
 
   -- Peripherals
-  _cnt <- timeWb -< timeBus
+  _cnt <- timeWb (Just externalCounter) -< timeBus
   (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
   readDnaPortE2WbWorker maybeDna -< dnaBus
 
   -- Output
   idC -< (linksOut, uart)
  where
-  scatterConfig = ScatterConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  maxCalDepth = d1024
-  repetitionBits = d12
-  sgCal = ValidEntry 0 1000 :> Nil
+  maxCalDepth = SNat @4000
+  scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+  repetitionBits = d16
+  sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
 
 core ::
   ( ?busByteOrder :: ByteOrder
@@ -227,11 +228,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
-    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+    let
+      maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+      localCounter = register bitClk bitRst bitEna 0 (localCounter + 1)
 
     -- Start management unit
-    (Fwd lc, muUartBytesBittide, muWbAll) <-
-      withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
+    (muUartBytesBittide, muWbAll) <-
+      withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (muSgWbs, [muTransceiverBus, muCallistoBus]) <- Vec.split -< muWbs2
@@ -250,13 +253,17 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
            )
         -< ebWbs
 
+    -- Use of `dflipflop` to add pipelining should be replaced by
+    -- https://github.com/bittide/bittide-hardware/pull/1134
     Fwd rxs2 <-
-      withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+      withBittideClockResetEnable
+        $ Vec.vecCircuits ((captureUgn localCounter . dflipflop bitClk) <$> rxs1)
+        -< ugnWbs
     -- Stop internal links
 
     -- Start general purpose processing element
-    (txs, gppeUartBytesBittide) <-
-      withBittideClockResetEnable gppe maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
+    (Fwd txs, gppeUartBytesBittide) <-
+      withBittideClockResetEnable gppe localCounter maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop general purpose processing element
 
     -- Start Clock control
@@ -308,10 +315,12 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                         }
             else swCcOut0
 
+    -- Use of `dflipflop` to add pipelining should be replaced by
+    -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
-         , Fwd lc
-         , txs
+         , Fwd localCounter
+         , Fwd (dflipflop bitClk <$> txs)
          , sync
          , muUartBytesBittide
          , ccUartBytesBittide

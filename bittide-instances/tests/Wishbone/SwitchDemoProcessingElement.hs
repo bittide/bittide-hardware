@@ -93,7 +93,7 @@ dut dnaA dnaB = withBittideByteOrder $ circuit $ do
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
-  Fwd localCounter <- timeWb -< (mmTime, timeBus)
+  Fwd localCounter <- timeWb Nothing -< (mmTime, timeBus)
 
   (linkAB, _stateAB) <-
     switchDemoPeWb d2 -< (mmA, (Fwd localCounter, peBusA, dnaAC, linkBA))

@@ -6,21 +6,49 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
-use bittide_hal::shared_devices::Transceivers;
+use bittide_hal::shared_devices::{Transceivers, Uart};
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
-
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
 use riscv_rt::entry;
+
+/// Initialize scatter and gather calendars with incrementing counter entries.
+/// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
+fn initialize_calendars(uart: &mut Uart) {
+    const NUM_ENTRIES: usize = 4000;
+
+    let calendars = [
+        // Scatter calendars
+        &INSTANCES.scatter_calendar_0,
+        &INSTANCES.scatter_calendar_1,
+        &INSTANCES.scatter_calendar_2,
+        &INSTANCES.scatter_calendar_3,
+        &INSTANCES.scatter_calendar_4,
+        &INSTANCES.scatter_calendar_5,
+        &INSTANCES.scatter_calendar_6,
+        // Gather calendars
+        &INSTANCES.gather_calendar_0,
+        &INSTANCES.gather_calendar_1,
+        &INSTANCES.gather_calendar_2,
+        &INSTANCES.gather_calendar_3,
+        &INSTANCES.gather_calendar_4,
+        &INSTANCES.gather_calendar_5,
+        &INSTANCES.gather_calendar_6,
+    ];
+    uwriteln!(uart, "  Initializing {} calendars", calendars.len()).unwrap();
+    calendars.map(|cal| cal.initialize_as_ringbuffer(NUM_ENTRIES));
+    uwriteln!(uart, "All calendars initialized").unwrap();
+}
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let transceivers = &INSTANCES.transceivers;
     let cc = INSTANCES.clock_control;
+
     let elastic_buffers = [
         &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
@@ -30,8 +58,6 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_5,
         &INSTANCES.elastic_buffer_6,
     ];
-
-    uwriteln!(uart, "Hello from management unit..").unwrap();
 
     // Keep centering elastic buffers to avoid over/under-flows. Keep track of
     // number of frames changed while centering.
@@ -113,8 +139,41 @@ fn main() -> ! {
     }
     uwriteln!(uart, "All UGNs captured").unwrap();
 
-    #[allow(clippy::empty_loop)]
-    loop {}
+    // Initialize scatter/gather calendars with incrementing counters
+    uwriteln!(uart, "Initializing scatter/gather calendars").unwrap();
+    initialize_calendars(&mut uart);
+    uwriteln!(uart, "All calendars initialized").unwrap();
+
+    // Initialize occupancy ranges for monitoring
+    let mut occupancy_ranges: [(i8, i8); 7] = [(0, 0); 7];
+
+    uwriteln!(uart, "Starting elastic buffer occupancy monitoring...").unwrap();
+
+    loop {
+        for (i, eb) in elastic_buffers.iter().enumerate() {
+            let occupancy = eb.data_count();
+            let (min, max) = occupancy_ranges[i];
+
+            // Check if occupancy exceeds current range
+            if occupancy < min || occupancy > max {
+                uwriteln!(
+                    uart,
+                    "[INFO] Port {} occupancy {} exceeds range [{}, {}]",
+                    i,
+                    occupancy,
+                    min,
+                    max
+                )
+                .unwrap();
+
+                if occupancy < min {
+                    occupancy_ranges[i].0 = occupancy;
+                } else {
+                    occupancy_ranges[i].1 = occupancy;
+                }
+            }
+        }
+    }
 }
 
 #[panic_handler]

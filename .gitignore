@@ -87,3 +87,6 @@ __pycache__
 
 # mdbook-drawio output
 docs/mdbook-drawio
+
+# Scala
+.metals

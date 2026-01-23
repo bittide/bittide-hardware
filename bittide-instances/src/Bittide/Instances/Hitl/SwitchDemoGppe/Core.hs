@@ -137,7 +137,7 @@ managementUnit maybeDna =
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    localCounter <- timeWb -< timeBus
+    localCounter <- timeWb Nothing -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
@@ -178,7 +178,7 @@ gppe maybeDna linkIn = circuit $ \(mm, nmuWbMms, jtag) -> do
   linkOut <- gatherUnitWbC gatherConfig -< (gatherBus, gatherCalendarBus)
 
   -- Peripherals
-  _cnt <- timeWb -< timeBus
+  _cnt <- timeWb Nothing -< timeBus
   (uart, _uartStatus) <- uartInterfaceWb d2 d1 uartBytes -< (uartBus, Fwd (pure Nothing))
   readDnaPortE2WbWorker maybeDna -< dnaBus
 
