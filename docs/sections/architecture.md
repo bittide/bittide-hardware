@@ -11,7 +11,9 @@ Here's an example bittide network
 
 {{#drawio path="diagrams/bittide-network-simple.drawio" page=0}}
 
-All computational workloads are done by the Processing Element. The bittide network is transparent to the Processing Element.
+All computational workloads are done by the Processing Elements. The bittide network is transparent to the Processing Elements. The Processing Elements operate on the logic layer of the bittide network, as seen below.
+
+{{#drawio path="diagrams/bittide-logical-network-simple-2.drawio" page=0}}
 
 Any Processing Element can be added to a bittide network, with the requirements that
 1) the Processing Element is able to run on the bittide clock domain, or some PLL multiple
@@ -68,9 +70,13 @@ Once logical latency has been established, the bittide network guarantees these 
 
 **Handshake** (needs better name) - A step function that sends out PBRS until a link is negotiated. Then simply passes data through.
 
+**Logic layer** -
+
 **Management Unit (MU)** - The CPU that performs elastic buffer centering and UGN capturing.
 
 **PBRS** -
+
+**Physical layer** -
 
 **Static clock (SCLK)** - A reference clock that is not adjustable. Its only purpose is to provide a clock for the Clock Setup CPU. Once the Clock Setup CPU is finished, the static clock is not needed.
 
