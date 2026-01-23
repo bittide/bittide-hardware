@@ -49,9 +49,6 @@ fn main() -> ! {
     let transceivers = &INSTANCES.transceivers;
     let cc = INSTANCES.clock_control;
 
-    uwriteln!(uart, "Hello from management unit..").unwrap();
-
-    uwriteln!(uart, "Centering buffer occupancies").unwrap();
     let elastic_buffers = [
         &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
@@ -61,8 +58,6 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_5,
         &INSTANCES.elastic_buffer_6,
     ];
-
-    uwriteln!(uart, "Hello from management unit..").unwrap();
 
     // Keep centering elastic buffers to avoid over/under-flows. Keep track of
     // number of frames changed while centering.
