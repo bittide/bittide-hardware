@@ -54,7 +54,7 @@ captureUgn ::
   Circuit
     (BitboneMm dom addrW)
     (CSignal dom (BitVector 64))
-captureUgn localCounter linkIn = circuit $ \bus -> do
+captureUgn localCounter (C.dflipflop -> linkIn) = circuit $ \bus -> do
   [wbLocalCounter, wbRemoteCounter, wbHasCaptured] <- deviceWb "CaptureUgn" -< bus
 
   let trigger = C.isRising False (isJust <$> linkIn)
