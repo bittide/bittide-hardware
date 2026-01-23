@@ -145,7 +145,7 @@ driver testName targets = do
               $ T.tryWithTimeoutOn
                 T.PrintActionTime
                 "Waiting for calendar initialization"
-                (3 * 60_000_000)
+                (30_000_000)
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
@@ -159,7 +159,7 @@ driver testName targets = do
                 $ T.tryWithTimeoutOn
                   T.PrintActionTime
                   "Waiting for software UGNs"
-                  (600_000_000)
+                  (60_000_000)
                   goDumpCcSamples
                 $ mapConcurrently
                   ( \pico -> do
