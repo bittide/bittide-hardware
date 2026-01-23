@@ -11,6 +11,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import qualified Prelude as P
 
+import Bittide.ElasticBuffer (ElasticBufferData (Data))
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal.Internal
 import Data.Char
@@ -98,7 +99,7 @@ dut eb localCounter = withBittideByteOrder $ circuit $ do
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
-  _bittideData <- captureUgn localCounter eb -< ugnBus
+  _bittideData <- captureUgn localCounter (Data <$> eb) -< ugnBus
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do

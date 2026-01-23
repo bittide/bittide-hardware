@@ -55,6 +55,30 @@ sticky clk rst a = stickyA
 
 {-# OPAQUE xilinxElasticBuffer #-}
 
+data ElasticBufferData a
+  = -- | No valid data present, because FIFO was empty
+    Empty
+  | -- | No valid data preset, because CPU requested a fill
+    FillCycle
+  | -- | FIFO is in passthrough mode and was not empty
+    Data a
+  deriving (Generic, NFDataX, Eq, Show)
+
+fromData :: ElasticBufferData a -> a
+fromData (Data dat) = dat
+fromData FillCycle = errorX "ElasticBufferData.fromData: FillCycle has no data"
+fromData Empty = errorX "ElasticBufferData.fromData: Empty has no data"
+
+fromElasticBufferData :: a -> ElasticBufferData a -> a
+fromElasticBufferData _ (Data dat) = dat
+fromElasticBufferData dflt _ = dflt
+
+toElasticBufferData :: Bool -> Bool -> a -> ElasticBufferData a
+toElasticBufferData requestedReadInPreviousCycle underflow a
+  | not requestedReadInPreviousCycle = FillCycle
+  | underflow = Empty
+  | otherwise = Data a
+
 {- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
 monitor signals in its read domain.
 -}
@@ -73,11 +97,14 @@ xilinxElasticBuffer ::
   -- | Operating mode of the elastic buffer. Must remain stable until an acknowledgement
   -- is received.
   Signal readDom (Maybe EbCommand) ->
+  -- | Data to write into the elastic buffer. Will be ignored for a single cycle
+  -- when it gets a 'Drain' command. Which cycle this is depends on clock domain
+  -- crossing.
   Signal writeDom a ->
   ( Signal readDom (RelDataCount n)
   , Signal readDom Underflow
   , Signal writeDom Overflow
-  , Signal readDom a
+  , Signal readDom (ElasticBufferData a)
   , -- Acknowledgement for EbMode
     Signal readDom Ack
   )
@@ -93,7 +120,7 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
       <$> readCount
   , isUnderflow
   , isOverflow
-  , fifoData
+  , fifoOut
   , commandAck
   )
  where
@@ -116,6 +143,8 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
   commandAck = mux drain drainAck otherAck
   otherAck = pure $ Ack True
   readEnable = command ./= Just Fill
+  readEnableDelayed = E.register clkRead noResetRead enableGen False readEnable
+  fifoOut = toElasticBufferData <$> readEnableDelayed <*> isUnderflow <*> fifoData
 
   -- TODO: Instead of hoisting over a flag to drain a single element, we could
   --       hoist over a count to drain multiple elements at once. This would
@@ -175,7 +204,7 @@ xilinxElasticBufferWb ::
     , CSignal readDom Underflow
     , CSignal readDom Overflow
     , CSignal readDom Stable
-    , CSignal readDom a
+    , CSignal readDom (ElasticBufferData a)
     )
 xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
   [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
