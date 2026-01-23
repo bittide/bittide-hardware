@@ -52,7 +52,7 @@ TODO: Add overview of components
 We follow a standard GitHub development flow. Our development branch is called `main`. Free free to open a PR. If you're not sure what to do, open a [discussion](https://github.com/bittide/bittide-hardware/discussions) thread.
 
 ## Building
-If you haven't built the project before, run:
+If you haven't built the project before or if Cabal complains about outdated indices, run:
 
 ```
 cabal update
@@ -66,7 +66,7 @@ cabal build all
 
 The first time you run this, it will take a while.
 
-To build all Rust files, run:
+To build all Rust and C files, run:
 
 ```bash
 # Debug build:
