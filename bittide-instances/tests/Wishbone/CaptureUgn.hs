@@ -11,6 +11,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import qualified Prelude as P
 
+import Bittide.ElasticBuffer (ElasticBufferData (Data))
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal.Internal
 import Data.Char
@@ -57,7 +58,9 @@ case_capture_ugn_self_test =
       <> showHex expectedLocalCounter ""
       <> " and 0x"
       <> showHex expectedRemoteCounter ""
-  (expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
+  -- Note we do 'succ' on the "expectedLocalCounter" to account for the
+  -- dflipflop inserted on captureUgn's link input
+  (succ -> expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
   (actualLocalCounter, actualRemoteCounter) = parseResult simResult
   clk = clockGen
   rst = resetGenN d2
@@ -96,7 +99,7 @@ dut eb localCounter = withBittideByteOrder $ circuit $ do
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
-  _bittideData <- captureUgn localCounter eb -< ugnBus
+  _bittideData <- captureUgn localCounter (Data <$> eb) -< ugnBus
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do

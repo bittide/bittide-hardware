@@ -22,6 +22,7 @@ import VexRiscv
 
 import Bittide.Calendar
 import Bittide.CaptureUgn (captureUgn)
+import Bittide.ElasticBuffer (ElasticBufferData)
 import Bittide.Jtag
 import Bittide.MetaPeConfig (metaPeConfig)
 import Bittide.ProcessingElement
@@ -70,7 +71,7 @@ node ::
     ( ToConstBwd Mm
     , Vec gppes (ToConstBwd Mm)
     , Jtag dom
-    , Vec linkCount (CSignal dom (Maybe (BitVector 64)))
+    , Vec linkCount (CSignal dom (ElasticBufferData (Maybe (BitVector 64))))
     )
     ( Vec linkCount (CSignal dom (BitVector 64))
     , CSignal dom (Unsigned 64)
