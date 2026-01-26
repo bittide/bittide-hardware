@@ -12,6 +12,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aligned_ringbuffer_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "axi_stream_self_test"
 version = "0.1.0"
 dependencies = [
@@ -69,6 +80,7 @@ name = "bittide-sys"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "crc",
  "fdt",
  "heapless",
  "itertools",
@@ -192,6 +204,21 @@ dependencies = [
  "riscv-rt",
  "ufmt",
 ]
+
+[[package]]
+name = "crc"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eb8a2a1cd12ab0d987a5d5e825195d372001a4094a0376319d5a0ad71c1ba0d"
+dependencies = [
+ "crc-catalog",
+]
+
+[[package]]
+name = "crc-catalog"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
 
 [[package]]
 name = "critical-section"
@@ -461,6 +488,20 @@ dependencies = [
  "heapless",
  "memmap-generate",
  "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
+name = "ringbuffer_smoltcp_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt",
+ "smoltcp 0.12.0",
  "ufmt",
 ]
 
