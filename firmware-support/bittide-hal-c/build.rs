@@ -40,8 +40,8 @@ fn main() {
     let (shared, deduped_hals) = match deduplicate(&ctx, &input_mapping, hals.iter()) {
         Ok(result) => result,
         Err(err) => {
-            println!("ERROR while deduplicating!! {:?}", err);
-            panic!("ERROR {:?}", err)
+            println!("ERROR while deduplicating!! {err:?}");
+            panic!("ERROR {err:?}")
         }
     };
 
@@ -126,7 +126,7 @@ fn main() {
                     generate_type_ref_imports(&ctx, &refs, file);
                     writeln!(file).unwrap();
 
-                    writeln!(file, "{}", code).unwrap();
+                    writeln!(file, "{code}").unwrap();
                 },
             );
         }
@@ -144,7 +144,7 @@ fn main() {
                 writeln!(file, "{}", gen_imports()).unwrap();
 
                 generate_type_ref_imports(&ctx, &refs, file);
-                writeln!(file, "{}", code).unwrap();
+                writeln!(file, "{code}").unwrap();
             });
         }
     }
@@ -167,7 +167,7 @@ fn main() {
             let (dev_name, code, refs) =
                 backend_c::device_desc::generate_device_desc(&ctx, &varis, *dev);
             let file_name = ident(IdentType::Module, dev_name);
-            let file_path = shared_devices_path.join(format!("{}.h", file_name));
+            let file_path = shared_devices_path.join(format!("{file_name}.h"));
             let mut file = File::create(&file_path).unwrap();
             with_guard(
                 &mut file,
@@ -178,7 +178,7 @@ fn main() {
                     generate_type_ref_imports(&ctx, &refs, file);
                     writeln!(file).unwrap();
 
-                    write!(file, "{}", code).unwrap();
+                    write!(file, "{code}").unwrap();
                 },
             );
         }
@@ -216,7 +216,7 @@ fn main() {
             let (dev_name, code, refs) =
                 backend_c::device_desc::generate_device_desc(&ctx, &varis, *dev);
             let file_name = ident(IdentType::Module, dev_name);
-            let file_path = hal_path.join("devices").join(format!("{}.h", file_name));
+            let file_path = hal_path.join("devices").join(format!("{file_name}.h"));
             let mut file = File::create(&file_path).unwrap();
             with_guard(
                 &mut file,
@@ -230,7 +230,7 @@ fn main() {
                     generate_type_ref_imports(&ctx, &refs, file);
                     writeln!(file).unwrap();
 
-                    write!(file, "{}", code).unwrap();
+                    write!(file, "{code}").unwrap();
                 },
             );
         }
@@ -262,7 +262,7 @@ fn generate_type_ref_imports(ctx: &IrCtx, refs: &backend_c::TypeReferences, file
     for ty in &refs.references {
         let name = &ctx.type_names[*ty];
         let mod_name = ident(IdentType::Module, &name.base);
-        writeln!(file, "#include \"types/{}.h\"", mod_name).unwrap();
+        writeln!(file, "#include \"types/{mod_name}.h\"").unwrap();
     }
 }
 

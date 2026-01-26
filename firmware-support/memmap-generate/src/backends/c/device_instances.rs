@@ -69,7 +69,7 @@ pub fn generate_device_instances(
             }
         };
 
-        let hex_addr = format!("0x{:X}", addr);
+        let hex_addr = format!("0x{addr:X}");
 
         writeln!(device_type, "  {dev_ident} {instance_name};").unwrap();
 

@@ -59,9 +59,9 @@ fn main() -> ! {
     } else {
         writeln!(uart, "Could not read back written data").unwrap();
         writeln!(uart, "Written to gather memory:").unwrap();
-        writeln!(uart, "{:?}", source).unwrap();
+        writeln!(uart, "{source:?}").unwrap();
         writeln!(uart, "Read from scatter memory:").unwrap();
-        writeln!(uart, "{:?}", destination).unwrap();
+        writeln!(uart, "{destination:?}").unwrap();
     }
     loop {
         continue;

@@ -98,14 +98,12 @@ fn memory_x_file(
     writeln!(buf, "{{").unwrap();
     writeln!(
         buf,
-        "  IMEM : ORIGIN = 0x{:X}, LENGTH = 0x{:X}",
-        instr_mem_address, instr_mem_size
+        "  IMEM : ORIGIN = 0x{instr_mem_address:X}, LENGTH = 0x{instr_mem_size:X}",
     )
     .unwrap();
     writeln!(
         buf,
-        "  DMEM : ORIGIN = 0x{:X}, LENGTH = 0x{:X}",
-        data_mem_address, data_mem_size
+        "  DMEM : ORIGIN = 0x{data_mem_address:X}, LENGTH = 0x{data_mem_size:X}",
     )
     .unwrap();
     writeln!(

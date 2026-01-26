@@ -8,6 +8,9 @@ version = "0.1.0"
 authors = ["Google LLC"]
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }

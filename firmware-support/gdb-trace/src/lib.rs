@@ -10,11 +10,12 @@ use core::{fmt::Write, panic::PanicInfo};
 /// the panic info to the provided write-able interface. It's expected that the user will
 /// be running a GDB process and set a breakpoint to the panic handler so that the output
 /// can be read.
-#[allow(clippy::empty_loop)]
 pub fn gdb_panic_internal<W: Write>(writer: &mut W, info: &PanicInfo) -> ! {
     riscv::interrupt::machine::disable();
-    writeln!(writer, "{:?}", info).unwrap();
-    loop {}
+    writeln!(writer, "{info:?}").unwrap();
+    loop {
+        continue;
+    }
 }
 
 #[macro_export]

@@ -63,8 +63,8 @@ fn main() {
     let (shared, deduped_hals) = match deduplicate(&ctx, &input_mapping, hals.iter()) {
         Ok(result) => result,
         Err(err) => {
-            println!("ERROR!! {:?}", err);
-            panic!("ERROR {:?}", err)
+            println!("ERROR!! {err:?}");
+            panic!("ERROR {err:?}")
         }
     };
 
@@ -158,7 +158,7 @@ fn main() {
 
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
             writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
-            writeln!(file, "{}", code).unwrap();
+            writeln!(file, "{code}").unwrap();
         }
     }
 
@@ -182,11 +182,11 @@ fn main() {
 
             let (dev_name, code, refs) = backend_rust::generate_device_desc(&ctx, &varis, *dev);
             let file_name = ident(IdentType::Module, dev_name);
-            let file_path = shared_devices_path.join(format!("{}.rs", file_name));
+            let file_path = shared_devices_path.join(format!("{file_name}.rs"));
             let mut file = File::create(&file_path).unwrap();
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
             writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
-            write!(file, "{}", code).unwrap();
+            write!(file, "{code}").unwrap();
             generated_files.push(file_path);
 
             writeln!(mod_file, "pub mod {file_name};").unwrap();
@@ -235,13 +235,13 @@ fn main() {
             }
             let (dev_name, code, refs) = backend_rust::generate_device_desc(&ctx, &varis, *dev);
             let file_name = ident(IdentType::Module, dev_name);
-            let file_path = hal_path.join("devices").join(format!("{}.rs", file_name));
+            let file_path = hal_path.join("devices").join(format!("{file_name}.rs"));
 
             let mut file = File::create(&file_path).unwrap();
 
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
             writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
-            write!(file, "{}", code).unwrap();
+            write!(file, "{code}").unwrap();
             generated_files.push(file_path);
 
             writeln!(mod_file, "pub mod {file_name};").unwrap();

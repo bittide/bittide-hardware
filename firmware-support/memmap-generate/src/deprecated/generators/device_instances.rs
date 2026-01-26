@@ -38,7 +38,7 @@ pub fn generate_device_instances_struct(
                     let instance_name = match name_idx {
                         Some(n) => {
                             name_idx = Some(n + 1);
-                            &format!("{}_{}", device_name, n)
+                            &format!("{device_name}_{n}")
                         }
                         None => {
                             name_idx = Some(1);
@@ -69,7 +69,7 @@ pub fn generate_device_instances_struct(
                     let instance_name = match name_idx {
                         Some(n) => {
                             name_idx = Some(n + 1);
-                            &format!("{}_{}", device_name, n)
+                            &format!("{device_name}_{n}")
                         }
                         None => {
                             name_idx = Some(1);
