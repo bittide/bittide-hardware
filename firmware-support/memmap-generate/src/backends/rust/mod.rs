@@ -154,7 +154,7 @@ pub fn generate_device_instances(
             };
 
             use std::str::FromStr;
-            let addr = Literal::from_str(&format!("0x{:X}", abs_addr)).unwrap();
+            let addr = Literal::from_str(&format!("0x{abs_addr:X}")).unwrap();
 
             let field_def = quote! { pub #instance_name_ident: #dev_ident };
             let field_init =
@@ -396,7 +396,7 @@ fn generate_repr(ctx: &IrCtx, desc: &TypeDescription) -> TokenStream {
                 .map(|handle| &ctx.type_constructors[handle])
                 .all(|con| con.field_types.len == 0);
             let n = po2_type(constructors.len.ilog2() as u64);
-            let repr = ident(IdentType::Raw, format!("u{}", n));
+            let repr = ident(IdentType::Raw, format!("u{n}"));
 
             if fieldless {
                 quote! { #[repr(#repr) ]}
@@ -888,7 +888,7 @@ fn type_to_ident(ctx: &IrCtx, ty: Handle<TypeRef>) -> String {
             let name = &ctx.identifiers[*handle];
             format!("var_{name}")
         }
-        TypeRef::Nat(n) => format!("{}", n),
+        TypeRef::Nat(n) => format!("{n}"),
         TypeRef::Reference { name, args } => {
             let type_name = &ctx.type_names[*name];
             let mut ident = type_name.base.clone();

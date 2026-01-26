@@ -56,12 +56,14 @@ fn main() -> ! {
     }
 
     uwriteln!(uart, "Going into infinite loop..").unwrap();
-    #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        continue;
+    }
 }
 
 #[panic_handler]
 fn panic_handler(_info: &PanicInfo) -> ! {
-    #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        continue;
+    }
 }

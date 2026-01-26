@@ -115,6 +115,7 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic_handler(_: &PanicInfo) -> ! {
-    #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        continue;
+    }
 }

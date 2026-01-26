@@ -420,7 +420,7 @@ impl TypeGenerator {
                         Constructor::Record { fields } => fields.is_empty(),
                     });
                 let n = clog2(&(named_constructors.len() as u64));
-                let repr = ident(IdentType::Raw, format!("u{}", n));
+                let repr = ident(IdentType::Raw, format!("u{n}"));
                 if fieldless {
                     quote! { #[repr(#repr)] }
                 } else {

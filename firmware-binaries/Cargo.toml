@@ -45,3 +45,8 @@ members = [
   "demos/switch-demo2-gppe",
 ]
 resolver = "2"
+
+[workspace.lints.clippy]
+format_push_string = "forbid"
+print_literal = "forbid"
+uninlined_format_args = "forbid"

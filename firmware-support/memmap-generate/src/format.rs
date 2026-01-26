@@ -19,7 +19,7 @@ fn rustfmt_files(files: &[impl AsRef<Path>]) -> Result<(), String> {
 
     let status = command.status().expect("failed to run rustfmt");
     if !status.success() {
-        return Err(format!("`rustfmt` failed: {:?}", command));
+        return Err(format!("`rustfmt` failed: {command:?}"));
     }
 
     Ok(())

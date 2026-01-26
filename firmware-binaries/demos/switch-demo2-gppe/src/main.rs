@@ -12,17 +12,19 @@ use riscv_rt::entry;
 const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
-#[allow(clippy::empty_loop)]
 fn main() -> ! {
     let uart = &mut INSTANCES.uart;
 
     ufmt::uwriteln!(uart, "Hello!").unwrap();
 
-    loop {}
+    loop {
+        continue;
+    }
 }
 
 #[panic_handler]
-#[allow(clippy::empty_loop)]
 fn panic_handler(_: &core::panic::PanicInfo) -> ! {
-    loop {}
+    loop {
+        continue;
+    }
 }

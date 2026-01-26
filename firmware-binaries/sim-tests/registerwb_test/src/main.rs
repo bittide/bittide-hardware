@@ -1,7 +1,6 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 #![allow(const_item_mutation)]
-#![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
 
 // SPDX-FileCopyrightText: 2025 Google LLC
@@ -29,7 +28,9 @@ where
     let uart = &mut INSTANCES.uart;
     uwrite!(uart, "RESULT: ").unwrap();
     result(uart);
-    loop {}
+    loop {
+        continue;
+    }
 }
 
 fn test_ok() -> ! {

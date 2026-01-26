@@ -261,15 +261,6 @@ impl<T> Storage<T> {
         self.0.get_mut(idx.0)
     }
 
-    /// Iterator over all the elements in the storage, consuming the storage.
-    #[allow(clippy::should_implement_trait)]
-    pub fn into_iter(self) -> impl DoubleEndedIterator<Item = (Handle<T>, T)> + ExactSizeIterator {
-        self.0
-            .into_iter()
-            .enumerate()
-            .map(|(idx, val)| (Handle(idx, PhantomData), val))
-    }
-
     /// Iterator over all the elements in the storage.
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = (Handle<T>, &T)> + ExactSizeIterator {
         self.0
@@ -352,6 +343,19 @@ impl<T> Index<HandleRange<T>> for Storage<T> {
 impl<T> IndexMut<HandleRange<T>> for Storage<T> {
     fn index_mut(&mut self, index: HandleRange<T>) -> &mut Self::Output {
         &mut self.0[index.start.0..(index.start.0 + index.len)]
+    }
+}
+
+impl<T> IntoIterator for Storage<T> {
+    type Item = (Handle<T>, T);
+    type IntoIter =
+        std::iter::Map<std::iter::Enumerate<std::vec::IntoIter<T>>, fn((usize, T)) -> Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0
+            .into_iter()
+            .enumerate()
+            .map(|(idx, val)| (Handle(idx, PhantomData), val))
     }
 }
 

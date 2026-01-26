@@ -9,6 +9,9 @@ edition = "2021"
 license = "Apache-2.0"
 authors = ["Google LLC"]
 
+[lints]
+workspace = true
+
 [dependencies]
 riscv-rt = "0.11.0"
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }

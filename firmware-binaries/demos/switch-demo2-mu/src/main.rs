@@ -119,12 +119,14 @@ fn main() -> ! {
     }
     uwriteln!(uart, "All UGNs captured").unwrap();
 
-    #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        continue;
+    }
 }
 
 #[panic_handler]
 fn panic_handler(_: &PanicInfo) -> ! {
-    #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        continue;
+    }
 }
