@@ -7,14 +7,14 @@
 
 use core::panic::PanicInfo;
 
-use bittide_hal::shared_devices::clock_control::ClockControl;
-use bittide_hal::shared_devices::uart::Uart;
 use bittide_hal::types::SpeedChange;
 use core::fmt::Write;
 use rand::{distributions::Uniform, rngs::SmallRng, Rng, SeedableRng};
 
 #[cfg(not(test))]
 use riscv_rt::entry;
+
+use bittide_hal::hals::clock_control_wb as hal;
 
 const RNG_SEED: [u8; 16] = {
     let rng_seed = core::env!("RNG_SEED").as_bytes();
@@ -37,11 +37,10 @@ const RNG_SEED: [u8; 16] = {
 };
 
 #[cfg_attr(not(test), entry)]
-#[allow(clippy::empty_loop)]
 fn main() -> ! {
-    #[allow(clippy::zero_ptr)] // we might want to change the address!
-    let mut uart = unsafe { Uart::new((0b010 << 29) as *mut u8) };
-    let cc = unsafe { ClockControl::new((0b011 << 29) as *mut u8) };
+    let peripherals = unsafe { hal::DeviceInstances::new() };
+    let mut uart = peripherals.uart;
+    let cc = peripherals.clock_control;
 
     writeln!(uart, "nLinks: {}", cc.n_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()[0]).unwrap();
@@ -78,7 +77,9 @@ fn main() -> ! {
         cc.set_change_speed(SpeedChange::NoChange);
     }
 
-    loop {}
+    loop {
+        continue;
+    }
 }
 
 #[panic_handler]

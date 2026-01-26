@@ -27,6 +27,7 @@ import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as SwitchDemoGppe
 import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as WireDemo
 import qualified Bittide.Instances.Tests.AddressableBytesWb as AddressableBytesWb
+import qualified Bittide.Instances.Tests.ClockControlWb as ClockControlWb
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.NestedInterconnect as NestedInterconnect
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
@@ -45,6 +46,7 @@ $( do
     -------------------------------
     let memoryMaps =
           [ ("AddressableBytesWb", AddressableBytesWb.memoryMap)
+          , ("ClockControlWb", ClockControlWb.dutMm)
           , ("Ethernet", vexRiscvEthernetMM)
           , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
           , ("Freeze", freezeMM)
