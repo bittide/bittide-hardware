@@ -17,6 +17,7 @@ import "extra" Data.List.Extra (trim)
 
 import qualified Df.ElasticBufferWb as ElasticBufferWb
 import qualified Df.WbToDf as WbToDf
+import qualified Tests.Bittide.Instances.Hitl.Utils.MemoryMap as MemoryMap
 import qualified Tests.Bittide.Instances.Hitl.Utils.OpenOcd as OpenOcd
 import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.Axi as Axi
@@ -72,6 +73,7 @@ tests =
         , ClockControlWb.tests
         , DnaPortE2.tests
         , ElasticBufferWb.tests
+        , MemoryMap.tests
         , NestedInterconnect.tests
         , OpenOcd.tests
         , ScatterGather.tests
