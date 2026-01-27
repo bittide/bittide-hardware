@@ -72,7 +72,7 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , initI = Undefined @(Div (64 * 1024) 4)
+    , initI = Undefined @(Div (96 * 1024) 4)
     , initD = Undefined @(Div (64 * 1024) 4)
     , iBusTimeout = d0
     , dBusTimeout = d0

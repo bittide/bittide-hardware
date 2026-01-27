@@ -7,13 +7,19 @@
 #![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
 
-use bittide_hal::{manual_additions::calendar::EntryType, types::ValidEntry_12};
+// Non-aliased imports
+use bittide_hal::{
+    hals::switch_c as hal,
+    manual_additions::calendar::{CalendarEntryType, CalendarType},
+    types::ValidEntry_12,
+};
 use ufmt::{uDebug, uwrite, uwriteln};
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-use bittide_hal::hals::switch_c as hal;
+// Aliased imports
+use hal::devices::Calendar;
 
 const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
@@ -62,7 +68,7 @@ fn main() -> ! {
         },
     ];
 
-    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| ValidEntry_12 {
+    let cal_shadow: [CalendarEntryType<Calendar>; 16] = core::array::from_fn(|i| ValidEntry_12 {
         ve_entry: core::array::from_fn(|_j| i as u8),
         ve_repeat: i as u16,
     });
@@ -73,19 +79,23 @@ fn main() -> ! {
     let bootmetacycle = calendar.metacycle_count();
     calendar.wait_for_end_of_metacycle();
     let next_metacycle = calendar.metacycle_count();
-    expect("Metacycle increment", 1, next_metacycle - bootmetacycle);
+    expect("(1) Metacycle increment", 1, next_metacycle - bootmetacycle);
     //
 
     // Test reading shadow depth register
     let calendar_depth = calendar.shadow_depth();
-    expect("Shadow depth register", cal_shadow.len(), calendar_depth);
+    expect(
+        "(2) Shadow depth register",
+        cal_shadow.len(),
+        calendar_depth,
+    );
 
     // Test swapping active calendar with shadow calendar
     calendar.swap_calendar();
     calendar.wait_for_end_of_metacycle();
     let calendar_depth = calendar.shadow_depth();
     expect(
-        "Shadow depth register post ",
+        "(3) Shadow depth register post ",
         cal_active.len(),
         calendar_depth,
     );
@@ -99,7 +109,7 @@ fn main() -> ! {
         let mut msg = heapless::String::<64>::new();
         _ = uwrite!(
             msg,
-            "Reading shadow calendar entry {}/{}",
+            "(4) Reading shadow calendar entry {}/{}",
             i,
             calendar.shadow_depth_index()
         );
@@ -113,7 +123,7 @@ fn main() -> ! {
         let mut msg = heapless::String::<64>::new();
         _ = uwrite!(
             msg,
-            "Reading shadow calendar entry post swap {}/{}",
+            "(5) Reading shadow calendar entry post swap {}/{}",
             i,
             calendar.shadow_depth_index(),
         );
@@ -127,7 +137,7 @@ fn main() -> ! {
         let mut msg = heapless::String::<64>::new();
         _ = uwrite!(
             msg,
-            "Reading shadow calendar pre write: {}/{}",
+            "(6) Reading shadow calendar pre write: {}/{}",
             i,
             calendar.shadow_depth_index(),
         );
@@ -136,7 +146,7 @@ fn main() -> ! {
     calendar.write_shadow_calendar(&cal_shadow);
 
     expect(
-        "Shadow calender depth updated",
+        "(7) Shadow calendar depth updated",
         cal_shadow.len(),
         calendar.shadow_depth(),
     );
@@ -145,7 +155,7 @@ fn main() -> ! {
         let mut msg = heapless::String::<64>::new();
         _ = uwrite!(
             msg,
-            "Reading shadow calendar post write: {}/{}",
+            "(8) Reading shadow calendar post write: {}/{}",
             i,
             calendar.shadow_depth_index(),
         );

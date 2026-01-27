@@ -6,10 +6,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
+use bittide_hal::manual_additions::calendar::RingbufferCalendar;
 use bittide_hal::shared_devices::{Transceivers, Uart};
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
+
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
@@ -17,6 +19,8 @@ use riscv_rt::entry;
 
 /// Initialize scatter and gather calendars with incrementing counter entries.
 /// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
+#[no_mangle]
+#[inline(never)]
 fn initialize_calendars(uart: &mut Uart) {
     const NUM_ENTRIES: usize = 4000;
 
@@ -39,7 +43,12 @@ fn initialize_calendars(uart: &mut Uart) {
         &INSTANCES.gather_calendar_6,
     ];
     uwriteln!(uart, "  Initializing {} calendars", calendars.len()).unwrap();
-    calendars.map(|cal| cal.initialize_as_ringbuffer(NUM_ENTRIES));
+    let mut i = 0;
+    calendars.map(|cal| {
+        cal.initialize_as_ringbuffer(NUM_ENTRIES);
+        uwriteln!(uart, "    Initialized calendar {}", i).unwrap();
+        i += 1;
+    });
     uwriteln!(uart, "All calendars initialized").unwrap();
 }
 
@@ -178,6 +187,5 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic_handler(_: &PanicInfo) -> ! {
-    #[allow(clippy::empty_loop)]
     loop {}
 }
