@@ -99,8 +99,18 @@ fn main() -> ! {
 
     uwriteln!(uart, "All UGNs captured").unwrap();
 
-    #[allow(clippy::empty_loop)]
-    loop {}
+    loop {
+        for (i, eb) in elastic_buffers.iter().enumerate() {
+            if eb.overflow() {
+                uwriteln!(uart, "[ERROR] Channel {} elastic buffer overflowed", i).unwrap();
+                panic!();
+            }
+            if eb.underflow() {
+                uwriteln!(uart, "[ERROR] Channel {} elastic buffer underflowed", i).unwrap();
+                panic!();
+            }
+        }
+    }
 }
 
 #[panic_handler]

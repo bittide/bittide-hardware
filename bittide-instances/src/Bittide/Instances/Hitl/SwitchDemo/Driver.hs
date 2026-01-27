@@ -21,7 +21,7 @@ import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
-import Control.Monad (forM, forM_, when)
+import Control.Monad (forM, forM_, unless)
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust)
 import Data.String.Interpolate (i)
@@ -235,6 +235,29 @@ driver testName targets = do
       Gdb.writeLe gdb (getPathAddress @Integer MemoryMaps.mu ["0", "Timer", "command"]) Capture
       Gdb.readLe gdb (getPathAddress @Integer MemoryMaps.mu ["0", "Timer", "scratchpad"])
 
+    -- \| Read the elastic buffer under and overflow flags and verify they are clear
+    checkElasticBufferFlags :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO Bool
+    checkElasticBufferFlags (_, d) gdb = do
+      let
+        ebPrefixed :: Int -> String -> [String]
+        ebPrefixed linkNr reg = ["0", "ElasticBuffer" <> show linkNr, reg]
+
+        readEbFlag :: Int -> IO (Bool, Bool)
+        readEbFlag linkNr = do
+          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
+          underflow <- Gdb.readLe gdb (getEbRegister "underflow")
+          overflow <- Gdb.readLe gdb (getEbRegister "overflow")
+          pure (underflow, overflow)
+
+      flags <- mapM readEbFlag [0 .. natToNum @(LinkCount - 1)]
+      let allClear = all (== (False, False)) flags
+      liftIO $ unless allClear $ do
+        let deviceId = d.deviceId
+        -- Don't error here so all devices are checked
+        putStrLn
+          [i|[ERROR] Some elastic buffer under/overflowed on device #{deviceId} (under,over): #{flags}|]
+      pure allClear
+
     muWriteCfg ::
       (HasCallStack) =>
       (HwTarget, DeviceInfo) ->
@@ -290,10 +313,10 @@ driver testName targets = do
             expectedCounter = myCfg.startWriteAt
             counterEq = myCounter == expectedCounter
             dnaEq = myDeviceDna == Just headDeviceDna
-          when (not counterEq)
+          unless counterEq
             $ putStrLn
               [i|Counter #{num} did not match. Found #{myCounter}, expected #{expectedCounter}|]
-          when (not dnaEq)
+          unless dnaEq
             $ putStrLn
               [i|DNA did not match. Found #{headDeviceDna}, expected #{myDeviceDna}|]
           return $ counterEq && dnaEq
@@ -406,9 +429,12 @@ driver testName targets = do
             forM_ metaChainConfig print
             forM_ chainConfig print
           _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
+          -- Continue all MUs so they can continue monitoring
+          liftIO $ mapConcurrently_ Gdb.continue muGdbs
           liftIO $ do
             let delayMicros = natToNum @StartDelay * 1_250_000
             threadDelay delayMicros
+            liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
             putStrLn [i|Slept for: #{delayMicros}μs|]
             newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
             putStrLn [i|Clock is now: #{newCurrentTime}|]
@@ -416,6 +442,9 @@ driver testName targets = do
           _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
+
+          ebFlagsClears <- liftIO $ zipWithConcurrently checkElasticBufferFlags targets muGdbs
+          unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"
 
           liftIO goDumpCcSamples
 
