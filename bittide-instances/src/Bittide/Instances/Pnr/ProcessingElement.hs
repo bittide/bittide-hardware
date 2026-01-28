@@ -54,6 +54,7 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
   _localCounter <- timeWb -< timeBus
   idC -< uartTx
  where
+  peConfig, peConfigRtl, peConfigSim :: PeConfig 4
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
@@ -67,23 +68,27 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
     pure
       peConfigRtl
         { initI =
-            NonReloadable
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
-            NonReloadable
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData @DMemWords BigEndian elfPath
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , includeIlaWb = False
         }
 
   peConfigRtl =
     PeConfig
       { cpu = vexRiscv0
-      , initI = Undefined @IMemWords
-      , initD = Undefined @DMemWords
+      , depthI = SNat @IMemWords
+      , depthD = SNat @DMemWords
+      , initI = Nothing
+      , initD = Nothing
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True

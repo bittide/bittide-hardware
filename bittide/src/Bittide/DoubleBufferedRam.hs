@@ -9,7 +9,6 @@ import Clash.Prelude
 
 import Data.Constraint
 import Data.Maybe
-import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df, toSignals)
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
@@ -18,15 +17,18 @@ import Clash.Class.BitPackC (ByteOrder (..))
 import Data.Constraint.Nat.Lemmas
 import Data.Typeable
 import GHC.Stack (HasCallStack)
+import Protocols
 import Protocols.MemoryMap (unMemmap)
 import Protocols.MemoryMap.Registers.WishboneStandard (
+  addressableBytesWb,
   deviceWb,
   matchEndianness,
-  memoryWb,
   registerConfig,
  )
 
-import qualified Clash.Explicit.Prelude as CE
+import qualified Protocols.Df as Df
+import qualified Protocols.Df.Extra as Df
+import qualified Protocols.ReqResp as ReqResp
 
 data ContentType n a
   = Vec (Vec n a)
@@ -44,15 +46,8 @@ instance (Show a, KnownNat n, Typeable a) => Show (ContentType n a) where
     (FileVec fps) -> "File: " <> nAnda <> ", filepaths = " <> show fps
    where
     nAnda = "(" <> show (natToNatural @n) <> " of type (" <> show (typeRep $ Proxy @a) <> "))"
-data InitialContent elements a where
-  NonReloadable :: ContentType elements a -> InitialContent elements a
-  Reloadable :: ContentType elements a -> InitialContent elements a
-  Undefined :: (1 <= elements, KnownNat elements) => InitialContent elements a
 
-deriving instance
-  (Show a, KnownNat elements, Typeable a) => Show (InitialContent elements a)
-
-{- | Accepts 'InitialContents' and returns a 'blockRam' implementations initialized with
+{- | Accepts 'ContentType' and returns a 'blockRam' implementations initialized with
 the corresponding content.
 -}
 initializedRam ::
@@ -115,40 +110,31 @@ wbStorage ::
   ( HasCallStack
   , HiddenClockResetEnable dom
   , KnownNat aw
-  , KnownNat depth
   , 1 <= depth
   , ?busByteOrder :: ByteOrder
   ) =>
   String ->
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Circuit (BitboneMm dom aw) ()
-wbStorage memoryName initContent =
-  let ?regByteOrder = BigEndian
-   in circuit $ \(mm, wbMaster0) -> do
-        wbMaster1 <- matchEndianness -< wbMaster0
-        [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
-        memoryWb hasClock newReset (registerConfig "data") prim (SNat @depth) -< wb0
+wbStorage memoryName SNat initContent =
+  let ?regByteOrder = LittleEndian
+   in circuit $ \wb -> do
+        [wb0] <- deviceWb memoryName -< wb
+        reqresp <-
+          ReqResp.forceResetSanity <| addressableBytesWb @depth (registerConfig "data") -< wb0
+        (reads0, writes0) <- ReqResp.partitionEithers -< reqresp
+        reads1 <- ReqResp.toDf -< (reads0, readData)
+        writes1 <- ReqResp.toDf -< (writes0, writeAcks)
+        writeAcks <- Df.pure 0
+        readData <- Df.fromBlockramWithMask ram -< (reads1, writes1)
+        idC -< ()
  where
-  newReset
-    | isReloadable = CE.unsafeOrReset hasReset (unsafeFromActiveLow romDone)
-    | otherwise = hasReset
-  (romWrite, romDone) = case initContent of
-    Reloadable content -> contentGenerator content
-    _ -> (pure Nothing, pure True)
-
-  (ram, isReloadable) = case initContent of
-    Reloadable _ ->
-      (blockRamByteAddressableU, True)
-    Undefined ->
-      (blockRamByteAddressableU, False)
-    NonReloadable content ->
-      (blockRamByteAddressable @_ @depth content, False)
-
-  prim readOp writeOp sel =
-    ram
-      readOp
-      ((<|>) <$> romWrite <*> writeOp)
-      (mux (isJust <$> romWrite) (pure maxBound) sel)
+  ram = case initContent of
+    Nothing ->
+      blockRamByteAddressableU
+    Just content ->
+      blockRamByteAddressable @_ @depth content
 {-# OPAQUE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
@@ -159,12 +145,13 @@ wbStorage' ::
   , KnownNat depth
   , 1 <= depth
   ) =>
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneS2M (Bytes 4))
-wbStorage' initContent wbIn =
+wbStorage' depth initContent wbIn =
   let ?busByteOrder = BigEndian
-   in fst $ toSignals (unMemmap $ wbStorage "" initContent) (wbIn, ())
+   in fst $ toSignals (unMemmap $ wbStorage "" depth initContent) (wbIn, ())
 
 {- | Blockram similar to 'blockRam' with the addition that it takes a byte select signal
 that controls which nBytes at the write address are updated.

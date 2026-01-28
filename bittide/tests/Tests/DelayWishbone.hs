@@ -9,7 +9,6 @@ import Clash.Explicit.Prelude
 
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (..),
   wbStorage,
  )
 import Clash.Class.BitPackC (ByteOrder (..))
@@ -114,4 +113,4 @@ prop_delayWishbone = property $ do
     let ?busByteOrder = BigEndian
      in withClockResetEnable clk rst ena
           $ unMemmap
-          $ wbStorage "test" (Reloadable (Vec (repeat @(2 ^ AddressWidth) 0)))
+          $ wbStorage "test" (SNat @(2 ^ AddressWidth)) (Just (Vec (repeat 0)))

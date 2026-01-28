@@ -11,7 +11,6 @@ import Clash.Prelude
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (NonReloadable),
  )
 import Bittide.Extra.Maybe (orNothing)
 import Bittide.Instances.Domains (Basic50)
@@ -454,14 +453,16 @@ dutWithBinary binaryName =
     pure
       PeConfig
         { cpu = vexRiscv0
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , initI =
-            NonReloadable @IMemWords
-              $ Vec
+            Just
+              $ Vec @IMemWords
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
         , initD =
-            NonReloadable @DMemWords
-              $ Vec
+            Just
+              $ Vec @DMemWords
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus

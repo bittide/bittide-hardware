@@ -363,7 +363,7 @@ prop_wishboneS2Axi4 = property $ do
       let ?busByteOrder = BigEndian
        in withClockResetEnable clockGen resetGen enableGen
             $ Mm.unMemmap
-            $ wbStorage "prop_wishboneS2Axi4_subordinate" (NonReloadable $ Vec $ replicate d5 0)
+            $ wbStorage "prop_wishboneS2Axi4_subordinate" d5 (Just $ Vec $ repeat 0)
 
     samples = WB.sampleUnfiltered eOpts manager subordinate
     transactions = fmap (\(m, s) -> (WB.m2sToRequest m, s)) $ P.filter hasBusActivity samples

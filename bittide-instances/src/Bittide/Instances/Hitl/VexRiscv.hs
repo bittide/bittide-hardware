@@ -34,7 +34,6 @@ import VexRiscv
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (NonReloadable, Undefined),
  )
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
@@ -55,6 +54,7 @@ import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
 import qualified Protocols.MemoryMap as Mm
+import Bittide.ClockControl.Topology (TopologyType(depth))
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, Show)
@@ -159,13 +159,15 @@ vexRiscvTestC =
       elfPath = elfDir </> fromMaybe "vexriscv-hello" maybeBinaryName
     pure
       peConfigRtl
-        { initI =
-            NonReloadable
+        { depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
+        , initI =
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
-            NonReloadable
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData @DMemWords BigEndian elfPath
@@ -174,8 +176,10 @@ vexRiscvTestC =
   peConfigRtl =
     PeConfig
       { cpu = vexRiscv0
-      , initI = Undefined @DMemWords
-      , initD = Undefined @IMemWords
+      , depthI = SNat @IMemWords
+      , depthD = SNat @DMemWords
+      , initI = Nothing
+      , initD = Nothing
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
