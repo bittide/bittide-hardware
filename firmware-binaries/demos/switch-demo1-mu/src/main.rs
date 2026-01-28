@@ -82,6 +82,13 @@ impl LinkStartup {
             UgnCaptureState::WaitForUgnCapture => {
                 if captured_ugn {
                     uwriteln!(uart, "Captured UGN for channel {}", channel).unwrap();
+                    if elastic_buffer.overflow() {
+                        uwriteln!(uart, "[ERROR] Channel {} post-ugn overflowed", channel).unwrap();
+                    }
+                    if elastic_buffer.underflow() {
+                        uwriteln!(uart, "[ERROR] Channel {} post-ugn underflowed", channel)
+                            .unwrap();
+                    }
                     UgnCaptureState::WaitForStability
                 } else {
                     self.state
@@ -92,6 +99,22 @@ impl LinkStartup {
                 self.center_eb(elastic_buffer);
 
                 if all_stable {
+                    if elastic_buffer.overflow() {
+                        uwriteln!(
+                            uart,
+                            "[ERROR] Channel {} post-stability overflowed",
+                            channel
+                        )
+                        .unwrap();
+                    }
+                    if elastic_buffer.underflow() {
+                        uwriteln!(
+                            uart,
+                            "[ERROR] Channel {} post-stability underflowed",
+                            channel
+                        )
+                        .unwrap();
+                    }
                     elastic_buffer.set_stable(true);
                     UgnCaptureState::Done
                 } else {
