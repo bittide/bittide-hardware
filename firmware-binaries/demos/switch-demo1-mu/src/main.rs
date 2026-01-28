@@ -164,17 +164,8 @@ fn main() -> ! {
 
     let eb_deltas = link_startups.iter().map(|ls| ls.eb_delta);
 
-    for (i, (capture_ugn, eb_delta)) in capture_ugns.iter().zip(eb_deltas).enumerate() {
+    for (capture_ugn, eb_delta) in capture_ugns.iter().zip(eb_deltas) {
         capture_ugn.set_elastic_buffer_delta(eb_delta);
-        uwriteln!(
-            uart,
-            "Capture UGN {}: local = {}, remote = {}, EB delta = {}",
-            i,
-            capture_ugn.local_counter(),
-            u64::from_ne_bytes(capture_ugn.remote_counter()),
-            eb_delta
-        )
-        .unwrap();
     }
 
     uwriteln!(uart, "All UGNs captured").unwrap();
