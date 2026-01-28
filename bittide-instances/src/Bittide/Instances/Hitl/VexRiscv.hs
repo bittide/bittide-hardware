@@ -34,7 +34,7 @@ import VexRiscv
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (Reloadable, Undefined),
+  InitialContent (NonReloadable, Undefined),
  )
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
@@ -160,12 +160,12 @@ vexRiscvTestC =
     pure
       peConfigRtl
         { initI =
-            Reloadable
+            NonReloadable
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
-            Reloadable
+            NonReloadable
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData @DMemWords BigEndian elfPath

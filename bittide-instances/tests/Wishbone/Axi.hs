@@ -106,8 +106,8 @@ dut =
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0
-        , initI = Reloadable (Vec iMem)
-        , initD = Reloadable (Vec dMem)
+        , initI = NonReloadable (Vec iMem)
+        , initD = NonReloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

@@ -67,12 +67,12 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
     pure
       peConfigRtl
         { initI =
-            Reloadable
+            NonReloadable
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
-            Reloadable
+            NonReloadable
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData @DMemWords BigEndian elfPath

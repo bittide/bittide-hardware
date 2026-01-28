@@ -167,13 +167,13 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       $ PeConfig
         { cpu = vexRiscv0
         , initI =
-            Reloadable
+            NonReloadable
               ( Vec
                   $ unsafePerformIO
                   $ vecFromElfInstr @IMemWords BigEndian elfPath
               )
         , initD =
-            Reloadable
+            NonReloadable
               ( Vec
                   $ unsafePerformIO
                   $ vecFromElfData @DMemWords BigEndian elfPath

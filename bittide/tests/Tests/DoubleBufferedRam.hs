@@ -585,7 +585,7 @@ wbStorageSpecCompliance = property $ do
           $ wishbonePropWithModel @System
             defExpectOptions
             (\_ _ () -> Right ())
-            (unMemmap $ wbStorage "" (Reloadable $ Vec content))
+            (unMemmap $ wbStorage "" (NonReloadable $ Vec content))
             (genRequests (snatToNum (SNat @v) - 1))
             ()
 
@@ -687,7 +687,7 @@ wbStorageRangeErrors = property $ do
           $ wishbonePropWithModel @System @_ @30
             defExpectOptions
             model
-            (unMemmap $ wbStorage "" (Reloadable $ Vec content))
+            (unMemmap $ wbStorage "" (NonReloadable $ Vec content))
             (genRequests (snatToNum (SNat @v)))
             (snatToInteger (SNat @v))
 
