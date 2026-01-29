@@ -60,7 +60,7 @@ dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enable
     xilinxElasticBufferWb
       clockGen
       (resetGenN d2)
-      d5
+      d6
       clockGen
       (pure () :: Signal XilinxSystem ())
       -< ebWbBus

@@ -209,15 +209,27 @@ driver testName targets = do
         captureUgnPrefixed :: Int -> String -> [String]
         captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
 
-        readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64)
+        readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
         readUgnMmio linkNr = do
           let getUgnRegister = getPathAddress MemoryMaps.mu . captureUgnPrefixed linkNr
           localCounter <- Gdb.readLe gdb (getUgnRegister "local_counter")
           remoteCounter <- Gdb.readLe gdb (getUgnRegister "remote_counter")
-          pure (localCounter, remoteCounter)
+          delta <- Gdb.readLe gdb (getUgnRegister "elastic_buffer_delta")
+          pure (localCounter, remoteCounter, delta)
+
+        -- Adjust the local counter for the frames added/removed from the elastic
+        -- buffer after capturing the UGN. Leaves the remote counter untouched.
+        adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 32) -> (Unsigned 64, Unsigned 64)
+        adjustLocalCounter (localCounter, remoteCounter, delta) =
+          (addSigned localCounter delta, remoteCounter)
+         where
+          addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
+          addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
+      ugnTriples <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
+      liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
+      pure $ adjustLocalCounter <$> ugnTriples
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
@@ -442,6 +454,10 @@ driver testName targets = do
           _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
+          liftIO
+            $ if bufferExit == ExitSuccess
+              then putStrLn "Last PE buffer has expected contents"
+              else putStrLn "[ERROR] Last PE buffer did NOT have expected contents"
 
           ebFlagsClears <- liftIO $ zipWithConcurrently checkElasticBufferFlags targets muGdbs
           unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"

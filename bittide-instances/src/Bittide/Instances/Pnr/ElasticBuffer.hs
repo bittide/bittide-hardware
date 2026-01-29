@@ -31,7 +31,7 @@ elasticBufferWb ::
   "wbIn" ::: Signal Fast (WishboneM2S 30 4 (Bytes 4)) ->
   "writeData" ::: Signal Slow (Unsigned 64) ->
   ( "wbOut" ::: Signal Fast (WishboneS2M (Bytes 4))
-  , "dataCount" ::: Signal Fast (RelDataCount 5)
+  , "dataCount" ::: Signal Fast (RelDataCount 6)
   , "underflow" ::: Signal Fast Underflow
   , "overflow" ::: Signal Fast Overflow
   , "stable" ::: Signal Fast Stable
@@ -42,7 +42,7 @@ elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underfl
   ((SimOnly _mm, wbOut), (dataCount, underflow, overflow, stable, readData)) =
     withBittideByteOrder
       $ toSignals
-        (xilinxElasticBufferWb clkRead rstRead d5 clkWrite wdata)
+        (xilinxElasticBufferWb clkRead rstRead d6 clkWrite wdata)
         (((), wbIn), ((), (), (), (), ()))
 
 makeTopEntity 'elasticBufferWb

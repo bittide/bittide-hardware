@@ -78,12 +78,40 @@ data MemoryMapTreeAnn ann (norm :: Normalized) where
   AnnNormWrapper :: MemoryMapTreeAnn ann 'Normalized -> MemoryMapTreeAnn ann 'NotNormalized
 
 instance (Show ann) => Show (MemoryMapTreeAnn ann norm) where
-  show (AnnInterconnect ann _srcLoc comps) = "Interconnect(" <> show ann <> ", " <> show comps <> ")"
-  show (AnnDeviceInstance ann _srcLoc deviceName) = "DeviceInstance(" <> show ann <> ", " <> deviceName <> ")"
-  show (AnnWithName ann _srcLoc name tree) = "WithName(" <> show ann <> ", " <> show name <> ", " <> show tree <> ")"
-  show (AnnWithTag ann _srcLoc tag tree) = "WithTag(" <> show ann <> ", " <> show tag <> ", " <> show tree <> ")"
-  show (AnnAbsAddr ann _srcLoc addr tree) = "AbsAddr(" <> show ann <> ", " <> show addr <> ", " <> show tree <> ")"
-  show (AnnNormWrapper tree) = show tree
+  showsPrec _ (AnnInterconnect ann _srcLoc comps) =
+    showString "AnnInterconnect " . showsPrec 11 ann . showString " " . showsPrec 11 comps
+  showsPrec _ (AnnDeviceInstance ann _srcLoc deviceName) =
+    showString "AnnDeviceInstance "
+      . showsPrec 11 ann
+      . showString " "
+      . showsPrec 11 deviceName
+  showsPrec d (AnnWithName ann _srcLoc name tree) =
+    showParen (d > 10) $
+      showString "AnnWithName "
+        . showsPrec 11 ann
+        . showString " "
+        . showsPrec 11 name
+        . showString " "
+        . showsPrec 11 tree
+  showsPrec d (AnnWithTag ann _srcLoc tag tree) =
+    showParen (d > 10) $
+      showString "AnnWithTag "
+        . showsPrec 11 ann
+        . showString " "
+        . showsPrec 11 tag
+        . showString " "
+        . showsPrec 11 tree
+  showsPrec d (AnnAbsAddr ann _srcLoc addr tree) =
+    showParen (d > 10) $
+      showString "AnnAbsAddr "
+        . showsPrec 11 ann
+        . showString " "
+        . showsPrec 11 addr
+        . showString " "
+        . showsPrec 11 tree
+  showsPrec d (AnnNormWrapper tree) =
+    showParen (d > 10) $
+      showString "AnnNormWrapper " . showsPrec 11 tree
 
 convert :: MemoryMapTree -> MemoryMapTreeAnn () 'NotNormalized
 convert (WithName srcLoc name tree) = AnnWithName () srcLoc name (convert tree)
