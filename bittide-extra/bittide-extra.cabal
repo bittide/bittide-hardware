@@ -173,6 +173,7 @@ library
     Data.List.Extra
     Numeric.Extra
     Project.Handle
+    Protocols.Df.Extra
     Protocols.Extra
     Protocols.Spi
     Protocols.Wishbone.Extra
