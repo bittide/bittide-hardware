@@ -156,6 +156,7 @@ library
     extra,
     lifted-base,
     monad-control,
+    string-interpolate,
     tasty-hunit,
     time,
     word8,
@@ -164,6 +165,7 @@ library
     Bittide.Extra.Maybe
     Bittide.Extra.Wishbone
     Clash.Cores.Xilinx.Xpm.Cdc.Extra
+    Clash.Explicit.Signal.Delayed.Extra
     Clash.Explicit.Signal.Extra
     Clash.Sized.Vector.Extra
     Control.Concurrent.Async.Extra
@@ -171,7 +173,6 @@ library
     Data.List.Extra
     Numeric.Extra
     Project.Handle
-    Protocols.Df.Extra
     Protocols.Extra
     Protocols.Spi
     Protocols.Wishbone.Extra
@@ -194,7 +195,10 @@ test-suite unittests
     bittide-extra,
     clash-prelude,
     clash-prelude-hedgehog,
+    clash-protocols,
+    containers,
     hedgehog,
+    string-interpolate,
     tasty,
     tasty-hedgehog,
     tasty-th,
