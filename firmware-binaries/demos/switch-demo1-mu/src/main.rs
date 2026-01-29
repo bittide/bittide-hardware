@@ -6,7 +6,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::hals::switch_demo_mu::DeviceInstances;
-use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::shared_devices::{ElasticBuffer, Transceivers, Uart};
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
@@ -117,7 +116,6 @@ use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
     let transceivers = &INSTANCES.transceivers;
     let cc = INSTANCES.clock_control;
@@ -139,10 +137,6 @@ fn main() -> ! {
         INSTANCES.capture_ugn_5,
         INSTANCES.capture_ugn_6,
     ];
-
-    // XXX: Wait for the clocks to be a bit more stable before starting UGN capture. For more
-    //      information, see: https://github.com/bittide/bittide-hardware/issues/1168
-    timer.wait(Duration::from_secs(1));
 
     let mut link_startups = [LinkStartup::new(); 7];
     let mut delay_counter: u32 = 0;
