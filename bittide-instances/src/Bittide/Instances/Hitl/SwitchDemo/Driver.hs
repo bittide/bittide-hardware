@@ -454,6 +454,10 @@ driver testName targets = do
           _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
+          liftIO
+            $ if bufferExit == ExitSuccess
+              then putStrLn "Last PE buffer has expected contents"
+              else putStrLn "[ERROR] Last PE buffer did NOT have expected contents"
 
           ebFlagsClears <- liftIO $ zipWithConcurrently checkElasticBufferFlags targets muGdbs
           unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"
