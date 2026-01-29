@@ -38,7 +38,7 @@ import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
-type FifoSize = 6 -- = 2^6 = 64
+type FifoSize = 5 -- = 2^5 = 32
 
 {- Internal busses:
     - Instruction memory
