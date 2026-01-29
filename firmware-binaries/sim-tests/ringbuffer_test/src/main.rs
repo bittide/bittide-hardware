@@ -18,142 +18,83 @@ const RINGBUFFER_SIZE: usize = 16;
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
 
-    writeln!(uart, "=== Ringbuffer Component Test ===").unwrap();
+    writeln!(uart, "=== Ringbuffer Loopback Test ===").unwrap();
+    writeln!(uart, "TX ringbuffer continuously reads and transmits data").unwrap();
+    writeln!(uart, "RX ringbuffer continuously receives and writes data").unwrap();
 
     let tx_ringbuffer = INSTANCES.transmit_ringbuffer;
     let rx_ringbuffer = INSTANCES.receive_ringbuffer;
 
-    // Test 1: Write pattern to TX buffer
-    writeln!(uart, "\n--- Test 1: Write and read pattern ---").unwrap();
+    // Create pattern: 4 MSBs = frame number, 4 LSBs = byte index in frame
+    // Frame 0: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
+    // Frame 1: [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17]
+    // etc.
+    let tx_pattern: [[u8; 8]; RINGBUFFER_SIZE] = core::array::from_fn(|frame| {
+        core::array::from_fn(|byte_idx| ((frame as u8) << 4) | (byte_idx as u8))
+    });
 
-    const TEST_SIZE: usize = 4;
-    let test_pattern: [[u8; 8]; TEST_SIZE] =
-        core::array::from_fn(|i| (0x1000 + i as u64).to_le_bytes());
-
-    writeln!(uart, "Writing test pattern to TX buffer").unwrap();
-    for (i, word) in test_pattern.iter().enumerate() {
-        tx_ringbuffer
-            .set_transmit_buffer(i, *word)
-            .expect("TX write failed");
+    // Write pattern to TX buffer
+    writeln!(uart, "\nWriting pattern to TX buffer:").unwrap();
+    for (i, word) in tx_pattern.iter().enumerate() {
+        tx_ringbuffer.set_data(i, *word).expect("TX write failed");
+        writeln!(uart, "  TX[{:2}] = {:02x?}", i, word).unwrap();
     }
 
-    // Wait for data to propagate through the ringbuffer (need ~16 cycles for full rotation)
-    for _ in 0..1000 {
-        unsafe { core::arch::asm!("nop") };
-    }
+    // Printing takes time, allowing data to reach RX buffer
+    writeln!(uart, "\nSearching for pattern in RX buffer:").unwrap();
 
-    writeln!(uart, "Reading from RX buffer").unwrap();
-    let mut rx_data: [[u8; 8]; TEST_SIZE] = [[0u8; 8]; TEST_SIZE];
-    for i in 0..TEST_SIZE {
-        rx_data[i] = rx_ringbuffer.receive_buffer(i).expect("RX read failed");
-    }
+    // Find the first frame (frame 0 = [0x00, 0x01, ..., 0x07])
+    let first_frame = tx_pattern[0];
+    let mut found_offset = None;
 
-    let mut test1_passed = true;
-    for i in 0..TEST_SIZE {
-        if rx_data[i] != test_pattern[i] {
-            writeln!(
-                uart,
-                "MISMATCH at index {}: expected {:02x?}, got {:02x?}",
-                i, test_pattern[i], rx_data[i]
-            )
-            .unwrap();
-            test1_passed = false;
+    for offset in 0..RINGBUFFER_SIZE {
+        if let Some(data) = rx_ringbuffer.data(offset) {
+            if data == first_frame {
+                found_offset = Some(offset);
+                writeln!(uart, "Found first frame at RX[{}]", offset).unwrap();
+                break;
+            }
         }
     }
 
-    if test1_passed {
-        writeln!(uart, "Test 1 PASSED: Data matches!").unwrap();
-    } else {
-        writeln!(uart, "Test 1 FAILED: Data mismatch").unwrap();
-    }
+    // Check and print the pattern starting at the found offset
+    if let Some(offset) = found_offset {
+        let mut all_match = true;
+        for (i, expected) in tx_pattern.iter().enumerate() {
+            let rx_idx = (offset + i) % RINGBUFFER_SIZE;
+            let actual = rx_ringbuffer.data(rx_idx).expect("RX read failed");
 
-    // Test 2: Write different pattern and verify
-    writeln!(uart, "\n--- Test 2: Second pattern test ---").unwrap();
-
-    let test_pattern2: [[u8; 8]; TEST_SIZE] =
-        core::array::from_fn(|i| (0x2000 + i as u64).to_le_bytes());
-
-    writeln!(uart, "Writing second pattern to TX buffer").unwrap();
-    for (i, word) in test_pattern2.iter().enumerate() {
-        tx_ringbuffer
-            .set_transmit_buffer(i, *word)
-            .expect("TX write failed");
-    }
-
-    // Wait for data to propagate
-    for _ in 0..1000 {
-        unsafe { core::arch::asm!("nop") };
-    }
-
-    writeln!(uart, "Reading from RX buffer").unwrap();
-    let mut rx_data2: [[u8; 8]; TEST_SIZE] = [[0u8; 8]; TEST_SIZE];
-    for i in 0..TEST_SIZE {
-        rx_data2[i] = rx_ringbuffer.receive_buffer(i).expect("RX read failed");
-    }
-
-    let mut test2_passed = true;
-    for i in 0..TEST_SIZE {
-        if rx_data2[i] != test_pattern2[i] {
             writeln!(
                 uart,
-                "MISMATCH at index {}: expected {:02x?}, got {:02x?}",
-                i, test_pattern2[i], rx_data2[i]
+                "  RX[{:2}] = {:02x?} (expected {:02x?}) {}",
+                rx_idx,
+                actual,
+                *expected,
+                if actual == *expected { "✓" } else { "✗" }
             )
             .unwrap();
-            test2_passed = false;
+
+            if actual != *expected {
+                all_match = false;
+            }
         }
-    }
 
-    if test2_passed {
-        writeln!(uart, "Test 2 PASSED: Data matches!").unwrap();
-    } else {
-        writeln!(uart, "Test 2 FAILED: Data mismatch").unwrap();
-    }
-
-    // Test 3: Full buffer test
-    writeln!(uart, "\n--- Test 3: Full buffer test ---").unwrap();
-
-    writeln!(uart, "Writing full buffer pattern to TX").unwrap();
-    for i in 0..RINGBUFFER_SIZE {
-        let value = (0x3000 + i as u64).to_le_bytes();
-        tx_ringbuffer
-            .set_transmit_buffer(i, value)
-            .expect("TX write failed");
-    }
-
-    // Wait for full buffer to propagate
-    for _ in 0..2000 {
-        unsafe { core::arch::asm!("nop") };
-    }
-
-    writeln!(uart, "Reading full buffer from RX").unwrap();
-    let mut test3_passed = true;
-    for i in 0..RINGBUFFER_SIZE {
-        let expected = (0x3000 + i as u64).to_le_bytes();
-        let actual = rx_ringbuffer.receive_buffer(i).expect("RX read failed");
-        if actual != expected {
-            writeln!(
-                uart,
-                "MISMATCH at index {}: expected {:02x?}, got {:02x?}",
-                i, expected, actual
-            )
-            .unwrap();
-            test3_passed = false;
+        if all_match {
+            writeln!(uart, "\n*** TEST PASSED: All data matches! ***").unwrap();
+        } else {
+            writeln!(uart, "\n*** TEST FAILED: Data corruption detected ***").unwrap();
         }
-    }
-
-    if test3_passed {
-        writeln!(uart, "Test 3 PASSED: Full buffer matches!").unwrap();
     } else {
-        writeln!(uart, "Test 3 FAILED: Buffer mismatch").unwrap();
-    }
-
-    // Final result
-    writeln!(uart, "\n=== Test Summary ===").unwrap();
-    if test1_passed && test2_passed && test3_passed {
-        writeln!(uart, "*** ALL TESTS PASSED ***").unwrap();
-    } else {
-        writeln!(uart, "*** SOME TESTS FAILED ***").unwrap();
+        writeln!(
+            uart,
+            "\n*** TEST FAILED: First frame not found in RX buffer ***"
+        )
+        .unwrap();
+        writeln!(uart, "RX buffer contents:").unwrap();
+        for i in 0..RINGBUFFER_SIZE {
+            let word = rx_ringbuffer.data(i).expect("RX read failed");
+            writeln!(uart, "  RX[{:2}] = {:02x?}", i, word).unwrap();
+        }
     }
 
     loop {

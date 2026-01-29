@@ -536,7 +536,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 

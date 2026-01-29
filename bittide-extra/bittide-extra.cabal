@@ -191,6 +191,7 @@ test-suite unittests
     Tests.Numeric.Extra
     Tests.Protocols.Df.Extra
 
+  -- Tests.Protocols.Wishbone.Extra
   build-depends:
     base,
     bittide-extra,

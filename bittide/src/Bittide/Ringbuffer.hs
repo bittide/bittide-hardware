@@ -2,28 +2,31 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
-module Bittide.Ringbuffer (
-  transmitRingbufferWb,
-  transmitRingbufferWbC,
-  receiveRingbufferWb,
-  receiveRingbufferWbC,
-) where
+module Bittide.Ringbuffer where
 
 import Clash.Prelude
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
-
 import Clash.Class.BitPackC
+import Data.Maybe
 import Protocols
 import Protocols.Wishbone
 
-import Data.Constraint.Nat.Lemmas
-import Data.Type.Equality ((:~:) (Refl))
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap
+import qualified Protocols.Df as Df
+import qualified Protocols.Df.Extra as Df
+import Protocols.Idle
+import qualified Protocols.ReqResp as ReqResp
+import qualified Protocols.Wishbone.Extra as Wb
+
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  addressableBytesWb,
+  deviceWb,
+  matchEndianness,
+  registerConfig,
+ )
 
 {- | Wishbone interface helper for ringbuffers. It makes ringbuffers,
 which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
@@ -36,13 +39,13 @@ wbInterface ::
   , KnownNat addrW
   ) =>
   -- | Wishbone (master -> slave) data.
-  WishboneM2S addrW nBytes (Bytes nBytes) ->
+  WishboneM2S addrW nBytes ->
   -- | Read data to be sent over the (slave -> master) port.
   Bytes nBytes ->
   -- | (slave -> master data, write address memory element, write data memory element)
-  (WishboneS2M (Bytes nBytes), Index addresses, Maybe (Bytes nBytes))
+  (WishboneS2M nBytes, Index addresses, Maybe (Bytes nBytes))
 wbInterface WishboneM2S{..} readData =
-  ( (emptyWishboneS2M @(Bytes nBytes)){readData, acknowledge, err}
+  ( (emptyWishboneS2M @nBytes){readData, acknowledge, err}
   , wbAddr
   , writeOp
   )
@@ -55,260 +58,93 @@ wbInterface WishboneM2S{..} readData =
   writeOp = orNothing (strobe && writeEnable && not err) writeData
 
 {-# OPAQUE transmitRingbufferWb #-}
-
-transmitRingbufferWbC ::
-  forall dom awTx memDepth.
-  ( HasCallStack
-  , HiddenClockResetEnable dom
-  , KnownNat awTx
-  , 1 <= awTx
-  , 1 <= memDepth
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
-  -- | Configuration for the ringbuffer.
-  SNat memDepth ->
-  Circuit
-    (BitboneMm dom awTx)
-    (CSignal dom (BitVector 64))
-transmitRingbufferWbC memDepthSnat@SNat = Circuit go
- where
-  go (((), wbM2S), _) = ((SimOnly memoryMap, wbS2M), txOut)
-   where
-    (txOut, wbS2M, _) = transmitRingbufferWb memDepthSnat wbM2S
-
-  memoryMap =
-    let
-      deviceDef :: DeviceDefinition
-      deviceDef =
-        DeviceDefinition
-          { registers =
-              [ NamedLoc
-                  { name = Name "transmitBuffer" ""
-                  , loc = locHere
-                  , value =
-                      Register
-                        { fieldType = regType @(Vec memDepth (Bytes 8))
-                        , address = 0
-                        , access = ReadWrite
-                        , reset = Nothing
-                        , tags = []
-                        }
-                  }
-              ]
-          , deviceName =
-              Name
-                { name = "TransmitRingbuffer"
-                , description = ""
-                }
-          , definitionLoc = locHere
-          , tags = []
-          }
-     in
-      MemoryMap
-        { tree = DeviceInstance locCaller "TransmitRingbuffer"
-        , deviceDefs = deviceSingleton deviceDef
-        }
-
-{- | Wishbone addressable 'transmitRingbuffer', the wishbone port can read/write the data
-from/to this memory element as if it has a 32 bit port by selecting the upper 32 or lower
-32 bits of the data.
--}
 transmitRingbufferWb ::
-  forall dom awTx memDepth.
-  ( HiddenClockResetEnable dom
-  , KnownNat awTx
-  , 1 <= memDepth
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
-  -- | Configuration for the ringbuffer.
-  SNat memDepth ->
-  -- | Wishbone (master -> slave) port for CPU access.
-  Signal dom (WishboneM2S awTx 4 (Bytes 4)) ->
-  -- | 1. Transmitted data to link
-  --   2. Wishbone (slave -> master) port
-  --   3. Memory map
-  ( Signal dom (BitVector 64)
-  , Signal dom (WishboneS2M (Bytes 4))
-  , Mm
-  )
-transmitRingbufferWb memDepthSnat@SNat wbIn = (txFrame, delayControls wbOut, SimOnly memoryMap)
- where
-  (wbOut, memAddr, writeOp) =
-    unbundle $ wbInterface <$> wbIn <*> txData
-  (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-
-  -- Create write operation for 64-bit memory
-  ramWriteOp = mkWrite <$> readAddr <*> writeOp <*> upperSelected
-
-  -- Auto-incrementing read counter
-  readCounter = register (0 :: Index memDepth) ((+ 1) <$> readCounter)
-
-  -- Block RAM with dual port: CPU writes, counter reads
-  txFrame = blockRamU NoClearOnReset memDepthSnat readCounter ramWriteOp
-
-  -- Split 64-bit frame into upper and lower 32-bit words
-  (upper, lower) = unbundle $ split <$> txFrame
-  selected = register (errorX "transmitRingbufferWb: Initial selection undefined") upperSelected
-  txData = mux selected upper lower
-
-  -- Convert 32-bit writes to 64-bit writes
-  mkWrite address (Just write) True = Just (address, write ++# 0)
-  mkWrite address (Just write) False = Just (address, 0 ++# write)
-  mkWrite _ _ _ = Nothing
-
-  memoryMap =
-    MemoryMap
-      { tree = DeviceInstance locCaller "TransmitRingbuffer"
-      , deviceDefs = deviceSingleton deviceDef
-      }
-
-  deviceDef :: DeviceDefinition
-  deviceDef =
-    DeviceDefinition
-      { registers =
-          [ NamedLoc
-              { name = Name "transmitBuffer" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(Vec memDepth (Bytes 8))
-                    , address = 0
-                    , access = ReadWrite
-                    , reset = Nothing
-                    , tags = []
-                    }
-              }
-          ]
-      , deviceName = Name{name = "TransmitRingbuffer", description = ""}
-      , definitionLoc = locHere
-      , tags = []
-      }
-
-{-# OPAQUE receiveRingbufferWb #-}
-
-receiveRingbufferWbC ::
-  forall dom awRx memDepth.
+  forall dom aw memDepth.
   ( HasCallStack
   , HiddenClockResetEnable dom
-  , KnownNat awRx
+  , KnownNat aw
+  , 1 <= aw
   , 1 <= memDepth
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
+  -- | Primitive to use for the underlying memory.
+  ( Enable dom ->
+    Signal dom (Index memDepth) ->
+    Signal dom (Maybe (Index memDepth, Bytes 8)) ->
+    Signal dom (BitVector 8) ->
+    Signal dom (Bytes 8)
+  ) ->
   -- | Configuration for the ringbuffer.
   SNat memDepth ->
   Circuit
-    ( (BitboneMm dom awRx)
+    (BitboneMm dom aw)
+    (CSignal dom (BitVector 64))
+transmitRingbufferWb primitive SNat = circuit $ \wb -> do
+  [wb0] <-
+    deviceWb "TransmitRingbuffer"
+      <| Wb.mapMm
+        ( Wb.trace "tx endian"
+            <| matchEndianness
+            <| Wb.trace "tx large"
+            <| Wb.increaseBuswidth
+            <| Wb.trace "tx master"
+        )
+      -< wb
+  reqresp <- addressableBytesWb @memDepth regConfig -< wb0
+  (reads, writes0) <- ReqResp.partitionEithers -< reqresp
+  writes1 <- ReqResp.toDf -< (writes0, writeAcks)
+  writeAcks <- Df.pure 0
+  idleSink -< reads
+  readAddress <- Df.iterate (satSucc SatWrap) 0
+  applyC (fmap $ fromMaybe 0) id <| Df.toMaybe <| ram -< (readAddress, writes1)
+ where
+  regConfig = registerConfig "data"
+  ram = withClockResetEnable hasClock hasReset enableGen (Df.fromBlockramWithMask primitive)
+{-# OPAQUE receiveRingbufferWb #-}
+receiveRingbufferWb ::
+  forall dom aw memDepth.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , KnownNat aw
+  , 1 <= aw
+  , 1 <= memDepth
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Primitive to use for the underlying memory.
+  ( Enable dom ->
+    Signal dom (Index memDepth) ->
+    Signal dom (Maybe (Index memDepth, Bytes 8)) ->
+    Signal dom (Bytes 8)
+  ) ->
+  -- | Configuration for the ringbuffer.
+  SNat memDepth ->
+  Circuit
+    ( (BitboneMm dom aw)
     , CSignal dom (BitVector 64)
     )
     ()
-receiveRingbufferWbC memDepth@SNat = Circuit go
+receiveRingbufferWb primitive SNat = circuit $ \(wb, Fwd frames) -> do
+  let
+    writeAddress = register (0 :: Index memDepth) $ fmap (satSucc SatWrap) writeAddress
+    writes = fmap Just $ bundle (writeAddress, frames)
+  [wb0] <-
+    deviceWb "ReceiveRingbuffer"
+      <| Wb.mapMm
+        ( Wb.trace "rx endian"
+            <| matchEndianness
+            <| Wb.trace "rx large"
+            <| Wb.increaseBuswidth
+            <| Wb.trace "rx master"
+        )
+      -< wb
+  reqresp <- addressableBytesWb @memDepth regConfig -< wb0
+  (reads, cpuWrites) <- ReqResp.partitionEithers -< reqresp
+  readAddress <- ReqResp.toDf -< (reads, readData)
+  idleSink -< cpuWrites
+  readData <- ram -< (readAddress, Fwd writes)
+  idC -< ()
  where
-  go ((((), wbM2S), linkIn), _) = (((SimOnly memoryMap, wbS2M), ()), ())
-   where
-    (wbS2M, _) = receiveRingbufferWb memDepth wbM2S linkIn
-  memoryMap =
-    let
-      deviceDef =
-        DeviceDefinition
-          { registers =
-              [ NamedLoc
-                  { name = Name "receiveBuffer" ""
-                  , loc = locHere
-                  , value =
-                      Register
-                        { fieldType = regType @(Vec memDepth (Bytes 8))
-                        , address = 0
-                        , access = ReadOnly
-                        , reset = Nothing
-                        , tags = []
-                        }
-                  }
-              ]
-          , deviceName =
-              Name
-                { name = "ReceiveRingbuffer"
-                , description = ""
-                }
-          , definitionLoc = locHere
-          , tags = []
-          }
-     in
-      MemoryMap
-        { tree = DeviceInstance locCaller "ReceiveRingbuffer"
-        , deviceDefs = deviceSingleton deviceDef
-        }
-
-{- | Wishbone addressable 'receiveRingbuffer', the wishbone port can read the data from
-this memory element as if it has a 32 bit port by selecting the upper 32 or lower 32
-bits of the read data.
--}
-receiveRingbufferWb ::
-  forall dom awRx memDepth.
-  ( HiddenClockResetEnable dom
-  , KnownNat awRx
-  , 1 <= memDepth
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
-  -- | Configuration for the ringbuffer.
-  SNat memDepth ->
-  -- | Wishbone (master -> slave) port for CPU access.
-  Signal dom (WishboneM2S awRx 4 (Bytes 4)) ->
-  -- | Incoming frame from Bittide link.
-  Signal dom (BitVector 64) ->
-  -- | 1. Wishbone (slave -> master) port
-  --   2. Memory map
-  (Signal dom (WishboneS2M (Bytes 4)), Mm)
-receiveRingbufferWb memDepthSnat@SNat wbIn linkIn =
-  case clogProductRule @memDepth of
-    Refl ->
-      (delayControls wbOut, SimOnly memoryMap)
-     where
-      (wbOut, memAddr, _) =
-        unbundle $ wbInterface <$> wbIn <*> rxData
-      (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-
-      -- Auto-incrementing write counter for incoming frames
-      writeCounter = register (0 :: Index memDepth) ((+ 1) <$> writeCounter)
-
-      -- Link writes to auto-incrementing address
-      linkWriteOp = curry Just <$> writeCounter <*> linkIn
-
-      -- Block RAM: Link writes, CPU reads
-      rxFrame = blockRamU NoClearOnReset memDepthSnat readAddr linkWriteOp
-
-      -- Split 64-bit frame into upper and lower 32-bit words for CPU access
-      (upper, lower) = unbundle $ split <$> rxFrame
-      selected = register (errorX "receiveRingbufferWb: Initial selection undefined") upperSelected
-      rxData = mux selected upper lower
-
-      memoryMap =
-        MemoryMap
-          { tree = DeviceInstance locCaller "ReceiveRingbuffer"
-          , deviceDefs = deviceSingleton deviceDef
-          }
-
-      deviceDef :: DeviceDefinition
-      deviceDef =
-        DeviceDefinition
-          { registers =
-              [ NamedLoc
-                  { name = Name "receiveBuffer" ""
-                  , loc = locHere
-                  , value =
-                      Register
-                        { fieldType = regType @(Vec memDepth (Bytes 8))
-                        , address = 0
-                        , access = ReadOnly
-                        , reset = Nothing
-                        , tags = []
-                        }
-                  }
-              ]
-          , deviceName = Name{name = "ReceiveRingbuffer", description = ""}
-          , definitionLoc = locHere
-          , tags = []
-          }
+  regConfig = registerConfig "data"
+  ram = withClockResetEnable hasClock hasReset enableGen (Df.fromBlockram primitive)
