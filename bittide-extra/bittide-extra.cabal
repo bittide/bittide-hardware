@@ -189,7 +189,9 @@ test-suite unittests
   other-modules:
     Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra
     Tests.Numeric.Extra
+    Tests.Protocols.Df.Extra
 
+  -- Tests.Protocols.Wishbone.Extra
   build-depends:
     base,
     bittide-extra,
@@ -197,8 +199,8 @@ test-suite unittests
     clash-prelude-hedgehog,
     clash-protocols,
     containers,
-    string-interpolate,
     hedgehog,
+    string-interpolate,
     tasty,
     tasty-hedgehog,
     tasty-th,

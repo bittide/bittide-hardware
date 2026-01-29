@@ -19,6 +19,8 @@ module Protocols.ReqResp where
 
 import qualified Clash.Prelude as C
 
+import Clash.Explicit.Prelude (NFDataX)
+import Data.Bifunctor (Bifunctor (..))
 import Data.Kind (Type)
 import Data.Maybe
 import Protocols
@@ -115,6 +117,28 @@ fromBlockRam primitive = Circuit go
 dropResponseData :: resp -> Circuit (ReqResp dom req resp) (ReqResp dom req ())
 dropResponseData resp = applyC id (fmap $ fmap $ const resp)
 
+generate ::
+  forall dom req resp.
+  (C.HiddenClockResetEnable dom, NFDataX req, NFDataX resp) =>
+  (req -> req) ->
+  req ->
+  Circuit () (ReqResp dom req resp, Df dom resp)
+generate f s0 = Circuit (((),) . C.unbundle . C.mealy go (s0, Nothing) . C.bundle . snd)
+ where
+  go (state0, respStored0) (respIn, Ack respAck) = ((state1, respStored1), (reqOut, respOut))
+   where
+    stalled = isJust respStored0 && not respAck
+    respStored1
+      | stalled = respStored0
+      | otherwise = respIn
+
+    reqOut = if stalled then Nothing else Just state0
+    respOut = respStored0
+    state1
+      | stalled = state0
+      | isNothing respIn = state0
+      | otherwise = f state0
+
 {- | Force a @Nothing@ on the backward channel and @Nothing@ on the forward
 channel if reset is asserted.
 -}
@@ -123,3 +147,75 @@ forceResetSanity ::
   (C.HiddenReset dom) =>
   Circuit (ReqResp dom req resp) (ReqResp dom req resp)
 forceResetSanity = forceResetSanityGeneric
+
+toDf ::
+  forall dom req resp.
+  (C.HiddenClockResetEnable dom) =>
+  Circuit (ReqResp dom req resp, Df dom resp) (Df dom req)
+toDf = Circuit (first C.unbundle . C.unbundle . C.mealy go False . C.bundle . first C.bundle)
+ where
+  go accepted0 ((reqLeft, resp), Ack reqRightAck) = (accepted1, ((resp, respAck), reqRight))
+   where
+    respAck = Ack True
+    reqRight
+      | accepted0 = Nothing
+      | otherwise = reqLeft
+    accepted1
+      | isNothing reqLeft = False -- no request
+      | isJust resp = False -- Receiving a response clears the state
+      | otherwise = reqRightAck -- A request for which we have not received a response yet
+
+{- | Like 'toDf' but speculatively prefetches the successor of the last request.
+When there is no pending user request, this circuit speculatively issues a request
+for @succ lastRequest@ to hide memory latency. When a real user request arrives,
+it checks if the prefetched request matches - if so, it's a cache hit and the
+response is immediately available. Otherwise, it drops the prefetch and issues
+the new request.
+
+State: (prefetchedReq, prefetchedResp, lastUserReq)
+- prefetchedReq: the request we speculatively sent
+- prefetchedResp: the response we received (if any)
+- lastUserReq: the last user request, used to derive next prefetch
+-}
+prefetch ::
+  forall dom req resp.
+  ( C.HiddenClockResetEnable dom
+  , Eq req
+  , Enum req
+  , NFDataX req
+  , NFDataX resp
+  ) =>
+  Circuit (ReqResp dom req resp, Df dom resp) (Df dom req)
+prefetch =
+  Circuit (first C.unbundle . C.unbundle . C.mealy go Nothing . C.bundle . first C.bundle)
+ where
+  go storedReq0 ((reqLeft, resp), Ack reqRightAck) =
+    (storedReq1, ((respOut, respAck), reqRight))
+   where
+    respAck = Ack True
+
+    -- Check if we have a cache hit: user request matches prefetched request
+
+    empty = isNothing storedReq0
+    hit = reqLeft == storedReq0 && isJust resp
+    miss = isJust reqLeft && not hit && isJust resp
+    nextReq = fmap succ storedReq0
+
+    -- Determine what request to issue
+    reqRight
+      | empty = reqLeft -- Empty cache: just forward user request
+      | hit = nextReq -- Cache hit: prefetch next
+      | miss = reqLeft -- Cache miss: forward user request
+      | otherwise = Nothing
+
+    -- Output response handling
+    respOut
+      | hit = resp -- Cache hit: forward response
+      | otherwise = Nothing
+
+    -- Update prefetched request
+    storedReq1
+      | empty && reqRightAck = reqLeft -- new request accepted
+      | hit && reqRightAck = nextReq -- Prefetch accepted
+      | miss && reqRightAck = Nothing -- Cache miss: replace prefetch with accepted user req
+      | otherwise = storedReq0 -- Keep current prefetch

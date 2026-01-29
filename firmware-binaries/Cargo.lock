@@ -513,7 +513,7 @@ dependencies = [
  "log",
  "memmap-generate",
  "riscv 0.10.1",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "smoltcp 0.12.0",
  "ufmt",
 ]
@@ -525,7 +525,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "memmap-generate",
- "riscv-rt",
+ "riscv-rt 0.11.0",
  "ufmt",
 ]
 

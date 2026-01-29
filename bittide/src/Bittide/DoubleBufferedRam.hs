@@ -130,7 +130,7 @@ wbStorage memoryName SNat initContent =
         readData <- Df.fromBlockramWithMask ram -< (reads1, writes1)
         idC -< ()
  where
-  ram = case initContent of
+  ram ena = withEnable ena $ case initContent of
     Nothing ->
       blockRamByteAddressableU
     Just content ->

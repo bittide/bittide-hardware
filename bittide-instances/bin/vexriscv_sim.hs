@@ -4,7 +4,7 @@
 
 module Main where
 
-import Bittide.Instances.Hitl.VexRiscv (sim)
+import Bittide.Instances.Tests.Ringbuffer (simRingbuffer)
 
 main :: IO ()
-main = sim
+main = simRingbuffer

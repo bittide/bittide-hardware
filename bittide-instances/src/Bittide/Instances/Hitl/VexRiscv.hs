@@ -54,7 +54,6 @@ import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
 import qualified Protocols.MemoryMap as Mm
-import Bittide.ClockControl.Topology (TopologyType(depth))
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, Show)

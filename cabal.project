@@ -56,12 +56,12 @@ source-repository-package
   tag: ce409bac538192d63b6f24d9d9531485f02b480c
 
 source-repository-package
-  type: git
-  location: https://github.com/clash-lang/clash-protocols.git
-  tag: 77e9f91b59a9a7b3e513b0e7c29431ffd5a356a0
-  subdir:
-    clash-protocols
-    clash-protocols-base
+ type: git
+ location: https://github.com/clash-lang/clash-protocols.git
+ tag: 21f0cea5b3c5adcdbf3cf9cce42dc172552eafbf
+ subdir:
+   clash-protocols
+   clash-protocols-base
 
 -- XXX: https://github.com/clash-lang/clash-vexriscv/pull/73
 source-repository-package
