@@ -7,7 +7,6 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
 import Bittide.CaptureUgn
-import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer (ElasticBufferData (Data))
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.ProcessingElement
@@ -46,8 +45,10 @@ exampleDevice =
   peConfig :: PeConfig (PeInternalBusses + NumCaptureUgns)
   peConfig =
     PeConfig
-      { initI = Undefined @1024
-      , initD = Undefined @1024
+      { depthI = SNat @1024
+      , depthD = SNat @1024
+      , initI = Nothing
+      , initD = Nothing
       , iBusTimeout = SNat @0
       , dBusTimeout = SNat @0
       , includeIlaWb = False

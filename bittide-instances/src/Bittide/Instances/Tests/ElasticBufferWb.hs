@@ -7,7 +7,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam (ContentType (Vec), InitialContent (NonReloadable))
+import Bittide.DoubleBufferedRam (ContentType (Vec))
 import Bittide.ElasticBuffer
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -82,14 +82,16 @@ dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enable
     pure
       PeConfig
         { cpu = vexRiscv0
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , initI =
-            NonReloadable @IMemWords
-              $ Vec
+            Just
+              $ Vec @IMemWords
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
         , initD =
-            NonReloadable @DMemWords
-              $ Vec
+            Just
+              $ Vec @DMemWords
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus

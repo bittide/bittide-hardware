@@ -67,23 +67,27 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
     pure
       peConfigRtl
         { initI =
-            Reloadable
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
-            Reloadable
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData @DMemWords BigEndian elfPath
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , includeIlaWb = False
         }
 
   peConfigRtl =
     PeConfig
       { cpu = vexRiscv0
-      , initI = Undefined @IMemWords
-      , initD = Undefined @DMemWords
+      , depthI = SNat @IMemWords
+      , depthD = SNat @DMemWords
+      , initI = Nothing
+      , initD = Nothing
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True

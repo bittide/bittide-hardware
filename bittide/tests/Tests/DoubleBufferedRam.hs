@@ -79,10 +79,6 @@ tests =
         "registerWbWriteCollisions"
         registerWbWriteCollisions
     , testPropertyNamed
-        "Simulate the contentGenerator for an arbitrary vector."
-        "testContentGen"
-        testContentGen
-    , testPropertyNamed
         "Test wishboneStorage spec compliance"
         "wbStorageSpecCompliance"
         wbStorageSpecCompliance
@@ -545,31 +541,6 @@ registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
   (storedVal, s2m0) = registerWb @dom @a @nBytes @addrW writePriority initVal m2s1 sigIn
   (m2s1, s2m1) = validateWb m2s0 s2m0
 
-{- | Generate an input vector for 'contentGenerator' and check if it generates write
-operations from this vector.
--}
-testContentGen :: Property
-testContentGen = property $ do
-  nat <- forAll $ Gen.enum 0 32
-  case TN.someNatVal nat of
-    SomeNat n -> go n
- where
-  go (Proxy :: Proxy v) = do
-    content <- forAll $ genVec @v (genUnsigned @32 Range.constantBounded)
-    let
-      l = length content
-      simLength = 2 + l * 2
-      !(writes, dones) =
-        L.unzip
-          $ sampleN @System
-            simLength
-            (bundle $ contentGenerator @_ @v @(v + 1) (Vec content))
-      expectedDones
-        | l == 0 = L.repeat True
-        | otherwise = L.replicate (l + 2) False <> L.repeat True
-    dones === L.take simLength expectedDones
-    catMaybes writes === toList (zip (iterateI succ 0) content)
-
 wbStorageSpecCompliance :: Property
 wbStorageSpecCompliance = property $ do
   nat <- forAll $ Gen.enum 1 32
@@ -577,13 +548,13 @@ wbStorageSpecCompliance = property $ do
     SomeNat (succSNat . snatProxy -> n) -> go n
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
-  go SNat = do
+  go depth@SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
       $ wishbonePropWithModel @System
         defExpectOptions
         (\_ _ () -> Right ())
-        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
+        (unMemmap $ wbStorage "" depth (Just (Vec content)))
         (genRequests (snatToNum (SNat @v) - 1))
         ()
 
@@ -606,7 +577,7 @@ wbStorageBehavior = property $ do
  where
   go ::
     forall words m. (KnownNat words, 2 <= words, Monad m) => SNat words -> PropertyT m ()
-  go SNat = do
+  go depth@SNat = do
     content <- forAll $ genVec @words genDefinedBitVector
     wbRequests <-
       forAll
@@ -622,7 +593,7 @@ wbStorageBehavior = property $ do
 
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
-      slave = wcre $ unMemmap (wbStorage @System @_ @30 "" (NonReloadable $ Vec content))
+      slave = wcre $ unMemmap (wbStorage @System @_ @30 "" depth (Just (Vec content)))
       simTransactions = exposeWbTransactions (Just 1000) master slave
       goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
@@ -676,15 +647,15 @@ wbStorageRangeErrors = property $ do
     SomeNat (succSNat . snatProxy -> n) -> go n
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
-  go SNat = do
+  go depth@SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
       $ wishbonePropWithModel @System @_ @30
         defExpectOptions
         model
-        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v)))
-        (snatToInteger (SNat @v))
+        (unMemmap $ wbStorage "" depth (Just (Vec content)))
+        (genRequests (snatToNum depth))
+        (snatToInteger depth)
 
   genRequests size =
     Gen.list
@@ -739,14 +710,14 @@ wbStorageProtocolsModel = property $ do
     SomeNat (succSNat . snatProxy -> n) -> go n
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
-  go SNat = do
+  go depth@SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
       $ wishbonePropWithModel @System @_ @30
         defExpectOptions
         model
-        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v)))
+        (unMemmap $ wbStorage "" depth (Just (Vec content)))
+        (genRequests (snatToNum depth))
         (I.fromAscList $ L.zip [0 ..] (toList content))
 
   genRequests size =
@@ -754,7 +725,7 @@ wbStorageProtocolsModel = property $ do
       -- only generate valid requests here
       WB.genWishboneTransfer (Range.constant 0 (size - 1)) genDefinedBitVector
 
-  model (Read addr _) s2m@WishboneS2M{..} st0
+  model (Read addr sel) s2m@WishboneS2M{..} st0
     | err || retry =
         Left
           $ "An in-range read should be ACK'd "
@@ -765,15 +736,18 @@ wbStorageProtocolsModel = property $ do
           <> " - "
           <> show s2m
     | otherwise =
-        let val = st0 I.! modelAddr
-         in if val == readData
-              then Right st0
-              else
-                Left
-                  $ "Read from model results in different value. Model: "
-                  <> showHex val ""
-                  <> ", Circuit: "
-                  <> showHex readData ""
+        let
+          val = st0 I.! modelAddr
+          maskedReadData = pack $ mux (unpack sel) (unpack readData) (unpack val :: Vec 4 Byte)
+         in
+          if val == maskedReadData
+            then Right st0
+            else
+              Left
+                $ "Read from model results in different value. Model: "
+                <> showHex val ""
+                <> ", Circuit: "
+                <> showHex readData ""
    where
     modelAddr = fromIntegral addr
   model (Write addr sel wr) s2m@WishboneS2M{..} st0

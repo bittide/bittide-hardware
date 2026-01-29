@@ -47,9 +47,13 @@ data PeConfig nBusses where
     , 2 <= nBusses
     , PrefixWidth nBusses <= 30
     ) =>
-    { initI :: InitialContent depthI (Bytes 4)
+    { depthI :: SNat depthI
+    -- ^ Depth of the instruction memory in number of 32-bit words.
+    , depthD :: SNat depthD
+    -- ^ Depth of the data memory in number of 32-bit words.
+    , initI :: Maybe (ContentType depthI (Bytes 4))
     -- ^ Initial content of the instruction memory, can be smaller than its total depth.
-    , initD :: InitialContent depthD (Bytes 4)
+    , initD :: Maybe (ContentType depthD (Bytes 4))
     -- ^ Initial content of the data memory, can be smaller than its total depth.
     , iBusTimeout :: SNat iBusTimeout
     -- ^ Number of clock cycles after which the a transaction on the instruction bus times out.
@@ -94,7 +98,7 @@ processingElement ::
         (nBusses - PeInternalBusses)
         (BitboneMm dom (RemainingBusWidth nBusses))
     )
-processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
+processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
     rvCircuit cpu dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
   iBus1 <-
@@ -125,13 +129,13 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
   -- code. We instruct the generator to skip them by adding a "no-generate" tag.
   Mm.withTag "no-generate"
     $ Mm.withDeviceTag "no-generate"
-    $ wbStorage "DataMemory" initD
+    $ wbStorage "DataMemory" depthD initD
     -< dMemBus
 
   iBus2 <- removeMsb <| watchDogWb "iBus" iBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   Mm.withTag "no-generate"
     $ Mm.withDeviceTag "no-generate"
-    $ wbStorageDPC "InstructionMemory" initI
+    $ wbStorageDPC "InstructionMemory" depthI initI
     -< (mmI, (iBus2, iMemBus))
 
   idC -< extBusses

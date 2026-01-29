@@ -55,13 +55,15 @@ dutCpu = withBittideByteOrder $ circuit $ \mm -> do
     pure
       PeConfig
         { cpu = vexRiscv0
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , initI =
-            Reloadable @IMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
         , initD =
-            Reloadable @DMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
