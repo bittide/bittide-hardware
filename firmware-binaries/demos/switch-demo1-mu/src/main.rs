@@ -139,9 +139,6 @@ fn main() -> ! {
     ];
 
     let mut link_startups = [LinkStartup::new(); 7];
-    let mut delay_counter: u32 = 0;
-    const DELAY_ITERATIONS: u32 = 10; // Number of additional iterations after all_stable
-
     while !link_startups.iter().all(|ls| ls.is_done()) {
         // We don't update the stability here, but leave that to callisto. Although
         // we also have access to the 'links_settled' register, we don't want to
@@ -152,17 +149,6 @@ fn main() -> ! {
         };
         let all_stable = stability.all_stable();
 
-        // XXX: Delay the all_stable signal by counting iterations. This way the elastic buffers
-        //      are centered for a bit longer to avoid over/underflows. For more information,
-        //      see: https://github.com/bittide/bittide-hardware/issues/1168
-        let delayed_all_stable = if all_stable {
-            delay_counter += 1;
-            delay_counter > DELAY_ITERATIONS
-        } else {
-            delay_counter = 0;
-            false
-        };
-
         for (i, link_startup) in link_startups.iter_mut().enumerate() {
             link_startup.next(
                 &mut uart,
@@ -170,7 +156,7 @@ fn main() -> ! {
                 i,
                 elastic_buffers[i],
                 capture_ugns[i].has_captured(),
-                delayed_all_stable,
+                all_stable,
             );
         }
     }
