@@ -34,7 +34,6 @@ import VexRiscv
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (Reloadable, Undefined),
  )
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
@@ -147,6 +146,7 @@ vexRiscvTestC =
       testResult <- statusRegister -< statusRegisterBus
       idC -< (testResult, uartTx)
  where
+  peConfig, peConfigSim, peConfigRtl :: PeConfig 5
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
@@ -159,13 +159,15 @@ vexRiscvTestC =
       elfPath = elfDir </> fromMaybe "vexriscv-hello" maybeBinaryName
     pure
       peConfigRtl
-        { initI =
-            Reloadable
+        { depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
+        , initI =
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
-            Reloadable
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData @DMemWords BigEndian elfPath
@@ -174,8 +176,10 @@ vexRiscvTestC =
   peConfigRtl =
     PeConfig
       { cpu = vexRiscv0
-      , initI = Undefined @DMemWords
-      , initD = Undefined @IMemWords
+      , depthI = SNat @IMemWords
+      , depthD = SNat @DMemWords
+      , initI = Nothing
+      , initD = Nothing
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True

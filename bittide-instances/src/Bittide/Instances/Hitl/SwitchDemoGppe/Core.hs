@@ -11,7 +11,7 @@ import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
-import Bittide.DoubleBufferedRam (InitialContent (Undefined), wbStorage)
+import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
@@ -73,8 +73,10 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , initI = Undefined @(Div (64 * 1024) 4)
-    , initD = Undefined @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthD = SNat @(Div (64 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
     , iBusTimeout = d0
     , dBusTimeout = d0
     , includeIlaWb = False
@@ -88,8 +90,10 @@ ccConfig ::
 ccConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv2
-    , initI = Undefined @(Div (64 * 1024) 4)
-    , initD = Undefined @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthD = SNat @(Div (64 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
     , iBusTimeout = d0
     , dBusTimeout = d0
     , includeIlaWb = False
@@ -104,8 +108,10 @@ gppeConfig ::
 gppeConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv3
-    , initI = Undefined @(Div (64 * 1024) 4)
-    , initD = Undefined @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthD = SNat @(Div (64 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
     , iBusTimeout = d0
     , dBusTimeout = d0
     , includeIlaWb = False
@@ -313,8 +319,8 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< (ccMM, muCallistoBus, (ccJtag, mask, linksSuitableForCc))
 
     withBittideClockResetEnable
-      (wbStorage "SampleMemory")
-      (Undefined @36_000 @(BitVector 32))
+      (wbStorage "SampleMemory" (SNat @36_000))
+      Nothing
       -< ccSampleMemoryBus
 
     (ccUartBytesBittide, _uartStatus) <-
