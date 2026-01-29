@@ -65,7 +65,7 @@ prop_prefetch_identity = H.property $ do
         <| BiDf.mapC (Df.fifo d8) idC
         <| stallC simConfig stalls
         <| BiDf.prefetch @System
-        -< biDf
+        -< (biDf, Fwd (pure Nothing))
       idC -< resp
 
   propWithModelSingleDomainT @System

@@ -66,6 +66,7 @@
             pkgs.cabal-install
             pkgs.haskellPackages.cabal-gild
             pkgs.haskellPackages.fourmolu
+            pkgs.haskellPackages.eventlog2html
             pkgs.dtc
             pkgs.gcc
             pkgs.llvmPackages.clang-unwrapped

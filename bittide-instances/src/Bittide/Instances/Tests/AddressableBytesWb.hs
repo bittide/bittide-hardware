@@ -43,7 +43,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.MemoryMap.Registers.WishboneStandard.Internal (
   memoryWb,
-  memoryWbWithPrefetcher,
+  -- memoryWbWithPrefetcher, -- Does not work yet :(
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import System.Environment (lookupEnv)

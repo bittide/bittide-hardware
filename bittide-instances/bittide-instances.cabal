@@ -376,6 +376,9 @@ executable vexriscv-sim
   ghc-options:
     -Wall
     -threaded
+    -fprof-auto
+    -rtsopts
+    -with-rtsopts=-p
 
 executable samples-to
   import: ghc2024, extra, sane-records

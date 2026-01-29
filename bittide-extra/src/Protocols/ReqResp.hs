@@ -119,6 +119,28 @@ fromBlockRam primitive = Circuit go
 dropResponse :: resp -> Circuit (ReqResp dom req resp) (ReqResp dom req ())
 dropResponse resp = applyC id (fmap $ fmap $ const resp)
 
+generate ::
+  forall dom req resp.
+  (C.HiddenClockResetEnable dom, NFDataX req, NFDataX resp) =>
+  (req -> req) ->
+  req ->
+  Circuit () (ReqResp dom req resp, Df dom resp)
+generate f s0 = Circuit (((),) . C.unbundle . C.mealy go (s0, Nothing) . C.bundle . snd)
+ where
+  go (state0, respStored0) (respIn, Ack respAck) = ((state1, respStored1), (reqOut, respOut))
+   where
+    stalled = isJust respStored0 && not respAck
+    respStored1
+      | stalled = respStored0
+      | otherwise = respIn
+
+    reqOut = if stalled then Nothing else Just state0
+    respOut = respStored0
+    state1
+      | stalled = state0
+      | isNothing respIn = state0
+      | otherwise = f state0
+
 {- | Force a @Nothing@ on the backward channel and @Nothing@ on the forward
 channel if reset is asserted.
 -}

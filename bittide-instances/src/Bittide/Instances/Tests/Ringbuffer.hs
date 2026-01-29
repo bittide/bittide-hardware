@@ -1,12 +1,20 @@
 -- SPDX-FileCopyrightText: 2026 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Bittide.Instances.Tests.Ringbuffer where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (
+  HiddenClockResetEnable,
+  exposeEnable,
+  hasClock,
+  withClockResetEnable,
+ )
 
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
+import Data.Char (chr)
+import Data.Maybe (catMaybes)
 import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
@@ -23,6 +31,8 @@ import Bittide.ProcessingElement.Util
 import Bittide.Ringbuffer
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
+
+createDomain vSystem{vName = "Slow", vPeriod = hzToPeriod 1000000}
 
 -- | Memory depth for the ringbuffers (16 entries of 8 bytes each)
 memDepth :: SNat 16
@@ -44,9 +54,12 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
   [uartBus, wbTx, wbRx, timeBus] <-
     processingElement NoDumpVcd (peConfig binaryName) -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
-  txOut <- transmitRingbufferWbC memDepth -< wbTx
-  receiveRingbufferWbC memDepth -< (wbRx, txOut)
-  _cnt <- timeWb -< timeBus
+  txOut <-
+    transmitRingbufferWb (exposeEnable $ blockRamByteAddressable (Vec (repeat 0))) memDepth
+      -< wbTx
+  receiveRingbufferWb (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth
+    -< (wbRx, txOut)
+  _cnt <- timeWb Nothing -< timeBus
   idC -< uartTx
  where
   peConfig binary = unsafePerformIO $ do
@@ -57,13 +70,15 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
     pure
       PeConfig
         { cpu = vexRiscv0
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , initI =
-            NonReloadable @IMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
         , initD =
-            NonReloadable @DMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
@@ -75,3 +90,21 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
 
 type IMemWords = DivRU (300 * 1024) 4
 type DMemWords = DivRU (256 * 1024) 4
+
+-- Ringbuffer test simulation
+simRingbuffer :: IO ()
+simRingbuffer = putStr simResultRingbuffer
+
+simResultRingbuffer :: (HasCallStack) => String
+simResultRingbuffer = chr . fromIntegral <$> catMaybes uartStream
+ where
+  uartStream = sampleC def{timeoutAfter = 200_000} dutNoMM
+
+  dutNoMM :: (HasCallStack) => Circuit () (Df System (BitVector 8))
+  dutNoMM = circuit $ do
+    mm <- ignoreMM
+    uartTx <-
+      withClockResetEnable clockGen (resetGenN d2) enableGen
+        $ (dutWithBinary "ringbuffer_test")
+        -< mm
+    idC -< uartTx

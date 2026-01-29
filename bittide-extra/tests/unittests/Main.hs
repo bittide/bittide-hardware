@@ -15,6 +15,8 @@ import qualified Tests.Numeric.Extra
 import qualified Tests.Protocols.BiDf
 import qualified Tests.Protocols.Df.Extra
 
+-- import qualified Tests.Protocols.Wishbone.Extra
+
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
 setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 1000)
 setDefaultHedgehogTestLimit opt = opt
