@@ -459,9 +459,11 @@ driver testName targets = do
               then putStrLn "Last PE buffer has expected contents"
               else putStrLn "[ERROR] Last PE buffer did NOT have expected contents"
 
+          -- Check the elastic buffer flags before the CC CPU is interrupted.
           ebFlagsClears <- liftIO $ zipWithConcurrently checkElasticBufferFlags targets muGdbs
-          unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"
 
           liftIO goDumpCcSamples
+
+          unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"
 
           pure bufferExit
