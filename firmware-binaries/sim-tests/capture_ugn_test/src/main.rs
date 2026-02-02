@@ -18,8 +18,12 @@ const UGN_ADDR: *mut u8 = (0x60000000) as *mut u8;
 fn main() -> ! {
     // Initialize peripherals.
     let mut uart = unsafe { Uart::new(UART_ADDR) };
+
     let capture_ugn = unsafe { CaptureUgn::new(UGN_ADDR) };
 
+    while !capture_ugn.has_captured() {
+        continue;
+    }
     uwriteln!(
         uart,
         "(0x{:16X},0x{:16X})",
