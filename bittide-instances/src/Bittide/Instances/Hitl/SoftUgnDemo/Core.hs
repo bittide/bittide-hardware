@@ -156,8 +156,9 @@ gppe ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
-  -- | DNA value
+  -- | External counter
   Signal dom (Unsigned 64) ->
+  -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
@@ -254,6 +255,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 bitClk
                 bitRst
                 (SNat @FifoSize)
+                localCounter
               <$> rxClocks
               <*> rxs0
            )

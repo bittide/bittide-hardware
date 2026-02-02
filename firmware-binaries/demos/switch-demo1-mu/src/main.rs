@@ -171,12 +171,24 @@ fn main() -> ! {
 
     loop {
         for (i, eb) in elastic_buffers.iter().enumerate() {
-            if eb.overflow() {
-                uwriteln!(uart, "[ERROR] Channel {} elastic buffer overflowed", i).unwrap();
+            if eb.underflow() {
+                uwriteln!(
+                    uart,
+                    "[ERROR] Channel {} elastic buffer underflowed at cycle {}",
+                    i,
+                    eb.underflow_timestamp(),
+                )
+                .unwrap();
                 panic!();
             }
-            if eb.underflow() {
-                uwriteln!(uart, "[ERROR] Channel {} elastic buffer underflowed", i).unwrap();
+            if eb.overflow() {
+                uwriteln!(
+                    uart,
+                    "[ERROR] Channel {} elastic buffer overflowed at cycle {}",
+                    i,
+                    eb.overflow_timestamp(),
+                )
+                .unwrap();
                 panic!();
             }
         }

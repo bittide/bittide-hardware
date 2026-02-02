@@ -12,6 +12,7 @@ import Bittide.Df (unsafeFromDf)
 import Bittide.ElasticBuffer.AutoCenter (autoCenter)
 import Bittide.Extra.Maybe (orNothing)
 import Bittide.SharedTypes (BitboneMm)
+import Bittide.Shutter (shutter)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
@@ -270,6 +271,8 @@ xilinxElasticBufferWb ::
   Clock readDom ->
   Reset readDom ->
   SNat n ->
+  -- | Local counter
+  Signal readDom (Unsigned 64) ->
   Clock writeDom ->
   Signal writeDom a ->
   Circuit
@@ -279,13 +282,15 @@ xilinxElasticBufferWb ::
     , CSignal readDom Overflow
     , CSignal readDom (ElasticBufferData a)
     )
-xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
+xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
   withClockResetEnable clkRead rstRead enableGen $ circuit $ \wb -> do
     [ wbAdjustmentAsync
       , wbAdjustmentWait
       , wbDataCount
       , wbUnderflow
       , wbOverflow
+      , wbLocalCounterUnderflow
+      , wbLocalCounterOverflow
       , wbAutoCenterReset
       , wbAutoCenterEnable
       , wbAutoCenterMargin
@@ -391,6 +396,15 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
     -- Synchronize overflow pulse from write domain to read domain
     let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
 
+    let
+      isFirstRising :: Signal readDom Bool -> Signal readDom Bool
+      isFirstRising sig = E.isRising clkRead rstRead enableGen False $ sticky clkRead rstRead sig
+
+      underflowTrigger = isFirstRising underflow
+      overflowTrigger = isFirstRising overflow1
+    localCounterUnderflow <- shutter underflowTrigger -< Fwd localCounter
+    localCounterOverflow <- shutter overflowTrigger -< Fwd localCounter
+
     (dataCountOut, _dataCountActivity) <-
       registerWbI
         (registerConfig "data_count"){access = ReadOnly}
@@ -406,6 +420,14 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
         False
         -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
 
+    registerWbI_
+      (registerConfig "underflow_timestamp")
+        { access = ReadOnly
+        , description = "Local counter value when first underflow occurred"
+        }
+      0
+      -< (wbLocalCounterUnderflow, localCounterUnderflow)
+
     (overflowOut, _overflowActivity) <-
       registerWbI
         (registerConfig "overflow")
@@ -414,5 +436,13 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
           }
         False
         -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
+
+    registerWbI_
+      (registerConfig "overflow_timestamp")
+        { access = ReadOnly
+        , description = "Local counter value when first overflow occurred"
+        }
+      0
+      -< (wbLocalCounterOverflow, localCounterOverflow)
 
     idC -< (dataCountOut, underflowOut, overflowOut, Fwd readData)

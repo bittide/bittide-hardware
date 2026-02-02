@@ -71,32 +71,33 @@ managementUnit ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
+  -- | External counter
+  Signal dom (Unsigned 64) ->
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
-    ( CSignal dom (Unsigned 64)
-    , Df dom (BitVector 8)
+    ( Df dom (BitVector 8)
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
         , Bitbone dom NmuRemBusWidth
         )
     )
-managementUnit maybeDna =
+managementUnit externalCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    localCounter <- timeWb Nothing -< timeBus
+    _localCounter <- timeWb (Just externalCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
 
     -- Output
-    idC -< (localCounter, uartOut, restBusses)
+    idC -< (uartOut, restBusses)
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
 calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
@@ -192,11 +193,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
-    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+    let
+      maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+      localCounter = register bitClk bitRst bitEna 0 (localCounter + 1)
 
     -- Start management unit
-    (Fwd lc, muUartBytesBittide, muWbAll) <-
-      withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
+    (muUartBytesBittide, muWbAll) <-
+      withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     [ (peWbMM, peWb)
@@ -215,12 +218,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 bitClk
                 bitRst
                 (SNat @FifoSize)
+                localCounter
               <$> rxClocks
               <*> rxs0
            )
         -< ebWbs
 
-    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn localCounter <$> rxs1) -< ugnWbs
 
     rxs3 <- Vec.append -< ([Fwd peOut], rxs2)
     (switchOut, _calEntry) <-
@@ -233,7 +237,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     --      use it until the DNA is actually read out.
     (Fwd peOut, _peState) <-
       withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount))
-        -< (peWbMM, (Fwd lc, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
+        -< (peWbMM, (Fwd localCounter, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
     -- Stop ASIC processing element
 
     -- Start clock control
@@ -287,7 +291,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     idC
       -< ( Fwd swCcOut1
-         , Fwd lc
+         , Fwd localCounter
          , txs
          , sync
          , muUartBytesBittide
