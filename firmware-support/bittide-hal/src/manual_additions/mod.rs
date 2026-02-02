@@ -2,15 +2,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod bitvector;
 pub mod calendar;
 pub mod capture_ugn;
 pub mod dna;
 pub mod elastic_buffer;
+pub mod index;
 pub mod scatter_gather_pe;
 pub mod si539x_spi;
+pub mod signed;
 pub mod soft_ugn_demo_gppe;
 pub mod timer;
 pub mod uart;
+pub mod unsigned;
 
 // Sealing the `FromAs` and `IntoAs` traits with a supertrait
 mod seal {
