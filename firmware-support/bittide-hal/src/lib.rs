@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![no_std]
+#![recursion_limit = "146"]
 
 // Since this module gets generated, running rustfmt on a
 // non-built source tree will error.
