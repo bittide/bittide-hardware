@@ -65,7 +65,7 @@ These two pieces, together, ensure the UGNs are captured between each node. The 
 
 **Example Hard UGN capture**
 <div class="svg-slideshow">
-  <img id="frame" src="../diagrams/svgs/frame00.svg" width="600">
+  <img id="frame" src="../diagrams/ugnCapture/frame00.svg" width="600">
 
   <div>
     <button onclick="prev()">◀</button>
@@ -75,17 +75,17 @@ These two pieces, together, ensure the UGNs are captured between each node. The 
 
 <script>
   const frames = [
-    "../diagrams/svgs/frame00.svg",
-    "../diagrams/svgs/frame01.svg",
-    "../diagrams/svgs/frame02.svg",
-    "../diagrams/svgs/frame03.svg",
-    "../diagrams/svgs/frame04.svg",
-    "../diagrams/svgs/frame05.svg",
-    "../diagrams/svgs/frame06.svg",
-    "../diagrams/svgs/frame07.svg",
-    "../diagrams/svgs/frame08.svg",
-    "../diagrams/svgs/frame09.svg",
-    "../diagrams/svgs/frame10.svg",
+    "../diagrams/ugnCapture/frame00.svg",
+    "../diagrams/ugnCapture/frame01.svg",
+    "../diagrams/ugnCapture/frame02.svg",
+    "../diagrams/ugnCapture/frame03.svg",
+    "../diagrams/ugnCapture/frame04.svg",
+    "../diagrams/ugnCapture/frame05.svg",
+    "../diagrams/ugnCapture/frame06.svg",
+    "../diagrams/ugnCapture/frame07.svg",
+    "../diagrams/ugnCapture/frame08.svg",
+    "../diagrams/ugnCapture/frame09.svg",
+    "../diagrams/ugnCapture/frame10.svg",
   ];
   let i = 0;
 
