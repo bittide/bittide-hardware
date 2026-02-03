@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use memmap_generate::build_utils::standard_static_memory_build;
+use memmap_generate::build_utils::standard_memmap_build;
 
 fn main() {
-    standard_static_memory_build("memory.x");
+    standard_memmap_build("ScatterGatherPe.json", "DataMemory", "InstructionMemory");
     println!("cargo:rerun-if-changed=build.rs");
 }
