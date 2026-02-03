@@ -21,8 +21,8 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   busActivityWrite,
   deviceWb,
   registerConfig,
-  registerWb,
-  registerWbDf,
+  registerWbDfI,
+  registerWbI,
  )
 import Protocols.MemoryMap.TypeDescription.TH
 
@@ -134,7 +134,7 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
       writeData
       readEnable
 
-  -- We don't reset the Xilix FIFO: its reset documentation is self-contradictory
+  -- We don't reset the Xilinx FIFO: its reset documentation is self-contradictory
   -- and mentions situations where the FIFO can end up in an unrecoverable state.
   noResetWrite = unsafeFromActiveHigh (pure False)
   noResetRead = unsafeFromActiveHigh (pure False)
@@ -206,61 +206,58 @@ xilinxElasticBufferWb ::
     , CSignal readDom Stable
     , CSignal readDom (ElasticBufferData a)
     )
-xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
-  [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
-    deviceWb "ElasticBuffer" -< wb
+xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
+  withClockResetEnable clkRead rstRead enableGen $ circuit $ \wb -> do
+    [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
+      deviceWb "ElasticBuffer" -< wb
 
-  -- Command register: Writing to this register adds or removes a single element
-  -- from the buffer occupancy
-  (_ebCommand, ebCommandDfActivity) <-
-    registerWbDf
-      clkRead
-      rstRead
-      (registerConfig "command"){access = WriteOnly}
-      Drain
-      -< (wbCommand, Fwd (pure Nothing))
+    -- Command register: Writing to this register adds or removes a single element
+    -- from the buffer occupancy
+    (_ebCommand, ebCommandDfActivity) <-
+      registerWbDfI
+        (registerConfig "command"){access = WriteOnly}
+        Drain
+        -< (wbCommand, Fwd (pure Nothing))
 
-  ebCommandDf <- applyC (fmap busActivityWrite) id -< ebCommandDfActivity
+    ebCommandDf <- applyC (fmap busActivityWrite) id -< ebCommandDfActivity
 
-  let (dataCount, underflow, overflow0, readData, commandAck) =
-        xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
+    let (dataCount, underflow, overflow0, readData, commandAck) =
+          xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
 
-  Fwd ebCommandSig <- unsafeFromDf -< (ebCommandDf, Fwd commandAck)
+    Fwd ebCommandSig <- unsafeFromDf -< (ebCommandDf, Fwd commandAck)
 
-  -- Synchronize overflow pulse from write domain to read domain
-  let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
+    -- Synchronize overflow pulse from write domain to read domain
+    let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
 
-  (dataCountOut, _dataCountActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "data_count"){access = ReadOnly}
-      0
-      -< (wbDataCount, Fwd (Just <$> dataCount))
+    (dataCountOut, _dataCountActivity) <-
+      registerWbI
+        (registerConfig "data_count"){access = ReadOnly}
+        0
+        -< (wbDataCount, Fwd (Just <$> dataCount))
 
-  (underflowOut, _underflowActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "underflow"){access = ReadWrite}
-      False
-      -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
+    (underflowOut, _underflowActivity) <-
+      registerWbI
+        (registerConfig "underflow")
+          { access = ReadWrite
+          , description = "Sticky underflow flag; can be cleared by writing false"
+          }
+        False
+        -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
 
-  (overflowOut, _overflowActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "overflow"){access = ReadWrite}
-      False
-      -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
+    (overflowOut, _overflowActivity) <-
+      registerWbI
+        (registerConfig "overflow")
+          { access = ReadWrite
+          , description = "Sticky overflow flag; can be cleared by writing false"
+          }
+        False
+        -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
 
-  -- Stable register: Software can set this to indicate buffer is ready
-  (stableOut, _stableActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "stable"){access = WriteOnly}
-      False
-      -< (wbStable, Fwd (pure Nothing))
+    -- Stable register: Software can set this to indicate buffer is ready
+    (stableOut, _stableActivity) <-
+      registerWbI
+        (registerConfig "stable"){access = WriteOnly}
+        False
+        -< (wbStable, Fwd (pure Nothing))
 
-  idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)
+    idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)
