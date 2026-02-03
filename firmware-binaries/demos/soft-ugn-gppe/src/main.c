@@ -213,6 +213,20 @@ int c_main(void) {
   uart_puts(uart, "\n========================================\n");
   uart_puts(uart, "UGN discovery protocol complete!\n");
 
+  // Print final test status
+  bool success = true;
+  if (ugn_ctx.missed_send_count > 0 || ugn_ctx.missed_receive_count > 0 ||
+      ugn_ctx.missed_invalidate_count > 0) {
+    uart_puts(uart, "[ERROR] Some events missed their deadlines.\n");
+    success = false;
+  }
+  uart_puts(uart, "Test status: ");
+  if (success) {
+    uart_puts(uart, "Success\n");
+  } else {
+    uart_puts(uart, "Failure\n");
+    uart_puts(uart, "See report above for details.\n");
+  }
   while (1) {
     // Protocol complete - idle loop
   }
