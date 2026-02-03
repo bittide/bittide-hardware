@@ -56,25 +56,11 @@ impl ElasticBuffer {
         delta
     }
 
-    /// Clear the underflow flag.
-    ///
-    /// Writes to the underflow register to clear the sticky flag.
-    pub fn clear_underflow(&self) {
-        self.set_underflow(false);
-    }
-
-    /// Clear the overflow flag.
-    ///
-    /// Writes to the overflow register to clear the sticky flag.
-    pub fn clear_overflow(&self) {
-        self.set_overflow(false);
-    }
-
-    /// Clear both underflow and overflow flags.
+    /// Clear both underflow and overflow flags and their timestamps.
     ///
     /// Convenience function to clear both sticky flags at once.
     pub fn clear_flags(&self) {
-        self.clear_underflow();
-        self.clear_overflow();
+        self.set_clear_underflow(true);
+        self.set_clear_overflow(true);
     }
 }
