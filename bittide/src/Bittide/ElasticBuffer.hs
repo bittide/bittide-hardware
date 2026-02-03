@@ -15,26 +15,36 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
 import Clash.Prelude
 import GHC.Stack
 import Protocols (Ack (..), CSignal, Circuit (..), applyC)
+import Protocols.Df.Extra (ackWhen, skid)
 import Protocols.MemoryMap (Access (..))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
-  busActivityWrite,
   deviceWb,
   registerConfig,
-  registerWb,
-  registerWbDf,
+  registerWbDfI,
+  registerWbI,
  )
 import Protocols.MemoryMap.TypeDescription.TH
 
 import qualified Clash.Explicit.Prelude as E
 
 data EbCommand
-  = -- | Disable write, enable read
-    Drain
-  | -- | Enable write, disable read
-    Fill
+  = -- | Disable write, enable read for /n/ cycles
+    Drain {n :: Unsigned 32}
+  | -- | Enable write, disable read for /n/ cycles
+    Fill {n :: Unsigned 32}
   deriving (Generic, NFDataX, Eq, Show, BitPack, BitPackC, ShowX)
 deriveTypeDescription ''EbCommand
+
+-- | Like @ebCommand.n@, but only if the command is 'Drain'
+toDrainMaybe :: EbCommand -> Maybe (Unsigned 32)
+toDrainMaybe (Drain m) = Just m
+toDrainMaybe _ = Nothing
+
+-- | Like @ebCommand.n@, but only if the command is 'Fill'
+toFillMaybe :: EbCommand -> Maybe (Unsigned 32)
+toFillMaybe (Fill m) = Just m
+toFillMaybe _ = Nothing
 
 type Underflow = Bool
 type Overflow = Bool
@@ -52,8 +62,6 @@ sticky ::
 sticky clk rst a = stickyA
  where
   stickyA = E.register clk rst enableGen False (stickyA .||. a)
-
-{-# OPAQUE xilinxElasticBuffer #-}
 
 data ElasticBufferData a
   = -- | No valid data present, because FIFO was empty
@@ -78,6 +86,8 @@ toElasticBufferData requestedReadInPreviousCycle underflow a
   | not requestedReadInPreviousCycle = FillCycle
   | underflow = Empty
   | otherwise = Data a
+
+{-# OPAQUE xilinxElasticBuffer #-}
 
 {- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
 monitor signals in its read domain.
@@ -134,32 +144,56 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
       writeData
       readEnable
 
-  -- We don't reset the Xilix FIFO: its reset documentation is self-contradictory
+  -- We don't reset the Xilinx FIFO: its reset documentation is self-contradictory
   -- and mentions situations where the FIFO can end up in an unrecoverable state.
   noResetWrite = unsafeFromActiveHigh (pure False)
   noResetRead = unsafeFromActiveHigh (pure False)
 
-  drain = command .== Just Drain
-  commandAck = mux drain drainAck otherAck
-  otherAck = pure $ Ack True
-  readEnable = command ./= Just Fill
-  readEnableDelayed = E.register clkRead noResetRead enableGen False readEnable
+  -- Muxing between drain and fills:
+  commandAck = selectAck <$> command <*> drainAck <*> fillAck
   fifoOut = toElasticBufferData <$> readEnableDelayed <*> isUnderflow <*> fifoData
+  readEnableDelayed = E.register clkRead noResetRead enableGen False readEnable
+  readEnable = not <$> fill
 
-  -- TODO: Instead of hoisting over a flag to drain a single element, we could
-  --       hoist over a count to drain multiple elements at once. This would
-  --       significantly reduce the overhead induced by the handshake.
-  drainFlag = orNothing <$> drain <*> pure high
-  drainSynced = drainFlagSynced .== Just high
-  writeData = mux drainSynced (pure Nothing) (Just <$> wdata)
-  (drainAck, drainFlagSynced) =
+  selectAck :: Maybe EbCommand -> Ack -> Ack -> Ack
+  selectAck cmd dAck fAck = case cmd of
+    Just Drain{} -> dAck
+    Just Fill{} -> fAck
+    Nothing -> errorX "xilinxElasticBuffer: No command to acknowledge"
+
+  -- Fill logic:
+  (fillAck, fill) =
+    E.mooreB
+      clkRead
+      noResetRead
+      enableGen
+      goActState
+      goActOutput
+      Nothing
+      (maybe Nothing toFillMaybe <$> command)
+
+  goActState :: Maybe (Unsigned 32) -> Maybe (Unsigned 32) -> Maybe (Unsigned 32)
+  goActState Nothing i = i
+  goActState (Just 0) _ = Nothing
+  goActState (Just n) _ = Just (n - 1)
+
+  goActOutput :: Maybe (Unsigned 32) -> (Ack, Bool)
+  goActOutput Nothing = (Ack False, False)
+  goActOutput (Just 0) = (Ack True, False)
+  goActOutput (Just _) = (Ack False, True)
+
+  -- Drain logic (CDC based):
+  writeData = mux drain (pure Nothing) (Just <$> wdata)
+  (drainAckWrite, drain) =
+    E.mooreB clkWrite noResetWrite enableGen goActState goActOutput Nothing maybeDrainCmd
+  (drainAck, maybeDrainCmd) =
     safeXpmCdcHandshake
       clkRead
       E.noReset
       clkWrite
       E.noReset
-      drainFlag
-      (pure (Ack True))
+      (maybe Nothing toDrainMaybe <$> command)
+      drainAckWrite
 
 {-# OPAQUE xilinxElasticBufferWb #-}
 
@@ -206,61 +240,98 @@ xilinxElasticBufferWb ::
     , CSignal readDom Stable
     , CSignal readDom (ElasticBufferData a)
     )
-xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata = circuit $ \wb -> do
-  [wbCommand, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
-    deviceWb "ElasticBuffer" -< wb
+xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
+  withClockResetEnable clkRead rstRead enableGen $ circuit $ \wb -> do
+    [wbCommandPrepare, wbCommandGo, wbCommandWait, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
+      deviceWb "ElasticBuffer" -< wb
 
-  -- Command register: Writing to this register adds or removes a single element
-  -- from the buffer occupancy
-  (_ebCommand, ebCommandDfActivity) <-
-    registerWbDf
-      clkRead
-      rstRead
-      (registerConfig "command"){access = WriteOnly}
-      Drain
-      -< (wbCommand, Fwd (pure Nothing))
+    (ebCommand, _ebCommandDfActivity) <-
+      registerWbDfI
+        (registerConfig "command_prepare")
+          { access = WriteOnly
+          , description = "Command to execute when setting `command_go`"
+          }
+        (Drain 0 :: EbCommand)
+        -< (wbCommandPrepare, Fwd (pure Nothing))
 
-  ebCommandDf <- applyC (fmap busActivityWrite) id -< ebCommandDfActivity
+    (_ebCommandGo, ebCommandGoDfActivity) <-
+      registerWbDfI
+        (registerConfig "command_go")
+          { access = WriteOnly
+          , description =
+              "Trigger execution of the command set in `command_prepare`. Will stall if a command is still in progress."
+          }
+        ()
+        -< (wbCommandGo, Fwd (pure Nothing))
 
-  let (dataCount, underflow, overflow0, readData, commandAck) =
-        xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
+    (_ebCommandWait, ebCommandWaitDfActivity) <-
+      registerWbDfI
+        (registerConfig "command_wait")
+          { access = WriteOnly
+          , description = "Wait until ready to (immediately) accept a new command"
+          }
+        ()
+        -< (wbCommandWait, Fwd (pure Nothing))
 
-  Fwd ebCommandSig <- unsafeFromDf -< (ebCommandDf, Fwd commandAck)
+    -- See [Note Skid Buffer] below
+    ackWhen ebReady -< ebCommandWaitDfActivity
 
-  -- Synchronize overflow pulse from write domain to read domain
-  let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
+    -- If there is bus activity on the `go` bus, we pass the command saved in `command_prepare`
+    -- to the elastic buffer. Otherwise, we pass Nothing.
+    ebCommandDf0 <-
+      applyC
+        (\(maybeBusActivity, ebCommand) -> toEbCommand <$> maybeBusActivity <*> ebCommand)
+        (\ack -> (ack, ()))
+        -< (ebCommandGoDfActivity, ebCommand)
 
-  (dataCountOut, _dataCountActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "data_count"){access = ReadOnly}
-      0
-      -< (wbDataCount, Fwd (Just <$> dataCount))
+    -- [Note Skid Buffer]
+    --
+    -- By putting a skid buffer here, we ensure that we can immediately accept a new command
+    -- when writing to `command_go`. We then use the 'ready' signal from the skid buffer to
+    -- implement the 'command_wait' register.
+    (ebCommandDf1, Fwd ebReady) <- skid -< ebCommandDf0
 
-  (underflowOut, _underflowActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "underflow"){access = ReadWrite}
-      False
-      -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
+    let (dataCount, underflow, overflow0, readData, commandAck) =
+          xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
 
-  (overflowOut, _overflowActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "overflow"){access = ReadWrite}
-      False
-      -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
+    Fwd ebCommandSig <- unsafeFromDf -< (ebCommandDf1, Fwd commandAck)
 
-  -- Stable register: Software can set this to indicate buffer is ready
-  (stableOut, _stableActivity) <-
-    registerWb
-      clkRead
-      rstRead
-      (registerConfig "stable"){access = WriteOnly}
-      False
-      -< (wbStable, Fwd (pure Nothing))
+    -- Synchronize overflow pulse from write domain to read domain
+    let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
 
-  idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)
+    (dataCountOut, _dataCountActivity) <-
+      registerWbI
+        (registerConfig "data_count"){access = ReadOnly}
+        0
+        -< (wbDataCount, Fwd (Just <$> dataCount))
+
+    (underflowOut, _underflowActivity) <-
+      registerWbI
+        (registerConfig "underflow")
+          { access = ReadWrite
+          , description = "Sticky underflow flag; can be cleared by writing false"
+          }
+        False
+        -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
+
+    (overflowOut, _overflowActivity) <-
+      registerWbI
+        (registerConfig "overflow")
+          { access = ReadWrite
+          , description = "Sticky overflow flag; can be cleared by writing false"
+          }
+        False
+        -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
+
+    -- Stable register: Software can set this to indicate buffer is ready
+    (stableOut, _stableActivity) <-
+      registerWbI
+        (registerConfig "stable"){access = WriteOnly}
+        False
+        -< (wbStable, Fwd (pure Nothing))
+
+    idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)
+ where
+  -- If there is bus activity on the `go` bus, we pass the command saved in `command_prepare`
+  -- to the elastic buffer. Otherwise, we pass Nothing.
+  toEbCommand busActivity ebCommand = maybe Nothing (\_ -> Just ebCommand) busActivity
