@@ -47,9 +47,13 @@ data PeConfig nBusses where
     , 2 <= nBusses
     , PrefixWidth nBusses <= 30
     ) =>
-    { initI :: InitialContent depthI (Bytes 4)
+    { depthI :: SNat depthI
+    -- ^ Depth of the instruction memory in number of 32-bit words.
+    , depthD :: SNat depthD
+    -- ^ Depth of the data memory in number of 32-bit words.
+    , initI :: Maybe (ContentType depthI (Bytes 4))
     -- ^ Initial content of the instruction memory, can be smaller than its total depth.
-    , initD :: InitialContent depthD (Bytes 4)
+    , initD :: Maybe (ContentType depthD (Bytes 4))
     -- ^ Initial content of the data memory, can be smaller than its total depth.
     , iBusTimeout :: SNat iBusTimeout
     -- ^ Number of clock cycles after which the a transaction on the instruction bus times out.
@@ -94,7 +98,7 @@ processingElement ::
         (nBusses - PeInternalBusses)
         (BitboneMm dom (RemainingBusWidth nBusses))
     )
-processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
+processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dBusTimeout, includeIlaWb, cpu} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
     rvCircuit cpu dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
   iBus1 <-
@@ -125,14 +129,14 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
   -- code. We instruct the generator to skip them by adding a "no-generate" tag.
   Mm.withTag "no-generate"
     $ Mm.withDeviceTag "no-generate"
-    $ wbStorage "DataMemory" initD
+    $ wbStorage "DataMemory" depthD initD
     -< dMemBus
 
-  iBus2 <- removeMsb <| watchDogWb "iBus" iBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
+  iBus2 <- removeMsbs <| watchDogWb "iBus" iBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   Mm.withTag "no-generate"
     $ Mm.withDeviceTag "no-generate"
-    $ wbStorageDPC "InstructionMemory" initI
-    -< (mmI, (iBus2, iMemBus))
+    $ wbStorage "InstructionMemory" depthI initI -< (mmI, iBus3)
+  iBus3 <- arbiter -< [iMemBus, iBus2]
 
   idC -< extBusses
  where
@@ -144,13 +148,13 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
   -- memory
   iMemPfx = rotateR 1 1
   prefixBlacklist = 0 :> iMemPfx :> Nil
-  removeMsb ::
+  removeMsbs ::
     forall aw a.
     (KnownNat aw) =>
     Circuit
-      (Wishbone dom 'Standard (aw + 4) a)
       (Wishbone dom 'Standard aw a)
-  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
+      (Wishbone dom 'Standard (RemainingBusWidth nBusses) a)
+  removeMsbs = wbMap (mapAddr resize) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
 

@@ -9,28 +9,21 @@ import Clash.Prelude
 
 import Data.Constraint
 import Data.Maybe
-import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df)
+import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df, toSignals)
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
+import Clash.Class.BitPackC (ByteOrder (..))
 import Data.Constraint.Nat.Lemmas
 import Data.Typeable
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (
-  Access (ReadWrite),
-  DeviceDefinition (..),
-  MemoryMap (..),
-  MemoryMapTree (DeviceInstance),
-  Mm,
-  Name (..),
-  NamedLoc (..),
-  Register (..),
-  ToConstBwd,
-  deviceSingleton,
-  locCaller,
-  locHere,
-  regType,
+import Protocols.MemoryMap (unMemmap)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  deviceWb,
+  matchEndianness,
+  memoryWb,
+  registerConfig,
  )
 
 data ContentType n a
@@ -49,15 +42,8 @@ instance (Show a, KnownNat n, Typeable a) => Show (ContentType n a) where
     (FileVec fps) -> "File: " <> nAnda <> ", filepaths = " <> show fps
    where
     nAnda = "(" <> show (natToNatural @n) <> " of type (" <> show (typeRep $ Proxy @a) <> "))"
-data InitialContent elements a where
-  NonReloadable :: ContentType elements a -> InitialContent elements a
-  Reloadable :: ContentType elements a -> InitialContent elements a
-  Undefined :: (1 <= elements, KnownNat elements) => InitialContent elements a
 
-deriving instance
-  (Show a, KnownNat elements, Typeable a) => Show (InitialContent elements a)
-
-{- | Accepts 'InitialContents' and returns a 'blockRam' implementations initialized with
+{- | Accepts 'ContentType' and returns a 'blockRam' implementations initialized with
 the corresponding content.
 -}
 initializedRam ::
@@ -90,137 +76,6 @@ initializedRam content rd wr = case content of
             <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr)
         )
 
-contentGenerator ::
-  forall dom romSize targetSize a.
-  ( HiddenClockResetEnable dom
-  , KnownNat targetSize
-  , 1 <= targetSize
-  , KnownNat romSize
-  , romSize <= targetSize
-  , Paddable a
-  ) =>
-  ContentType romSize a ->
-  (Signal dom (Maybe (Located targetSize a)), Signal dom Bool)
-contentGenerator content = case compareSNat d1 (SNat @romSize) of
-  SNatLE -> (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
-   where
-    running = register False $ pure True
-    writeOp = curry Just . resize <$> romAddr0 <*> element
-    done = register False (done .||. (running .&&. romAddr0 .==. pure maxBound))
-    romAddr0 = register (maxBound :: Index romSize) romAddr1
-    romAddr1 = satSucc SatWrap <$> romAddr0
-    element = initializedRam content (bitCoerce <$> romAddr1) (pure Nothing)
-  _ -> (pure Nothing, pure True)
-
--- | Circuit wrapper around `wbStorageDP`.
-wbStorageDPC ::
-  forall dom depth awA awB.
-  ( HiddenClockResetEnable dom
-  , HasCallStack
-  , KnownNat awA
-  , KnownNat awB
-  , KnownNat depth
-  , 1 <= depth
-  ) =>
-  String ->
-  InitialContent depth (Bytes 4) ->
-  Circuit
-    ( ToConstBwd Mm
-    , (Bitbone dom awA, Bitbone dom awB)
-    )
-    ()
-wbStorageDPC memoryName content = Circuit go
- where
-  go ::
-    ( ( ()
-      , ( Signal dom (WishboneM2S awA 4 (BitVector 32))
-        , Signal dom (WishboneM2S awB 4 (BitVector 32))
-        )
-      )
-    , ()
-    ) ->
-    ( ( SimOnly MemoryMap
-      , ( Signal dom (WishboneS2M (BitVector 32))
-        , Signal dom (WishboneS2M (BitVector 32))
-        )
-      )
-    , ()
-    )
-  go (((), (m2sA, m2sB)), ()) = ((SimOnly memMap, (s2mA, s2mB)), ())
-   where
-    (s2mA, s2mB) = wbStorageDP content m2sA m2sB
-
-    memMap =
-      MemoryMap
-        { tree = DeviceInstance locCaller memoryName
-        , deviceDefs = deviceSingleton deviceDef
-        }
-    deviceDef =
-      DeviceDefinition
-        { registers =
-            [ NamedLoc
-                { name = Name "data" ""
-                , loc = locHere
-                , value =
-                    Register
-                      { fieldType = regType @(Vec depth (Bytes 4))
-                      , address = 0
-                      , access = ReadWrite
-                      , reset = Nothing
-                      , tags = []
-                      }
-                }
-            ]
-        , deviceName = Name{name = memoryName, description = ""}
-        , definitionLoc = locHere
-        , tags = []
-        }
-
-{- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
-which priorities port A over port B. Transactions are not aborted, but when two transactions
-are initiated at the same time, port A will have priority.
--}
-wbStorageDP ::
-  forall dom depth awA awB.
-  ( HiddenClockResetEnable dom
-  , KnownNat awA
-  , KnownNat awB
-  , KnownNat depth
-  , 1 <= depth
-  ) =>
-  InitialContent depth (Bytes 4) ->
-  Signal dom (WishboneM2S awA 4 (Bytes 4)) ->
-  Signal dom (WishboneM2S awB 4 (Bytes 4)) ->
-  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes 4)))
-wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
- where
-  storageOut = wbStorage' @_ @depth @(Max awA awB) initial storageIn
-
-  storageIn :: Signal dom (WishboneM2S (Max awA awB) 4 (Bytes 4))
-  storageIn = mux (nowActive .==. pure A) (resizeM2SAddr <$> aM2S) (resizeM2SAddr <$> bM2S)
-
-  -- We keep track of ongoing transactions to respect Read-modify-write operations.
-  nowActive = register A nextActive
-  nextActive = selectNow <$> nowActive <*> aM2S <*> aS2M <*> bM2S <*> bS2M
-  active WishboneM2S{busCycle, strobe} = busCycle && strobe
-  terminated WishboneS2M{acknowledge, err} = acknowledge || err
-  selectNow aorb am2s as2m bm2s bs2m =
-    case (aorb, active am2s, terminated as2m, active bm2s, terminated bs2m) of
-      (_, True, _, False, _) -> A
-      (_, False, _, True, _) -> B
-      (A, True, True, True, _) -> B
-      (B, True, _, True, True) -> A
-      _ -> aorb
-
-  (aS2M, bS2M) =
-    unbundle
-      $ mux
-        (nowActive .==. pure A)
-        (bundle (storageOut, noTerminate <$> storageOut))
-        (bundle (noTerminate <$> storageOut, storageOut))
-
-  noTerminate wb = wb{acknowledge = False, err = False, retry = False, stall = False}
-
 {- | Wishbone storage element with 'Circuit' interface from "Protocols.Wishbone" that
 allows for word aligned reads and writes.
 -}
@@ -231,38 +86,24 @@ wbStorage ::
   , KnownNat aw
   , KnownNat depth
   , 1 <= depth
+  , ?busByteOrder :: ByteOrder
   ) =>
   String ->
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Circuit (BitboneMm dom aw) ()
-wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
-  ((SimOnly memMap, wbStorage' initContent m2s), ())
+wbStorage memoryName depth initContent =
+  let ?regByteOrder = BigEndian
+   in circuit $ \(mm, wbMaster0) -> do
+        wbMaster1 <- matchEndianness -< wbMaster0
+        [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
+        memoryWb hasClock hasReset (registerConfig "data") ram depth -< wb0
  where
-  memMap =
-    MemoryMap
-      { tree = DeviceInstance locCaller memoryName
-      , deviceDefs = deviceSingleton deviceDef
-      }
-  deviceDef =
-    DeviceDefinition
-      { registers =
-          [ NamedLoc
-              { name = Name "data" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(Vec depth (Bytes 4))
-                    , address = 0
-                    , access = ReadWrite
-                    , reset = Nothing
-                    , tags = []
-                    }
-              }
-          ]
-      , deviceName = Name{name = memoryName, description = ""}
-      , definitionLoc = locHere
-      , tags = []
-      }
+  ram = case initContent of
+    Nothing ->
+      blockRamByteAddressableU
+    Just content ->
+      blockRamByteAddressable @_ @depth content
 {-# OPAQUE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
@@ -273,76 +114,13 @@ wbStorage' ::
   , KnownNat depth
   , 1 <= depth
   ) =>
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneS2M (Bytes 4))
-wbStorage' initContent wbIn = delayControls wbIn wbOut
- where
-  romOut = case initContent of
-    Reloadable content -> bundle $ contentGenerator content
-    other -> deepErrorX $ "wbStorage': No content generator for " <> show other
-
-  readData = ram readAddr writeEntry byteSelect
-
-  (ram, isReloadable) = case initContent of
-    Reloadable _ ->
-      (blockRamByteAddressableU, True)
-    Undefined ->
-      (blockRamByteAddressableU, False)
-    NonReloadable content ->
-      (blockRamByteAddressable @_ @depth content, False)
-
-  (readAddr, writeEntry, byteSelect, wbOut) =
-    unbundle (go <$> bundle (wbIn, readData, romOut))
-
-  go (WishboneM2S{..}, readDataGo, (romWrite, romDone)) =
-    ( wbAddr
-    , writeEntryGo
-    , byteSelectGo
-    , (emptyWishboneS2M @(Bytes 4)){acknowledge, readData = readDataGo, err}
-    )
-   where
-    wbAddr = unpack $ resize addr :: Index depth
-    addrLegal =
-      case compareSNat (SNat @((2 ^ aw) - 1)) (SNat @depth) of
-        SNatLE -> True
-        _ -> addr < natToNum @depth
-
-    masterActive = strobe && busCycle
-    err = masterActive && not addrLegal
-    acknowledge = masterActive && (not isReloadable || romDone) && addrLegal
-
-    masterWriting = acknowledge && writeEnable
-
-    writeEntryGo
-      | isReloadable && not romDone = romWrite
-      | masterWriting = Just (wbAddr, writeData)
-      | otherwise = Nothing
-
-    byteSelectGo
-      | isReloadable && not romDone = maxBound
-      | otherwise = busSelect
-
-  -- \| Delays the output controls to align them with the actual read / write timing.
-  delayControls ::
-    (NFDataX a) =>
-    Signal dom (WishboneM2S aw selWidth a) -> -- current M2S signal
-    Signal dom (WishboneS2M a) ->
-    Signal dom (WishboneS2M a)
-  delayControls m2s s2m0 = mux inCycle s2m1 (pure emptyWishboneS2M)
-   where
-    inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
-
-    -- It takes a single cycle to lookup elements in a block ram. We can therfore
-    -- only process a request every other clock cycle.
-    ack = (acknowledge <$> s2m0) .&&. (not <$> err1) .&&. (not <$> delayedAck) .&&. inCycle
-    err1 = (err <$> s2m0) .&&. inCycle
-    delayedAck = register False ack
-    s2m1 =
-      (\wb newAck newErr -> wb{acknowledge = newAck, err = newErr})
-        <$> s2m0
-        <*> delayedAck
-        <*> err1
+wbStorage' depth initContent wbIn =
+  let ?busByteOrder = BigEndian
+   in fst $ toSignals (unMemmap $ wbStorage "" depth initContent) (wbIn, ())
 
 {- | Blockram similar to 'blockRam' with the addition that it takes a byte select signal
 that controls which nBytes at the write address are updated.

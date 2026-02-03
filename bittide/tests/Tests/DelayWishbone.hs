@@ -9,9 +9,9 @@ import Clash.Explicit.Prelude
 
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (NonReloadable),
   wbStorage,
  )
+import Clash.Class.BitPackC (ByteOrder (..))
 import Clash.Prelude (withClockResetEnable)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
@@ -110,6 +110,7 @@ prop_delayWishbone = property $ do
 
   dutMem :: Circuit (Wishbone System 'Standard AddressWidth (BitVector 32)) ()
   dutMem =
-    withClockResetEnable clk rst ena
+    let ?busByteOrder = BigEndian
+    in withClockResetEnable clk rst ena
       $ unMemmap
-      $ wbStorage "test" (NonReloadable (Vec (repeat @(2 ^ AddressWidth) 0)))
+      $ wbStorage "test" (SNat @(2 ^ AddressWidth)) (Just (Vec (repeat 0)))
