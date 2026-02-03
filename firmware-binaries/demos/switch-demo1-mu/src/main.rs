@@ -39,9 +39,11 @@ impl LinkStartup {
     }
 
     /// Center the elastic buffer and accumulate the number of frames that were
-    /// added or removed.
+    /// added or removed. Waits for the previous adjustment to complete before checking
+    /// the new occupancy.
     pub fn center_eb(&mut self, eb: &ElasticBuffer) {
-        self.eb_delta += eb.set_occupancy(0) as i32;
+        eb.set_adjustment_wait(());
+        self.eb_delta += eb.set_occupancy_async(0) as i32;
     }
 
     /// Transition to the next state based on current conditions
@@ -66,7 +68,7 @@ impl LinkStartup {
             }
             UgnCaptureState::SwitchUserMode => {
                 // Center the elastic buffer once before switching to user mode
-                elastic_buffer.set_occupancy(0);
+                elastic_buffer.set_occupancy_async(0);
                 elastic_buffer.clear_flags();
                 elastic_buffer.set_clear_data_count_seen(true);
                 transceivers.set_receive_readys(channel, true);
