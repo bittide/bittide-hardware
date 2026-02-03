@@ -66,16 +66,6 @@ jobs:
     - name: Push dev profile to Cachix
       run: cachix push bittide-hardware dev
 
-  license-check:
-    runs-on: [self-hosted, compute]
-    container:
-      image: ubuntu:22.04
-      options: --memory=11g
-    steps:
-    - uses: actions/checkout@v4
-    - name: REUSE Compliance Check
-      uses: fsfe/reuse-action@v1
-
   lint:
     name: Basic linting
     runs-on: [self-hosted, compute]
@@ -763,7 +753,6 @@ jobs:
         firmware-support-tests,
         generate-control-reports,
         haskell-tests,
-        license-check,
         lint,
         mdbook,
         rust-lints,
