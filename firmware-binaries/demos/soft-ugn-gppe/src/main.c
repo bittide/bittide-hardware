@@ -42,8 +42,8 @@ ScatterUnit su;
 #define INVALIDATE_DELAY BUFFER_SIZE
 
 // Initial offsets for scheduling events
-#define STARTING_DELAY_WRITE (BUFFER_SIZE * 100)
-#define STARTING_DELAY_READ (BUFFER_SIZE * 10)
+#define STARTING_DELAY_WRITE (BUFFER_SIZE * 1000)
+#define STARTING_DELAY_READ (BUFFER_SIZE * 1000)
 
 // ============================================================================
 // Main Entry Point
