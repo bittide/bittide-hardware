@@ -186,7 +186,7 @@ fn test_underflow_flag_sticky(
     }
 
     // Action 2: Issue Fill command to test stickiness
-    elastic_buffer.set_command(EbCommand::Fill);
+    elastic_buffer.set_command(EbCommand::Fill { n: 1 });
     timer.wait(Duration::from_micros(1));
 
     let underflow_after_fill = elastic_buffer.underflow();
@@ -295,7 +295,7 @@ fn test_overflow_flag_sticky(
     }
 
     // Action 2: Issue Drain command to test stickiness
-    elastic_buffer.set_command(EbCommand::Drain);
+    elastic_buffer.set_command(EbCommand::Drain { n: 1 });
     timer.wait(Duration::from_micros(1));
 
     let overflow_after_drain = elastic_buffer.overflow();
@@ -333,6 +333,258 @@ fn test_overflow_flag_sticky(
     }
 }
 
+/// Test 5: Drain/Fill multiple items using command field
+/// Verifies that the `n` parameter in EbCommand correctly
+/// drains or fills multiple items in a single command.
+fn test_multiple_items_command(
+    uart: &mut bittide_hal::shared_devices::Uart,
+    elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
+    timer: &bittide_hal::shared_devices::Timer,
+) -> bool {
+    uwriteln!(uart, "Test 5: Drain/Fill multiple items using command").unwrap();
+
+    // Set buffer to a known state (midpoint)
+    elastic_buffer.set_occupancy(0);
+    timer.wait(Duration::from_micros(1));
+
+    let count_before = elastic_buffer.data_count();
+    uwriteln!(uart, "  Initial count: {}", count_before).unwrap();
+
+    // Test 1: Fill multiple items (n=10)
+    elastic_buffer.set_command(EbCommand::Fill { n: 10 });
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_fill = elastic_buffer.data_count();
+    uwriteln!(uart, "  After Fill{{n:10}}: count={}", count_after_fill).unwrap();
+
+    if count_after_fill != count_before + 10 {
+        uwriteln!(
+            uart,
+            "  FAIL: Expected count={}, got count={}",
+            count_before + 10,
+            count_after_fill
+        )
+        .unwrap();
+        return false;
+    }
+
+    // Test 2: Drain multiple items (n=5)
+    elastic_buffer.set_command(EbCommand::Drain { n: 5 });
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_drain = elastic_buffer.data_count();
+    uwriteln!(uart, "  After Drain{{n:5}}: count={}", count_after_drain).unwrap();
+
+    if count_after_drain != count_after_fill - 5 {
+        uwriteln!(
+            uart,
+            "  FAIL: Expected count={}, got count={}",
+            count_after_fill - 5,
+            count_after_drain
+        )
+        .unwrap();
+        return false;
+    }
+
+    uwriteln!(uart, "  PASS").unwrap();
+    true
+}
+
+/// Test 6: prepare -> go -> prepare -> go sequence
+/// Verifies that we can reliably execute two commands back-to-back
+/// without an explicit wait between them.
+fn test_prepare_go_prepare_go(
+    uart: &mut bittide_hal::shared_devices::Uart,
+    elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
+    timer: &bittide_hal::shared_devices::Timer,
+) -> bool {
+    uwriteln!(uart, "Test 6: prepare -> go -> prepare -> go").unwrap();
+
+    // Set buffer to a known state
+    elastic_buffer.set_occupancy(0);
+    timer.wait(Duration::from_micros(1));
+
+    let count_initial = elastic_buffer.data_count();
+    uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
+
+    // First command: prepare Fill(3) and go
+    elastic_buffer.set_command_prepare(EbCommand::Fill { n: 3 });
+    elastic_buffer.set_command_go(());
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_first = elastic_buffer.data_count();
+    uwriteln!(
+        uart,
+        "  After first Fill{{n:3}}: count={}",
+        count_after_first
+    )
+    .unwrap();
+
+    // Second command: prepare Drain(2) and go (without explicit wait)
+    elastic_buffer.set_command_prepare(EbCommand::Drain { n: 2 });
+    elastic_buffer.set_command_go(());
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_second = elastic_buffer.data_count();
+    uwriteln!(
+        uart,
+        "  After second Drain{{n:2}}: count={}",
+        count_after_second
+    )
+    .unwrap();
+
+    // Verify: count should be initial + 3 - 2 = initial + 1
+    let expected = count_initial + 1;
+    if count_after_second == expected {
+        uwriteln!(uart, "  PASS").unwrap();
+        true
+    } else {
+        uwriteln!(
+            uart,
+            "  FAIL: Expected count={}, got count={}",
+            expected,
+            count_after_second
+        )
+        .unwrap();
+        false
+    }
+}
+
+/// Test 7: prepare -> go -> wait -> prepare -> go -> wait sequence
+/// Verifies that explicit waits between commands work correctly.
+fn test_prepare_go_wait_prepare_go_wait(
+    uart: &mut bittide_hal::shared_devices::Uart,
+    elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
+    timer: &bittide_hal::shared_devices::Timer,
+) -> bool {
+    uwriteln!(
+        uart,
+        "Test 7: prepare -> go -> wait -> prepare -> go -> wait"
+    )
+    .unwrap();
+
+    // Set buffer to a known state
+    elastic_buffer.set_occupancy(0);
+    timer.wait(Duration::from_micros(1));
+
+    let count_initial = elastic_buffer.data_count();
+    uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
+
+    // First command: prepare, go, and wait
+    elastic_buffer.set_command_prepare(EbCommand::Fill { n: 7 });
+    elastic_buffer.set_command_go(());
+    elastic_buffer.set_command_wait(());
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_first = elastic_buffer.data_count();
+    uwriteln!(
+        uart,
+        "  After first Fill{{n:7}} + wait: count={}",
+        count_after_first
+    )
+    .unwrap();
+
+    // Second command: prepare, go, and wait
+    elastic_buffer.set_command_prepare(EbCommand::Drain { n: 4 });
+    elastic_buffer.set_command_go(());
+    elastic_buffer.set_command_wait(());
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_second = elastic_buffer.data_count();
+    uwriteln!(
+        uart,
+        "  After second Drain{{n:4}} + wait: count={}",
+        count_after_second
+    )
+    .unwrap();
+
+    // Verify: count should be initial + 7 - 4 = initial + 3
+    let expected = count_initial + 3;
+    if count_after_second == expected {
+        uwriteln!(uart, "  PASS").unwrap();
+        true
+    } else {
+        uwriteln!(
+            uart,
+            "  FAIL: Expected count={}, got count={}",
+            expected,
+            count_after_second
+        )
+        .unwrap();
+        false
+    }
+}
+
+/// Test 8: prepare -> go -> prepare -> wait -> go -> wait sequence
+/// Verifies that we can prepare a second command before waiting
+/// on the first one to complete.
+fn test_prepare_go_prepare_wait_go_wait(
+    uart: &mut bittide_hal::shared_devices::Uart,
+    elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
+    timer: &bittide_hal::shared_devices::Timer,
+) -> bool {
+    uwriteln!(
+        uart,
+        "Test 8: prepare -> go -> prepare -> wait -> go -> wait"
+    )
+    .unwrap();
+
+    // Set buffer to a known state
+    elastic_buffer.set_occupancy(0);
+    timer.wait(Duration::from_micros(1));
+
+    let count_initial = elastic_buffer.data_count();
+    uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
+
+    // First command: prepare and go (but don't wait yet)
+    elastic_buffer.set_command_prepare(EbCommand::Fill { n: 6 });
+    elastic_buffer.set_command_go(());
+
+    // Prepare second command before waiting on first
+    elastic_buffer.set_command_prepare(EbCommand::Drain { n: 3 });
+
+    // Now wait for first command to complete
+    elastic_buffer.set_command_wait(());
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_first = elastic_buffer.data_count();
+    uwriteln!(
+        uart,
+        "  After Fill{{n:6}} with interleaved prepare: count={}",
+        count_after_first
+    )
+    .unwrap();
+
+    // Execute second command: go and wait
+    elastic_buffer.set_command_go(());
+    elastic_buffer.set_command_wait(());
+    timer.wait(Duration::from_micros(1));
+
+    let count_after_second = elastic_buffer.data_count();
+    uwriteln!(
+        uart,
+        "  After second Drain{{n:3}} + wait: count={}",
+        count_after_second
+    )
+    .unwrap();
+
+    // Verify: count should be initial + 6 - 3 = initial + 3
+    let expected = count_initial + 3;
+    if count_after_second == expected {
+        uwriteln!(uart, "  PASS").unwrap();
+        true
+    } else {
+        uwriteln!(
+            uart,
+            "  FAIL: Expected count={}, got count={}",
+            expected,
+            count_after_second
+        )
+        .unwrap();
+        false
+    }
+}
+
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
@@ -345,6 +597,10 @@ fn main() -> ! {
     all_passed &= test_multiple_drain_commands(&mut uart, &elastic_buffer);
     all_passed &= test_underflow_flag_sticky(&mut uart, &elastic_buffer, &timer);
     all_passed &= test_overflow_flag_sticky(&mut uart, &elastic_buffer, &timer);
+    all_passed &= test_multiple_items_command(&mut uart, &elastic_buffer, &timer);
+    all_passed &= test_prepare_go_prepare_go(&mut uart, &elastic_buffer, &timer);
+    all_passed &= test_prepare_go_wait_prepare_go_wait(&mut uart, &elastic_buffer, &timer);
+    all_passed &= test_prepare_go_prepare_wait_go_wait(&mut uart, &elastic_buffer, &timer);
 
     if all_passed {
         uwriteln!(uart, "All elastic buffer tests passed").unwrap();

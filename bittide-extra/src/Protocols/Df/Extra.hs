@@ -58,3 +58,6 @@ skid = Circuit go
   toMaybe :: SkidState a -> Maybe a
   toMaybe (Full a) = Just a
   toMaybe _ = Nothing
+
+ackWhen :: Signal dom Bool -> Circuit (Df dom a) ()
+ackWhen canDrop = Circuit $ \_ -> (Ack <$> canDrop, ())
