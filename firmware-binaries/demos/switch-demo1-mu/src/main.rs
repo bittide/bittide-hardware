@@ -67,7 +67,7 @@ impl LinkStartup {
             UgnCaptureState::SwitchUserMode => {
                 // Center the elastic buffer once before switching to user mode
                 elastic_buffer.set_occupancy(0);
-                elastic_buffer.clear_flags();
+                elastic_buffer.set_clear_status_registers(true);
                 transceivers.set_receive_readys(channel, true);
                 transceivers.set_transmit_starts(channel, true);
                 uwriteln!(

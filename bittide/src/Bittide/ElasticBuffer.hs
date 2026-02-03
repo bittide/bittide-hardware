@@ -23,13 +23,16 @@ import Protocols.Df (CollectMode (..), roundrobinCollect)
 import Protocols.Df.Extra (ackWhen, skid)
 import Protocols.MemoryMap (Access (..))
 import Protocols.MemoryMap.Registers.WishboneStandard (
+  BusActivity (BusWrite),
   RegisterConfig (..),
   busActivityWrite,
   deviceWb,
   registerConfig,
+  registerWb,
   registerWbDfI,
   registerWbI,
   registerWbI_,
+  registerWb_,
  )
 
 import qualified Clash.Explicit.Prelude as E
@@ -291,6 +294,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       , wbOverflow
       , wbLocalCounterUnderflow
       , wbLocalCounterOverflow
+      , wbClearStatusRegisters
       , wbAutoCenterReset
       , wbAutoCenterEnable
       , wbAutoCenterMargin
@@ -398,12 +402,13 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
 
     let
       isFirstRising :: Signal readDom Bool -> Signal readDom Bool
-      isFirstRising sig = E.isRising clkRead rstRead enableGen False $ sticky clkRead rstRead sig
+      isFirstRising = E.isRising clkRead flagsReset enableGen False . sticky clkRead flagsReset
 
-      underflowTrigger = isFirstRising underflow
-      overflowTrigger = isFirstRising overflow1
-    localCounterUnderflow <- shutter underflowTrigger -< Fwd localCounter
-    localCounterOverflow <- shutter overflowTrigger -< Fwd localCounter
+      flagsReset :: Reset readDom
+      flagsReset = E.orReset rstRead (unsafeFromActiveHigh (clearStatusRegisters .== Just (BusWrite True)))
+
+    localCounterUnderflow <- shutter (isFirstRising underflow) -< Fwd localCounter
+    localCounterOverflow <- shutter (isFirstRising overflow1) -< Fwd localCounter
 
     (dataCountOut, _dataCountActivity) <-
       registerWbI
@@ -411,16 +416,21 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
         0
         -< (wbDataCount, Fwd (Just <$> dataCount))
 
+    -- Status registers
     (underflowOut, _underflowActivity) <-
-      registerWbI
+      registerWb
+        clkRead
+        flagsReset
         (registerConfig "underflow")
-          { access = ReadWrite
+          { access = ReadOnly
           , description = "Sticky underflow flag; can be cleared by writing false"
           }
         False
         -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
 
-    registerWbI_
+    registerWb_
+      clkRead
+      flagsReset
       (registerConfig "underflow_timestamp")
         { access = ReadOnly
         , description = "Local counter value when first underflow occurred"
@@ -429,20 +439,33 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       -< (wbLocalCounterUnderflow, localCounterUnderflow)
 
     (overflowOut, _overflowActivity) <-
-      registerWbI
+      registerWb
+        clkRead
+        flagsReset
         (registerConfig "overflow")
-          { access = ReadWrite
+          { access = ReadOnly
           , description = "Sticky overflow flag; can be cleared by writing false"
           }
         False
         -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
 
-    registerWbI_
+    registerWb_
+      clkRead
+      flagsReset
       (registerConfig "overflow_timestamp")
         { access = ReadOnly
         , description = "Local counter value when first overflow occurred"
         }
       0
       -< (wbLocalCounterOverflow, localCounterOverflow)
+
+    (_cf, Fwd clearStatusRegisters) <-
+      registerWbI
+        (registerConfig "clear_status_registers")
+          { access = WriteOnly
+          , description = "Clear the underflow and overflow sticky flags and their respective timestamps"
+          }
+        False
+        -< (wbClearStatusRegisters, Fwd (pure Nothing))
 
     idC -< (dataCountOut, underflowOut, overflowOut, Fwd readData)
