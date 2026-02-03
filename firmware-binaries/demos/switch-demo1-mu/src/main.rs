@@ -18,15 +18,12 @@ pub enum UgnCaptureState {
     WaitForChannelNegotiation,
     SwitchUserMode,
     WaitForUgnCapture,
-    WaitForStability,
     Done,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct LinkStartup {
     pub state: UgnCaptureState,
-    // Cumulative elastic buffer adjustments
-    pub eb_delta: i32,
 }
 
 impl LinkStartup {
@@ -34,14 +31,7 @@ impl LinkStartup {
     pub fn new() -> Self {
         Self {
             state: UgnCaptureState::WaitForChannelNegotiation,
-            eb_delta: 0,
         }
-    }
-
-    /// Center the elastic buffer and accumulate the number of frames that were
-    /// added or removed.
-    pub fn center_eb(&mut self, eb: &ElasticBuffer) {
-        self.eb_delta += eb.set_occupancy(0) as i32;
     }
 
     /// Transition to the next state based on current conditions
@@ -52,7 +42,6 @@ impl LinkStartup {
         channel: usize,
         elastic_buffer: &ElasticBuffer,
         captured_ugn: bool,
-        all_stable: bool,
     ) {
         self.state = match self.state {
             UgnCaptureState::WaitForChannelNegotiation => {
@@ -80,17 +69,8 @@ impl LinkStartup {
             }
             UgnCaptureState::WaitForUgnCapture => {
                 if captured_ugn {
+                    elastic_buffer.set_auto_center_enable(true);
                     uwriteln!(uart, "Captured UGN for channel {}", channel).unwrap();
-                    UgnCaptureState::WaitForStability
-                } else {
-                    self.state
-                }
-            }
-            UgnCaptureState::WaitForStability => {
-                // Center the elastic buffer to try to avoid over/underflows
-                self.center_eb(elastic_buffer);
-
-                if all_stable {
                     UgnCaptureState::Done
                 } else {
                     self.state
@@ -140,6 +120,19 @@ fn main() -> ! {
 
     let mut link_startups = [LinkStartup::new(); 7];
     while !link_startups.iter().all(|ls| ls.is_done()) {
+        for (i, link_startup) in link_startups.iter_mut().enumerate() {
+            link_startup.next(
+                &mut uart,
+                transceivers,
+                i,
+                elastic_buffers[i],
+                capture_ugns[i].has_captured(),
+            );
+        }
+    }
+
+    uwriteln!(uart, "Waiting for stability...").unwrap();
+    loop {
         // We don't update the stability here, but leave that to callisto. Although
         // we also have access to the 'links_settled' register, we don't want to
         // flood the CC bus.
@@ -148,20 +141,21 @@ fn main() -> ! {
             settled: 0,
         };
         let all_stable = stability.all_stable();
-
-        for (i, link_startup) in link_startups.iter_mut().enumerate() {
-            link_startup.next(
-                &mut uart,
-                transceivers,
-                i,
-                elastic_buffers[i],
-                capture_ugns[i].has_captured(),
-                all_stable,
-            );
+        if all_stable {
+            break;
         }
     }
 
-    let eb_deltas = link_startups.iter().map(|ls| ls.eb_delta);
+    uwriteln!(uart, "Stopping auto-centering...").unwrap();
+    elastic_buffers
+        .iter()
+        .for_each(|eb| eb.set_auto_center_enable(false));
+    elastic_buffers
+        .iter()
+        .for_each(|eb| eb.wait_auto_center_idle());
+    let eb_deltas = elastic_buffers
+        .iter()
+        .map(|eb| eb.auto_center_total_adjustments());
 
     for (capture_ugn, eb_delta) in capture_ugns.iter().zip(eb_deltas) {
         capture_ugn.set_elastic_buffer_delta(eb_delta);
