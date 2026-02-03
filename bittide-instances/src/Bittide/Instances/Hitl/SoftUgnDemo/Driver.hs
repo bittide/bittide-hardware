@@ -224,6 +224,17 @@ driver testName targets = do
                       <> " out)"
                 error "Roundtrip latencies did not match between hardware and software"
               when (not $ L.null mismatchedUgns) $ error "Some UGN edges did not match!"
+
+              liftIO
+                $ T.tryWithTimeoutOn
+                  T.PrintActionTime
+                  "Waiting for CPU test status"
+                  (1_000_000)
+                  goDumpCcSamples
+                $ forConcurrently_ picocoms
+                $ \pico ->
+                  waitForLine pico.stdoutHandle "[PE] Test status: Success"
+
             liftIO goDumpCcSamples
 
             pure ExitSuccess
