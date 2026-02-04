@@ -11,17 +11,15 @@ impl ElasticBuffer {
     /// Maximum occupancy value for the elastic buffer (signed 8-bit).
     pub const MAX_OCCUPANCY: i8 = i8::MAX;
 
-    /// Execute an adjustment on the elastic buffer using the three-register interface.
+    /// Execute an adjustment on the elastic buffer using the two-register interface.
     ///
     /// This is a convenience function that:
-    /// 1. Prepares the adjustment in `adjustment_prepare`
-    /// 2. Triggers execution with `adjustment_go`
-    /// 3. Waits for completion with `adjustment_wait`
+    /// 1. Submits the adjustment with `adjustment_async`
+    /// 2. Waits for completion with `adjustment_wait`
     ///
     /// Negative values drain (remove frames), positive values fill (add frames).
     pub fn set_adjustment(&self, adjustment: i32) {
-        self.set_adjustment_prepare(adjustment);
-        self.set_adjustment_go(());
+        self.set_adjustment_async(adjustment);
         self.set_adjustment_wait(());
     }
 

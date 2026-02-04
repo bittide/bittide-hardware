@@ -19,6 +19,7 @@ import Protocols.Df.Extra (ackWhen, skid)
 import Protocols.MemoryMap (Access (..))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
+  busActivityWrite,
   deviceWb,
   registerConfig,
   registerWbDfI,
@@ -275,8 +276,7 @@ xilinxElasticBufferWb ::
     )
 xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
   withClockResetEnable clkRead rstRead enableGen $ circuit $ \wb -> do
-    [ wbAdjustmentPrepare
-      , wbAdjustmentGo
+    [ wbAdjustmentAsync
       , wbAdjustmentWait
       , wbDataCount
       , wbUnderflow
@@ -285,24 +285,15 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
       ] <-
       deviceWb "ElasticBuffer" -< wb
 
-    (ebAdjustment, _ebAdjustmentDfActivity) <-
+    (_ebAdjustmentAsync, ebAdjustmentAsyncDfActivity) <-
       registerWbDfI
-        (registerConfig "adjustment_prepare")
-          { access = WriteOnly
-          , description = "Adjustment to execute when setting `adjustment_go` (negative drains, positive fills)"
-          }
-        (0 :: EbAdjustment)
-        -< (wbAdjustmentPrepare, Fwd (pure Nothing))
-
-    (_ebAdjustmentGo, ebAdjustmentGoDfActivity) <-
-      registerWbDfI
-        (registerConfig "adjustment_go")
+        (registerConfig "adjustment_async")
           { access = WriteOnly
           , description =
-              "Trigger execution of the adjustment set in `adjustment_prepare`. Will stall if an adjustment is still in progress."
+              "Submit an adjustment. Will stall if an adjustment is still in progress."
           }
-        ()
-        -< (wbAdjustmentGo, Fwd (pure Nothing))
+        (0 :: EbAdjustment)
+        -< (wbAdjustmentAsync, Fwd (pure Nothing))
 
     (_ebAdjustmentWait, ebAdjustmentWaitDfActivity) <-
       registerWbDfI
@@ -313,16 +304,7 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
         ()
         -< (wbAdjustmentWait, Fwd (pure Nothing))
 
-    -- See [Note Skid Buffer] below
-    ackWhen ebReady -< ebAdjustmentWaitDfActivity
-
-    -- If there is bus activity on the `go` bus, we pass the adjustment saved in `adjustment_prepare`
-    -- to the elastic buffer. Otherwise, we pass Nothing.
-    ebAdjustmentDf0 <-
-      applyC
-        (\(maybeBusActivity, ebAdjustment) -> toEbAdjustment <$> maybeBusActivity <*> ebAdjustment)
-        (\ack -> (ack, ()))
-        -< (ebAdjustmentGoDfActivity, ebAdjustment)
+    ebAdjustmentDf0 <- applyC (fmap busActivityWrite) id -< ebAdjustmentAsyncDfActivity
 
     -- [Note Skid Buffer]
     --
@@ -330,6 +312,7 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
     -- when writing to `adjustment_go`. We then use the 'ready' signal from the skid buffer to
     -- implement the 'adjustment_wait' register.
     (ebAdjustmentDf1, Fwd ebReady) <- skid -< ebAdjustmentDf0
+    ackWhen ebReady -< ebAdjustmentWaitDfActivity
 
     let (dataCount, underflow, overflow0, readData, adjustmentAck) =
           xilinxElasticBuffer @n clkRead clkWrite ebAdjustmentSig wdata
@@ -371,7 +354,3 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
         -< (wbStable, Fwd (pure Nothing))
 
     idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)
- where
-  -- If there is bus activity on the `go` bus, we pass the adjustment saved in `adjustment_prepare`
-  -- to the elastic buffer. Otherwise, we pass Nothing.
-  toEbAdjustment busActivity ebAdjustment = maybe Nothing (\_ -> Just ebAdjustment) busActivity
