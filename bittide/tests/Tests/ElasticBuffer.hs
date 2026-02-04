@@ -35,7 +35,7 @@ its data count should overflow.
 case_xilinxElasticBufferMaxBound :: Assertion
 case_xilinxElasticBufferMaxBound = do
   let
-    command = fromList $ L.replicate 60 (Just (Fill 1)) <> L.repeat Nothing
+    command = fromList $ L.replicate 60 (Just 1) <> L.repeat Nothing
     wData = pure (0 :: Unsigned 8)
     underflows =
       sampleN
@@ -65,7 +65,7 @@ its data count should underflow.
 case_xilinxElasticBufferMinBound :: Assertion
 case_xilinxElasticBufferMinBound = do
   let
-    command = fromList $ L.replicate 8 (Just (Fill 1)) <> L.repeat Nothing
+    command = fromList $ L.replicate 8 (Just 1) <> L.repeat Nothing
     wData = pure (0 :: Unsigned 8)
     underflows =
       sampleN
@@ -93,7 +93,7 @@ neither overflow nor underflow.
 case_xilinxElasticBufferEq :: Assertion
 case_xilinxElasticBufferEq = do
   let
-    command = fromList $ L.replicate 16 (Just (Fill 1)) <> L.repeat Nothing
+    command = fromList $ L.replicate 16 (Just 1) <> L.repeat Nothing
     wData = pure (0 :: Unsigned 8)
     underflows =
       sampleN

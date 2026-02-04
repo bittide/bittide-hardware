@@ -8,7 +8,7 @@ import Bittide.ClockControl (RelDataCount, targetDataCount)
 import Bittide.Df
 import Bittide.Extra.Maybe (orNothing)
 import Bittide.SharedTypes (BitboneMm)
-import Clash.Class.BitPackC (BitPackC, ByteOrder)
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
 import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
@@ -24,27 +24,58 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbDfI,
   registerWbI,
  )
-import Protocols.MemoryMap.TypeDescription.TH
 
 import qualified Clash.Explicit.Prelude as E
 
-data EbCommand
-  = -- | Disable write, enable read for /n/ cycles
-    Drain {n :: Unsigned 32}
-  | -- | Enable write, disable read for /n/ cycles
-    Fill {n :: Unsigned 32}
-  deriving (Generic, NFDataX, Eq, Show, BitPack, BitPackC, ShowX)
-deriveTypeDescription ''EbCommand
+{- | Elastic buffer adjustment command. Negative values drain (remove frames), positive
+values fill (add frames).
+-}
+type EbAdjustment = Signed 32
 
--- | Like @ebCommand.n@, but only if the command is 'Drain'
-toDrainMaybe :: EbCommand -> Maybe (Unsigned 32)
-toDrainMaybe (Drain m) = Just m
-toDrainMaybe _ = Nothing
+{- | Extract magnitude if the adjustment is a drain (negative).
 
--- | Like @ebCommand.n@, but only if the command is 'Fill'
-toFillMaybe :: EbCommand -> Maybe (Unsigned 32)
-toFillMaybe (Fill m) = Just m
-toFillMaybe _ = Nothing
+Returns the absolute value of the adjustment as an unsigned integer when the
+adjustment is negative, otherwise returns Nothing.
+
+\$setup
+>>> import Clash.Prelude
+
+>>> toDrainMaybe (-5)
+Just 5
+>>> toDrainMaybe (-1)
+Just 1
+>>> toDrainMaybe 0
+Nothing
+>>> toDrainMaybe 5
+Nothing
+>>> toDrainMaybe minBound  -- Handle edge case: -2147483648
+Just 2147483648
+-}
+toDrainMaybe :: EbAdjustment -> Maybe (Unsigned 32)
+toDrainMaybe adj
+  | adj < 0 = Just (bitCoerce (truncateB (negate (extend adj :: Signed 33))))
+  | otherwise = Nothing
+
+{- | Extract magnitude if the adjustment is a fill (positive).
+
+Returns the adjustment value as an unsigned integer when the adjustment is
+positive, otherwise returns Nothing.
+
+>>> toFillMaybe 5
+Just 5
+>>> toFillMaybe 1
+Just 1
+>>> toFillMaybe 0
+Nothing
+>>> toFillMaybe (-5)
+Nothing
+>>> toFillMaybe maxBound  -- Maximum positive value: 2147483647
+Just 2147483647
+-}
+toFillMaybe :: EbAdjustment -> Maybe (Unsigned 32)
+toFillMaybe adj
+  | adj > 0 = Just (bitCoerce adj)
+  | otherwise = Nothing
 
 type Underflow = Bool
 type Overflow = Bool
@@ -105,11 +136,11 @@ xilinxElasticBuffer ::
   Clock readDom ->
   Clock writeDom ->
   -- | Operating mode of the elastic buffer. Must remain stable until an acknowledgement
-  -- is received.
-  Signal readDom (Maybe EbCommand) ->
+  -- is received. Negative values drain, positive values fill, zero is a no-op.
+  Signal readDom (Maybe EbAdjustment) ->
   -- | Data to write into the elastic buffer. Will be ignored for a single cycle
-  -- when it gets a 'Drain' command. Which cycle this is depends on clock domain
-  -- crossing.
+  -- when it gets a drain adjustment (negative value). Which cycle this is depends on
+  -- clock domain crossing.
   Signal writeDom a ->
   ( Signal readDom (RelDataCount n)
   , Signal readDom Underflow
@@ -118,7 +149,7 @@ xilinxElasticBuffer ::
   , -- Acknowledgement for EbMode
     Signal readDom Ack
   )
-xilinxElasticBuffer clkRead clkWrite command wdata =
+xilinxElasticBuffer clkRead clkWrite adjustment wdata =
   ( -- Note that this is chosen to work for 'RelDataCount' either being
     -- set to 'Signed' with 'targetDataCount' equals 0 or set to
     -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
@@ -131,7 +162,7 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
   , isUnderflow
   , isOverflow
   , fifoOut
-  , commandAck
+  , adjustmentAck
   )
  where
   FifoOut{readCount, isUnderflow, isOverflow, fifoData} =
@@ -150,16 +181,18 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
   noResetRead = unsafeFromActiveHigh (pure False)
 
   -- Muxing between drain and fills:
-  commandAck = selectAck <$> command <*> drainAck <*> fillAck
+  adjustmentAck = selectAck <$> adjustment <*> drainAck <*> fillAck
   fifoOut = toElasticBufferData <$> readEnableDelayed <*> isUnderflow <*> fifoData
   readEnableDelayed = E.register clkRead noResetRead enableGen False readEnable
   readEnable = not <$> fill
 
-  selectAck :: Maybe EbCommand -> Ack -> Ack -> Ack
-  selectAck cmd dAck fAck = case cmd of
-    Just Drain{} -> dAck
-    Just Fill{} -> fAck
-    Nothing -> errorX "xilinxElasticBuffer: No command to acknowledge"
+  selectAck :: Maybe EbAdjustment -> Ack -> Ack -> Ack
+  selectAck adj dAck fAck = case adj of
+    Just a
+      | a < 0 -> dAck -- Drain
+      | a > 0 -> fAck -- Fill
+      | otherwise -> Ack True -- Zero: immediate ack for no-op
+    Nothing -> errorX "xilinxElasticBuffer: No adjustment to acknowledge"
 
   -- Fill logic:
   (fillAck, fill) =
@@ -170,7 +203,7 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
       goActState
       goActOutput
       Nothing
-      (maybe Nothing toFillMaybe <$> command)
+      (maybe Nothing toFillMaybe <$> adjustment)
 
   goActState :: Maybe (Unsigned 32) -> Maybe (Unsigned 32) -> Maybe (Unsigned 32)
   goActState Nothing i = i
@@ -192,7 +225,7 @@ xilinxElasticBuffer clkRead clkWrite command wdata =
       E.noReset
       clkWrite
       E.noReset
-      (maybe Nothing toDrainMaybe <$> command)
+      (maybe Nothing toDrainMaybe <$> adjustment)
       drainAckWrite
 
 {-# OPAQUE xilinxElasticBufferWb #-}
@@ -242,59 +275,66 @@ xilinxElasticBufferWb ::
     )
 xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
   withClockResetEnable clkRead rstRead enableGen $ circuit $ \wb -> do
-    [wbCommandPrepare, wbCommandGo, wbCommandWait, wbDataCount, wbUnderflow, wbOverflow, wbStable] <-
+    [ wbAdjustmentPrepare
+      , wbAdjustmentGo
+      , wbAdjustmentWait
+      , wbDataCount
+      , wbUnderflow
+      , wbOverflow
+      , wbStable
+      ] <-
       deviceWb "ElasticBuffer" -< wb
 
-    (ebCommand, _ebCommandDfActivity) <-
+    (ebAdjustment, _ebAdjustmentDfActivity) <-
       registerWbDfI
-        (registerConfig "command_prepare")
+        (registerConfig "adjustment_prepare")
           { access = WriteOnly
-          , description = "Command to execute when setting `command_go`"
+          , description = "Adjustment to execute when setting `adjustment_go` (negative drains, positive fills)"
           }
-        (Drain 0 :: EbCommand)
-        -< (wbCommandPrepare, Fwd (pure Nothing))
+        (0 :: EbAdjustment)
+        -< (wbAdjustmentPrepare, Fwd (pure Nothing))
 
-    (_ebCommandGo, ebCommandGoDfActivity) <-
+    (_ebAdjustmentGo, ebAdjustmentGoDfActivity) <-
       registerWbDfI
-        (registerConfig "command_go")
+        (registerConfig "adjustment_go")
           { access = WriteOnly
           , description =
-              "Trigger execution of the command set in `command_prepare`. Will stall if a command is still in progress."
+              "Trigger execution of the adjustment set in `adjustment_prepare`. Will stall if an adjustment is still in progress."
           }
         ()
-        -< (wbCommandGo, Fwd (pure Nothing))
+        -< (wbAdjustmentGo, Fwd (pure Nothing))
 
-    (_ebCommandWait, ebCommandWaitDfActivity) <-
+    (_ebAdjustmentWait, ebAdjustmentWaitDfActivity) <-
       registerWbDfI
-        (registerConfig "command_wait")
+        (registerConfig "adjustment_wait")
           { access = WriteOnly
-          , description = "Wait until ready to (immediately) accept a new command"
+          , description = "Wait until ready to (immediately) accept a new adjustment"
           }
         ()
-        -< (wbCommandWait, Fwd (pure Nothing))
+        -< (wbAdjustmentWait, Fwd (pure Nothing))
 
     -- See [Note Skid Buffer] below
-    ackWhen ebReady -< ebCommandWaitDfActivity
+    ackWhen ebReady -< ebAdjustmentWaitDfActivity
 
-    -- If there is bus activity on the `go` bus, we pass the command saved in `command_prepare`
+    -- If there is bus activity on the `go` bus, we pass the adjustment saved in `adjustment_prepare`
     -- to the elastic buffer. Otherwise, we pass Nothing.
-    ebCommandDf0 <-
+    ebAdjustmentDf0 <-
       applyC
-        (\(maybeBusActivity, ebCommand) -> toEbCommand <$> maybeBusActivity <*> ebCommand)
+        (\(maybeBusActivity, ebAdjustment) -> toEbAdjustment <$> maybeBusActivity <*> ebAdjustment)
         (\ack -> (ack, ()))
-        -< (ebCommandGoDfActivity, ebCommand)
+        -< (ebAdjustmentGoDfActivity, ebAdjustment)
 
     -- [Note Skid Buffer]
     --
-    -- By putting a skid buffer here, we ensure that we can immediately accept a new command
-    -- when writing to `command_go`. We then use the 'ready' signal from the skid buffer to
-    -- implement the 'command_wait' register.
-    (ebCommandDf1, Fwd ebReady) <- skid -< ebCommandDf0
+    -- By putting a skid buffer here, we ensure that we can immediately accept a new adjustment
+    -- when writing to `adjustment_go`. We then use the 'ready' signal from the skid buffer to
+    -- implement the 'adjustment_wait' register.
+    (ebAdjustmentDf1, Fwd ebReady) <- skid -< ebAdjustmentDf0
 
-    let (dataCount, underflow, overflow0, readData, commandAck) =
-          xilinxElasticBuffer @n clkRead clkWrite ebCommandSig wdata
+    let (dataCount, underflow, overflow0, readData, adjustmentAck) =
+          xilinxElasticBuffer @n clkRead clkWrite ebAdjustmentSig wdata
 
-    Fwd ebCommandSig <- unsafeFromDf -< (ebCommandDf1, Fwd commandAck)
+    Fwd ebAdjustmentSig <- unsafeFromDf -< (ebAdjustmentDf1, Fwd adjustmentAck)
 
     -- Synchronize overflow pulse from write domain to read domain
     let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
@@ -332,6 +372,6 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
 
     idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)
  where
-  -- If there is bus activity on the `go` bus, we pass the command saved in `command_prepare`
+  -- If there is bus activity on the `go` bus, we pass the adjustment saved in `adjustment_prepare`
   -- to the elastic buffer. Otherwise, we pass Nothing.
-  toEbCommand busActivity ebCommand = maybe Nothing (\_ -> Just ebCommand) busActivity
+  toEbAdjustment busActivity ebAdjustment = maybe Nothing (\_ -> Just ebAdjustment) busActivity

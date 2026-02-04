@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::shared_devices::elastic_buffer::ElasticBuffer;
-use crate::types::EbCommand;
 
 impl ElasticBuffer {
     /// Minimum occupancy value for the elastic buffer (signed 8-bit).
@@ -12,28 +11,30 @@ impl ElasticBuffer {
     /// Maximum occupancy value for the elastic buffer (signed 8-bit).
     pub const MAX_OCCUPANCY: i8 = i8::MAX;
 
-    /// Execute a command on the elastic buffer using the three-register interface.
+    /// Execute an adjustment on the elastic buffer using the three-register interface.
     ///
     /// This is a convenience function that:
-    /// 1. Prepares the command in `command_prepare`
-    /// 2. Triggers execution with `command_go`
-    /// 3. Waits for completion with `command_wait`
-    pub fn set_command(&self, command: EbCommand) {
-        self.set_command_prepare(command);
-        self.set_command_go(());
-        self.set_command_wait(());
+    /// 1. Prepares the adjustment in `adjustment_prepare`
+    /// 2. Triggers execution with `adjustment_go`
+    /// 3. Waits for completion with `adjustment_wait`
+    ///
+    /// Negative values drain (remove frames), positive values fill (add frames).
+    pub fn set_adjustment(&self, adjustment: i32) {
+        self.set_adjustment_prepare(adjustment);
+        self.set_adjustment_go(());
+        self.set_adjustment_wait(());
     }
 
     /// Increase buffer occupancy by N frames. there is no control over which
     /// frames are duplicated. Only usable during system initialization.
     pub fn increase_occupancy(&self, n: u32) {
-        self.set_command(EbCommand::Fill { n });
+        self.set_adjustment(n as i32);
     }
 
     /// Decrease buffer occupancy by N frames. there is no control over which
     /// frames are dropped. Only usable during system initialization.
     pub fn decrease_occupancy(&self, n: u32) {
-        self.set_command(EbCommand::Drain { n });
+        self.set_adjustment(-(n as i32));
     }
 
     /// Set buffer occupancy to a target value.

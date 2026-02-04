@@ -7,21 +7,19 @@
 use bittide_hal::elastic_buffer_wb_test::DeviceInstances;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::shared_devices::ElasticBuffer;
-use bittide_hal::types::EbCommand;
 #[cfg(not(test))]
 use riscv_rt::entry;
 use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
-/// Test 1: Set occupancy to midpoint (0)
-/// Verifies that set_occupancy() correctly adjusts the buffer
-/// to the target occupancy level (midpoint = 0) from any initial state.
+/// Verifies that set_occupancy() correctly adjusts the buffer to the target occupancy
+/// level (midpoint = 0) from any initial state.
 fn test_set_occupancy_to_midpoint(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
 ) -> bool {
-    uwriteln!(uart, "Test 1: Set occupancy to midpoint (0)").unwrap();
+    uwriteln!(uart, "Test: Set occupancy to midpoint (0)").unwrap();
 
     // Preconditions: Verify flags are clear
     let underflow_initial = elastic_buffer.underflow();
@@ -77,14 +75,73 @@ fn test_set_occupancy_to_midpoint(
     }
 }
 
-/// Test 2: Multiple Drain commands accumulate correctly
-/// Verifies that decrease_occupancy() correctly decrements
-/// the buffer occupancy by the specified number of frames.
+/// Verifies that an adjustment of zero is accepted and acknowledged without modifying the
+/// buffer occupancy.
+fn test_zero_adjustment(
+    uart: &mut bittide_hal::shared_devices::Uart,
+    elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
+    timer: &bittide_hal::shared_devices::Timer,
+) -> bool {
+    uwriteln!(uart, "Test: Zero adjustment (no-op)").unwrap();
+
+    let count_before = elastic_buffer.data_count();
+    uwriteln!(uart, "  Before adjustment(0): count={}", count_before).unwrap();
+
+    // Test single zero adjustment
+    elastic_buffer.set_adjustment(0);
+
+    timer.wait(Duration::from_micros(1));
+    let count_after_first = elastic_buffer.data_count();
+    uwriteln!(uart, "  After adjustment(0): count={}", count_after_first).unwrap();
+
+    if count_after_first != count_before {
+        uwriteln!(
+            uart,
+            "  FAIL: Count should not change, was {}, now {}",
+            count_before,
+            count_after_first
+        )
+        .unwrap();
+        return false;
+    }
+
+    // Test multiple zero adjustments in succession
+    elastic_buffer.set_adjustment(0);
+    elastic_buffer.set_adjustment(0);
+    elastic_buffer.set_adjustment(0);
+
+    timer.wait(Duration::from_micros(1));
+    let count_after_multiple = elastic_buffer.data_count();
+
+    uwriteln!(
+        uart,
+        "  After 3 more adjustment(0): count={}",
+        count_after_multiple
+    )
+    .unwrap();
+
+    if count_after_multiple != count_before {
+        uwriteln!(
+            uart,
+            "  FAIL: Count should not change after multiple zeros, was {}, now {}",
+            count_before,
+            count_after_multiple
+        )
+        .unwrap();
+        return false;
+    }
+
+    uwriteln!(uart, "  PASS").unwrap();
+    true
+}
+
+/// Verifies that decrease_occupancy() correctly decrements the buffer occupancy by the
+/// specified number of frames.
 fn test_multiple_drain_commands(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
 ) -> bool {
-    uwriteln!(uart, "Test 2: Multiple Drain commands accumulate").unwrap();
+    uwriteln!(uart, "Test: Multiple Drain commands accumulate").unwrap();
 
     // Preconditions: Verify flags are still clear
     let underflow_initial = elastic_buffer.underflow();
@@ -129,16 +186,15 @@ fn test_multiple_drain_commands(
     }
 }
 
-/// Test 3: Underflow flag triggers and is sticky
-/// Verifies that the underflow flag is set when draining past
-/// minimum occupancy, remains set (sticky) after subsequent operations,
-/// and can be cleared by writing to the status register.
+/// Verifies that the underflow flag is set when draining past minimum occupancy, remains
+/// set (sticky) after subsequent operations, and can be cleared by writing to the status
+/// register.
 fn test_underflow_flag_sticky(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
     timer: &bittide_hal::shared_devices::Timer,
 ) -> bool {
-    uwriteln!(uart, "Test 3: Underflow flag triggers and is sticky").unwrap();
+    uwriteln!(uart, "Test: Underflow flag triggers and is sticky").unwrap();
 
     // Preconditions: Verify underflow flag is clear
     let underflow_initial = elastic_buffer.underflow();
@@ -157,7 +213,7 @@ fn test_underflow_flag_sticky(
     let drains_needed = count_before as i32 - (ElasticBuffer::MIN_OCCUPANCY as i32 - 1);
     uwriteln!(
         uart,
-        "  Before Drain: count={}, will drain {} times",
+        "  Before draining: count={}, will drain {} times",
         count_before as i8,
         drains_needed
     )
@@ -169,7 +225,7 @@ fn test_underflow_flag_sticky(
     let underflow_after_drain = elastic_buffer.underflow();
     uwriteln!(
         uart,
-        "  After Drain: count={}, underflow={}",
+        "  After draining: count={}, underflow={}",
         count_after_drain,
         underflow_after_drain
     )
@@ -185,8 +241,8 @@ fn test_underflow_flag_sticky(
         return false;
     }
 
-    // Action 2: Issue Fill command to test stickiness
-    elastic_buffer.set_command(EbCommand::Fill { n: 1 });
+    // Action 2: Issue Fill adjustment to test stickiness
+    elastic_buffer.set_adjustment(1);
     timer.wait(Duration::from_micros(1));
 
     let underflow_after_fill = elastic_buffer.underflow();
@@ -236,16 +292,15 @@ fn test_underflow_flag_sticky(
     }
 }
 
-/// Test 4: Overflow flag triggers and is sticky
-/// Verifies that the overflow flag is set when filling past
-/// maximum occupancy, remains set (sticky) after subsequent operations,
-/// and can be cleared by writing to the status register.
+/// Verifies that the overflow flag is set when filling past maximum occupancy, remains
+/// set (sticky) after subsequent operations, and can be cleared by writing to the status
+/// register.
 fn test_overflow_flag_sticky(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
     timer: &bittide_hal::shared_devices::Timer,
 ) -> bool {
-    uwriteln!(uart, "Test 4: Overflow flag triggers and is sticky").unwrap();
+    uwriteln!(uart, "Test: Overflow flag triggers and is sticky").unwrap();
 
     // Preconditions: Verify overflow flag is clear
     let underflow_initial = elastic_buffer.underflow();
@@ -266,7 +321,7 @@ fn test_overflow_flag_sticky(
     let fills_needed = ElasticBuffer::MAX_OCCUPANCY as i32 - count_before + 1;
     uwriteln!(
         uart,
-        "  Before Fill: count={}, will fill {} times",
+        "  Before filling: count={}, will fill {} times",
         count_before,
         fills_needed
     )
@@ -278,7 +333,7 @@ fn test_overflow_flag_sticky(
     let overflow_after_fill = elastic_buffer.overflow();
     uwriteln!(
         uart,
-        "  After Fill: count={}, overflow={}",
+        "  After filling: count={}, overflow={}",
         count_after_fill,
         overflow_after_fill
     )
@@ -294,12 +349,12 @@ fn test_overflow_flag_sticky(
         return false;
     }
 
-    // Action 2: Issue Drain command to test stickiness
-    elastic_buffer.set_command(EbCommand::Drain { n: 1 });
+    // Action 2: Issue Drain adjustment to test stickiness
+    elastic_buffer.set_adjustment(-1);
     timer.wait(Duration::from_micros(1));
 
     let overflow_after_drain = elastic_buffer.overflow();
-    uwriteln!(uart, "  After Drain: overflow={}", overflow_after_drain).unwrap();
+    uwriteln!(uart, "  After draining: overflow={}", overflow_after_drain).unwrap();
 
     // Verify 2: Overflow flag remains set (sticky)
     if !overflow_after_drain {
@@ -333,15 +388,14 @@ fn test_overflow_flag_sticky(
     }
 }
 
-/// Test 5: Drain/Fill multiple items using command field
-/// Verifies that the `n` parameter in EbCommand correctly
-/// drains or fills multiple items in a single command.
+/// Verifies that the `n` parameter in EbAdjustment correctly drains or fills multiple
+/// items in a single command.
 fn test_multiple_items_command(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
     timer: &bittide_hal::shared_devices::Timer,
 ) -> bool {
-    uwriteln!(uart, "Test 5: Drain/Fill multiple items using command").unwrap();
+    uwriteln!(uart, "Test: Drain/Fill multiple items using adjustment").unwrap();
 
     // Set buffer to a known state (midpoint)
     elastic_buffer.set_occupancy(0);
@@ -351,11 +405,11 @@ fn test_multiple_items_command(
     uwriteln!(uart, "  Initial count: {}", count_before).unwrap();
 
     // Test 1: Fill multiple items (n=10)
-    elastic_buffer.set_command(EbCommand::Fill { n: 10 });
+    elastic_buffer.set_adjustment(10);
     timer.wait(Duration::from_micros(1));
 
     let count_after_fill = elastic_buffer.data_count();
-    uwriteln!(uart, "  After Fill{{n:10}}: count={}", count_after_fill).unwrap();
+    uwriteln!(uart, "  After filling 10: count={}", count_after_fill).unwrap();
 
     if count_after_fill != count_before + 10 {
         uwriteln!(
@@ -369,11 +423,11 @@ fn test_multiple_items_command(
     }
 
     // Test 2: Drain multiple items (n=5)
-    elastic_buffer.set_command(EbCommand::Drain { n: 5 });
+    elastic_buffer.set_adjustment(-5);
     timer.wait(Duration::from_micros(1));
 
     let count_after_drain = elastic_buffer.data_count();
-    uwriteln!(uart, "  After Drain{{n:5}}: count={}", count_after_drain).unwrap();
+    uwriteln!(uart, "  After draining 5: count={}", count_after_drain).unwrap();
 
     if count_after_drain != count_after_fill - 5 {
         uwriteln!(
@@ -390,15 +444,14 @@ fn test_multiple_items_command(
     true
 }
 
-/// Test 6: prepare -> go -> prepare -> go sequence
-/// Verifies that we can reliably execute two commands back-to-back
-/// without an explicit wait between them.
+/// Verifies that we can reliably execute two commands back-to-back without an explicit
+/// wait between them.
 fn test_prepare_go_prepare_go(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
     timer: &bittide_hal::shared_devices::Timer,
 ) -> bool {
-    uwriteln!(uart, "Test 6: prepare -> go -> prepare -> go").unwrap();
+    uwriteln!(uart, "Test: prepare -> go -> prepare -> go").unwrap();
 
     // Set buffer to a known state
     elastic_buffer.set_occupancy(0);
@@ -407,28 +460,23 @@ fn test_prepare_go_prepare_go(
     let count_initial = elastic_buffer.data_count();
     uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
 
-    // First command: prepare Fill(3) and go
-    elastic_buffer.set_command_prepare(EbCommand::Fill { n: 3 });
-    elastic_buffer.set_command_go(());
+    // First command: prepare fill 3 and go
+    elastic_buffer.set_adjustment_prepare(3);
+    elastic_buffer.set_adjustment_go(());
     timer.wait(Duration::from_micros(1));
 
     let count_after_first = elastic_buffer.data_count();
-    uwriteln!(
-        uart,
-        "  After first Fill{{n:3}}: count={}",
-        count_after_first
-    )
-    .unwrap();
+    uwriteln!(uart, "  After first filling 3: count={}", count_after_first).unwrap();
 
-    // Second command: prepare Drain(2) and go (without explicit wait)
-    elastic_buffer.set_command_prepare(EbCommand::Drain { n: 2 });
-    elastic_buffer.set_command_go(());
+    // Second command: prepare drain 2 and go (without explicit wait)
+    elastic_buffer.set_adjustment_prepare(-2);
+    elastic_buffer.set_adjustment_go(());
     timer.wait(Duration::from_micros(1));
 
     let count_after_second = elastic_buffer.data_count();
     uwriteln!(
         uart,
-        "  After second Drain{{n:2}}: count={}",
+        "  After second draining 2: count={}",
         count_after_second
     )
     .unwrap();
@@ -450,18 +498,13 @@ fn test_prepare_go_prepare_go(
     }
 }
 
-/// Test 7: prepare -> go -> wait -> prepare -> go -> wait sequence
 /// Verifies that explicit waits between commands work correctly.
 fn test_prepare_go_wait_prepare_go_wait(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
     timer: &bittide_hal::shared_devices::Timer,
 ) -> bool {
-    uwriteln!(
-        uart,
-        "Test 7: prepare -> go -> wait -> prepare -> go -> wait"
-    )
-    .unwrap();
+    uwriteln!(uart, "Test: prepare -> go -> wait -> prepare -> go -> wait").unwrap();
 
     // Set buffer to a known state
     elastic_buffer.set_occupancy(0);
@@ -471,29 +514,29 @@ fn test_prepare_go_wait_prepare_go_wait(
     uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
 
     // First command: prepare, go, and wait
-    elastic_buffer.set_command_prepare(EbCommand::Fill { n: 7 });
-    elastic_buffer.set_command_go(());
-    elastic_buffer.set_command_wait(());
+    elastic_buffer.set_adjustment_prepare(7);
+    elastic_buffer.set_adjustment_go(());
+    elastic_buffer.set_adjustment_wait(());
     timer.wait(Duration::from_micros(1));
 
     let count_after_first = elastic_buffer.data_count();
     uwriteln!(
         uart,
-        "  After first Fill{{n:7}} + wait: count={}",
+        "  After first filling 7 + wait: count={}",
         count_after_first
     )
     .unwrap();
 
     // Second command: prepare, go, and wait
-    elastic_buffer.set_command_prepare(EbCommand::Drain { n: 4 });
-    elastic_buffer.set_command_go(());
-    elastic_buffer.set_command_wait(());
+    elastic_buffer.set_adjustment_prepare(-4);
+    elastic_buffer.set_adjustment_go(());
+    elastic_buffer.set_adjustment_wait(());
     timer.wait(Duration::from_micros(1));
 
     let count_after_second = elastic_buffer.data_count();
     uwriteln!(
         uart,
-        "  After second Drain{{n:4}} + wait: count={}",
+        "  After second draining 4 + wait: count={}",
         count_after_second
     )
     .unwrap();
@@ -515,19 +558,14 @@ fn test_prepare_go_wait_prepare_go_wait(
     }
 }
 
-/// Test 8: prepare -> go -> prepare -> wait -> go -> wait sequence
-/// Verifies that we can prepare a second command before waiting
-/// on the first one to complete.
+/// Verifies that we can prepare a second command before waiting on the first one to
+/// complete.
 fn test_prepare_go_prepare_wait_go_wait(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
     timer: &bittide_hal::shared_devices::Timer,
 ) -> bool {
-    uwriteln!(
-        uart,
-        "Test 8: prepare -> go -> prepare -> wait -> go -> wait"
-    )
-    .unwrap();
+    uwriteln!(uart, "Test: prepare -> go -> prepare -> wait -> go -> wait").unwrap();
 
     // Set buffer to a known state
     elastic_buffer.set_occupancy(0);
@@ -537,33 +575,33 @@ fn test_prepare_go_prepare_wait_go_wait(
     uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
 
     // First command: prepare and go (but don't wait yet)
-    elastic_buffer.set_command_prepare(EbCommand::Fill { n: 6 });
-    elastic_buffer.set_command_go(());
+    elastic_buffer.set_adjustment_prepare(6);
+    elastic_buffer.set_adjustment_go(());
 
     // Prepare second command before waiting on first
-    elastic_buffer.set_command_prepare(EbCommand::Drain { n: 3 });
+    elastic_buffer.set_adjustment_prepare(-3);
 
     // Now wait for first command to complete
-    elastic_buffer.set_command_wait(());
+    elastic_buffer.set_adjustment_wait(());
     timer.wait(Duration::from_micros(1));
 
     let count_after_first = elastic_buffer.data_count();
     uwriteln!(
         uart,
-        "  After Fill{{n:6}} with interleaved prepare: count={}",
+        "  After filling 6 with interleaved prepare: count={}",
         count_after_first
     )
     .unwrap();
 
     // Execute second command: go and wait
-    elastic_buffer.set_command_go(());
-    elastic_buffer.set_command_wait(());
+    elastic_buffer.set_adjustment_go(());
+    elastic_buffer.set_adjustment_wait(());
     timer.wait(Duration::from_micros(1));
 
     let count_after_second = elastic_buffer.data_count();
     uwriteln!(
         uart,
-        "  After second Drain{{n:3}} + wait: count={}",
+        "  After second draining 3 + wait: count={}",
         count_after_second
     )
     .unwrap();
@@ -594,6 +632,7 @@ fn main() -> ! {
     let mut all_passed = true;
 
     all_passed &= test_set_occupancy_to_midpoint(&mut uart, &elastic_buffer);
+    all_passed &= test_zero_adjustment(&mut uart, &elastic_buffer, &timer);
     all_passed &= test_multiple_drain_commands(&mut uart, &elastic_buffer);
     all_passed &= test_underflow_flag_sticky(&mut uart, &elastic_buffer, &timer);
     all_passed &= test_overflow_flag_sticky(&mut uart, &elastic_buffer, &timer);
