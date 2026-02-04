@@ -68,6 +68,7 @@ impl LinkStartup {
                 // Center the elastic buffer once before switching to user mode
                 elastic_buffer.set_occupancy(0);
                 elastic_buffer.clear_flags();
+                elastic_buffer.set_clear_data_count_seen(true);
                 transceivers.set_receive_readys(channel, true);
                 transceivers.set_transmit_starts(channel, true);
                 uwriteln!(
@@ -174,9 +175,10 @@ fn main() -> ! {
             if eb.overflow() {
                 uwriteln!(
                     uart,
-                    "[ERROR] Channel {} elastic buffer overflowed at cycle {}",
+                    "[ERROR] Channel {} elastic buffer overflowed at cycle {}, max occupancy: {}",
                     i,
                     eb.overflow_timestamp(),
+                    eb.max_data_count_seen()
                 )
                 .unwrap();
                 panic!();
@@ -184,9 +186,10 @@ fn main() -> ! {
             if eb.underflow() {
                 uwriteln!(
                     uart,
-                    "[ERROR] Channel {} elastic buffer underflowed at cycle {}",
+                    "[ERROR] Channel {} elastic buffer underflowed at cycle {}, min occupancy: {}",
                     i,
                     eb.underflow_timestamp(),
+                    eb.min_data_count_seen()
                 )
                 .unwrap();
                 panic!();

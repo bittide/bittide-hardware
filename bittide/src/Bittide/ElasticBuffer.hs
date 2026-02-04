@@ -291,6 +291,9 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       , wbLocalCounterOverflow
       , wbClearUnderflow
       , wbClearOverflow
+      , wbMinDataCountSeen
+      , wbMaxDataCountSeen
+      , wbClearDataCountSeen
       ] <-
       deviceWb "ElasticBuffer" -< wb
 
@@ -346,6 +349,19 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
 
     localCounterUnderflow <- shutter underflowTrigger -< Fwd localCounter
     localCounterOverflow <- shutter overflowTrigger -< Fwd localCounter
+
+    let
+      minDataCountSeen1 :: Signal readDom (RelDataCount n)
+      minDataCountSeen1 = min <$> minDataCountSeen0 <*> dataCount
+
+      maxDataCountSeen1 :: Signal readDom (RelDataCount n)
+      maxDataCountSeen1 = max <$> maxDataCountSeen0 <*> dataCount
+
+      dataCountSeenReset :: Reset readDom
+      dataCountSeenReset =
+        unsafeOrReset
+          rstRead
+          (unsafeFromActiveHigh (clearDataCountSeen .== Just (BusWrite True)))
 
     (dataCountOut, _dataCountActivity) <-
       registerWbI
@@ -414,5 +430,28 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
           }
         False
         -< (wbClearOverflow, Fwd (pure Nothing))
+
+    -- Minimum and maximum data count seen registers and clear register
+    (Fwd minDataCountSeen0, _i0) <-
+      registerWb
+        clkRead
+        dataCountSeenReset
+        (registerConfig "min_data_count_seen"){access = ReadOnly}
+        maxBound
+        -< (wbMinDataCountSeen, Fwd (Just <$> minDataCountSeen1))
+
+    (Fwd maxDataCountSeen0, _i1) <-
+      registerWb
+        clkRead
+        dataCountSeenReset
+        (registerConfig "max_data_count_seen"){access = ReadOnly}
+        minBound
+        -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountSeen1))
+
+    (_cd, Fwd clearDataCountSeen) <-
+      registerWbI
+        (registerConfig "clear_data_count_seen"){access = WriteOnly}
+        False
+        -< (wbClearDataCountSeen, Fwd (pure Nothing))
 
     idC -< (dataCountOut, underflowOut, overflowOut, Fwd readData)
