@@ -300,6 +300,8 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       , wbAutoCenterMargin
       , wbAutoCenterIsIdle
       , wbAutoCenterTotalAdjustments
+      , wbMinDataCountSeen
+      , wbMaxDataCountSeen
       ] <-
       deviceWb "ElasticBuffer" -< wb
 
@@ -410,6 +412,13 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
     localCounterUnderflow <- shutter (isFirstRising underflow) -< Fwd localCounter
     localCounterOverflow <- shutter (isFirstRising overflow1) -< Fwd localCounter
 
+    let
+      minDataCountSeen1 :: Signal readDom (RelDataCount n)
+      minDataCountSeen1 = min <$> minDataCountSeen0 <*> dataCount
+
+      maxDataCountSeen1 :: Signal readDom (RelDataCount n)
+      maxDataCountSeen1 = max <$> maxDataCountSeen0 <*> dataCount
+
     (dataCountOut, _dataCountActivity) <-
       registerWbI
         (registerConfig "data_count"){access = ReadOnly}
@@ -459,11 +468,28 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       0
       -< (wbLocalCounterOverflow, localCounterOverflow)
 
+    (Fwd minDataCountSeen0, _i0) <-
+      registerWb
+        clkRead
+        flagsReset
+        (registerConfig "min_data_count_seen"){access = ReadOnly}
+        maxBound
+        -< (wbMinDataCountSeen, Fwd (Just <$> minDataCountSeen1))
+
+    (Fwd maxDataCountSeen0, _i1) <-
+      registerWb
+        clkRead
+        flagsReset
+        (registerConfig "max_data_count_seen"){access = ReadOnly}
+        minBound
+        -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountSeen1))
+
     (_cf, Fwd clearStatusRegisters) <-
       registerWbI
         (registerConfig "clear_status_registers")
           { access = WriteOnly
-          , description = "Clear the underflow and overflow sticky flags and their respective timestamps"
+          , description =
+              "Clear the underflow and overflow sticky flags, their respective timestamps and the min/max data count seen registers."
           }
         False
         -< (wbClearStatusRegisters, Fwd (pure Nothing))

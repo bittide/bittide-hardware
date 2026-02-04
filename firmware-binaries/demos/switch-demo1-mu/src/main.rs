@@ -174,9 +174,10 @@ fn main() -> ! {
             if eb.underflow() {
                 uwriteln!(
                     uart,
-                    "[ERROR] Channel {} elastic buffer underflowed at cycle {}",
+                    "[ERROR] Channel {} elastic buffer underflowed at cycle {}, min occupancy: {}",
                     i,
                     eb.underflow_timestamp(),
+                    eb.min_data_count_seen(),
                 )
                 .unwrap();
                 panic!();
@@ -184,9 +185,10 @@ fn main() -> ! {
             if eb.overflow() {
                 uwriteln!(
                     uart,
-                    "[ERROR] Channel {} elastic buffer overflowed at cycle {}",
+                    "[ERROR] Channel {} elastic buffer overflowed at cycle {}, max occupancy: {}",
                     i,
                     eb.overflow_timestamp(),
+                    eb.max_data_count_seen(),
                 )
                 .unwrap();
                 panic!();

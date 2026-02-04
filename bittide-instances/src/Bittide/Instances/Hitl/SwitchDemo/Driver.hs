@@ -261,6 +261,13 @@ driver testName targets = do
           overflow <- Gdb.readLe gdb (getEbRegister "overflow")
           pure (underflow, overflow)
 
+        readEbMinMaxDataCounts :: Int -> IO (Signed 8, Signed 8)
+        readEbMinMaxDataCounts linkNr = do
+          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
+          minDataCount <- Gdb.readLe gdb (getEbRegister "min_data_count_seen")
+          maxDataCount <- Gdb.readLe gdb (getEbRegister "max_data_count_seen")
+          pure (minDataCount, maxDataCount)
+
         readEbTimestamps :: Int -> IO (Unsigned 64, Unsigned 64)
         readEbTimestamps linkNr = do
           let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
@@ -269,6 +276,7 @@ driver testName targets = do
           pure (underflowTimestamp, overflowTimestamp)
 
       flags <- mapM readEbFlag [0 .. natToNum @(LinkCount - 1)]
+      minMaxDataCounts <- mapM readEbMinMaxDataCounts [0 .. natToNum @(LinkCount - 1)]
       timestamps <- mapM readEbTimestamps [0 .. natToNum @(LinkCount - 1)]
       let allClear = all (== (False, False)) flags
       liftIO $ unless allClear $ do
@@ -277,14 +285,15 @@ driver testName targets = do
         putStrLn
           [i|[ERROR] Some elastic buffer under/overflowed on device #{deviceId}:|]
         putStrLn
-          [i|  linkNr, unf, ovf, unfTimestamp, ovfTimestamp|]
-        forM_ (L.zip3 [0 :: Int ..] flags timestamps)
+          [i|  linkNr, unf, ovf, unfTimestamp, ovfTimestamp, minDataCount, maxDataCount|]
+        forM_ (L.zip4 [0 :: Int ..] flags timestamps minMaxDataCounts)
           $ \( linkNr
               , (underflow, overflow)
               , (underflowTimestamp, overflowTimestamp)
+              , (minDataCount, maxDataCount)
               ) -> do
               putStrLn
-                [i|  #{linkNr}: #{underflow}, #{overflow}, #{underflowTimestamp}, #{overflowTimestamp}|]
+                [i|  #{linkNr}: #{underflow}, #{overflow}, #{underflowTimestamp}, #{overflowTimestamp}, #{minDataCount}, #{maxDataCount}|]
       pure allClear
 
     muWriteCfg ::
