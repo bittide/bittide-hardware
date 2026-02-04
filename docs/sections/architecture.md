@@ -25,11 +25,11 @@ For actually using a bittide network, these details are largely irrelevant. Stil
 ### Step 1: Booting the bittide clock
 {{#drawio path="diagrams/bittide-boot-diagram.drawio" page=0}}
 
-Contrary to what one might expect, there are actually TWO clocks in a bittide node: an adjustable clock (called the bittide clock) and a static clock (called the boot clock). For most of the bittide boot and all of the Processing Element functioning, the bittide clock is used. However, since the adjustable clock is actually a somewhat complex piece of silicon, it itself needs to be set up. To do this, we have a Clock Setup CPU running on the boot clock, which has two jobs:
+Contrary to what one might expect, there are actually TWO clocks in a bittide node: an adjustable clock (called the bittide clock) and a static clock. For most of the bittide boot and all of the Processing Element functioning, the bittide clock is used. However, since the adjustable clock is actually a somewhat complex piece of silicon, it itself needs to be set up. To do this, we have a Boot CPU running on the static clock, which has two jobs:
  1) set up bittide clock by configuring clock registers and setting initial target frequency
  2) initiate handshake of SerDes between bittide nodes, such that every node establishes a link with other nodes (by sending comma values)
 
-Once the bringup sequence has moved to the next step, the Boot CPU and boot clock are no longer used.
+Once the bringup sequence has moved to the next step, the Boot CPU and static clock are no longer used.
 
 ### Step 2: Achieving clock syntony(ish)
 {{#drawio path="diagrams/bittide-cc-diagram.drawio" page=0}}
@@ -122,11 +122,11 @@ Once logical latency has been established, the bittide network guarantees these 
 
 **Clock Control CPU (CC)** - The CPU that reads in the domain differences between each neighbor node and the local node and sends a signal to the clock to speed up or slow down based on some function.
 
-**Clock Setup CPU (CS)** - The CPU that boots the adjustable (bittide) clock and configures its registers via SPI. It also brings SerDes and Handshake out of reset, which negotiates the 8b10b link with every other node.
+**Boot CPU** - The CPU that boots the adjustable (bittide) clock and configures its registers via SPI. It also brings SerDes and Handshake out of reset, which negotiates the 8b10b link with every other node.
 
 **Domain difference counter (DDC)** -
 
-**Domain mapping** - Hidde previously described this as the UGN, The domain mapping is a the actually observation we make to obtain the logical latency. It consists of transmit timestamp expressed in clock cycles of your link partner. When this timestamp arrives in your own domain, it is stored together with the receive timestamp. This pair of counters is the domain mapping because it maps the transmit cycle of your link partner to your receive cycle. Both of these are natural numbers (represented as u64)
+**Domain mapping** - Previously called the Uninterpretable Garbage Number (UGN), the domain mapping is the observation we make to obtain the logical latency. It consists of transmit timestamp expressed in clock cycles of your link partner. When this timestamp arrives in your own domain, it is stored together with the receive timestamp. This pair of counters is the domain mapping because it maps the transmit cycle of your link partner to your receive cycle. Both of these are natural numbers (each represented as u64)
 
 **Elastic buffer (EB)** -
 
@@ -148,9 +148,7 @@ Once logical latency has been established, the bittide network guarantees these 
 
 **Roundtrip time** - Natural number that represents the number of clock cycles it takes for a message to make a roundtrip from node A to node B and back. It is the sum of the logical latencies l a -> b and l b -> a.
 
-**Static clock (SCLK)** - A reference clock that is not adjustable. Its only purpose is to provide a clock for the Clock Setup CPU. Once the Clock Setup CPU is finished, the static clock is no longer needed.
-
-**Uninterpretable garbage number (UGN)** - A 64 bit number, where the upper 32 bits are the remote clock cycle and the lower 32 bits are the local clock cycle. Used to determine the logical latency between two nodes.
+**Static clock (SCLK)** - A reference clock that is not adjustable. Its only purpose is to provide a clock for the Boot CPU. Once the Boot CPU is finished, the static clock is no longer needed.
 
 ### Glossary for non-bittide technical terms
 **Comma symbol** - An alignment symbol in 8b10b link negotiation
