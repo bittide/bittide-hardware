@@ -26,8 +26,8 @@ For actually using a bittide network, these details are largely irrelevant. Stil
 {{#drawio path="diagrams/bittide-boot-diagram.drawio" page=0}}
 
 Contrary to what one might expect, there are actually TWO clocks in a bittide node: an adjustable clock (called the bittide clock) and a static clock. For most of the bittide boot and all of the Processing Element functioning, the bittide clock is used. However, since the adjustable clock is actually a somewhat complex piece of silicon, it itself needs to be set up. To do this, we have a Boot CPU running on the static clock, which has two jobs:
- 1) set up bittide clock by configuring clock registers and setting initial target frequency
- 2) initiate handshake of SerDes between bittide nodes, such that every node establishes a link with other nodes (by sending comma values)
+ 1) set up bittide clock by configuring clock registers and setting the initial nominal frequency
+ 2) bring parts of the SerDes out of reset
 
 Once the bringup sequence has moved to the next step, the Boot CPU and static clock are no longer used.
 
@@ -139,6 +139,8 @@ Once logical latency has been established, the bittide network guarantees these 
 **Logic layer** -
 
 **Management Unit (MU)** - The CPU that performs elastic buffer centering and UGN capturing.
+
+**Nominal frequency** -
 
 **Pseudorandom binary sequence (PRBS)** -
 
