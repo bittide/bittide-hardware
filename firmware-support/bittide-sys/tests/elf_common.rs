@@ -187,14 +187,10 @@ pub unsafe fn with_32bit_addr_buffer<R: 'static>(size: u32, f: impl FnOnce(&mut 
 }
 
 pub fn mem_config_from_segs(segs: &[Segment]) -> MemoryConfiguration {
-    // The ranges are inversed so that they don't default to 0..MAX
-    // but instead are properly read from the segments.
-    // Since they are not used as iterators but instead as a pair, it does not
-    // matter that they yield no values when iterated.
-    #[allow(clippy::reversed_empty_ranges)]
+    // Assume that instr and data memory are empty at first, and correct the start and end later
     let mut config = MemoryConfiguration {
-        instruction_memory: u32::MAX..0,
-        data_memory: u32::MAX..0,
+        instruction_memory: 0..0,
+        data_memory: 0..0,
     };
 
     for seg in segs {

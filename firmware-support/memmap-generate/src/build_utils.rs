@@ -79,12 +79,12 @@ pub fn standard_memmap_build(
 /// * `source_file` - The name of the source file to read (e.g., "memory.x")
 pub fn standard_static_memory_build(source_file: &str) {
     let memory_x_content =
-        fs::read(source_file).unwrap_or_else(|_| panic!("Could not read file: {}", source_file));
+        fs::read(source_file).unwrap_or_else(|_| panic!("Could not read file: {source_file}"));
 
     let out_dir = env::var("OUT_DIR").expect("No out dir");
     let dest_path = Path::new(&out_dir).join("memory.x");
     fs::write(dest_path, memory_x_content).expect("Could not write file");
 
     setup_riscv_linker(&out_dir);
-    println!("cargo:rerun-if-changed={}", source_file);
+    println!("cargo:rerun-if-changed={source_file}");
 }

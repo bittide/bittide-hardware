@@ -25,6 +25,7 @@ import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfigurati
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as SwitchDemoGppe
+import qualified Bittide.Instances.Tests.ClockControlWb as ClockControlWb
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.NestedInterconnect as NestedInterconnect
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
@@ -42,7 +43,8 @@ $( do
     -- Add new memory maps here  --
     -------------------------------
     let memoryMaps =
-          [ ("Ethernet", vexRiscvEthernetMM)
+          [ ("ClockControlWb", ClockControlWb.dutMm)
+          , ("Ethernet", vexRiscvEthernetMM)
           , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
           , ("Freeze", freezeMM)
           , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)

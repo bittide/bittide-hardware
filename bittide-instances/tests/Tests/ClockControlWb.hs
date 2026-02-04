@@ -10,34 +10,21 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 
 -- external imports
 
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
-import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.String.Interpolate
-import Project.FilePath
 import Protocols
-import Protocols.Idle
-import Protocols.MemoryMap
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
-import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
-import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
-import Bittide.DoubleBufferedRam
+import Bittide.ClockControl.Registers (ClockControlData (clockMod))
 import Bittide.Instances.Hitl.Setup (LinkCount)
-import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
-import Bittide.Wishbone
+import Bittide.Instances.Tests.ClockControlWb
 
 -- qualified imports
 import qualified Data.List as L
@@ -61,7 +48,7 @@ sim =
   putStr
     $ fmap (chr . fromIntegral)
     $ catMaybes
-    $ fst (sampleC def dut)
+    $ fst (sampleC def dutNoMm)
 
 case_clock_control_wb_self_test :: Assertion
 case_clock_control_wb_self_test = do
@@ -89,7 +76,7 @@ case_clock_control_wb_self_test = do
       assertEqual "Expected and actual differ" expected actual
  where
   uartString = chr . fromIntegral <$> catMaybes uartStream
-  (uartStream, ccData) = sampleC def dut
+  (uartStream, ccData) = sampleC def dutNoMm
 
 type Margin = SNat 2
 type Framesize = PeriodToCycles System (Seconds 1)
@@ -103,67 +90,14 @@ framesize = SNat
 linkCount :: Int
 linkCount = snatToNum (SNat @LinkCount)
 
-linkMask :: BitVector LinkCount
-linkMask = 0b1011011
-
-linksOk :: BitVector LinkCount
-linksOk = 0b1111000
-
 linkMaskPopcnt :: Int
 linkMaskPopcnt = fromIntegral $ popCount linkMask
-
-dataCounts :: Vec LinkCount (Signed 27)
-dataCounts = iterateI (satSucc SatWrap) 0
 
 expectedDataCounts :: [(Int, Int)]
 expectedDataCounts = L.zip [0 ..] $ toList $ applyMask linkMask dataCounts
  where
   applyMask m = zipWith go (bitCoerce m)
   go m v = if m then fromIntegral v else 0
-
-dut :: Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
-dut =
-  withBittideByteOrder
-    $ withClockResetEnable clockGen (resetGenN d2) enableGen
-    $ circuit
-    $ \_unit -> do
-      (uartRx, jtag) <- idleSource
-      [ uartBus
-        , (mmCC, ccWb)
-        ] <-
-        processingElement NoDumpVcd peConfig -< (mm, jtag)
-      (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-
-      mm <- ignoreMM
-
-      ccd <-
-        clockControlWb
-          (pure linkMask)
-          (pure linksOk)
-          (pure <$> dataCounts)
-          -< (mmCC, ccWb)
-
-      idC -< (uartTx, ccd)
- where
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "clock-control-wb"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
-    pure
-      PeConfig
-        { cpu = vexRiscv0
-        , initI = Reloadable (Vec iMem)
-        , initD = Reloadable (Vec dMem)
-        , iBusTimeout = d0
-        , dBusTimeout = d0
-        , includeIlaWb = False
-        }
-{-# OPAQUE dut #-}
-
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
 
 -- | Parse the output of the UART
 resultParser :: Parser SerialResult

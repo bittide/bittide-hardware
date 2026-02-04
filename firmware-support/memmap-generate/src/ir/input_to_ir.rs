@@ -231,7 +231,7 @@ impl IrCtx {
                 }
                 TypeRef::Tuple(handle_range) => *handle_range = range,
                 TypeRef::Reference { name: _, args } => *args = range,
-                other => panic!("Shouldn't need patching: {:?}", other),
+                other => panic!("Shouldn't need patching: {other:?}"),
             }
         }
     }
