@@ -268,7 +268,6 @@ fn test_underflow_flag_sticky(
 
     // Action 3: Clear underflow flag using the HAL convenience function
     elastic_buffer.clear_underflow();
-    timer.wait(Duration::from_micros(1));
 
     let underflow_after_clear = elastic_buffer.underflow();
     uwriteln!(uart, "  After Clear: underflow={}", underflow_after_clear).unwrap();
@@ -351,8 +350,8 @@ fn test_overflow_flag_sticky(
 
     // Action 2: Issue Drain adjustment to test stickiness
     elastic_buffer.set_adjustment(-1);
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let overflow_after_drain = elastic_buffer.overflow();
     uwriteln!(uart, "  After draining: overflow={}", overflow_after_drain).unwrap();
 
@@ -364,8 +363,6 @@ fn test_overflow_flag_sticky(
 
     // Action 3: Clear overflow flag using the HAL convenience function
     elastic_buffer.clear_overflow();
-    timer.wait(Duration::from_micros(1));
-
     let overflow_after_clear = elastic_buffer.overflow();
     uwriteln!(uart, "  After Clear: overflow={}", overflow_after_clear).unwrap();
 
@@ -399,15 +396,15 @@ fn test_multiple_items_command(
 
     // Set buffer to a known state (midpoint)
     elastic_buffer.set_occupancy(0);
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_before = elastic_buffer.data_count();
     uwriteln!(uart, "  Initial count: {}", count_before).unwrap();
 
     // Test 1: Fill multiple items (n=10)
     elastic_buffer.set_adjustment(10);
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_after_fill = elastic_buffer.data_count();
     uwriteln!(uart, "  After filling 10: count={}", count_after_fill).unwrap();
 
@@ -424,8 +421,8 @@ fn test_multiple_items_command(
 
     // Test 2: Drain multiple items (n=5)
     elastic_buffer.set_adjustment(-5);
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_after_drain = elastic_buffer.data_count();
     uwriteln!(uart, "  After draining 5: count={}", count_after_drain).unwrap();
 
@@ -455,8 +452,8 @@ fn test_back_to_back(
 
     // Set buffer to a known state
     elastic_buffer.set_occupancy(0);
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_initial = elastic_buffer.data_count();
     uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
 
@@ -465,8 +462,8 @@ fn test_back_to_back(
     elastic_buffer.set_adjustment_async(3);
     elastic_buffer.set_adjustment_async(-2);
     elastic_buffer.set_adjustment_wait(());
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_after = elastic_buffer.data_count();
     uwriteln!(uart, "  After both adjustments: count={}", count_after).unwrap();
 
@@ -497,16 +494,16 @@ fn test_async_wait_async_wait(
 
     // Set buffer to a known state
     elastic_buffer.set_occupancy(0);
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_initial = elastic_buffer.data_count();
     uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
 
     // First adjustment: submit and wait
     elastic_buffer.set_adjustment_async(7);
     elastic_buffer.set_adjustment_wait(());
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_after_first = elastic_buffer.data_count();
     uwriteln!(
         uart,
@@ -518,8 +515,8 @@ fn test_async_wait_async_wait(
     // Second adjustment: submit and wait
     elastic_buffer.set_adjustment_async(-4);
     elastic_buffer.set_adjustment_wait(());
-    timer.wait(Duration::from_micros(1));
 
+    timer.wait(Duration::from_micros(1));
     let count_after_second = elastic_buffer.data_count();
     uwriteln!(
         uart,
