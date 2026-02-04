@@ -76,8 +76,10 @@ dut = withBittideByteOrder $ circuit $ \_unit -> do
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0
-        , initI = Reloadable (Vec iMem)
-        , initD = Reloadable (Vec dMem)
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
+        , initI = Just (Vec iMem)
+        , initD = Just (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

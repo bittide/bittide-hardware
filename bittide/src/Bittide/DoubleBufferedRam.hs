@@ -49,15 +49,8 @@ instance (Show a, KnownNat n, Typeable a) => Show (ContentType n a) where
     (FileVec fps) -> "File: " <> nAnda <> ", filepaths = " <> show fps
    where
     nAnda = "(" <> show (natToNatural @n) <> " of type (" <> show (typeRep $ Proxy @a) <> "))"
-data InitialContent elements a where
-  NonReloadable :: ContentType elements a -> InitialContent elements a
-  Reloadable :: ContentType elements a -> InitialContent elements a
-  Undefined :: (1 <= elements, KnownNat elements) => InitialContent elements a
 
-deriving instance
-  (Show a, KnownNat elements, Typeable a) => Show (InitialContent elements a)
-
-{- | Accepts 'InitialContents' and returns a 'blockRam' implementations initialized with
+{- | Accepts 'ContentType' and returns a 'blockRam' implementations initialized with
 the corresponding content.
 -}
 initializedRam ::
@@ -90,28 +83,6 @@ initializedRam content rd wr = case content of
             <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr)
         )
 
-contentGenerator ::
-  forall dom romSize targetSize a.
-  ( HiddenClockResetEnable dom
-  , KnownNat targetSize
-  , 1 <= targetSize
-  , KnownNat romSize
-  , romSize <= targetSize
-  , Paddable a
-  ) =>
-  ContentType romSize a ->
-  (Signal dom (Maybe (Located targetSize a)), Signal dom Bool)
-contentGenerator content = case compareSNat d1 (SNat @romSize) of
-  SNatLE -> (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
-   where
-    running = register False $ pure True
-    writeOp = curry Just . resize <$> romAddr0 <*> element
-    done = register False (done .||. (running .&&. romAddr0 .==. pure maxBound))
-    romAddr0 = register (maxBound :: Index romSize) romAddr1
-    romAddr1 = satSucc SatWrap <$> romAddr0
-    element = initializedRam content (bitCoerce <$> romAddr1) (pure Nothing)
-  _ -> (pure Nothing, pure True)
-
 -- | Circuit wrapper around `wbStorageDP`.
 wbStorageDPC ::
   forall dom depth awA awB.
@@ -123,33 +94,18 @@ wbStorageDPC ::
   , 1 <= depth
   ) =>
   String ->
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Circuit
     ( ToConstBwd Mm
     , (Bitbone dom awA, Bitbone dom awB)
     )
     ()
-wbStorageDPC memoryName content = Circuit go
+wbStorageDPC memoryName depth content = Circuit go
  where
-  go ::
-    ( ( ()
-      , ( Signal dom (WishboneM2S awA 4 (BitVector 32))
-        , Signal dom (WishboneM2S awB 4 (BitVector 32))
-        )
-      )
-    , ()
-    ) ->
-    ( ( SimOnly MemoryMap
-      , ( Signal dom (WishboneS2M (BitVector 32))
-        , Signal dom (WishboneS2M (BitVector 32))
-        )
-      )
-    , ()
-    )
   go (((), (m2sA, m2sB)), ()) = ((SimOnly memMap, (s2mA, s2mB)), ())
    where
-    (s2mA, s2mB) = wbStorageDP content m2sA m2sB
-
+    (s2mA, s2mB) = wbStorageDP depth content m2sA m2sB
     memMap =
       MemoryMap
         { tree = DeviceInstance locCaller memoryName
@@ -188,13 +144,14 @@ wbStorageDP ::
   , KnownNat depth
   , 1 <= depth
   ) =>
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Signal dom (WishboneM2S awA 4 (Bytes 4)) ->
   Signal dom (WishboneM2S awB 4 (Bytes 4)) ->
   (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes 4)))
-wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
+wbStorageDP depth initial aM2S bM2S = (aS2M, bS2M)
  where
-  storageOut = wbStorage' @_ @depth @(Max awA awB) initial storageIn
+  storageOut = wbStorage' @_ @_ @(Max awA awB) depth initial storageIn
 
   storageIn :: Signal dom (WishboneM2S (Max awA awB) 4 (Bytes 4))
   storageIn = mux (nowActive .==. pure A) (resizeM2SAddr <$> aM2S) (resizeM2SAddr <$> bM2S)
@@ -233,10 +190,11 @@ wbStorage ::
   , 1 <= depth
   ) =>
   String ->
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Circuit (BitboneMm dom aw) ()
-wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
-  ((SimOnly memMap, wbStorage' initContent m2s), ())
+wbStorage memoryName depth initContent = Circuit $ \(((), m2s), ()) ->
+  ((SimOnly memMap, wbStorage' depth initContent m2s), ())
  where
   memMap =
     MemoryMap
@@ -273,32 +231,26 @@ wbStorage' ::
   , KnownNat depth
   , 1 <= depth
   ) =>
-  InitialContent depth (Bytes 4) ->
+  SNat depth ->
+  Maybe (ContentType depth (Bytes 4)) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneS2M (Bytes 4))
-wbStorage' initContent wbIn = delayControls wbIn wbOut
+wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
  where
-  romOut = case initContent of
-    Reloadable content -> bundle $ contentGenerator content
-    other -> deepErrorX $ "wbStorage': No content generator for " <> show other
+  readData = ram readAddr writeEntry wbIn.busSelect
 
-  readData = ram readAddr writeEntry byteSelect
+  ram = case initContent of
+    Nothing ->
+      blockRamByteAddressableU
+    Just content ->
+      blockRamByteAddressable content
 
-  (ram, isReloadable) = case initContent of
-    Reloadable _ ->
-      (blockRamByteAddressableU, True)
-    Undefined ->
-      (blockRamByteAddressableU, False)
-    NonReloadable content ->
-      (blockRamByteAddressable @_ @depth content, False)
+  (readAddr, writeEntry, wbOut) =
+    unbundle (go <$> bundle (wbIn, readData))
 
-  (readAddr, writeEntry, byteSelect, wbOut) =
-    unbundle (go <$> bundle (wbIn, readData, romOut))
-
-  go (WishboneM2S{..}, readDataGo, (romWrite, romDone)) =
+  go (WishboneM2S{..}, readDataGo) =
     ( wbAddr
     , writeEntryGo
-    , byteSelectGo
     , (emptyWishboneS2M @(Bytes 4)){acknowledge, readData = readDataGo, err}
     )
    where
@@ -310,18 +262,13 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
-    acknowledge = masterActive && (not isReloadable || romDone) && addrLegal
+    acknowledge = masterActive && addrLegal
 
     masterWriting = acknowledge && writeEnable
 
     writeEntryGo
-      | isReloadable && not romDone = romWrite
       | masterWriting = Just (wbAddr, writeData)
       | otherwise = Nothing
-
-    byteSelectGo
-      | isReloadable && not romDone = maxBound
-      | otherwise = busSelect
 
   -- \| Delays the output controls to align them with the actual read / write timing.
   delayControls ::

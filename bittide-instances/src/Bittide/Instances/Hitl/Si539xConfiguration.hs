@@ -25,7 +25,6 @@ import VexRiscv
 import Bittide.ClockControl.Si539xSpi
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam
 import Bittide.Hitl (
   HitlTestCase (..),
   HitlTestGroup (..),
@@ -144,8 +143,10 @@ dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, jtag) -> do
   peConfig =
     PeConfig
       { cpu = vexRiscv0
-      , initI = Undefined @IMemWords
-      , initD = Undefined @DMemWords
+      , depthI = SNat @IMemWords
+      , depthD = SNat @DMemWords
+      , initI = Nothing
+      , initD = Nothing
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = False

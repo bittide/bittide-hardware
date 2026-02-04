@@ -166,14 +166,16 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
     pure
       $ PeConfig
         { cpu = vexRiscv0
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , initI =
-            Reloadable
+            Just
               ( Vec
                   $ unsafePerformIO
                   $ vecFromElfInstr @IMemWords BigEndian elfPath
               )
         , initD =
-            Reloadable
+            Just
               ( Vec
                   $ unsafePerformIO
                   $ vecFromElfData @DMemWords BigEndian elfPath
@@ -186,8 +188,10 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
   peConfigRtl =
     PeConfig
       { cpu = vexRiscv0
-      , initI = Undefined @IMemWords
-      , initD = Undefined @DMemWords
+      , depthI = SNat @IMemWords
+      , depthD = SNat @DMemWords
+      , initI = Nothing
+      , initD = Nothing
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
