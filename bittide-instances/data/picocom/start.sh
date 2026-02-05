@@ -29,11 +29,10 @@ PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
 # Flags: --pid: causes tail to close when picocom closes
 #        -n 0: Only read out the latest lines, not the last 10 lines
 #        -F: Could also be -f, but -F is apparently slightly safer due to inodes
+# tail --pid=$$ -n 0 -F "${PICOCOM_STDERR_LOG}" >&2 &
 
 picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf $@ \
-  > "${PICOCOM_STDOUT_LOG}" \
-  2> "${PICOCOM_STDERR_LOG}" &
-pico_pid=$!
+  > "${PICOCOM_STDOUT_LOG}" &
+picocom_pid = $!
 
-tail --pid=$pico_pid -n 0 -F "${PICOCOM_STDERR_LOG}" >&2 &
-tail --pid=$pico_pid -n 0 -F "${PICOCOM_STDOUT_LOG}" | tee "${stdout_dir}/myTest.log"
+tail --pid=picodom_pid -n +1 -F "${PICOCOM_STDOUT_LOG}" | tee "${stdout_dir}/myTest.log"
