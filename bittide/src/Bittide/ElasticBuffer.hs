@@ -4,17 +4,21 @@
 
 module Bittide.ElasticBuffer where
 
+import Clash.Prelude
+import Protocols
+
 import Bittide.ClockControl (RelDataCount, targetDataCount)
-import Bittide.Df
+import Bittide.Df (unsafeFromDf)
+import Bittide.ElasticBuffer.AutoCenter (autoCenter)
 import Bittide.Extra.Maybe (orNothing)
 import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
 import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
-import Clash.Prelude
-import GHC.Stack
-import Protocols (Ack (..), CSignal, Circuit (..), applyC)
+import Data.Maybe (isJust)
+import GHC.Stack (HasCallStack)
+import Protocols.Df (CollectMode (..), roundrobinCollect)
 import Protocols.Df.Extra (ackWhen, skid)
 import Protocols.MemoryMap (Access (..))
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -24,6 +28,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWbDfI,
   registerWbI,
+  registerWbI_,
  )
 
 import qualified Clash.Explicit.Prelude as E
@@ -251,6 +256,7 @@ The registers provided are:
 xilinxElasticBufferWb ::
   forall n readDom writeDom addrW a.
   ( HasCallStack
+  , HasSynchronousReset readDom
   , KnownDomain readDom
   , KnownDomain writeDom
   , NFDataX a
@@ -280,6 +286,11 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
       , wbDataCount
       , wbUnderflow
       , wbOverflow
+      , wbAutoCenterReset
+      , wbAutoCenterEnable
+      , wbAutoCenterMargin
+      , wbAutoCenterIsIdle
+      , wbAutoCenterTotalAdjustments
       ] <-
       deviceWb "ElasticBuffer" -< wb
 
@@ -312,10 +323,70 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
     (ebAdjustmentDf1, Fwd ebReady) <- skid -< ebAdjustmentDf0
     ackWhen ebReady -< ebAdjustmentWaitDfActivity
 
-    let (dataCount, underflow, overflow0, readData, adjustmentAck) =
-          xilinxElasticBuffer @n clkRead clkWrite ebAdjustmentSig wdata
+    -- Auto-centering state machine
+    (_autoCenterReset, Fwd autoCenterResetActivity) <-
+      registerWbI
+        (registerConfig "auto_center_reset_unchecked")
+          { access = WriteOnly
+          , description =
+              "Clear total adjustments. You must disable the state machine and wait for it to be idle before resetting it. After resetting, you must also wait for the state machine to become 'idle' again to make sure the registers are cleared."
+          }
+        ()
+        -< (wbAutoCenterReset, Fwd (pure Nothing))
 
-    Fwd ebAdjustmentSig <- unsafeFromDf -< (ebAdjustmentDf1, Fwd adjustmentAck)
+    (Fwd autoCenterEnable, _autoCenterEnableActivity) <-
+      registerWbI
+        (registerConfig "auto_center_enable")
+          { access = ReadWrite
+          , description = "Enable auto-centering state machine"
+          }
+        False
+        -< (wbAutoCenterEnable, Fwd (pure Nothing))
+
+    (Fwd autoCenterMargin, _autoCenterMarginActivity) <-
+      registerWbI
+        (registerConfig "auto_center_margin")
+          { access = ReadWrite
+          , description = "Margin for auto-centering"
+          }
+        (2 :: Unsigned 16)
+        -< (wbAutoCenterMargin, Fwd (pure Nothing))
+
+    registerWbI_
+      (registerConfig "auto_center_is_idle")
+        { access = ReadOnly
+        , description = "Whether the auto-centering state machine is idle"
+        }
+      False
+      -< (wbAutoCenterIsIdle, Fwd (Just <$> autoCenterIsIdle))
+
+    registerWbI_
+      (registerConfig "auto_center_total_adjustments")
+        { access = ReadOnly
+        , description = "Total adjustments applied by the auto-centering state machine"
+        }
+      (0 :: Signed 32)
+      -< (wbAutoCenterTotalAdjustments, Fwd (Just <$> autoCenterTotalAdjustments))
+
+    let
+      autoCenterReset = unsafeFromActiveHigh (isJust . busActivityWrite <$> autoCenterResetActivity)
+
+      (dataCount, underflow, overflow0, readData, adjustmentAck) =
+        xilinxElasticBuffer @n clkRead clkWrite ebAdjustmentSig wdata
+
+    (autoCenterAdjustmentDf, Fwd autoCenterTotalAdjustments, Fwd autoCenterIsIdle) <-
+      autoCenter
+        (autoCenterReset `E.orReset` rstRead)
+        (toEnable autoCenterEnable)
+        autoCenterMargin
+        dataCount
+        -< ()
+
+    -- Multiplex manual and auto-center adjustments using round-robin collection
+    ebAdjustmentDfMuxed <-
+      roundrobinCollect @2 Parallel -< [ebAdjustmentDf1, autoCenterAdjustmentDf]
+
+    Fwd ebAdjustmentSig <- unsafeFromDf -< (ebAdjustmentDfMuxed, Fwd adjustmentAck)
 
     -- Synchronize overflow pulse from write domain to read domain
     let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
