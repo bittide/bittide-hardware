@@ -23,18 +23,6 @@ impl ElasticBuffer {
         self.set_adjustment_wait(());
     }
 
-    /// Increase buffer occupancy by N frames. there is no control over which
-    /// frames are duplicated. Only usable during system initialization.
-    pub fn increase_occupancy(&self, n: u32) {
-        self.set_adjustment(n as i32);
-    }
-
-    /// Decrease buffer occupancy by N frames. there is no control over which
-    /// frames are dropped. Only usable during system initialization.
-    pub fn decrease_occupancy(&self, n: u32) {
-        self.set_adjustment(-(n as i32));
-    }
-
     /// Set buffer occupancy to a target value.
     ///
     /// This function adjusts the buffer occupancy to the specified target by issuing
@@ -44,17 +32,27 @@ impl ElasticBuffer {
     /// There is no control over which frames are duplicated or dropped, so this function
     /// should only be used during system initialization.
     ///
-    /// Returns the buffer occupancy before adjustment.
+    /// Returns the number of frames added or dropped
     pub fn set_occupancy(&self, target: i8) -> i8 {
         let current = self.data_count();
         let delta = target - current;
+        self.set_adjustment(delta as i32);
+        delta
+    }
 
-        if delta > 0 {
-            self.increase_occupancy(delta as u32);
-        } else if delta < 0 {
-            self.decrease_occupancy((-delta) as u32);
-        }
-        // If delta == 0, do nothing - already at target
+    /// Set buffer occupancy to a target value asynchronously.
+    ///
+    /// Like `set_occupancy`, but submits the adjustment without waiting for completion.
+    /// Use `set_adjustment_wait` to wait for the adjustment to complete.
+    ///
+    /// There is no control over which frames are duplicated or dropped, so this function
+    /// should only be used during system initialization.
+    ///
+    /// Returns the number of frames added or dropped
+    pub fn set_occupancy_async(&self, target: i8) -> i8 {
+        let current = self.data_count();
+        let delta = target - current;
+        self.set_adjustment_async(delta as i32);
         delta
     }
 

@@ -135,8 +135,8 @@ fn test_zero_adjustment(
     true
 }
 
-/// Verifies that decrease_occupancy() correctly decrements the buffer occupancy by the
-/// specified number of frames.
+/// Verifies that set_adjustment() with negative values correctly decrements the buffer
+/// occupancy by the specified number of frames.
 fn test_multiple_drain_commands(
     uart: &mut bittide_hal::shared_devices::Uart,
     elastic_buffer: &bittide_hal::shared_devices::ElasticBuffer,
@@ -155,19 +155,14 @@ fn test_multiple_drain_commands(
         return false;
     }
 
-    // Action: Use decrease_occupancy HAL function to remove 5 frames
+    // Action: Use set_adjustment HAL function to remove 5 frames
     let count_before = elastic_buffer.data_count() as i32;
-    uwriteln!(
-        uart,
-        "  Before decrease_occupancy(5): count={}",
-        count_before
-    )
-    .unwrap();
+    uwriteln!(uart, "  Before set_adjustment(-5): count={}", count_before).unwrap();
 
-    elastic_buffer.decrease_occupancy(5);
+    elastic_buffer.set_adjustment(-5);
 
     let count_after = elastic_buffer.data_count() as i32;
-    uwriteln!(uart, "  After decrease_occupancy(5): count={}", count_after).unwrap();
+    uwriteln!(uart, "  After set_adjustment(-5): count={}", count_after).unwrap();
 
     // Verify: Count decreased by exactly 5
     let expected = count_before - 5;
@@ -219,7 +214,7 @@ fn test_underflow_flag_sticky(
     )
     .unwrap();
 
-    elastic_buffer.decrease_occupancy(drains_needed as u32);
+    elastic_buffer.set_adjustment(-drains_needed);
 
     let count_after_drain = elastic_buffer.data_count();
     let underflow_after_drain = elastic_buffer.underflow();
@@ -326,7 +321,7 @@ fn test_overflow_flag_sticky(
     )
     .unwrap();
 
-    elastic_buffer.increase_occupancy(fills_needed as u32);
+    elastic_buffer.set_adjustment(fills_needed);
 
     let count_after_fill = elastic_buffer.data_count() as i32;
     let overflow_after_fill = elastic_buffer.overflow();
