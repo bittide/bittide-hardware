@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::shared_devices::elastic_buffer::ElasticBuffer;
-use crate::types::EbCommand;
 
 impl ElasticBuffer {
     /// Minimum occupancy value for the elastic buffer (signed 8-bit).
@@ -12,28 +11,16 @@ impl ElasticBuffer {
     /// Maximum occupancy value for the elastic buffer (signed 8-bit).
     pub const MAX_OCCUPANCY: i8 = i8::MAX;
 
-    /// Execute a command on the elastic buffer using the three-register interface.
+    /// Execute an adjustment on the elastic buffer using the two-register interface.
     ///
     /// This is a convenience function that:
-    /// 1. Prepares the command in `command_prepare`
-    /// 2. Triggers execution with `command_go`
-    /// 3. Waits for completion with `command_wait`
-    pub fn set_command(&self, command: EbCommand) {
-        self.set_command_prepare(command);
-        self.set_command_go(());
-        self.set_command_wait(());
-    }
-
-    /// Increase buffer occupancy by N frames. there is no control over which
-    /// frames are duplicated. Only usable during system initialization.
-    pub fn increase_occupancy(&self, n: u32) {
-        self.set_command(EbCommand::Fill { n });
-    }
-
-    /// Decrease buffer occupancy by N frames. there is no control over which
-    /// frames are dropped. Only usable during system initialization.
-    pub fn decrease_occupancy(&self, n: u32) {
-        self.set_command(EbCommand::Drain { n });
+    /// 1. Submits the adjustment with `adjustment_async`
+    /// 2. Waits for completion with `adjustment_wait`
+    ///
+    /// Negative values drain (remove frames), positive values fill (add frames).
+    pub fn set_adjustment(&self, adjustment: i32) {
+        self.set_adjustment_async(adjustment);
+        self.set_adjustment_wait(());
     }
 
     /// Set buffer occupancy to a target value.
@@ -45,17 +32,27 @@ impl ElasticBuffer {
     /// There is no control over which frames are duplicated or dropped, so this function
     /// should only be used during system initialization.
     ///
-    /// Returns the buffer occupancy before adjustment.
+    /// Returns the number of frames added or dropped
     pub fn set_occupancy(&self, target: i8) -> i8 {
         let current = self.data_count();
         let delta = target - current;
+        self.set_adjustment(delta as i32);
+        delta
+    }
 
-        if delta > 0 {
-            self.increase_occupancy(delta as u32);
-        } else if delta < 0 {
-            self.decrease_occupancy((-delta) as u32);
-        }
-        // If delta == 0, do nothing - already at target
+    /// Set buffer occupancy to a target value asynchronously.
+    ///
+    /// Like `set_occupancy`, but submits the adjustment without waiting for completion.
+    /// Use `set_adjustment_wait` to wait for the adjustment to complete.
+    ///
+    /// There is no control over which frames are duplicated or dropped, so this function
+    /// should only be used during system initialization.
+    ///
+    /// Returns the number of frames added or dropped
+    pub fn set_occupancy_async(&self, target: i8) -> i8 {
+        let current = self.data_count();
+        let delta = target - current;
+        self.set_adjustment_async(delta as i32);
         delta
     }
 
