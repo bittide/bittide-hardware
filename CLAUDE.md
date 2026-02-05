@@ -37,6 +37,10 @@ too much, use `OverloadedRecordDot`. Both of these should be enabled by default.
 a new function has "too many" arguments or results, consider grouping them into
 records.
 
+## Executing commands
+When you execute a command you **must** wait for it to finish. Don't assume that no output
+for a while means that everything is okay.
+
 # Rust
 Before building a Rust crate, you **must** ensure that `bittide-instances` has
 been built. You can do this by running:

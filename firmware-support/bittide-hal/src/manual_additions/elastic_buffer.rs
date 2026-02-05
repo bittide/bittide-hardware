@@ -77,4 +77,28 @@ impl ElasticBuffer {
         self.clear_underflow();
         self.clear_overflow();
     }
+
+    /// Reset the auto-centering state machine (safe wrapper).
+    ///
+    /// This function ensures safety by:
+    /// 1. Disabling the auto-centering state machine
+    /// 2. Waiting for it to become idle
+    /// 3. Resetting it
+    ///
+    /// This function always succeeds and is safe to call at any time.
+    pub fn reset_auto_center(&self) {
+        self.set_auto_center_enable(false);
+        self.wait_auto_center_idle();
+        self.set_auto_center_reset_unchecked(());
+        self.wait_auto_center_idle();
+    }
+
+    /// Wait for the auto-centering state machine to become idle.
+    ///
+    /// This is useful after disabling auto-center before performing a reset.
+    pub fn wait_auto_center_idle(&self) {
+        while !self.auto_center_is_idle() {
+            core::hint::spin_loop();
+        }
+    }
 }
