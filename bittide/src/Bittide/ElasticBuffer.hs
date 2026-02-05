@@ -271,7 +271,6 @@ xilinxElasticBufferWb ::
     ( CSignal readDom (RelDataCount n)
     , CSignal readDom Underflow
     , CSignal readDom Overflow
-    , CSignal readDom Stable
     , CSignal readDom (ElasticBufferData a)
     )
 xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
@@ -281,7 +280,6 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
       , wbDataCount
       , wbUnderflow
       , wbOverflow
-      , wbStable
       ] <-
       deviceWb "ElasticBuffer" -< wb
 
@@ -346,11 +344,4 @@ xilinxElasticBufferWb clkRead rstRead SNat clkWrite wdata =
         False
         -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
 
-    -- Stable register: Software can set this to indicate buffer is ready
-    (stableOut, _stableActivity) <-
-      registerWbI
-        (registerConfig "stable"){access = WriteOnly}
-        False
-        -< (wbStable, Fwd (pure Nothing))
-
-    idC -< (dataCountOut, underflowOut, overflowOut, stableOut, Fwd readData)
+    idC -< (dataCountOut, underflowOut, overflowOut, Fwd readData)

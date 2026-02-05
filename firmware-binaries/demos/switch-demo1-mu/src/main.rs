@@ -92,7 +92,6 @@ impl LinkStartup {
                 self.center_eb(elastic_buffer);
 
                 if all_stable {
-                    elastic_buffer.set_stable(true);
                     UgnCaptureState::Done
                 } else {
                     self.state

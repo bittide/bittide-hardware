@@ -269,8 +269,8 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     -- Stop management unit
 
     -- Start internal links
-    (_relDatCount, _underflow, _overflow, _ebStables, Fwd rxs1) <-
-      unzip5Vec
+    (_relDatCount, _underflow, _overflow, Fwd rxs1) <-
+      unzip4Vec
         <| ( Vec.vecCircuits
               $ xilinxElasticBufferWb
                 bitClk
@@ -357,12 +357,12 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   withBittideClockResetEnable = withClockResetEnable bitClk bitRst bitEna
 
-uncurry5 ::
-  (a -> b -> c -> d -> e -> f) ->
-  (a, b, c, d, e) ->
-  f
-uncurry5 fn (a, b, c, d, e) = fn a b c d e
+uncurry4 ::
+  (a -> b -> c -> d -> e) ->
+  (a, b, c, d) ->
+  e
+uncurry4 fn (a, b, c, d) = fn a b c d
 
-unzip5Vec ::
-  Circuit (Vec n (a, b, c, d, e)) (Vec n a, Vec n b, Vec n c, Vec n d, Vec n e)
-unzip5Vec = applyC unzip5 (uncurry5 zip5)
+unzip4Vec ::
+  Circuit (Vec n (a, b, c, d)) (Vec n a, Vec n b, Vec n c, Vec n d)
+unzip4Vec = applyC unzip4 (uncurry4 zip4)
