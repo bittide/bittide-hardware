@@ -15,12 +15,12 @@ import Bittide.ClockControl.Callisto.Types (Stability (..))
 import Bittide.ClockControl.Config (CcConf (CcConf, callisto, topology), defCcConf)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Explicit.Reset (unsafeOrReset)
-import Clash.Functor.Extra ((<<$>>), (<<*>>))
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
+  busActivityWrite,
   deviceWb,
   registerConfig,
   registerWb,
@@ -78,7 +78,7 @@ clockControlWb ::
   -- | Wishbone accessible clock control circuitry
   Circuit
     (ToConstBwd Mm, Wishbone dom 'Standard addrW (BitVector 32))
-    (CSignal dom (ClockControlData nLinks))
+    (CSignal dom (Maybe SpeedChange))
 clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   [ wbNumLinks
     , wbLinkMask
@@ -102,14 +102,11 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   -- Link configuration
   registerWbI_ numLinksConfig numberOfLinks -< (wbNumLinks, Fwd noWrite)
   registerWbI_ linkMaskConfig 0 -< (wbLinkMask, Fwd (Just <$> linkMask))
-  registerWbI_ linkMaskPopCountConfig 0
-    -< (wbLinkMaskPopCount, Fwd (Just <$> linkMaskPopCount))
+  registerWbI_ linkMaskPopCountConfig 0 -< (wbLinkMaskPopCount, Fwd (Just <$> linkMaskPopCount))
   registerWbI_ linkMaskRevConfig 0 -< (wbLinkMaskRev, Fwd (Just <$> linkMaskRev))
   registerWbI_ linksOkConfig 0 -< (wbLinksOk, Fwd (Just <$> linksOk))
-  (Fwd linksStable, _l0) <-
-    registerWbI linksStableConfig (0 :: BitVector nLinks) -< (wbLinksStable, Fwd noWrite)
-  (Fwd linksSettled, _l1) <-
-    registerWbI linksSettledConfig (0 :: BitVector nLinks) -< (wbLinksSettled, Fwd noWrite)
+  registerWbI_ linksStableConfig (0 :: BitVector nLinks) -< (wbLinksStable, Fwd noWrite)
+  registerWbI_ linksSettledConfig (0 :: BitVector nLinks) -< (wbLinksSettled, Fwd noWrite)
 
   -- Data count tracking
   registerWbI_ dataCountsConfig (repeat 0)
@@ -127,12 +124,6 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   registerWbI_ configConfig (defCcConfLinks @nLinks) -< (wbConfig, Fwd noWrite)
 
   let
-    maskedLinksStable = applyMask True linkMask (unpack <$> linksStable)
-    allLinksStable = and <$> maskedLinksStable
-
-    maskedLinksSettled = applyMask True linkMask (unpack <$> linksSettled)
-    allLinksSettled = and <$> maskedLinksSettled
-
     dataCountsSeenReset :: Reset dom
     dataCountsSeenReset =
       unsafeOrReset
@@ -145,15 +136,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
     maxDataCountsSeen1 :: Signal dom (Vec nLinks (RelDataCount m))
     maxDataCountsSeen1 = zipWith max <$> maxDataCountsSeen0 <*> maskedCounters
 
-    clockControlData :: Signal dom (ClockControlData nLinks)
-    clockControlData =
-      ClockControlData
-        <$> fmap busActivityToMaybeSpeedChange changeSpeed
-        <*> (Stability <<$>> maskedLinksStable <<*>> maskedLinksSettled)
-        <*> allLinksStable
-        <*> allLinksSettled
-
-  idC -< Fwd clockControlData
+  idC -< Fwd (busActivityWrite <$> changeSpeed)
  where
   noWrite = pure Nothing
 
@@ -186,7 +169,3 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
 
   maskedCounters :: Signal dom (Vec nLinks (RelDataCount m))
   maskedCounters = applyMask 0 linkMask counters
-
-  busActivityToMaybeSpeedChange :: Maybe (BusActivity SpeedChange) -> Maybe SpeedChange
-  busActivityToMaybeSpeedChange (Just (BusWrite change)) = Just change
-  busActivityToMaybeSpeedChange _ = Nothing

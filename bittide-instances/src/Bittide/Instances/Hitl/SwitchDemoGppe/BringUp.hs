@@ -19,7 +19,6 @@ import Protocols
 import Bittide.BootPe (BootPeBusses, bootPe)
 import Bittide.CaptureUgn (sendUgnC)
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.Instances.Domains (
@@ -143,7 +142,7 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
       $ sendUgnC localCounter tOutputs.txSamplings
       -< switchDataOut
 
-  ( Fwd callistoResult
+  ( Fwd speedChanges
     , Fwd localCounter
     , switchDataOut
     , sync
@@ -190,6 +189,6 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
           bittideRst
           enableGen
           (SNat @Si539xHoldTime)
-          callistoResult.maybeSpeedChange
+          speedChanges
 
   idC -< (spi, sync, uartTx, Fwd frequencyAdjustments)
