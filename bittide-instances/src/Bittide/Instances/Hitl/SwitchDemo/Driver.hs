@@ -261,13 +261,30 @@ driver testName targets = do
           overflow <- Gdb.readLe gdb (getEbRegister "overflow")
           pure (underflow, overflow)
 
+        readEbTimestamps :: Int -> IO (Unsigned 64, Unsigned 64)
+        readEbTimestamps linkNr = do
+          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
+          underflowTimestamp <- Gdb.readLe gdb (getEbRegister "underflow_timestamp")
+          overflowTimestamp <- Gdb.readLe gdb (getEbRegister "overflow_timestamp")
+          pure (underflowTimestamp, overflowTimestamp)
+
       flags <- mapM readEbFlag [0 .. natToNum @(LinkCount - 1)]
+      timestamps <- mapM readEbTimestamps [0 .. natToNum @(LinkCount - 1)]
       let allClear = all (== (False, False)) flags
       liftIO $ unless allClear $ do
         let deviceId = d.deviceId
         -- Don't error here so all devices are checked
         putStrLn
-          [i|[ERROR] Some elastic buffer under/overflowed on device #{deviceId} (under,over): #{flags}|]
+          [i|[ERROR] Some elastic buffer under/overflowed on device #{deviceId}:|]
+        putStrLn
+          [i|  linkNr, unf, ovf, unfTimestamp, ovfTimestamp|]
+        forM_ (L.zip3 [0 :: Int ..] flags timestamps)
+          $ \( linkNr
+              , (underflow, overflow)
+              , (underflowTimestamp, overflowTimestamp)
+              ) -> do
+              putStrLn
+                [i|  #{linkNr}: #{underflow}, #{overflow}, #{underflowTimestamp}, #{overflowTimestamp}|]
       pure allClear
 
     muWriteCfg ::
