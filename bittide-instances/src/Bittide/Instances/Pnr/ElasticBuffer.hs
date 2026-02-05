@@ -15,7 +15,6 @@ import Bittide.ClockControl (RelDataCount)
 import Bittide.ElasticBuffer (
   ElasticBufferData,
   Overflow,
-  Stable,
   Underflow,
   xilinxElasticBufferWb,
  )
@@ -34,15 +33,14 @@ elasticBufferWb ::
   , "dataCount" ::: Signal Fast (RelDataCount 6)
   , "underflow" ::: Signal Fast Underflow
   , "overflow" ::: Signal Fast Overflow
-  , "stable" ::: Signal Fast Stable
   , "readData" ::: Signal Fast (ElasticBufferData (Unsigned 64))
   )
-elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underflow, overflow, stable, readData)
+elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underflow, overflow, readData)
  where
-  ((SimOnly _mm, wbOut), (dataCount, underflow, overflow, stable, readData)) =
+  ((SimOnly _mm, wbOut), (dataCount, underflow, overflow, readData)) =
     withBittideByteOrder
       $ toSignals
         (xilinxElasticBufferWb clkRead rstRead d6 clkWrite wdata)
-        (((), wbIn), ((), (), (), (), ()))
+        (((), wbIn), ((), (), (), ()))
 
 makeTopEntity 'elasticBufferWb

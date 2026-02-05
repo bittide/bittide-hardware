@@ -71,15 +71,8 @@ fn main() -> ! {
         }
     }
 
-    for (i, eb) in elastic_buffers.iter().enumerate() {
-        uwriteln!(
-            uart,
-            "Elastic Buffer {}, frames changed: {}",
-            i,
-            eb_changes[i]
-        )
-        .unwrap();
-        eb.set_stable(true);
+    for (i, &changes) in eb_changes.iter().enumerate() {
+        uwriteln!(uart, "Elastic Buffer {}, frames changed: {}", i, changes).unwrap();
     }
 
     uwriteln!(uart, "Switch transceiver channels to user mode..").unwrap();
