@@ -24,6 +24,7 @@ import qualified Tests.ElasticBuffer
 import qualified Tests.GeneralPurposeProcessingElement.Calculator
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
+import qualified Tests.ProgrammableMux
 import qualified Tests.ScatterGather
 import qualified Tests.Switch
 import qualified Tests.SwitchDemoProcessingElement
@@ -53,6 +54,7 @@ tests =
     , Tests.GeneralPurposeProcessingElement.Calculator.tests
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
+    , Tests.ProgrammableMux.tests
     , Tests.ScatterGather.tests
     , Tests.Switch.tests
     , Tests.SwitchDemoProcessingElement.Calculator.tests
