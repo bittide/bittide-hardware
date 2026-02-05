@@ -19,6 +19,8 @@ mkdir -p "${stdout_dir}"
 PICOCOM_STDERR_LOG="${PICOCOM_STDERR_LOG:-/dev/null}"
 stderr_dir=$(dirname "${PICOCOM_STDERR_LOG}")
 mkdir -p "${stderr_dir}"
+touch "$PICOCOM_STDOUT_LOG"
+touch "$PICOCOM_STDERR_LOG"
 
 PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
 
