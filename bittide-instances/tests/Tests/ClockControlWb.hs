@@ -14,7 +14,7 @@ import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes)
 import Data.String.Interpolate
 import Project.FilePath
 import Protocols
@@ -31,7 +31,8 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
-import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
+import Bittide.ClockControl (SpeedChange)
+import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.ProcessingElement
@@ -84,7 +85,7 @@ case_clock_control_wb_self_test = do
                 L.take (L.length actual.clockMod)
                   $ fromIntegral
                   . pack
-                  <$> mapMaybe (.clockMod) ccData
+                  <$> catMaybes ccData
             }
       assertEqual "Expected and actual differ" expected actual
  where
@@ -121,7 +122,7 @@ expectedDataCounts = L.zip [0 ..] $ toList $ applyMask linkMask dataCounts
   applyMask m = zipWith go (bitCoerce m)
   go m v = if m then fromIntegral v else 0
 
-dut :: Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
+dut :: Circuit () (Df System (BitVector 8), CSignal System (Maybe SpeedChange))
 dut =
   withBittideByteOrder
     $ withClockResetEnable clockGen (resetGenN d2) enableGen

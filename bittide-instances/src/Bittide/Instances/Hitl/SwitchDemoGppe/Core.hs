@@ -9,7 +9,7 @@ import Protocols
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
-import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
+import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
@@ -245,7 +245,7 @@ core ::
     , CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     )
-    ( CSignal Bittide (CallistoResult LinkCount)
+    ( CSignal Bittide (Maybe SpeedChange)
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
@@ -339,14 +339,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                in
                 if simulateCc
                   then swCcOut0
-                  else
-                    pure
-                      $ CallistoResult
-                        { maybeSpeedChange = Nothing
-                        , stability = repeat (Stability{stable = True, settled = True})
-                        , allStable = True
-                        , allSettled = True
-                        }
+                  else pure Nothing
             else swCcOut0
 
     idC
