@@ -146,7 +146,7 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
   hSetBuffering pico.stdoutHandle LineBuffering
 
-  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
+  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 30_000_000
     $ waitForLine pico.stdoutHandle "Terminal ready"
 
   pure (pico, cleanup)
