@@ -22,6 +22,14 @@ mkdir -p "${stderr_dir}"
 
 PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
 
+# Async read from the picocom logs, so a busy downstream process does not cause
+# picocom to drop log data
+# Flags: --pid: causes tail to close when picocom closes
+#        -n 0: Only read out the latest lines, not the last 10 lines
+#        -F: Could also be -f, but -F is apparently slightly safer due to inodes
+tail --pid=$$ -n 0 -F "${PICOCOM_STDOUT_LOG}" &
+tail --pid=$$ -n 0 -F "${PICOCOM_STDERR_LOG}" >&2 &
+
 exec picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf $@ \
-  > >(tee "${PICOCOM_STDOUT_LOG}") \
-  2> >(tee "${PICOCOM_STDERR_LOG}" >&2)
+  > "${PICOCOM_STDOUT_LOG}" \
+  2> "${PICOCOM_STDERR_LOG}"
