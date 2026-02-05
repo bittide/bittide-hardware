@@ -14,12 +14,12 @@ set -e
 PICOCOM_STDOUT_LOG="${PICOCOM_STDOUT_LOG:-/dev/null}"
 stdout_dir=$(dirname "${PICOCOM_STDOUT_LOG}")
 mkdir -p "${stdout_dir}"
+touch "$PICOCOM_STDOUT_LOG"
 
 # Default stderr to /dev/null
 PICOCOM_STDERR_LOG="${PICOCOM_STDERR_LOG:-/dev/null}"
 stderr_dir=$(dirname "${PICOCOM_STDERR_LOG}")
 mkdir -p "${stderr_dir}"
-touch "$PICOCOM_STDOUT_LOG"
 touch "$PICOCOM_STDERR_LOG"
 
 PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
@@ -29,7 +29,7 @@ PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
 # Flags: --pid: causes tail to close when picocom closes
 #        -n 0: Only read out the latest lines, not the last 10 lines
 #        -F: Could also be -f, but -F is apparently slightly safer due to inodes
-tail --pid=$$ -n 0 -F "${PICOCOM_STDOUT_LOG}" &
+tail --pid=$$ -n 0 -F "${PICOCOM_STDOUT_LOG}" | tee "myTest.log" &
 tail --pid=$$ -n 0 -F "${PICOCOM_STDERR_LOG}" >&2 &
 
 exec picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf $@ \
