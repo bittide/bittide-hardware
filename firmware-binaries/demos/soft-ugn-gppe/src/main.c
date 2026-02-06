@@ -42,8 +42,8 @@ ScatterUnit su;
 #define INVALIDATE_DELAY BUFFER_SIZE
 
 // Initial offsets for scheduling events
-#define STARTING_DELAY_WRITE (BUFFER_SIZE * 100)
-#define STARTING_DELAY_READ (BUFFER_SIZE * 10)
+#define STARTING_DELAY_WRITE (BUFFER_SIZE * 1000)
+#define STARTING_DELAY_READ (BUFFER_SIZE * 1000)
 
 // ============================================================================
 // Main Entry Point
@@ -213,6 +213,20 @@ int c_main(void) {
   uart_puts(uart, "\n========================================\n");
   uart_puts(uart, "UGN discovery protocol complete!\n");
 
+  // Print final test status
+  bool success = true;
+  if (ugn_ctx.missed_send_count > 0 || ugn_ctx.missed_receive_count > 0 ||
+      ugn_ctx.missed_invalidate_count > 0) {
+    uart_puts(uart, "[ERROR] Some events missed their deadlines.\n");
+    success = false;
+  }
+  uart_puts(uart, "Test status: ");
+  if (success) {
+    uart_puts(uart, "Success\n");
+  } else {
+    uart_puts(uart, "Failure\n");
+    uart_puts(uart, "See report above for details.\n");
+  }
   while (1) {
     // Protocol complete - idle loop
   }
