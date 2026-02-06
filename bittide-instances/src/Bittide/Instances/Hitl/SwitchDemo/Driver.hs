@@ -403,7 +403,7 @@ driver testName targets = do
             $ T.tryWithTimeoutOn
               T.PrintActionTime
               "Waiting for captured UGNs"
-              60_000_000
+              120_000_000
               goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->
