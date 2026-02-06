@@ -31,7 +31,7 @@ PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
 #        -F: Could also be -f, but -F is apparently slightly safer due to inodes
 # tail --pid=$$ -n 0 -F "${PICOCOM_STDERR_LOG}" >&2 &
 
-picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf --exit-after 60000 $@ \
+picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf --exit-after 600000 $@ \
   > "${PICOCOM_STDOUT_LOG}" &
 
 tail -n +1 -F "${PICOCOM_STDOUT_LOG}"
