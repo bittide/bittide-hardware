@@ -34,4 +34,4 @@ PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
 picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf $@ \
   > "${PICOCOM_STDOUT_LOG}" &
 
-sleep 1 ; tail -n +1 -F "${PICOCOM_STDOUT_LOG}" | tee "${stdout_dir}/myTest.log"
+sleep 1 ; tail -n +1 -F "${PICOCOM_STDOUT_LOG}" | tee "${stdout_dir}/myTest.log" ; sleep 1000
