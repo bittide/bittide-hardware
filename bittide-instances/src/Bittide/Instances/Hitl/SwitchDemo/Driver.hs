@@ -79,7 +79,7 @@ muSwitchDemoPeBuffer :: Integer
 muSwitchDemoPeBuffer =
   $( do
       val <-
-        TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
+        TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "3", "SwitchDemoPE", "buffer"]
       lift val
    )
 sampleMemoryBase :: Integer
@@ -263,7 +263,7 @@ driver testName targets = do
     checkElasticBufferFlags (_, d) gdb = do
       let
         ebPrefixed :: Int -> String -> [String]
-        ebPrefixed linkNr reg = ["0", "ElasticBuffer" <> show linkNr, reg]
+        ebPrefixed linkNr reg = ["0", "3", "ElasticBuffer" <> show linkNr, reg]
         getEbRegister linkNr = expectRight . getPathAddress MemoryMaps.mu . ebPrefixed linkNr
 
         readEbFlag :: Int -> IO (Bool, Bool)
@@ -312,7 +312,7 @@ driver testName targets = do
       Calc.CyclePeConfig (Unsigned 64) (Index 9) ->
       VivadoM ()
     muWriteCfg target@(_, d) gdb cfg = do
-      let getSdpeRegister reg = expectRight $ getPathAddress MemoryMaps.mu ["0", "SwitchDemoPE", reg]
+      let getSdpeRegister reg = expectRight $ getPathAddress MemoryMaps.mu ["0", "3", "SwitchDemoPE", reg]
 
       liftIO $ do
         muReadPeBuffer target gdb
@@ -335,7 +335,7 @@ driver testName targets = do
         perDeviceCheck myGdb num = do
           let
             myBaseAddr = toInteger (fromIntegral muSwitchDemoPeBuffer + 24 * (L.length gdbs - num - 1))
-          dnaBaseAddr <- expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "Dna", "maybe_dna"]
+          dnaBaseAddr <- expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "3", "Dna", "maybe_dna"]
           myCounter <- Gdb.readLe @(Unsigned 64) headGdb myBaseAddr
           myDeviceDna <- Gdb.readLe @(Maybe (BitVector 96)) myGdb dnaBaseAddr
           headDeviceDna <- Gdb.readLe @(BitVector 96) headGdb (myBaseAddr + 0x08)
