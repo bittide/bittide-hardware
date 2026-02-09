@@ -192,7 +192,16 @@ startWithLogging stdStreams devicePath params = do
     createProcess
       ( proc
           "picocom"
-          ["--baud", show params.baudRate, "--imap", "lfcrlf", "--omap", "lfcrlf", devicePath]
+          [ "--baud"
+          , show params.baudRate
+          , "--imap"
+          , "lfcrlf"
+          , "--omap"
+          , "lfcrlf"
+          , "--exit-after"
+          , "600000"
+          , devicePath
+          ]
       )
         { std_in = stdStreams.stdin
         , std_out = UseHandle logFileH
