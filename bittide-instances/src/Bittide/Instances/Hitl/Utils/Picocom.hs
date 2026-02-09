@@ -158,7 +158,6 @@ startWithLoggingAndEnv _stdStreams devPath stdoutPath stderrPath _extraEnv = sta
 data PicocomParameters = PicocomParameters
   { stdOut :: FilePath
   , stdErr :: FilePath
-  , logFile :: FilePath
   , baudRate :: Integer
   }
 
@@ -166,7 +165,6 @@ parameters =
   PicocomParameters
     { stdOut = "/dev/null"
     , stdErr = "/dev/null"
-    , logFile = "picocomLog.txt"
     , baudRate = 12600
     }
 
@@ -183,7 +181,8 @@ withPicocomWithLogging stdStreams devPath params action = do
 
 startWithLogging :: StdStreams -> FilePath -> PicocomParameters -> IO (ProcessHandles, IO ())
 startWithLogging stdStreams devicePath params = do
-  logFileH <- openFile params.logFile WriteMode
+  logFileH <- openFile params.stdOut WriteMode
+  errFileH <- openFile params.stdErr WriteMode
 
   picocom@(picocomIn, _, _, _) <-
     createProcess
@@ -193,14 +192,14 @@ startWithLogging stdStreams devicePath params = do
       )
         { std_in = stdStreams.stdin
         , std_out = UseHandle logFileH
-        , std_err = UseHandle logFileH
+        , std_err = UseHandle errFileH
         }
 
   tail@(tailIn, tailOut, tailErr, tailH) <-
     createProcess
       ( proc
           "tail"
-          ["-n", "+1", "-f", params.logFile]
+          ["-n", "+1", "-f", params.stdOut]
       )
         { std_out = stdStreams.stdout
         , std_err = stdStreams.stderr
@@ -215,6 +214,6 @@ startWithLogging stdStreams devicePath params = do
         , process = tailH
         }
 
-  let cleanup = cleanupProcess picocom >> cleanupProcess tail >> hClose logFileH
+  let cleanup = cleanupProcess tail >> cleanupProcess picocom >> hClose logFileH >> hClose errFileH
 
   pure (handles, cleanup)
