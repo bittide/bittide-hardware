@@ -211,7 +211,7 @@ startWithLogging stdStreams devicePath params = do
   tail@(tailIn, tailOut, tailErr, tailH) <-
     createProcess
       ( proc
-          "tail"
+          "sleep 1 | tail"
           ["-n", "+1", "-f", params.stdOut]
       )
         { std_out = stdStreams.stdout
