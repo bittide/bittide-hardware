@@ -154,8 +154,10 @@ dut =
     pure
       PeConfig
         { cpu = vexRiscv0
-        , initI = Reloadable (Vec iMem)
-        , initD = Reloadable (Vec dMem)
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
+        , initI = Just (Vec iMem)
+        , initD = Just (Vec dMem)
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
