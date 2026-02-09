@@ -361,7 +361,7 @@ driver testName targets = do
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
-          $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 120_000_000
+          $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
           $ forConcurrently_ picocoms
           $ \pico ->
             waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
@@ -404,7 +404,7 @@ driver testName targets = do
             $ T.tryWithTimeoutOn
               T.PrintActionTime
               "Waiting for captured UGNs"
-              120_000_000
+              60_000_000
               goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->
