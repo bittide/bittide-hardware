@@ -9,7 +9,6 @@ import Clash.Explicit.Prelude
 
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (NonReloadable),
   wbStorage,
  )
 import Clash.Prelude (withClockResetEnable)
@@ -112,4 +111,4 @@ prop_delayWishbone = property $ do
   dutMem =
     withClockResetEnable clk rst ena
       $ unMemmap
-      $ wbStorage "test" (NonReloadable (Vec (repeat @(2 ^ AddressWidth) 0)))
+      $ wbStorage "test" (SNat @(2 ^ AddressWidth)) (Just (Vec (repeat 0)))

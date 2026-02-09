@@ -21,7 +21,6 @@ import Bittide.CaptureUgn (sendUgnC)
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.Df (asciiDebugMux)
-import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.Instances.Domains (
   Basic125,
   Bittide,
@@ -72,8 +71,10 @@ bootPeConfig :: PeConfig BootPeBusses
 bootPeConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv0
-    , initI = Undefined @(Div (64 * 1024) 4)
-    , initD = Undefined @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthD = SNat @(Div (64 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
     , iBusTimeout = d0
     , dBusTimeout = d0
     , includeIlaWb = False

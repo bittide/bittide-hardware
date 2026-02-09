@@ -6,7 +6,6 @@ module Bittide.Instances.Tests.SwitchCalendar where
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
-  InitialContent (Reloadable),
  )
 import Bittide.Instances.Domains (Basic200)
 import Bittide.Instances.Pnr.Switch
@@ -80,13 +79,15 @@ dut =
     pure
       PeConfig
         { cpu = vexRiscv0
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , initI =
-            Reloadable @IMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
         , initD =
-            Reloadable @DMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
