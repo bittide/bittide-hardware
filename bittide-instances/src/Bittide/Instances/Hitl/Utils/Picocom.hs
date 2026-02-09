@@ -12,6 +12,8 @@ import Paths_bittide_instances
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath (takeDirectory)
 import System.IO
 import System.Posix.Env (getEnvironment)
 import System.Process
@@ -181,6 +183,8 @@ withPicocomWithLogging stdStreams devPath params action = do
 
 startWithLogging :: StdStreams -> FilePath -> PicocomParameters -> IO (ProcessHandles, IO ())
 startWithLogging stdStreams devicePath params = do
+  createDirectoryIfMissing True (takeDirectory params.stdOut)
+  createDirectoryIfMissing True (takeDirectory params.stdErr)
   logFileH <- openFile params.stdOut WriteMode
   errFileH <- openFile params.stdErr WriteMode
 
