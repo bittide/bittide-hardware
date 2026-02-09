@@ -185,11 +185,11 @@ startWithLogging :: StdStreams -> FilePath -> PicocomParameters -> IO (ProcessHa
 startWithLogging stdStreams devicePath params = do
   logFileH <- openFile params.logFile WriteMode
 
-  picocom <-
+  picocom@(picocomIn, _, _, _) <-
     createProcess
       ( proc
           "picocom"
-          ["--baud", show params.baudRate, "--imap", "lfcrlf", "--omap", "lfcrlf", show devicePath]
+          ["--baud", show params.baudRate, "--imap", "lfcrlf", "--omap", "lfcrlf", devicePath]
       )
         { std_in = stdStreams.stdin
         , std_out = UseHandle logFileH
@@ -209,7 +209,7 @@ startWithLogging stdStreams devicePath params = do
   let
     handles =
       ProcessHandles
-        { stdinHandle = fromJust tailIn
+        { stdinHandle = fromJust picocomIn
         , stdoutHandle = fromJust tailOut
         , stderrHandle = fromJust tailErr
         , process = tailH
