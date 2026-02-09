@@ -12,11 +12,14 @@ import Paths_bittide_instances
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust)
+import System.IO
 import System.Posix.Env (getEnvironment)
 import System.Process
 
+{-
 getStartPath :: IO FilePath
 getStartPath = getDataFileName "data/picocom/start.sh"
+-}
 
 data StdStreams = StdStreams
   { stdin :: StdStream
@@ -27,6 +30,7 @@ data StdStreams = StdStreams
 defaultStdStreams :: StdStreams
 defaultStdStreams = StdStreams CreatePipe CreatePipe CreatePipe
 
+{-
 -- | Start picocom with the given device path.
 start :: StdStreams -> FilePath -> IO (ProcessHandles, IO ())
 start stdStreams devPath = do
@@ -97,6 +101,7 @@ startWithLogging stdStreams devPath stdoutPath stderrPath =
 {- | Starts Picocom with the given device path, paths for logging stdout and stderr and
 extra environment variables.
 -}
+{-
 startWithLoggingAndEnv ::
   StdStreams ->
   FilePath ->
@@ -136,3 +141,80 @@ startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
         }
 
   pure (picoHandles', cleanupProcess picoHandles)
+-}
+
+startWithLoggingAndEnv ::
+  StdStreams ->
+  FilePath ->
+  FilePath ->
+  FilePath ->
+  [(String, String)] ->
+  IO (ProcessHandles, IO ())
+startWithLoggingAndEnv _stdStreams devPath stdoutPath stderrPath _extraEnv = startPicocom devPath params
+ where
+  params = picocomParameters {stdOut = stdoutPath, stdErr = stderrPath}
+-}
+
+data PicocomParameters = PicocomParameters
+  { stdOut :: FilePath
+  , stdErr :: FilePath
+  , logFile :: FilePath
+  , baudRate :: Integer
+  }
+
+parameters =
+  PicocomParameters
+    { stdOut = "/dev/null"
+    , stdErr = "/dev/null"
+    , logFile = "picocomLog.txt"
+    , baudRate = 12600
+    }
+
+withPicocomWithLogging ::
+  (MonadIO m, MonadMask m) =>
+  StdStreams ->
+  FilePath ->
+  PicocomParameters ->
+  (ProcessHandles -> m a) ->
+  m a
+withPicocomWithLogging stdStreams devPath params action = do
+  (pico, clean) <- liftIO $ startWithLogging stdStreams devPath params
+  finally (action pico) (liftIO clean)
+
+startWithLogging :: StdStreams -> FilePath -> PicocomParameters -> IO (ProcessHandles, IO ())
+startWithLogging stdStreams devicePath params = do
+  logFileH <- openFile params.logFile WriteMode
+
+  picocom <-
+    createProcess
+      ( proc
+          "picocom"
+          ["--baud", show params.baudRate, "--imap", "lfcrlf", "--omap", "lfcrlf", show devicePath]
+      )
+        { std_in = stdStreams.stdin
+        , std_out = UseHandle logFileH
+        , std_err = UseHandle logFileH
+        }
+
+  tail@(tailIn, tailOut, tailErr, tailH) <-
+    createProcess
+      ( proc
+          "tail"
+          ["-n", "+1", "-f", params.logFile]
+      )
+        { std_out = stdStreams.stdout
+        , std_err = stdStreams.stderr
+        }
+
+  let
+    handles =
+      ProcessHandles
+        { stdinHandle = fromJust tailIn
+        , stdoutHandle = fromJust tailOut
+        , stderrHandle = fromJust tailErr
+        , process = tailH
+        }
+
+  let cleanup = cleanupProcess picocom >> cleanupProcess tail >> hClose logFileH
+
+  pure (handles, cleanup)

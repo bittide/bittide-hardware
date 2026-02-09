@@ -132,7 +132,7 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
   -- conditions, we need to know when picocom is ready so we also shortly
   -- interested in stderr in this Haskell process.
   (pico, cleanup) <-
-    Picocom.startWithLoggingAndEnv
+    Picocom.startWithLogging
       ( Picocom.StdStreams
           { Picocom.stdin = CreatePipe
           , Picocom.stdout = CreatePipe
@@ -140,9 +140,10 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
           }
       )
       devPath
-      stdoutPath
-      stderrPath
-      []
+      Picocom.parameters
+        { Picocom.stdOut = stdoutPath
+        , Picocom.stdErr = stderrPath
+        }
 
   hSetBuffering pico.stdoutHandle LineBuffering
 

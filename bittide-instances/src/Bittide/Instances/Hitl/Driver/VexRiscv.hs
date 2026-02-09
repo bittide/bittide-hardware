@@ -86,8 +86,7 @@ driverFunc _name targets = do
       Picocom.withPicocomWithLogging
         Picocom.defaultStdStreams
         deviceInfo.serial
-        picoOutLog
-        picoErrLog
+        Picocom.parameters{Picocom.stdOut = picoOutLog, Picocom.stdErr = picoErrLog}
         $ \pico -> do
           hSetBuffering pico.stdinHandle LineBuffering
           hSetBuffering pico.stdoutHandle LineBuffering

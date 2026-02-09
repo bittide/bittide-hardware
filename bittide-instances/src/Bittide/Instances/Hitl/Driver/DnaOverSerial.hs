@@ -80,12 +80,14 @@ dnaOverSerialDriver _name targets = do
     putStrLn $ "logging stderr to `" <> stderrLog <> "`"
 
     (pico, picoClean) <-
-      Picocom.startWithLoggingAndEnv
+      Picocom.startWithLogging
         Picocom.defaultStdStreams
         dI.serial
-        stdoutLog
-        stderrLog
-        [("PICOCOM_BAUD", "9600")]
+        Picocom.parameters
+          { Picocom.stdOut = stdoutLog
+          , Picocom.stdErr = stderrLog
+          , Picocom.baudRate = 9600
+          }
 
     hSetBuffering pico.stdinHandle LineBuffering
     hSetBuffering pico.stdoutHandle LineBuffering

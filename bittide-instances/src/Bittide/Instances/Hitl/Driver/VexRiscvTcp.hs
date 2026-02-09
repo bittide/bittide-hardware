@@ -90,72 +90,76 @@ driverFunc _name [d@(_, dI)] = do
       putStrLn "  Done"
 
       putStrLn "Starting Picocom..."
-    Picocom.withPicocomWithLogging Picocom.defaultStdStreams dI.serial picoOutLog picoErrLog $ \pico -> do
-      liftIO $ do
-        hSetBuffering pico.stdinHandle LineBuffering
-        hSetBuffering pico.stdinHandle LineBuffering
-        putStrLn "Waiting for Picocom to be ready..."
-        T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000 $
-          waitForLine pico.stdoutHandle "Terminal ready"
-
-      liftIO $ putStrLn "Starting GDB..."
-      Gdb.withGdb $ \gdb -> do
+    Picocom.withPicocomWithLogging
+      Picocom.defaultStdStreams
+      dI.serial
+      Picocom.parameters{Picocom.stdOut = picoOutLog, Picocom.stdErr = picoErrLog}
+      $ \pico -> do
         liftIO $ do
-          Gdb.setLogging gdb gdbOutLog
-          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
-          Gdb.setTarget gdb 3333
-          assertEither =<< Gdb.loadBinary gdb
-          Gdb.setBreakpoints
-            gdb
-            [ "core::panicking::panic"
-            , "ExceptionHandler"
-            , "smoltcp_client::gdb_panic"
-            ]
-          Gdb.setBreakpointHook gdb
-          Gdb.continue gdb
-        D.assertProbe "probe_test_start" d
+          hSetBuffering pico.stdinHandle LineBuffering
+          hSetBuffering pico.stdinHandle LineBuffering
+          putStrLn "Waiting for Picocom to be ready..."
+          T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000 $
+            waitForLine pico.stdoutHandle "Terminal ready"
 
-        liftIO $ putStrLn "Starting TCP server"
-        liftIO $ withServer $ \(serverSock, _) -> do
-          let
-            -- Create function to log the output of the processes
-            loggingSequence = do
-              threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
-              putStrLn "Picocom stdout"
-              picocomOut <- readRemainingChars pico.stdoutHandle
-              putStrLn picocomOut
+        liftIO $ putStrLn "Starting GDB..."
+        Gdb.withGdb $ \gdb -> do
+          liftIO $ do
+            Gdb.setLogging gdb gdbOutLog
+            Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
+            Gdb.setTarget gdb 3333
+            assertEither =<< Gdb.loadBinary gdb
+            Gdb.setBreakpoints
+              gdb
+              [ "core::panicking::panic"
+              , "ExceptionHandler"
+              , "smoltcp_client::gdb_panic"
+              ]
+            Gdb.setBreakpointHook gdb
+            Gdb.continue gdb
+          D.assertProbe "probe_test_start" d
 
-              putStrLn "Picocom StdErr"
-              readRemainingChars pico.stderrHandle >>= putStrLn
+          liftIO $ putStrLn "Starting TCP server"
+          liftIO $ withServer $ \(serverSock, _) -> do
+            let
+              -- Create function to log the output of the processes
+              loggingSequence = do
+                threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+                putStrLn "Picocom stdout"
+                picocomOut <- readRemainingChars pico.stdoutHandle
+                putStrLn picocomOut
 
-            tryWithTimeout :: String -> Int -> IO a -> IO a
-            tryWithTimeout n t io =
-              catch (T.tryWithTimeout T.PrintActionTime n t io) $
-                \(err :: SomeException) -> loggingSequence >> throwM err
+                putStrLn "Picocom StdErr"
+                readRemainingChars pico.stderrHandle >>= putStrLn
 
-          putStrLn "Waiting for \"Starting TCP Client\""
+              tryWithTimeout :: String -> Int -> IO a -> IO a
+              tryWithTimeout n t io =
+                catch (T.tryWithTimeout T.PrintActionTime n t io) $
+                  \(err :: SomeException) -> loggingSequence >> throwM err
 
-          tryWithTimeout "Handshake softcore" 10_000_000 $
-            waitForLine pico.stdoutHandle "Starting TCP Client"
+            putStrLn "Waiting for \"Starting TCP Client\""
 
-          let numberOfClients = 1
-          putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."
-          clients <-
-            tryWithTimeout "Wait for clients" 60_000_000 $
-              waitForClients numberOfClients serverSock
+            tryWithTimeout "Handshake softcore" 10_000_000 $
+              waitForLine pico.stdoutHandle "Starting TCP Client"
 
-          putStrLn "Receiving client data"
-          createDirectoryIfMissing True tcpDataDir
-          tryWithTimeout "Receive client data" 60_000_000 $
-            mapConcurrently_ runTcpTest clients
+            let numberOfClients = 1
+            putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."
+            clients <-
+              tryWithTimeout "Wait for clients" 60_000_000 $
+                waitForClients numberOfClients serverSock
 
-          putStrLn "Closing client connections"
-          tryWithTimeout "Closing connections" 10_000_000 $
-            mapConcurrently_ (NS.closeSock . fst) clients
-          putStrLn "Closing server connection"
-          loggingSequence
+            putStrLn "Receiving client data"
+            createDirectoryIfMissing True tcpDataDir
+            tryWithTimeout "Receive client data" 60_000_000 $
+              mapConcurrently_ runTcpTest clients
 
-          return ExitSuccess
+            putStrLn "Closing client connections"
+            tryWithTimeout "Closing connections" 10_000_000 $
+              mapConcurrently_ (NS.closeSock . fst) clients
+            putStrLn "Closing server connection"
+            loggingSequence
+
+            return ExitSuccess
 driverFunc _name _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
 
 runTcpTest :: (NS.Socket, NS.SockAddr) -> Assertion
