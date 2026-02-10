@@ -21,34 +21,41 @@ import Bittide.ProcessingElement (
   PeConfig (..),
   PeInternalBusses,
   PrefixWidth,
-  RemainingBusWidth,
   processingElement,
  )
 import Bittide.ScatterGather
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Switch (switchC)
 import Bittide.Sync (Sync)
-import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
+import Bittide.Wishbone (
+  readDnaPortE2WbWorker,
+  singleMasterInterconnectC,
+  timeWb,
+  uartBytes,
+  uartInterfaceWb,
+ )
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
+import Protocols.Idle
 import Protocols.MemoryMap (Mm)
-import Protocols.Wishbone.Extra (delayWishbone)
+import Protocols.Wishbone.Extra (delayWishbone, delayWishboneMm)
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
+import qualified Protocols.ToConst as ToConst
 import qualified Protocols.Vec as Vec
 
 type FifoSize = 6 -- = 2^6 = 64
 
-{- Internal busses:
-    - Instruction memory
-    - Data memory
+{- Fast busses:
+    - Instruction memory(Internal)
+    - Data memory(Internal)
     - `timeWb`
-    - DNA
-    - UART
+    - delayWishboneC
 -}
-type NmuInternalBusses = 3 + PeInternalBusses
+type NmuFastBusses = 2 + PeInternalBusses
+type NmuSlowBusses = 2 + NmuExternalBusses
 
 {- Busses per link:
     - UGN component
@@ -64,13 +71,10 @@ type PeripheralsPerLink = 2
     - Callisto
 -}
 type NmuExternalBusses = 5 + (LinkCount * PeripheralsPerLink)
-type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
+type NmuRemBusWidthFast = 30 - PrefixWidth NmuFastBusses
+type NmuRemBusWidthSlow = NmuRemBusWidthFast - PrefixWidth NmuSlowBusses
 
-muConfig ::
-  ( KnownNat n
-  , PrefixWidth (n + NmuInternalBusses) <= 30
-  ) =>
-  PeConfig (n + NmuInternalBusses)
+muConfig :: PeConfig NmuFastBusses
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
@@ -134,14 +138,17 @@ managementUnit ::
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
-        , Bitbone dom NmuRemBusWidth
+        , Bitbone dom NmuRemBusWidthSlow
         )
     )
 managementUnit externalCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
-    allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
-    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
+    [timeBus, slowBus] <- processingElement NoDumpVcd muConfig -< (mm, jtag)
+    (pfxs, slowBusses) <- Vec.unzip <| singleMasterInterconnectC <| delayWishboneMm -< slowBus
+    idleSink <| (Vec.vecCircuits $ fmap ToConst.toBwd prefixes) -< pfxs
+
+    ([uartBus, dnaBus], restBusses) <- Vec.split -< slowBusses
 
     -- Peripherals
     _cnt <- timeWb (Just externalCounter) -< timeBus
@@ -151,6 +158,9 @@ managementUnit externalCounter maybeDna =
 
     -- Output
     idC -< (uartOut, restBusses)
+ where
+  prefixes :: Vec (NmuExternalBusses + 2) (Unsigned (PrefixWidth (NmuExternalBusses + 2)))
+  prefixes = iterate (SNat @(NmuExternalBusses + 2)) succ 0
 
 gppe ::
   ( HiddenClockResetEnable dom
@@ -163,7 +173,7 @@ gppe ::
   Signal dom (BitVector 64) ->
   Circuit
     ( ToConstBwd Mm
-    , Vec 2 ((BitboneMm dom NmuRemBusWidth))
+    , Vec 2 ((BitboneMm dom NmuRemBusWidthSlow))
     , Jtag dom
     )
     ( CSignal dom (BitVector 64)
@@ -199,7 +209,7 @@ gppe maybeDna linkIn = circuit $ \(mm, nmuWbMms, jtag) -> do
   sgCal = ValidEntry 0 1000 :> Nil
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
+calendarConfig :: CalendarConfig NmuRemBusWidthSlow (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)
@@ -254,7 +264,7 @@ core ::
     , "CC_UART" ::: Df Bittide (BitVector 8)
     , "GPPE_UART" ::: Df Bittide (BitVector 8)
     , "MU_TRANSCEIVER"
-        ::: (BitboneMm Bittide NmuRemBusWidth)
+        ::: (BitboneMm Bittide NmuRemBusWidthSlow)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMM, ccMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
