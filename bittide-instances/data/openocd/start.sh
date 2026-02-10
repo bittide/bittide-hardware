@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
-set -e
+set -xe
 
 # Default stdout to /dev/null
 OPENOCD_STDOUT_LOG="${OPENOCD_STDOUT_LOG:-/dev/null}"
