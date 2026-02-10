@@ -51,7 +51,7 @@ import qualified Clash.Cores.Xilinx.Gth as Gth
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
 #else
-type Baud = 921_600
+type Baud = 115_200
 #endif
 
 baud :: SNat Baud

@@ -52,7 +52,7 @@ import qualified Clash.Cores.Xilinx.Gth as Gth
 type Baud = MaxBaudRate Basic125
 import Clash.Cores.UART.Extra
 #else
-type Baud = 921_600
+type Baud = 115_200
 #endif
 
 baud :: SNat Baud

@@ -29,7 +29,7 @@ import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 import Project.FilePath
 
-baudRate :: SNat 921600
+baudRate :: SNat 115200
 baudRate = SNat
 
 vexRiscvUartHelloMM :: Mm.MemoryMap
