@@ -11,6 +11,7 @@ import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.Counter (counterSource)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
@@ -124,32 +125,32 @@ managementUnit ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
+  Signal dom (Unsigned 64) ->
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
-    ( CSignal dom (Unsigned 64)
-    , Df dom (BitVector 8)
+    ( Df dom (BitVector 8)
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
         , Bitbone dom NmuRemBusWidth
         )
     )
-managementUnit maybeDna =
+managementUnit externalCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    localCounter <- timeWb Nothing -< timeBus
+    _cnt <- timeWb (Just externalCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
 
     -- Output
-    idC -< (localCounter, uartOut, restBusses)
+    idC -< (uartOut, restBusses)
 
 gppe ::
   ( HiddenClockResetEnable dom
@@ -259,11 +260,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMM, ccMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
-    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+    let
+      maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+      localCounter = counterSource d3 bitClk bitRst
 
     -- Start management unit
-    (Fwd lc, muUartBytesBittide, muWbAll) <-
-      withBittideClockResetEnable (managementUnit maybeDna) -< (muMM, muJtag)
+    (muUartBytesBittide, muWbAll) <-
+      withBittideClockResetEnable (managementUnit localCounter maybeDna) -< (muMM, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (muSgWbs, muWbs3) <- Vec.split -< muWbs2
@@ -287,7 +290,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
            )
         -< ebWbs
 
-    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn localCounter <$> rxs1) -< ugnWbs
 
     switchIn <- Vec.append -< ([gppeTx], rxs2)
     (switchOut, _calEntry) <-
@@ -351,7 +354,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     idC
       -< ( Fwd swCcOut1
-         , Fwd lc
+         , Fwd localCounter
          , txs
          , sync
          , muUartBytesBittide

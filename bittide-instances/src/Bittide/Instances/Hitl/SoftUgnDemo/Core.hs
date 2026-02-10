@@ -11,6 +11,7 @@ import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.Counter (counterSource)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
@@ -236,7 +237,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     let
       maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
-      localCounter = register bitClk bitRst bitEna 0 (localCounter + 1)
+      localCounter = counterSource d3 bitClk bitRst
 
     -- Start management unit
     (muUartBytesBittide, muWbAll) <-
