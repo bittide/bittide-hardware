@@ -35,7 +35,7 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- Qualified
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Cpus.Riscv32 as Riscv32
 import qualified Data.List as L
 
 sim :: IO ()
@@ -92,7 +92,7 @@ dut = withBittideByteOrder
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       $ PeConfig
-        { cpu = Riscv32imc.vexRiscv0
+        { cpu = Riscv32.riscv32Imc0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI = Just (Vec iMem)

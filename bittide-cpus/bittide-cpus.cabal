@@ -22,20 +22,20 @@ common warnings
 library
   import: warnings
   exposed-modules:
-    Bittide.Cpus.Riscv32imc
+    Bittide.Cpus.Riscv32
     Bittide.Cpus.Types
 
   other-modules:
     VexRiscv_Riscv32imc0
     VexRiscv_Riscv32imc1
     VexRiscv_Riscv32imc2
-    VexRiscv_Riscv32imc3
+    VexRiscv_Riscv32imcf
 
   autogen-modules:
     VexRiscv_Riscv32imc0
     VexRiscv_Riscv32imc1
     VexRiscv_Riscv32imc2
-    VexRiscv_Riscv32imc3
+    VexRiscv_Riscv32imcf
 
   build-depends:
     base ^>=4.20.0.0,

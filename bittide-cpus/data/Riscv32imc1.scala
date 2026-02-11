@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022-2024 Google LLC
+// SPDX-FileCopyrightText: 2026 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -10,11 +10,9 @@ import spinal.lib.com.jtag.Jtag
 import spinal.lib.cpu.riscv.debug._
 import vexriscv.plugin._
 import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
-import vexriscv.ip.{DataCacheConfig}
-import vexriscv.ip.fpu.FpuParameter
 
 object Riscv32imc1 extends App {
-  def cpu() : VexRiscv = {
+  def cpu(): VexRiscv = {
     val config = VexRiscvConfig(
       plugins = List(
         new IBusSimplePlugin(
@@ -26,36 +24,9 @@ object Riscv32imc1 extends App {
           compressedGen = true // C extension
         ),
 
-        // new DBusSimplePlugin(
-        //   catchAddressMisaligned = true,
-        //   catchAccessFault = true
-        // ),
-
-        new DBusCachedPlugin(
-          /*
-          config = new DataCacheConfig(
-            cacheSize        = 2048,
-            bytePerLine      = 32,
-            wayCount         = 1,
-            addressWidth     = 32,
-            cpuDataWidth     = 32,
-            memDataWidth     = 32,
-            catchAccessError = true,
-            catchIllegal     = true,
-            catchUnaligned   = true
-          )
-          */
-          config = new DataCacheConfig(
-            cacheSize        = 8,
-            bytePerLine      = 8,
-            wayCount         = 1,
-            addressWidth     = 32,
-            cpuDataWidth     = 32,
-            memDataWidth     = 32,
-            catchAccessError = true,
-            catchIllegal     = true,
-            catchUnaligned   = true
-          )
+        new DBusSimplePlugin(
+          catchAddressMisaligned = true,
+          catchAccessFault = true
         ),
 
         new StaticMemoryTranslatorPlugin(
@@ -63,11 +34,11 @@ object Riscv32imc1 extends App {
         ),
 
         new CsrPlugin(
-            CsrPluginConfig.smallest.copy(
-              ebreakGen = true,
-              mtvecAccess = CsrAccess.READ_WRITE,
-              withPrivilegedDebug = true
-              )
+          CsrPluginConfig.smallest.copy(
+            ebreakGen = true,
+            mtvecAccess = CsrAccess.READ_WRITE,
+            withPrivilegedDebug = true
+          )
         ),
         new DecoderSimplePlugin(
           catchIllegalInstruction = true
@@ -86,20 +57,13 @@ object Riscv32imc1 extends App {
         new MulPlugin,
         new DivPlugin,
 
-        // F extension
-        new FpuPlugin(
-          p = FpuParameter(
-            withDouble = false // enable for D extension
-          )
-        ),
-
         new LightShifterPlugin,
         new HazardSimplePlugin(
-          bypassExecute           = false,
-          bypassMemory            = false,
-          bypassWriteBack         = false,
-          bypassWriteBackBuffer   = false,
-          pessimisticUseSrc       = false,
+          bypassExecute = false,
+          bypassMemory = false,
+          bypassWriteBack = false,
+          bypassWriteBackBuffer = false,
+          pessimisticUseSrc = false,
           pessimisticWriteRegFile = false,
           pessimisticAddressMatch = false
         ),
@@ -110,8 +74,8 @@ object Riscv32imc1 extends App {
         new EmbeddedRiscvJtag(
           p = DebugTransportModuleParameter(
             addressWidth = 7,
-            version      = 1,
-            idle         = 7
+            version = 1,
+            idle = 7
           ),
           debugCd = ClockDomain.current,
           // PART: (QB)ayLogic
@@ -129,15 +93,10 @@ object Riscv32imc1 extends App {
     cpu.rework {
       for (plugin <- config.plugins) plugin match {
         case plugin: IBusSimplePlugin => {
-          plugin.iBus.setAsDirectionLess() //Unset IO properties of iBus
+          plugin.iBus.setAsDirectionLess() // Unset IO properties of iBus
           master(plugin.iBus.toWishbone()).setName("iBusWishbone")
         }
         case plugin: DBusSimplePlugin => {
-          plugin.dBus.setAsDirectionLess()
-          master(plugin.dBus.toWishbone()).setName("dBusWishbone")
-        }
-
-        case plugin: DBusCachedPlugin => {
           plugin.dBus.setAsDirectionLess()
           master(plugin.dBus.toWishbone()).setName("dBusWishbone")
         }
@@ -146,7 +105,7 @@ object Riscv32imc1 extends App {
       }
     }
 
-    return cpu
+    cpu
   }
   val prefix = getClass.getSimpleName.replace("$", "")
 

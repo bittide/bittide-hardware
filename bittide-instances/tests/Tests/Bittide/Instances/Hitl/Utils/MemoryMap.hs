@@ -24,7 +24,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 import VexRiscv (DumpVcd (NoDumpVcd))
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Cpus.Riscv32 as Riscv32
 
 type NumCaptureUgns = 4
 
@@ -52,7 +52,7 @@ exampleDevice =
       , iBusTimeout = SNat @0
       , dBusTimeout = SNat @0
       , includeIlaWb = False
-      , cpu = Riscv32imc.vexRiscv0
+      , cpu = Riscv32.riscv32Imc0
       }
 
 exampleMm :: MemoryMap

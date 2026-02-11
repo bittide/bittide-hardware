@@ -31,7 +31,7 @@ import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Cpus.Riscv32 as Riscv32
 import qualified Prelude as P
 
 sim :: IO ()
@@ -75,7 +75,7 @@ dut = withBittideByteOrder $ circuit $ \_unit -> do
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { cpu = Riscv32imc.vexRiscv0
+        { cpu = Riscv32.riscv32Imc0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI = Just (Vec iMem)

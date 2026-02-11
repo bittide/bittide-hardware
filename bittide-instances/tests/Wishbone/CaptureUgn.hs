@@ -29,7 +29,7 @@ import Test.Tasty.TH
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.CaptureUgn
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Cpus.Riscv32 as Riscv32
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -108,7 +108,7 @@ dut eb localCounter = withBittideByteOrder $ circuit $ do
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { cpu = Riscv32imc.vexRiscv0
+        { cpu = Riscv32.riscv32Imc0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI = Just (Vec iMem)

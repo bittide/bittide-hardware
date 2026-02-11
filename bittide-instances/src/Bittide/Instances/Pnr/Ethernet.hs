@@ -24,7 +24,7 @@ import qualified Protocols.ToConst as ToConst
 import VexRiscv
 
 import Bittide.Axi4
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (riscv32Imc0)
 import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
@@ -165,7 +165,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
     pure
       $ PeConfig
-        { cpu = vexRiscv0
+        { cpu = riscv32Imc0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI =
@@ -187,7 +187,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
 
   peConfigRtl =
     PeConfig
-      { cpu = vexRiscv0
+      { cpu = riscv32Imc0
       , depthI = SNat @IMemWords
       , depthD = SNat @DMemWords
       , initI = Nothing

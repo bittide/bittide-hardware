@@ -6,7 +6,7 @@ module Bittide.Instances.Tests.WbToDf where
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (riscv32Imc0)
 import Bittide.Df
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
@@ -90,7 +90,7 @@ dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enable
       elfPath = elfDir </> "wb_to_df_test"
     pure
       PeConfig
-        { cpu = vexRiscv0
+        { cpu = riscv32Imc0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI =

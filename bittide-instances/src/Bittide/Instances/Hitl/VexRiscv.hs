@@ -31,7 +31,7 @@ import Protocols.MemoryMap.TypeDescription.TH
 import System.Environment (lookupEnv)
 import VexRiscv
 
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (riscv32Imcf)
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
  )
@@ -175,7 +175,7 @@ vexRiscvTestC =
         }
   peConfigRtl =
     PeConfig
-      { cpu = vexRiscv0
+      { cpu = riscv32Imcf
       , depthI = SNat @IMemWords
       , depthD = SNat @DMemWords
       , initI = Nothing

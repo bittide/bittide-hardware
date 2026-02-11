@@ -13,7 +13,7 @@ main =
         [ "Riscv32imc0"
         , "Riscv32imc1"
         , "Riscv32imc2"
-        , "Riscv32imc3"
+        , "Riscv32imcf"
         ]
         VexRiscvBundled
     )

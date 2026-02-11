@@ -42,7 +42,7 @@ import Protocols.MemoryMap (Mm)
 import Protocols.Spi (Spi)
 import VexRiscv (Jtag)
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Cpus.Riscv32 as Riscv32
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
@@ -69,7 +69,7 @@ uartLabels =
 bootPeConfig :: PeConfig BootPeBusses
 bootPeConfig =
   PeConfig
-    { cpu = Riscv32imc.vexRiscv0
+    { cpu = Riscv32.bootCpu
     , depthI = SNat @(Div (64 * 1024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing

@@ -7,7 +7,7 @@ module Bittide.Instances.Pnr.ProcessingElement where
 
 import Clash.Prelude
 
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (riscv32Imc0)
 import Clash.Annotations.TH
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.UART (ValidBaud)
@@ -83,7 +83,7 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
 
   peConfigRtl =
     PeConfig
-      { cpu = vexRiscv0
+      { cpu = riscv32Imc0
       , depthI = SNat @IMemWords
       , depthD = SNat @DMemWords
       , initI = Nothing

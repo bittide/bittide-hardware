@@ -34,7 +34,7 @@ import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone.Extra (delayWishbone, delayWishboneMm)
 import VexRiscv (DumpVcd (..), Jtag)
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Cpus.Riscv32 as Riscv32
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
@@ -71,7 +71,7 @@ muConfig ::
   PeConfig (n + NmuInternalBusses)
 muConfig =
   PeConfig
-    { cpu = Riscv32imc.vexRiscv1
+    { cpu = Riscv32.managementUnitCpu
     , depthI = SNat @(Div (64 * 1024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing
@@ -88,7 +88,7 @@ ccConfig ::
   PeConfig (n + SwcccInternalBusses)
 ccConfig =
   PeConfig
-    { cpu = Riscv32imc.vexRiscv2
+    { cpu = Riscv32.clockControlCpu
     , depthI = SNat @(Div (64 * 1024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing
@@ -106,7 +106,7 @@ gppeConfig ::
   PeConfig n
 gppeConfig =
   PeConfig
-    { cpu = Riscv32imc.vexRiscv3
+    { cpu = Riscv32.gppeCpu
     , depthI = SNat @(Div (64 * 1024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing

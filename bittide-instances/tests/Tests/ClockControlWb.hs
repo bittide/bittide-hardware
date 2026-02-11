@@ -10,7 +10,7 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 
 -- external imports
 
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (clockControlCpu)
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
@@ -154,7 +154,7 @@ dut =
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { cpu = vexRiscv0
+        { cpu = clockControlCpu
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI = Just (Vec iMem)

@@ -17,7 +17,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.Calendar
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (riscv32Imc0)
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -82,7 +82,7 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
       elfPath = elfDir </> binary
     pure
       PeConfig
-        { cpu = vexRiscv0
+        { cpu = riscv32Imc0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI =

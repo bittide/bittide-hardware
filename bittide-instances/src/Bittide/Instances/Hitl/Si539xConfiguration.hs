@@ -24,7 +24,7 @@ import VexRiscv
 
 import Bittide.ClockControl.Si539xSpi
 import Bittide.Counter (domainDiffCountersWbC)
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (riscv32Imc0)
 import Bittide.Hitl (
   HitlTestCase (..),
   HitlTestGroup (..),
@@ -142,7 +142,7 @@ dut freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, jtag) -> do
  where
   peConfig =
     PeConfig
-      { cpu = vexRiscv0
+      { cpu = riscv32Imc0
       , depthI = SNat @IMemWords
       , depthD = SNat @DMemWords
       , initI = Nothing

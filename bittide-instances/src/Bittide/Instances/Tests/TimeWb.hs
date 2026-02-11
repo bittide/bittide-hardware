@@ -6,7 +6,7 @@ module Bittide.Instances.Tests.TimeWb where
 
 import Clash.Prelude
 
-import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Cpus.Riscv32 (riscv32Imc0)
 import Bittide.DoubleBufferedRam hiding (registerWb)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -54,7 +54,7 @@ dutCpu = withBittideByteOrder $ circuit $ \mm -> do
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "c_timer_wb"
     pure
       PeConfig
-        { cpu = vexRiscv0
+        { cpu = riscv32Imc0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI =
