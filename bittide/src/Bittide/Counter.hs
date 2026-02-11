@@ -243,6 +243,4 @@ counterSource ::
 counterSource d clk rst = cntDelayed
  where
   cnt = register clk rst enableGen 0 (cnt + 1)
-  cntDelayed = applyN (snatToNum d :: Int) cnt
-  applyN 0 x = x
-  applyN n x = applyN (n - 1) (dflipflop clk x)
+  cntDelayed = last $ iterate (succSNat d) (dflipflop clk) cnt
