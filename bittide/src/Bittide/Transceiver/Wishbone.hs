@@ -60,7 +60,7 @@ transceiverPrbsNWb ::
     )
 transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   Fwd tOutputs <- transceiverPrbsNC clk tReset config -< (Fwd tInputs, gths)
-  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <- deviceWb "Transceivers" -< wb
+  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1] <- deviceWb "Transceivers" -< wb
 
   -- Configuration registers
   (Fwd tEnable, _c0) <-
@@ -77,10 +77,6 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
     -< (wbs0, Fwd (Just <$> bundle tOutputs.stats))
   registerWb_ clk tReset handshakesDoneConfig (repeat False)
     -< (wbs1, Fwd (Just <$> bundle tOutputs.handshakesDoneFree))
-  registerWb_ clk tReset linkReadysConfig (repeat False)
-    -< (wbs2, Fwd (Just <$> bundle tOutputs.linkReadys))
-  registerWb_ clk tReset linkUpsConfig (repeat False)
-    -< (wbs3, Fwd (Just <$> bundle tOutputs.linkUps))
 
   let
     noWrite = pure Nothing
@@ -132,18 +128,4 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
       { access = ReadOnly
       , description =
           "Indicates whether link negotiation has completed for each channel. This means that, bar catastrophic failure, the link will be able to transfer user data."
-      }
-
-  linkReadysConfig =
-    (registerConfig "link_readys")
-      { access = ReadOnly
-      , description =
-          "Indicates whether a neighbor is ready to receive data for each channel. Implies 'handshakes_done'."
-      }
-
-  linkUpsConfig =
-    (registerConfig "link_ups")
-      { access = ReadOnly
-      , description =
-          "Indicates whether the links is handling user data in both directions. Implies 'link_readys'."
       }

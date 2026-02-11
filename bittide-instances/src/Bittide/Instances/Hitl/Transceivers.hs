@@ -105,7 +105,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs spiS2M =
   , spiM2S
   )
  where
-  allUp = and <$> bundle transceivers.linkUps
+  allUp = and <$> bundle transceivers.debugLinkUps
 
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
 
@@ -140,7 +140,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs spiS2M =
   expectCounterErrorSys =
     fmap or
       $ bundle
-      $ zipWith (.&&.) transceivers.linkUps
+      $ zipWith (.&&.) transceivers.debugLinkUps
       $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
 
   transceivers =

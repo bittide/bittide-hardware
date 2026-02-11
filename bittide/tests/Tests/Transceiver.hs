@@ -355,7 +355,7 @@ testUp500ms outputA outputB =
       List.take n ups === List.replicate n True
  where
   handshakeDone = outputA.handshakeDoneFree .&&. outputB.handshakeDoneFree
-  linksUp = outputA.linkUp .&&. outputB.linkUp
+  linksUp = outputA.debugLinkUp .&&. outputB.debugLinkUp
   nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
   sampledLinksUp = sampleN nCycles (linksUp .&&. handshakeDone)
   sampledAfterStable = List.dropWhile (not . snd) (List.zip [(0 :: Int) ..] sampledLinksUp)
@@ -379,7 +379,7 @@ testNeitherUp500ms :: DutTestFunc txA txB free
 testNeitherUp500ms outputA outputB =
   False === or (sampleN nCycles linksUp)
  where
-  linksUp = outputA.linkUp .||. outputB.linkUp
+  linksUp = outputA.debugLinkUp .||. outputB.debugLinkUp
   nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
 
 -- | Test whether the link is never up within 500 milliseconds
@@ -387,7 +387,7 @@ testNotBothUp500ms :: DutTestFunc txA txB free
 testNotBothUp500ms outputA outputB =
   False === or (sampleN nCycles linksUp)
  where
-  linksUp = (outputA.linkUp .==. pure True) .&&. (outputB.linkUp .==. pure True)
+  linksUp = (outputA.debugLinkUp .==. pure True) .&&. (outputB.debugLinkUp .==. pure True)
   nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
 
 -- Input that applies no (back)pressure on the link

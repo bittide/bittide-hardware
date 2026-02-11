@@ -274,11 +274,13 @@ data Output tx rx tx1 rx1 txS free = Output
   -- ^ User data received from the neighbor
   , handshakeDone :: Signal rx Bool
   -- ^ Asserted when link has been established, but not necessarily handling user data.
-  , linkUp :: Signal free Bool
-  -- ^ True if both the transmit and receive side are either handling user data
-  , linkReady :: Signal free Bool
-  -- ^ True if both the transmit and receive side ready to handle user data or
-  -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
+  , debugLinkUp :: Signal free Bool
+  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
+  --  and receive side are either handling user data.
+  , debugLinkReady :: Signal free Bool
+  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
+  --  and receive side ready to handle user data or doing so. I.e., 'debugLinkUp' implies
+  -- 'debugLinkReady'.
   , handshakeDoneFree :: Signal free Bool
   -- ^ Asserted when link has been established, but not necessarily handling user data.
   -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
@@ -314,10 +316,10 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.rxData'
   , handshakesDone :: Vec n (Signal rx Bool)
   -- ^ See 'Output.handshakeDone'
-  , linkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkUp'
-  , linkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkReady'
+  , debugLinkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkUp'
+  , debugLinkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkReady'
   , handshakesDoneFree :: Vec n (Signal free Bool)
   -- ^ See 'Output.handshakeDoneFree'
   , stats :: Vec n (Signal free ResetManager.Statistics)
@@ -346,10 +348,10 @@ data COutputs n tx rx free = COutputs
   -- ^ See 'Output.rxData'
   , handshakesDone :: Vec n (Signal rx Bool)
   -- ^ See 'Output.handshakeDone'
-  , linkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkUp'
-  , linkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkReady'
+  , debugLinkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkUp'
+  , debugLinkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkReady'
   , handshakesDoneFree :: Vec n (Signal free Bool)
   -- ^ See 'Output.handshakeDoneFree'
   , stats :: Vec n (Signal free ResetManager.Statistics)
@@ -420,8 +422,8 @@ outputsToCOutputs outputs =
     , rxResets = outputs.rxResets
     , rxDatas = outputs.rxDatas
     , handshakesDone = outputs.handshakesDone
-    , linkUps = outputs.linkUps
-    , linkReadys = outputs.linkReadys
+    , debugLinkUps = outputs.debugLinkUps
+    , debugLinkReadys = outputs.debugLinkReadys
     , handshakesDoneFree = outputs.handshakesDoneFree
     , stats = outputs.stats
     }
@@ -526,8 +528,8 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       txPs = pack <$> bundle (map (.txP) outputs)
     , txNs = pack <$> bundle (map (.txN) outputs)
     , -- free
-      linkUps = map (.linkUp) outputs
-    , linkReadys = map (.linkReady) outputs
+      debugLinkUps = map (.debugLinkUp) outputs
+    , debugLinkReadys = map (.debugLinkReady) outputs
     , handshakesDoneFree = map (.handshakeDoneFree) outputs
     , stats = map (.stats) outputs
     }
@@ -674,7 +676,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
               :> "ila_probe_rxReset"
               :> "ila_probe_txReset"
               :> "ila_probe_metaTx"
-              :> "ila_probe_linkUp"
+              :> "ila_probe_debugLinkUp"
               :> "ila_probe_txLastFree"
               :> "capture_ila"
               :> "trigger_ila"
@@ -713,7 +715,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
         (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
         (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
-        linkUp
+        debugLinkUp
         txLastFree
         (pure True :: Signal free Bool) -- capture
         txLastFree -- trigger
@@ -732,16 +734,16 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       , txOutClock
       , rxOutClock
       , rxReset
-      , linkUp
-      , linkReady
+      , debugLinkUp
+      , debugLinkReady
       , stats
       }
 
-  linkUp =
+  debugLinkUp =
     withLockTxFree txUserData
       .&&. withLockRxFree rxUserData
 
-  linkReady = linkUp .||. withLockRxFree rxReadyNeighborSticky
+  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
 
   Gth.CoreOutput
     { gthtxOut = txSim
