@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::hals::switch_demo_mu::DeviceInstances;
-use bittide_hal::shared_devices::{ElasticBuffer, Transceivers, Uart};
+use bittide_hal::shared_devices::{ElasticBuffer, Transceivers};
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
@@ -37,7 +37,6 @@ impl LinkStartup {
     /// Transition to the next state based on current conditions
     pub fn next(
         &mut self,
-        uart: &mut Uart,
         transceivers: &Transceivers,
         channel: usize,
         elastic_buffer: &ElasticBuffer,
@@ -46,8 +45,6 @@ impl LinkStartup {
         self.state = match self.state {
             UgnCaptureState::WaitForChannelNegotiation => {
                 if transceivers.handshakes_done(channel).unwrap_or(false) {
-                    uwriteln!(uart, "Channel {} negotiation done.", channel).unwrap();
-                    uwriteln!(uart, "{:?}", transceivers.statistics(channel)).unwrap();
                     UgnCaptureState::SwitchUserMode
                 } else {
                     self.state
@@ -59,18 +56,11 @@ impl LinkStartup {
                 elastic_buffer.set_clear_status_registers(true);
                 transceivers.set_receive_readys(channel, true);
                 transceivers.set_transmit_starts(channel, true);
-                uwriteln!(
-                    uart,
-                    "Switch transceiver channel {} to user mode..",
-                    channel
-                )
-                .unwrap();
                 UgnCaptureState::WaitForUgnCapture
             }
             UgnCaptureState::WaitForUgnCapture => {
                 if captured_ugn {
                     elastic_buffer.set_auto_center_enable(true);
-                    uwriteln!(uart, "Captured UGN for channel {}", channel).unwrap();
                     UgnCaptureState::Done
                 } else {
                     self.state
@@ -122,7 +112,6 @@ fn main() -> ! {
     while !link_startups.iter().all(|ls| ls.is_done()) {
         for (i, link_startup) in link_startups.iter_mut().enumerate() {
             link_startup.next(
-                &mut uart,
                 transceivers,
                 i,
                 elastic_buffers[i],
