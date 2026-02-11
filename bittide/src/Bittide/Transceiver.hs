@@ -28,8 +28,7 @@ symbol - see "Bittide.Transceiver.WordAlign".
 __Meta data__
 We send along meta data with each word. This meta data is used to signal to the
 neighbor that we're ready to receive user data, or that the next word will be
-user data. The meta data also contains the FPGA and transceiver index, which
-can be used for debugging.
+user data.
 
 __Reset manager__
 A reset manager is used as a sort of \"watchdog\" while booting the
@@ -113,36 +112,10 @@ data Meta = Meta
   -- ^ Ready to receive user data
   , lastPrbsWord :: Bool
   -- ^ Next word will be user data
-  , fpgaIndex :: Unsigned 3
-  -- ^ FPGA index to use (debug only, logic does not rely on this)
-  , transceiverIndex :: Unsigned 3
-  -- ^ Transceiver index to use (debug only, logic does not rely on this)
+  , padding :: Unsigned 6
+  -- ^ Padding up to 1 byte
   }
   deriving (Generic, NFDataX, BitPack)
-
-{- | Insert zeroes such that each of the following are encoded in 4 bits, making
-them easier to read when formatted as a hex value:
-
-  * prbsOk, lastPrbsWord
-  * fpgaIndex
-  * transceiverIndex
-
-This is useful for when we don't control formatting (such as when looking at
-ILA traces).
--}
-prettifyMetaBits :: BitVector 8 -> BitVector 12
-prettifyMetaBits bv =
-  pack
-    $ let meta = unpack @Meta bv
-       in ( low
-          , low
-          , meta.ready
-          , meta.lastPrbsWord
-          , low
-          , meta.fpgaIndex
-          , low
-          , meta.transceiverIndex
-          )
 
 data Config dom = Config
   { debugIla :: Bool
@@ -703,7 +676,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (xpmCdcArraySingle rxClock clock alignError)
         (xpmCdcArraySingle rxClock clock prbsErrors)
         (xpmCdcArraySingle rxClock clock alignedAlignBits)
-        (xpmCdcArraySingle rxClock clock (prettifyMetaBits <$> alignedMetaBits))
+        (xpmCdcArraySingle rxClock clock alignedMetaBits)
         (xpmCdcArraySingle rxClock clock rxCtrl0)
         (xpmCdcArraySingle rxClock clock rxCtrl1)
         (xpmCdcArraySingle rxClock clock rxCtrl2)
@@ -714,7 +687,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (unsafeToActiveHigh resets.rxDatapath)
         (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
         (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
-        (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
+        (xpmCdcArraySingle txClock clock metaTx)
         debugLinkUp
         txLastFree
         (pure True :: Signal free Bool) -- capture
@@ -868,11 +841,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     Meta
       <$> indicateRxReady
       <*> txLast
-      -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
-      -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically
-      -- a constant so :shrug:.
-      <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
-      <*> pure args.transceiverIndex
+      -- Padding
+      <*> pure 0
 
   errorAfterRxUserData :: Signal rx Bool
   errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
