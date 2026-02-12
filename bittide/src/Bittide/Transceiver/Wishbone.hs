@@ -60,7 +60,7 @@ transceiverPrbsNWb ::
     )
 transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   Fwd tOutputs <- transceiverPrbsNC clk tReset config -< (Fwd tInputs, gths)
-  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1] <- deviceWb "Transceivers" -< wb
+  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <- deviceWb "Transceivers" -< wb
 
   -- Configuration registers
   (Fwd tEnable, _c0) <-
@@ -77,6 +77,10 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
     -< (wbs0, Fwd (Just <$> bundle tOutputs.stats))
   registerWb_ clk tReset handshakesDoneConfig (repeat False)
     -< (wbs1, Fwd (Just <$> bundle tOutputs.handshakesDoneFree))
+  registerWb_ clk tReset neighborReceiveReadysConfig (repeat False)
+    -< (wbs2, Fwd (Just <$> bundle tOutputs.neighborReceiveReadys))
+  registerWb_ clk tReset neighborTransmitReadysConfig (repeat False)
+    -< (wbs3, Fwd (Just <$> bundle tOutputs.neighborTransmitReadys))
 
   let
     noWrite = pure Nothing
@@ -108,13 +112,13 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   rxReadysConfig =
     (registerConfig "receive_readys")
       { description =
-          "Indicate ready to receive (non-link negotiation) data. You should only set this when you are actually ready to receive data, as setting it when not ready will lead to data loss. This typically means that the elastic buffer on the receiver side has space to store incoming data. Though this can be set independently of 'channel_enables', this setting has no effect unless the corresponding channel is also enabled. Once set, there is no way to retract readiness until the next time the channel is disabled."
+          "Indicate ready to receive (non-link negotiation) data. You should only set this when you are actually ready to receive data, as setting it when not ready will lead to data loss. This typically means that the elastic buffer on the receiver side has space to store incoming data. Though this can be set independently of 'channel_enables', this setting has no effect unless the corresponding channel is also enabled. Once set, you must not retract readiness until the next time the channel is disabled."
       }
 
   txStartsConfig =
     (registerConfig "transmit_starts")
       { description =
-          "Indicate ready to transmit (non-link negotiation) data. Note that the transceiver block will not transition to sending data until you indicate the link is also ready to receive data (see 'receive_readys'). Though this can be set independently of 'channel_enables', this setting has no effect unless the corresponding channel is also enabled. Once set, there is no way to retract readiness until the next time the channel is disabled."
+          "Indicate ready to transmit (non-link negotiation) data. Note that the transceiver block will not transition to sending data until you indicate the link is also ready to receive data (see 'receive_readys'). Though this can be set independently of 'channel_enables', this setting has no effect unless the corresponding channel is also enabled. Once set, you must not retract readiness until the next time the channel is disabled."
       }
 
   statsConfig =
@@ -128,4 +132,18 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
       { access = ReadOnly
       , description =
           "Indicates whether link negotiation has completed for each channel. This means that, bar catastrophic failure, the link will be able to transfer user data."
+      }
+
+  neighborReceiveReadysConfig =
+    (registerConfig "neighbor_receive_readys")
+      { access = ReadOnly
+      , description =
+          "Indicates for each neighbor whether it is ready to receive data. Implies 'handshakes_done' is also 'True' for that neighbor."
+      }
+
+  neighborTransmitReadysConfig =
+    (registerConfig "neighbor_transmit_readys")
+      { access = ReadOnly
+      , description =
+          "Indicates for each neighbor whether it is ready to transmit data. Implies 'handshakes_done' is also 'True' for that neighbor."
       }

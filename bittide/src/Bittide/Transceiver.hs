@@ -27,8 +27,8 @@ symbol - see "Bittide.Transceiver.WordAlign".
 
 __Meta data__
 We send along meta data with each word. This meta data is used to signal to the
-neighbor that we're ready to receive user data, or that the next word will be
-user data.
+neighbor that we're ready to receive user data, ready to transmit user data, or
+that the next word will be user data.
 
 __Reset manager__
 A reset manager is used as a sort of \"watchdog\" while booting the
@@ -59,8 +59,9 @@ Transmit:
  1. Send commas for a number of cycles
  2. Send PRBS data with meta data
  3. Wait for receiver to signal it has successfully decoded PRBS data for a long time
- 4. Send meta data with 'ready' set to 'True'
- 5. Wait for 'Input.txStart'
+ 4. Send meta data with user supplied 'Input.rxReady' and 'Input.txStart'
+ 5. Wait for 'Input.rxReady', 'Input.txStart' and its neighbor to signal it is ready to
+    receive user data.
  6. Send meta data with 'lastPrbsWord' set to 'True'
  7. Send user data
 
@@ -108,11 +109,13 @@ import qualified Clash.Cores.Xilinx.Gth as Gth
 documentation for more information.
 -}
 data Meta = Meta
-  { ready :: Bool
+  { readyToReceive :: Bool
   -- ^ Ready to receive user data
+  , readyToTransmit :: Bool
+  -- ^ Ready to transmit user data
   , lastPrbsWord :: Bool
   -- ^ Next word will be user data
-  , padding :: Unsigned 6
+  , padding :: Unsigned 5
   -- ^ Padding up to 1 byte
   }
   deriving (Generic, NFDataX, BitPack)
@@ -257,6 +260,10 @@ data Output tx rx tx1 rx1 txS free = Output
   , handshakeDoneFree :: Signal free Bool
   -- ^ Asserted when link has been established, but not necessarily handling user data.
   -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  , neighborReceiveReady :: Signal free Bool
+  -- ^ Asserted when the neighbor has signalled it is ready to receive user data.
+  , neighborTransmitReady :: Signal free Bool
+  -- ^ Asserted when the neighbor has signalled it is ready to transmit user data.
   , stats :: Signal free ResetManager.Statistics
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
@@ -295,6 +302,10 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.debugLinkReady'
   , handshakesDoneFree :: Vec n (Signal free Bool)
   -- ^ See 'Output.handshakeDoneFree'
+  , neighborReceiveReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborReceiveReady'
+  , neighborTransmitReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborTransmitReady'
   , stats :: Vec n (Signal free ResetManager.Statistics)
   -- ^ See 'Output.stats'
   }
@@ -327,6 +338,10 @@ data COutputs n tx rx free = COutputs
   -- ^ See 'Output.debugLinkReady'
   , handshakesDoneFree :: Vec n (Signal free Bool)
   -- ^ See 'Output.handshakeDoneFree'
+  , neighborReceiveReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborReceiveReady'
+  , neighborTransmitReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborTransmitReady'
   , stats :: Vec n (Signal free ResetManager.Statistics)
   -- ^ See 'Output.stats'
   }
@@ -398,6 +413,8 @@ outputsToCOutputs outputs =
     , debugLinkUps = outputs.debugLinkUps
     , debugLinkReadys = outputs.debugLinkReadys
     , handshakesDoneFree = outputs.handshakesDoneFree
+    , neighborReceiveReadys = outputs.neighborReceiveReadys
+    , neighborTransmitReadys = outputs.neighborTransmitReadys
     , stats = outputs.stats
     }
 
@@ -504,6 +521,8 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       debugLinkUps = map (.debugLinkUp) outputs
     , debugLinkReadys = map (.debugLinkReady) outputs
     , handshakesDoneFree = map (.handshakeDoneFree) outputs
+    , neighborReceiveReadys = map (.neighborReceiveReady) outputs
+    , neighborTransmitReadys = map (.neighborTransmitReady) outputs
     , stats = map (.stats) outputs
     }
  where
@@ -709,6 +728,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       , rxReset
       , debugLinkUp
       , debugLinkReady
+      , neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
+      , neighborTransmitReady = withLockRxFree txReadyNeighborSticky
       , stats
       }
 
@@ -825,7 +846,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
   rxLast = maybe False (.lastPrbsWord) <$> rxMeta
-  rxReadyNeighbor = maybe False (.ready) <$> rxMeta
+  rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
+  txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
 
   rxUserData = sticky rxClock rxReset rxLast
   txUserData = sticky txClock txReset txLast
@@ -833,6 +855,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   indicateRxReady = withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
 
   rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
+  txReadyNeighborSticky = sticky rxClock rxReset txReadyNeighbor
   txLast = indicateRxReady .&&. args.txStart .&&. withLockRxTx rxReadyNeighborSticky
   txLastFree = xpmCdcSingle txClock clock txLast
 
@@ -840,6 +863,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   metaTx =
     Meta
       <$> indicateRxReady
+      <*> (withLockRxTx prbsOkDelayed .&&. args.txStart)
       <*> txLast
       -- Padding
       <*> pure 0
