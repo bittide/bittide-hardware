@@ -225,5 +225,5 @@ startWithLogging stdStreams devicePath params = do
         , process = tailH
         }
 
-  let cleanup = hClose logFileH >> hClose errFileH >> cleanupProcess tail >> cleanupProcess picocom
+  let cleanup = hClose errFileH >> hCLose logFileH >> cleanupProcess tail >> cleanupProcess picocom
   pure (handles, cleanup)
