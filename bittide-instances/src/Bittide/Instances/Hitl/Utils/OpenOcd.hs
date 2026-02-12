@@ -110,7 +110,7 @@ initOpenOcd args optionalArgs = do
       ]
   hSetBuffering ocd.stderrHandle LineBuffering
   output <-
-    T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000 $
+    T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 30_000_000 $
       readUntilLine ocd.stderrHandle initCompleteMarker
 
   let
