@@ -16,6 +16,7 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UgnCaptureState {
     WaitForChannelNegotiation,
+    WaitForNeighborRxReady,
     SwitchUserMode,
     WaitForUgnCapture,
     Done,
@@ -45,6 +46,17 @@ impl LinkStartup {
         self.state = match self.state {
             UgnCaptureState::WaitForChannelNegotiation => {
                 if transceivers.handshakes_done(channel).unwrap_or(false) {
+                    transceivers.set_transmit_starts(channel, true);
+                    UgnCaptureState::WaitForNeighborRxReady
+                } else {
+                    self.state
+                }
+            }
+            UgnCaptureState::WaitForNeighborRxReady => {
+                if transceivers
+                    .neighbor_transmit_readys(channel)
+                    .unwrap_or(false)
+                {
                     UgnCaptureState::SwitchUserMode
                 } else {
                     self.state
@@ -55,7 +67,6 @@ impl LinkStartup {
                 elastic_buffer.set_occupancy(0);
                 elastic_buffer.set_clear_status_registers(true);
                 transceivers.set_receive_readys(channel, true);
-                transceivers.set_transmit_starts(channel, true);
                 UgnCaptureState::WaitForUgnCapture
             }
             UgnCaptureState::WaitForUgnCapture => {
