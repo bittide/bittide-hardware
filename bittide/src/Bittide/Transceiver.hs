@@ -27,9 +27,8 @@ symbol - see "Bittide.Transceiver.WordAlign".
 
 __Meta data__
 We send along meta data with each word. This meta data is used to signal to the
-neighbor that we're ready to receive user data, or that the next word will be
-user data. The meta data also contains the FPGA and transceiver index, which
-can be used for debugging.
+neighbor that we're ready to receive user data, ready to transmit user data, or
+that the next word will be user data.
 
 __Reset manager__
 A reset manager is used as a sort of \"watchdog\" while booting the
@@ -60,8 +59,9 @@ Transmit:
  1. Send commas for a number of cycles
  2. Send PRBS data with meta data
  3. Wait for receiver to signal it has successfully decoded PRBS data for a long time
- 4. Send meta data with 'ready' set to 'True'
- 5. Wait for 'Input.txStart'
+ 4. Send meta data with user supplied 'Input.rxReady' and 'Input.txStart'
+ 5. Wait for 'Input.rxReady', 'Input.txStart' and its neighbor to signal it is ready to
+    receive user data.
  6. Send meta data with 'lastPrbsWord' set to 'True'
  7. Send user data
 
@@ -109,40 +109,16 @@ import qualified Clash.Cores.Xilinx.Gth as Gth
 documentation for more information.
 -}
 data Meta = Meta
-  { ready :: Bool
+  { readyToReceive :: Bool
   -- ^ Ready to receive user data
+  , readyToTransmit :: Bool
+  -- ^ Ready to transmit user data
   , lastPrbsWord :: Bool
   -- ^ Next word will be user data
-  , fpgaIndex :: Unsigned 3
-  -- ^ FPGA index to use (debug only, logic does not rely on this)
-  , transceiverIndex :: Unsigned 3
-  -- ^ Transceiver index to use (debug only, logic does not rely on this)
+  , padding :: Unsigned 5
+  -- ^ Padding up to 1 byte
   }
   deriving (Generic, NFDataX, BitPack)
-
-{- | Insert zeroes such that each of the following are encoded in 4 bits, making
-them easier to read when formatted as a hex value:
-
-  * prbsOk, lastPrbsWord
-  * fpgaIndex
-  * transceiverIndex
-
-This is useful for when we don't control formatting (such as when looking at
-ILA traces).
--}
-prettifyMetaBits :: BitVector 8 -> BitVector 12
-prettifyMetaBits bv =
-  pack
-    $ let meta = unpack @Meta bv
-       in ( low
-          , low
-          , meta.ready
-          , meta.lastPrbsWord
-          , low
-          , meta.fpgaIndex
-          , low
-          , meta.transceiverIndex
-          )
 
 data Config dom = Config
   { debugIla :: Bool
@@ -274,14 +250,20 @@ data Output tx rx tx1 rx1 txS free = Output
   -- ^ User data received from the neighbor
   , handshakeDone :: Signal rx Bool
   -- ^ Asserted when link has been established, but not necessarily handling user data.
-  , linkUp :: Signal free Bool
-  -- ^ True if both the transmit and receive side are either handling user data
-  , linkReady :: Signal free Bool
-  -- ^ True if both the transmit and receive side ready to handle user data or
-  -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
+  , debugLinkUp :: Signal free Bool
+  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
+  --  and receive side are either handling user data.
+  , debugLinkReady :: Signal free Bool
+  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
+  --  and receive side ready to handle user data or doing so. I.e., 'debugLinkUp' implies
+  -- 'debugLinkReady'.
   , handshakeDoneFree :: Signal free Bool
   -- ^ Asserted when link has been established, but not necessarily handling user data.
   -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  , neighborReceiveReady :: Signal free Bool
+  -- ^ Asserted when the neighbor has signalled it is ready to receive user data.
+  , neighborTransmitReady :: Signal free Bool
+  -- ^ Asserted when the neighbor has signalled it is ready to transmit user data.
   , stats :: Signal free ResetManager.Statistics
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
@@ -314,12 +296,16 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.rxData'
   , handshakesDone :: Vec n (Signal rx Bool)
   -- ^ See 'Output.handshakeDone'
-  , linkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkUp'
-  , linkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkReady'
+  , debugLinkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkUp'
+  , debugLinkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkReady'
   , handshakesDoneFree :: Vec n (Signal free Bool)
   -- ^ See 'Output.handshakeDoneFree'
+  , neighborReceiveReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborReceiveReady'
+  , neighborTransmitReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborTransmitReady'
   , stats :: Vec n (Signal free ResetManager.Statistics)
   -- ^ See 'Output.stats'
   }
@@ -346,12 +332,16 @@ data COutputs n tx rx free = COutputs
   -- ^ See 'Output.rxData'
   , handshakesDone :: Vec n (Signal rx Bool)
   -- ^ See 'Output.handshakeDone'
-  , linkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkUp'
-  , linkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.linkReady'
+  , debugLinkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkUp'
+  , debugLinkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkReady'
   , handshakesDoneFree :: Vec n (Signal free Bool)
   -- ^ See 'Output.handshakeDoneFree'
+  , neighborReceiveReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborReceiveReady'
+  , neighborTransmitReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborTransmitReady'
   , stats :: Vec n (Signal free ResetManager.Statistics)
   -- ^ See 'Output.stats'
   }
@@ -420,9 +410,11 @@ outputsToCOutputs outputs =
     , rxResets = outputs.rxResets
     , rxDatas = outputs.rxDatas
     , handshakesDone = outputs.handshakesDone
-    , linkUps = outputs.linkUps
-    , linkReadys = outputs.linkReadys
+    , debugLinkUps = outputs.debugLinkUps
+    , debugLinkReadys = outputs.debugLinkReadys
     , handshakesDoneFree = outputs.handshakesDoneFree
+    , neighborReceiveReadys = outputs.neighborReceiveReadys
+    , neighborTransmitReadys = outputs.neighborTransmitReadys
     , stats = outputs.stats
     }
 
@@ -526,9 +518,11 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       txPs = pack <$> bundle (map (.txP) outputs)
     , txNs = pack <$> bundle (map (.txN) outputs)
     , -- free
-      linkUps = map (.linkUp) outputs
-    , linkReadys = map (.linkReady) outputs
+      debugLinkUps = map (.debugLinkUp) outputs
+    , debugLinkReadys = map (.debugLinkReady) outputs
     , handshakesDoneFree = map (.handshakeDoneFree) outputs
+    , neighborReceiveReadys = map (.neighborReceiveReady) outputs
+    , neighborTransmitReadys = map (.neighborTransmitReady) outputs
     , stats = map (.stats) outputs
     }
  where
@@ -674,7 +668,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
               :> "ila_probe_rxReset"
               :> "ila_probe_txReset"
               :> "ila_probe_metaTx"
-              :> "ila_probe_linkUp"
+              :> "ila_probe_debugLinkUp"
               :> "ila_probe_txLastFree"
               :> "capture_ila"
               :> "trigger_ila"
@@ -701,7 +695,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (xpmCdcArraySingle rxClock clock alignError)
         (xpmCdcArraySingle rxClock clock prbsErrors)
         (xpmCdcArraySingle rxClock clock alignedAlignBits)
-        (xpmCdcArraySingle rxClock clock (prettifyMetaBits <$> alignedMetaBits))
+        (xpmCdcArraySingle rxClock clock alignedMetaBits)
         (xpmCdcArraySingle rxClock clock rxCtrl0)
         (xpmCdcArraySingle rxClock clock rxCtrl1)
         (xpmCdcArraySingle rxClock clock rxCtrl2)
@@ -712,8 +706,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (unsafeToActiveHigh resets.rxDatapath)
         (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
         (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
-        (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
-        linkUp
+        (xpmCdcArraySingle txClock clock metaTx)
+        debugLinkUp
         txLastFree
         (pure True :: Signal free Bool) -- capture
         txLastFree -- trigger
@@ -732,16 +726,18 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       , txOutClock
       , rxOutClock
       , rxReset
-      , linkUp
-      , linkReady
+      , debugLinkUp
+      , debugLinkReady
+      , neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
+      , neighborTransmitReady = withLockRxFree txReadyNeighborSticky
       , stats
       }
 
-  linkUp =
+  debugLinkUp =
     withLockTxFree txUserData
       .&&. withLockRxFree rxUserData
 
-  linkReady = linkUp .||. withLockRxFree rxReadyNeighborSticky
+  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
 
   Gth.CoreOutput
     { gthtxOut = txSim
@@ -850,7 +846,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
   rxLast = maybe False (.lastPrbsWord) <$> rxMeta
-  rxReadyNeighbor = maybe False (.ready) <$> rxMeta
+  rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
+  txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
 
   rxUserData = sticky rxClock rxReset rxLast
   txUserData = sticky txClock txReset txLast
@@ -858,6 +855,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   indicateRxReady = withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
 
   rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
+  txReadyNeighborSticky = sticky rxClock rxReset txReadyNeighbor
   txLast = indicateRxReady .&&. args.txStart .&&. withLockRxTx rxReadyNeighborSticky
   txLastFree = xpmCdcSingle txClock clock txLast
 
@@ -865,12 +863,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   metaTx =
     Meta
       <$> indicateRxReady
+      <*> (withLockRxTx prbsOkDelayed .&&. args.txStart)
       <*> txLast
-      -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
-      -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically
-      -- a constant so :shrug:.
-      <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
-      <*> pure args.transceiverIndex
+      -- Padding
+      <*> pure 0
 
   errorAfterRxUserData :: Signal rx Bool
   errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)

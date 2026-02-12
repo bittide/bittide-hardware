@@ -136,7 +136,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
   , spiM2S
   )
  where
-  allReady = and <$> bundle transceivers.linkReadys
+  allReady = and <$> bundle transceivers.debugLinkReadys
   sysRst = rst `orReset` unsafeFromActiveLow (fmap not spiErr)
 
   -- Clock programming
@@ -194,7 +194,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
       $ zipWith4
         (checkData @FpgaCount sysClk)
         transceivers.rxClocks
-        transceivers.linkReadys
+        transceivers.debugLinkReadys
         transceivers.rxDatas
       $ zipWith3
         (expectedTargetIndex sysClk myIndex)
