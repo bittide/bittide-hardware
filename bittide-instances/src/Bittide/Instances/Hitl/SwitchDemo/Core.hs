@@ -11,6 +11,7 @@ import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.Counter (counterSource)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
@@ -20,34 +21,43 @@ import Bittide.ProcessingElement (
   PeConfig (..),
   PeInternalBusses,
   PrefixWidth,
-  RemainingBusWidth,
   processingElement,
  )
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
 import Bittide.Sync (Sync)
-import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
+import Bittide.Wishbone (
+  readDnaPortE2WbWorker,
+  singleMasterInterconnectC,
+  timeWb,
+  uartBytes,
+  uartInterfaceWb,
+ )
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Maybe (fromMaybe)
+import Protocols.Idle
 import Protocols.MemoryMap (Mm)
+import Protocols.Wishbone.Extra (delayWishboneMm)
+
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
+import qualified Protocols.ToConst as ToConst
 import qualified Protocols.Vec as Vec
 
 type FifoSize = 6 -- = 2^6 = 64
 
-{- Internal busses:
-    - Instruction memory
-    - Data memory
+{- Fast busses:
+    - Instruction memory(Internal)
+    - Data memory(Internal)
     - `timeWb`
-    - DNA
-    - UART
+    - delayWishboneC
 -}
-type NmuInternalBusses = 3 + PeInternalBusses
+type NmuFastBusses = 2 + PeInternalBusses
+type NmuSlowBusses = 2 + NmuExternalBusses
 
 {- Busses per link:
     - UGN component
@@ -62,7 +72,8 @@ type PeripheralsPerLink = 2
     - Callisto
 -}
 type NmuExternalBusses = 4 + (LinkCount * PeripheralsPerLink)
-type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
+type NmuRemBusWidthFast = 30 - PrefixWidth NmuFastBusses
+type NmuRemBusWidthSlow = NmuRemBusWidthFast - PrefixWidth NmuSlowBusses
 
 managementUnit ::
   forall dom.
@@ -71,35 +82,41 @@ managementUnit ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
+  Signal dom (Unsigned 64) ->
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
-    ( CSignal dom (Unsigned 64)
-    , Df dom (BitVector 8)
+    ( Df dom (BitVector 8)
     , Vec
         NmuExternalBusses
         ( ToConstBwd Mm.Mm
-        , Bitbone dom NmuRemBusWidth
+        , Bitbone dom NmuRemBusWidthSlow
         )
     )
-managementUnit maybeDna =
+managementUnit localCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
-    allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
-    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
+    [timeBus, slowBus] <- processingElement NoDumpVcd muConfig -< (mm, jtag)
+    (pfxs, slowBusses) <- Vec.unzip <| singleMasterInterconnectC <| delayWishboneMm -< slowBus
+    idleSink <| (Vec.vecCircuits $ fmap ToConst.toBwd prefixes) -< pfxs
+
+    ([uartBus, dnaBus], restBusses) <- Vec.split -< slowBusses
 
     -- Peripherals
-    localCounter <- timeWb Nothing -< timeBus
+    _cnt <- timeWb (Just localCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
 
     -- Output
-    idC -< (localCounter, uartOut, restBusses)
+    idC -< (uartOut, restBusses)
+ where
+  prefixes :: Vec (NmuExternalBusses + 2) (Unsigned (PrefixWidth (NmuExternalBusses + 2)))
+  prefixes = iterate (SNat @(NmuExternalBusses + 2)) succ 0
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
+calendarConfig :: CalendarConfig NmuRemBusWidthSlow (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)
@@ -129,11 +146,7 @@ calendarConfig =
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-muConfig ::
-  ( KnownNat n
-  , PrefixWidth (n + NmuInternalBusses) <= 30
-  ) =>
-  PeConfig (n + NmuInternalBusses)
+muConfig :: PeConfig NmuFastBusses
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
@@ -186,17 +199,19 @@ core ::
     , "MU_UART" ::: Df Bittide (BitVector 8)
     , "CC_UART" ::: Df Bittide (BitVector 8)
     , "MU_TRANSCEIVER"
-        ::: (BitboneMm Bittide NmuRemBusWidth)
+        ::: (BitboneMm Bittide NmuRemBusWidthSlow)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
-    let maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+    let
+      maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
+      localCounter = counterSource d3 bitClk bitRst
 
     -- Start management unit
-    (Fwd lc, muUartBytesBittide, muWbAll) <-
-      withBittideClockResetEnable managementUnit maybeDna -< (muMm, muJtag)
+    (muUartBytesBittide, muWbAll) <-
+      withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     [ (peWbMM, peWb)
@@ -220,7 +235,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
            )
         -< ebWbs
 
-    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn lc <$> rxs1) -< ugnWbs
+    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn localCounter <$> rxs1) -< ugnWbs
 
     rxs3 <- Vec.append -< ([Fwd peOut], rxs2)
     (switchOut, _calEntry) <-
@@ -233,7 +248,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     --      use it until the DNA is actually read out.
     (Fwd peOut, _peState) <-
       withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount))
-        -< (peWbMM, (Fwd lc, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
+        -< (peWbMM, (Fwd localCounter, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
     -- Stop ASIC processing element
 
     -- Start clock control
@@ -287,7 +302,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     idC
       -< ( Fwd swCcOut1
-         , Fwd lc
+         , Fwd localCounter
          , txs
          , sync
          , muUartBytesBittide
