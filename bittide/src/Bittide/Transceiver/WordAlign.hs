@@ -2,16 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
--- or by any other shift (or none at all!). This module provides utilities to end
--- up with a word aligned stream. The basic idea is that, while \"booting\" the
--- connection the MSB of each byte is reserved, where an asserted MSB indicates
--- the start of a word. The other bits can be used to detect a valid connection
--- through PRBS streams.
---
--- TODO: Remove this module in favor of retry logic. That is, we can keep
---       resetting the transceivers until they're aligned. Its unclear how exactly
---       this should work though.
-
 {- | Fundamentally, our transceivers are sending over single bits. Through transceiver
 IP we can send words (e.g., 32 bits) on one end and receive words on the other
 end. The IP makes sure that any received are byte aligned. That means that a
@@ -26,6 +16,12 @@ stream:
 > -----------------------------------------------------------------
 > ... | A1 A0 .. .. | A3 A2 B1 B0 | C1 C0 B3 B2 | .. .. C3 C2 | ...
 > -----------------------------------------------------------------
+
+or by any other shift (or none at all!). This module provides utilities to end
+up with a word aligned stream. The basic idea is that, while \"booting\" the
+connection the MSB of each byte is reserved, where an asserted MSB indicates
+the start of a word. The other bits can be used to detect a valid connection
+through PRBS streams.
 -}
 module Bittide.Transceiver.WordAlign (
   alignBytesFromMsbs,
