@@ -9,7 +9,7 @@ import Protocols
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
-import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
+import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
@@ -179,7 +179,7 @@ core ::
     , CSignal Bittide (BitVector LinkCount)
     , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     )
-    ( CSignal Bittide (CallistoResult LinkCount)
+    ( CSignal Bittide (Maybe SpeedChange)
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
@@ -265,25 +265,19 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< (ccUartBus, Fwd (pure Nothing))
     -- Stop clock control
 
-    let swCcOut1 =
-          if clashSimulation
-            then
-              let
-                -- Should all clock control steps be run in simulation?
-                -- False means that clock control will always immediately be done.
-                simulateCc = False
-               in
-                if simulateCc
-                  then swCcOut0
-                  else
-                    pure
-                      $ CallistoResult
-                        { maybeSpeedChange = Nothing
-                        , stability = repeat (Stability{stable = True, settled = True})
-                        , allStable = True
-                        , allSettled = True
-                        }
-            else swCcOut0
+    let
+      swCcOut1 =
+        if clashSimulation
+          then
+            let
+              -- Should all clock control steps be run in simulation?
+              -- False means that clock control will always immediately be done.
+              simulateCc = False
+             in
+              if simulateCc
+                then swCcOut0
+                else pure Nothing
+          else swCcOut0
 
     idC
       -< ( Fwd swCcOut1
