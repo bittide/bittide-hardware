@@ -45,7 +45,10 @@ impl LinkStartup {
     ) {
         self.state = match self.state {
             UgnCaptureState::WaitForChannelNegotiation => {
-                if transceivers.handshakes_done(channel).unwrap_or(false) {
+                if transceivers
+                    .handshakes_done(channel)
+                    .expect("Channel out of range")
+                {
                     transceivers.set_transmit_starts(channel, true);
                     UgnCaptureState::WaitForNeighborRxReady
                 } else {
@@ -55,7 +58,7 @@ impl LinkStartup {
             UgnCaptureState::WaitForNeighborRxReady => {
                 if transceivers
                     .neighbor_transmit_readys(channel)
-                    .unwrap_or(false)
+                    .expect("Channel out of range")
                 {
                     UgnCaptureState::SwitchUserMode
                 } else {
