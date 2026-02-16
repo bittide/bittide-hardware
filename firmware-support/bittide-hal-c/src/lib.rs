@@ -57,7 +57,7 @@
 //!         .include(&hal_c_include) // Add HAL include directory
 //!         .flag("--target=riscv32-unknown-none-elf") // RISC-V target
 //!         .flag("-march=rv32imc")
-//!         .flag("-mabi=ilp32")
+//!         .flag("-mabi=ilp32f")
 //!         .flag("-Os") // Optimize for size
 //!         .flag("-ffreestanding")
 //!         .flag("-nostdlib")

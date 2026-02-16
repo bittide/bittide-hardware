@@ -19,3 +19,7 @@ bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+
+[package.metadata.riscv-extensions]
+required = ["C", "M"]
+forbidden = ["F", "D"]

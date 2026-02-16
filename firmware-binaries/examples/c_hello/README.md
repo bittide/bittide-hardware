@@ -95,7 +95,7 @@ cc::Build::new()
     .file("src/utils.c")
     .file("src/drivers.c")
     .flag("-march=rv32imc")
-    .flag("-mabi=ilp32")
+    .flag("-mabi=ilp32f")
     .flag("-Os")
     .compile("c_main");
 ```

@@ -6,6 +6,7 @@ use memmap_generate::build_utils::standard_memmap_build;
 
 fn main() {
     standard_memmap_build("SoftUgnDemoGppe.json", "DataMemory", "InstructionMemory");
+
     // Use C headers from auto-generated bittide-hal-c
     let hal_c_headers = bittide_hal_c::generated_dir();
 
@@ -26,7 +27,7 @@ fn main() {
         .include(&hal_c_include) // Add HAL include directory
         .flag("--target=riscv32-unknown-none-elf") // RISC-V target
         .flag("-march=rv32imc")
-        .flag("-mabi=ilp32")
+        .flag("-mabi=ilp32f")
         .flag("-O2") // Optimize for execution speed
         .flag("-ffreestanding")
         .flag("-nostdlib")

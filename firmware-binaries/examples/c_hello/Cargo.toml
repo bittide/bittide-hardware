@@ -16,3 +16,7 @@ riscv-rt = "0.11.0"
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
 bittide-hal-c = { path = "../../../firmware-support/bittide-hal-c" }
 cc = "1.2"
+
+[package.metadata.riscv-extensions]
+required = []
+forbidden = []

@@ -23,3 +23,7 @@ features = ["max_level_trace", "release_max_level_info"]
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+
+[package.metadata.riscv-extensions]
+required = []
+forbidden = []

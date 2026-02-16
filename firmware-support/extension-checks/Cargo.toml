@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "extension-checks"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "extension-checker"
+path = "src/main.rs"
+
+[dependencies]
+memmap-generate = { path = "../memmap-generate" }
+toml = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"

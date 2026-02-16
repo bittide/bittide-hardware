@@ -19,3 +19,7 @@ ufmt = "0.2.0"
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+
+[package.metadata.riscv-extensions]
+required = ["C", "M"]
+forbidden = ["F", "D"]

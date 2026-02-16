@@ -18,3 +18,7 @@ ufmt = "0.2.0"
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
 bittide-hal-c = { path = "../../../firmware-support/bittide-hal-c" }
 cc = "1.0"
+
+[package.metadata.riscv-extensions]
+required = []
+forbidden = []

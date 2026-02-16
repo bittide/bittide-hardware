@@ -9,6 +9,7 @@ members = [
   "bittide-macros",
   "bittide-sys",
   "gdb-trace",
+  "extension-checks",
   "memmap-generate",
 ]
 

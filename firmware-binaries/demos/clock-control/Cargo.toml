@@ -20,3 +20,7 @@ itertools = { version = "0.14.0", default-features = false }
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+
+[package.metadata.riscv-extensions]
+required = ["M", "C", "F"]
+forbidden = ["D"]

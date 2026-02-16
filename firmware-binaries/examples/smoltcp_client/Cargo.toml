@@ -40,3 +40,7 @@ features = ["medium-ethernet", "proto-ipv4", "socket-tcp", "socket-dhcpv4"]
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+
+[package.metadata.riscv-extensions]
+required = ["C", "M"]
+forbidden = ["F", "D"]

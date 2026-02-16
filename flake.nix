@@ -44,7 +44,20 @@
               };
             });
         };
-        overlays = [ (import rust-overlay) hls-overlay ];
+        cargo-show-asm-overlay = final: prev: {
+          cargo-show-asm = prev.cargo-show-asm.override {
+            rustPlatform = prev.rustPlatform // {
+              buildRustPackage = args:
+                prev.rustPlatform.buildRustPackage (args // {
+                  buildFeatures =
+                    (args.buildFeatures or [])
+                    ++ [ "disasm" ];
+                });
+            };
+          };
+        };
+
+        overlays = [ (import rust-overlay) hls-overlay cargo-show-asm-overlay ];
 
         pkgs = import nixpkgs {
           inherit system overlays;
@@ -97,6 +110,7 @@
             pkgs.poppler_utils
 
             (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
+            pkgs.cargo-show-asm
 
             # For Cabal to clone git repos
             pkgs.git

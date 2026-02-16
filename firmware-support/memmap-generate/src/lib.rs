@@ -13,6 +13,7 @@ pub mod deprecated;
 pub mod format;
 
 pub mod build_utils;
+pub mod riscv_decode;
 
 use std::io::Write;
 
