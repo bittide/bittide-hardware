@@ -261,13 +261,39 @@ driver testName targets = do
           overflow <- Gdb.readLe gdb (getEbRegister "overflow")
           pure (underflow, overflow)
 
+        readEbMinMaxDataCounts :: Int -> IO (Signed 8, Signed 8)
+        readEbMinMaxDataCounts linkNr = do
+          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
+          minDataCount <- Gdb.readLe gdb (getEbRegister "min_data_count_seen")
+          maxDataCount <- Gdb.readLe gdb (getEbRegister "max_data_count_seen")
+          pure (minDataCount, maxDataCount)
+
+        readEbTimestamps :: Int -> IO (Unsigned 64, Unsigned 64)
+        readEbTimestamps linkNr = do
+          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
+          underflowTimestamp <- Gdb.readLe gdb (getEbRegister "underflow_timestamp")
+          overflowTimestamp <- Gdb.readLe gdb (getEbRegister "overflow_timestamp")
+          pure (underflowTimestamp, overflowTimestamp)
+
       flags <- mapM readEbFlag [0 .. natToNum @(LinkCount - 1)]
+      minMaxDataCounts <- mapM readEbMinMaxDataCounts [0 .. natToNum @(LinkCount - 1)]
+      timestamps <- mapM readEbTimestamps [0 .. natToNum @(LinkCount - 1)]
       let allClear = all (== (False, False)) flags
       liftIO $ unless allClear $ do
         let deviceId = d.deviceId
         -- Don't error here so all devices are checked
         putStrLn
-          [i|[ERROR] Some elastic buffer under/overflowed on device #{deviceId} (under,over): #{flags}|]
+          [i|[ERROR] Some elastic buffer under/overflowed on device #{deviceId}:|]
+        putStrLn
+          [i|  linkNr, unf, ovf, unfTimestamp, ovfTimestamp, minDataCount, maxDataCount|]
+        forM_ (L.zip4 [0 :: Int ..] flags timestamps minMaxDataCounts)
+          $ \( linkNr
+              , (underflow, overflow)
+              , (underflowTimestamp, overflowTimestamp)
+              , (minDataCount, maxDataCount)
+              ) -> do
+              putStrLn
+                [i|  #{linkNr}: #{underflow}, #{overflow}, #{underflowTimestamp}, #{overflowTimestamp}, #{minDataCount}, #{maxDataCount}|]
       pure allClear
 
     muWriteCfg ::
@@ -459,9 +485,11 @@ driver testName targets = do
               then putStrLn "Last PE buffer has expected contents"
               else putStrLn "[ERROR] Last PE buffer did NOT have expected contents"
 
+          -- Check the elastic buffer flags before the CC CPU is interrupted.
           ebFlagsClears <- liftIO $ zipWithConcurrently checkElasticBufferFlags targets muGdbs
-          unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"
 
           liftIO goDumpCcSamples
+
+          unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"
 
           pure bufferExit

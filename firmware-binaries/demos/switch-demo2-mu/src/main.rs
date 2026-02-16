@@ -34,7 +34,10 @@ fn main() -> ! {
     // Channels should be enabled by boot program, so we can simply wait here
     uwriteln!(uart, "Waiting for channel negotiations..").unwrap();
     for channel in 0..Transceivers::HANDSHAKES_DONE_LEN {
-        while !transceivers.handshakes_done(channel).unwrap_or(false) {}
+        while !transceivers
+            .handshakes_done(channel)
+            .expect("Channel out of range")
+        {}
         uwriteln!(uart, "Channel {} negotiation done.", channel).unwrap();
         uwriteln!(uart, "{:?}", transceivers.statistics(channel)).unwrap();
     }

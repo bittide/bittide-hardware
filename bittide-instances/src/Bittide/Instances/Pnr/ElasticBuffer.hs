@@ -20,6 +20,8 @@ import Bittide.ElasticBuffer (
  )
 import Bittide.SharedTypes (Bytes, withBittideByteOrder)
 
+import qualified Clash.Explicit.Prelude as E
+
 createDomain vXilinxSystem{vPeriod = hzToPeriod 201e6, vName = "Fast"}
 createDomain vXilinxSystem{vPeriod = hzToPeriod 199e6, vName = "Slow"}
 
@@ -30,17 +32,18 @@ elasticBufferWb ::
   "wbIn" ::: Signal Fast (WishboneM2S 30 4 (Bytes 4)) ->
   "writeData" ::: Signal Slow (Unsigned 64) ->
   ( "wbOut" ::: Signal Fast (WishboneS2M (Bytes 4))
-  , "dataCount" ::: Signal Fast (RelDataCount 6)
+  , "dataCount" ::: Signal Fast (RelDataCount 5)
   , "underflow" ::: Signal Fast Underflow
   , "overflow" ::: Signal Fast Overflow
   , "readData" ::: Signal Fast (ElasticBufferData (Unsigned 64))
   )
 elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underflow, overflow, readData)
  where
+  localCounter = E.register clkRead rstRead enableGen 0 (localCounter + 1)
   ((SimOnly _mm, wbOut), (dataCount, underflow, overflow, readData)) =
     withBittideByteOrder
       $ toSignals
-        (xilinxElasticBufferWb clkRead rstRead d6 clkWrite wdata)
+        (xilinxElasticBufferWb clkRead rstRead d5 localCounter clkWrite wdata)
         (((), wbIn), ((), (), (), ()))
 
 makeTopEntity 'elasticBufferWb

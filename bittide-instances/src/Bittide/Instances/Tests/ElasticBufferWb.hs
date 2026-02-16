@@ -52,7 +52,7 @@ dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enable
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
 
   -- Timer for delays instead of NOP loops
-  _localCounter <- timeWb Nothing -< (mmTime, timeBus)
+  Fwd localCounter <- timeWb Nothing -< (mmTime, timeBus)
 
   -- Elastic buffer with Wishbone control and monitoring
   -- We use the same clock for both read and write domains for simplicity in testing
@@ -60,7 +60,8 @@ dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enable
     xilinxElasticBufferWb
       clockGen
       (resetGenN d2)
-      d6
+      d5
+      localCounter
       clockGen
       (pure () :: Signal XilinxSystem ())
       -< ebWbBus

@@ -262,7 +262,7 @@ fn test_underflow_flag_sticky(
     }
 
     // Action 3: Clear underflow flag using the HAL convenience function
-    elastic_buffer.clear_underflow();
+    elastic_buffer.set_clear_status_registers(true);
 
     let underflow_after_clear = elastic_buffer.underflow();
     uwriteln!(uart, "  After Clear: underflow={}", underflow_after_clear).unwrap();
@@ -357,7 +357,7 @@ fn test_overflow_flag_sticky(
     }
 
     // Action 3: Clear overflow flag using the HAL convenience function
-    elastic_buffer.clear_overflow();
+    elastic_buffer.set_clear_status_registers(true);
     let overflow_after_clear = elastic_buffer.overflow();
     uwriteln!(uart, "  After Clear: overflow={}", overflow_after_clear).unwrap();
 

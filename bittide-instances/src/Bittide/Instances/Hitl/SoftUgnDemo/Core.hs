@@ -31,14 +31,14 @@ import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
-import Protocols.Wishbone.Extra (delayWishbone)
+import Protocols.Wishbone.Extra (delayWishbone, delayWishboneMm)
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
-type FifoSize = 6 -- = 2^6 = 64
+type FifoSize = 5 -- = 2^5 = 32
 
 {- Internal busses:
     - Instruction memory
@@ -156,8 +156,9 @@ gppe ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
-  -- | DNA value
+  -- | External counter
   Signal dom (Unsigned 64) ->
+  -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
@@ -254,9 +255,11 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 bitClk
                 bitRst
                 (SNat @FifoSize)
+                localCounter
               <$> rxClocks
               <*> rxs0
            )
+        <| repeatC (withBittideClockResetEnable delayWishboneMm)
         -< ebWbs
 
     -- Use of `dflipflop` to add pipelining should be replaced by
