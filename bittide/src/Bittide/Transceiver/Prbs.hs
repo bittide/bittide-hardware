@@ -68,6 +68,7 @@ generator clk rst ena Config =
       o = newBit +>>. bv
       tap = SNat @(polyLength - polyTap)
       newBit = bitStep bv tap
+{-# OPAQUE generator #-}
 
 -- | PRBS checker, see module documentation.
 checker ::
@@ -100,6 +101,7 @@ checker clk rst ena Config = mealy clk rst ena go (maxBound, maxBound)
       o = newBit +>>. bv
       tap = SNat @(polyLength - polyTap)
       bitErr = xor newBit (bitStep bv tap)
+{-# OPAQUE checker #-}
 
 bitStep ::
   ( BitSize a ~ ((1 + n) + i)
