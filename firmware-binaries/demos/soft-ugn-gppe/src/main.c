@@ -42,8 +42,12 @@ ScatterUnit su;
 #define INVALIDATE_DELAY BUFFER_SIZE
 
 // Initial offsets for scheduling events
-#define STARTING_DELAY_WRITE (BUFFER_SIZE * 1000)
-#define STARTING_DELAY_READ (BUFFER_SIZE * 1000)
+// Since RECEIVE_PERIOD is longer than SEND_PERIOD, we schedule the start of the
+// first SEND event a couple of RECEIVE_PERIODs after the first RECEIVE event to
+// increase overlap
+#define STARTING_DELAY_WRITE                                                   \
+  (125000 * 100 + (2 * RECEIVE_PERIOD))    // 100 ms at 125MHz + some delay
+#define STARTING_DELAY_READ (125000 * 100) // 100 ms at 125MHz
 
 // ============================================================================
 // Main Entry Point
