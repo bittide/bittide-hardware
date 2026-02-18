@@ -45,6 +45,7 @@ import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Gdb
+import qualified Language.Haskell.TH as TH
 import qualified System.Timeout.Extra as T
 
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
@@ -74,9 +75,19 @@ showHex32 a = "0x" <> padding <> hexStr
   hexStr = showHex a ""
   padding = L.replicate (8 - L.length hexStr) '0'
 
-muSwitchDemoPeBuffer :: (HasCallStack, Num a, Show a) => a
-muSwitchDemoPeBuffer = getPathAddress MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
-
+muSwitchDemoPeBuffer :: Integer
+muSwitchDemoPeBuffer =
+  $( do
+      val <-
+        TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
+      lift val
+   )
+sampleMemoryBase :: Integer
+sampleMemoryBase =
+  $( do
+      val <- TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
+      lift val
+   )
 dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
@@ -97,8 +108,6 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
       dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * bytesPerSample
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
-
-  sampleMemoryBase = getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
 
 initGdb ::
@@ -211,10 +220,10 @@ driver testName targets = do
 
         readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
         readUgnMmio linkNr = do
-          let getUgnRegister = getPathAddress MemoryMaps.mu . captureUgnPrefixed linkNr
-          localCounter <- Gdb.readLe gdb (getUgnRegister "local_counter")
-          remoteCounter <- Gdb.readLe gdb (getUgnRegister "remote_counter")
-          delta <- Gdb.readLe gdb (getUgnRegister "elastic_buffer_delta")
+          let getUgnRegister = expectRight . getPathAddress MemoryMaps.mu . captureUgnPrefixed linkNr
+          counterAddresses <- mapM getUgnRegister ["local_counter", "remote_counter"]
+          [localCounter, remoteCounter] <- mapM (Gdb.readLe gdb) counterAddresses
+          delta <- Gdb.readLe gdb =<< getUgnRegister "elastic_buffer_delta"
           pure (localCounter, remoteCounter, delta)
 
         -- Adjust the local counter for the frames added/removed from the elastic
@@ -238,14 +247,16 @@ driver testName targets = do
         bufferSize :: Integer
         bufferSize = (snatToNum (SNat @FpgaCount)) * 3
       output <-
-        Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 @Integer muSwitchDemoPeBuffer}|]
+        Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 muSwitchDemoPeBuffer}|]
       putStrLn [i|PE buffer readout:\n#{output}|]
 
     muGetCurrentTime :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
-      Gdb.writeLe gdb (getPathAddress @Integer MemoryMaps.mu ["0", "Timer", "command"]) Capture
-      Gdb.readLe gdb (getPathAddress @Integer MemoryMaps.mu ["0", "Timer", "scratchpad"])
+      commandAddress <- expectRight $ getPathAddress MemoryMaps.mu ["0", "Timer", "command"]
+      scratchAddress <- expectRight $ getPathAddress MemoryMaps.mu ["0", "Timer", "scratchpad"]
+      Gdb.writeLe gdb commandAddress Capture
+      Gdb.readLe gdb scratchAddress
 
     -- \| Read the elastic buffer under and overflow flags and verify they are clear
     checkElasticBufferFlags :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO Bool
@@ -253,26 +264,24 @@ driver testName targets = do
       let
         ebPrefixed :: Int -> String -> [String]
         ebPrefixed linkNr reg = ["0", "ElasticBuffer" <> show linkNr, reg]
+        getEbRegister linkNr = expectRight . getPathAddress MemoryMaps.mu . ebPrefixed linkNr
 
         readEbFlag :: Int -> IO (Bool, Bool)
         readEbFlag linkNr = do
-          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
-          underflow <- Gdb.readLe gdb (getEbRegister "underflow")
-          overflow <- Gdb.readLe gdb (getEbRegister "overflow")
+          addresses <- mapM (getEbRegister linkNr) ["underflow", "overflow"]
+          [underflow, overflow] <- mapM (Gdb.readLe gdb) addresses
           pure (underflow, overflow)
 
         readEbMinMaxDataCounts :: Int -> IO (Signed 8, Signed 8)
         readEbMinMaxDataCounts linkNr = do
-          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
-          minDataCount <- Gdb.readLe gdb (getEbRegister "min_data_count_seen")
-          maxDataCount <- Gdb.readLe gdb (getEbRegister "max_data_count_seen")
+          addresses <- mapM (getEbRegister linkNr) ["min_data_count_seen", "max_data_count_seen"]
+          [minDataCount, maxDataCount] <- mapM (Gdb.readLe gdb) addresses
           pure (minDataCount, maxDataCount)
 
         readEbTimestamps :: Int -> IO (Unsigned 64, Unsigned 64)
         readEbTimestamps linkNr = do
-          let getEbRegister = getPathAddress MemoryMaps.mu . ebPrefixed linkNr
-          underflowTimestamp <- Gdb.readLe gdb (getEbRegister "underflow_timestamp")
-          overflowTimestamp <- Gdb.readLe gdb (getEbRegister "overflow_timestamp")
+          addresses <- mapM (getEbRegister linkNr) ["underflow_timestamp", "overflow_timestamp"]
+          [underflowTimestamp, overflowTimestamp] <- mapM (Gdb.readLe gdb) addresses
           pure (underflowTimestamp, overflowTimestamp)
 
       flags <- mapM readEbFlag [0 .. natToNum @(LinkCount - 1)]
@@ -303,29 +312,15 @@ driver testName targets = do
       Calc.CyclePeConfig (Unsigned 64) (Index 9) ->
       VivadoM ()
     muWriteCfg target@(_, d) gdb cfg = do
-      let
-        sdpePrefixed :: String -> [String]
-        sdpePrefixed reg = ["0", "SwitchDemoPE", reg]
+      let getSdpeRegister reg = expectRight $ getPathAddress MemoryMaps.mu ["0", "SwitchDemoPE", reg]
 
       liftIO $ do
         muReadPeBuffer target gdb
         putStrLn $ "Writing config to device " <> d.deviceId
-        Gdb.writeLe @(Unsigned 64)
-          gdb
-          (getPathAddress MemoryMaps.mu (sdpePrefixed "read_start"))
-          cfg.startReadAt
-        Gdb.writeLe @(Unsigned 64)
-          gdb
-          (getPathAddress MemoryMaps.mu (sdpePrefixed "read_cycles"))
-          (numConvert cfg.readForN)
-        Gdb.writeLe @(Unsigned 64)
-          gdb
-          (getPathAddress MemoryMaps.mu (sdpePrefixed "write_start"))
-          cfg.startWriteAt
-        Gdb.writeLe @(Unsigned 64)
-          gdb
-          (getPathAddress MemoryMaps.mu (sdpePrefixed "write_cycles"))
-          (numConvert cfg.writeForN)
+        addresses <- mapM getSdpeRegister ["read_start", "read_cycles", "write_start", "write_cycles"]
+        let values = [cfg.startReadAt, numConvert cfg.readForN, cfg.startWriteAt, numConvert cfg.writeForN]
+        _ <- sequence $ L.zipWith (Gdb.writeLe gdb) addresses values
+        pure ()
 
     finalCheck ::
       (HasCallStack) =>
@@ -339,9 +334,8 @@ driver testName targets = do
         perDeviceCheck :: Gdb -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
-            headBaseAddr = muSwitchDemoPeBuffer
-            myBaseAddr = toInteger (headBaseAddr + 24 * (L.length gdbs - num - 1))
-            dnaBaseAddr = getPathAddress @Integer MemoryMaps.mu ["0", "Dna", "maybe_dna"]
+            myBaseAddr = toInteger (fromIntegral muSwitchDemoPeBuffer + 24 * (L.length gdbs - num - 1))
+          dnaBaseAddr <- expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "Dna", "maybe_dna"]
           myCounter <- Gdb.readLe @(Unsigned 64) headGdb myBaseAddr
           myDeviceDna <- Gdb.readLe @(Maybe (BitVector 96)) myGdb dnaBaseAddr
           headDeviceDna <- Gdb.readLe @(BitVector 96) headGdb (myBaseAddr + 0x08)

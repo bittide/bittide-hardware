@@ -5,12 +5,14 @@ module Bittide.Instances.Hitl.Utils.MemoryMap where
 
 import Prelude
 
-import Data.Bifunctor (Bifunctor (bimap))
-import Data.List (find)
+import Control.Monad (unless, when)
+import Data.Either.Extra (maybeToEither)
+import Data.List (unsnoc)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (
+  Address,
   DeviceDefinition (..),
   MemoryMap (..),
   Name (..),
@@ -29,11 +31,15 @@ import Protocols.MemoryMap.Check.AbsAddress (
   MemoryMapTreeAbsNorm,
   runMakeAbsolute,
  )
-import Text.Show.Pretty (ppShow)
 
 import qualified Data.Map.Strict as M
 
 type CanonicalTreeAbsNorm = MemoryMapTreeAnn (Maybe String, AbsNormData) 'Normalized
+
+bindLeft :: Either a b -> (a -> Either c b) -> Either c b
+bindLeft a fn = case a of
+  Right val -> return val
+  Left val -> fn val
 
 {- | Finds the address for a given path.
 
@@ -74,49 +80,82 @@ getPathAddress ::
   MemoryMap ->
   -- | The path to search for in the memory map
   [String] ->
-  a
-getPathAddress mm = traverseTree canonicalTree
+  Either String a
+getPathAddress mm pathWithName = do
+  (pfx, name) <- maybeToEither "Empty path given!" (unsnoc pathWithName)
+  children <- listChildren mm pfx
+  case filter (\(_, childName) -> childName == name) children of
+    [] -> Left [i|Prefix #{pfx} has no child #{name}|]
+    [(addr, _)] -> Right $ fromInteger addr
+    many -> error [i|This is a bug! Prefix #{pfx} has multiple children: #{snd <$> many}|]
+
+{- | Given a memorymap and a path, it returns a list af addresses and names of the children of that path.
+For devices it will return the addresses and names of all registers in the device.
+For interconnects it will return the addresses and names of all directly connected devices and interconnects.
+-}
+listChildren ::
+  (HasCallStack) =>
+  -- | Memory map to find the path in
+  MemoryMap ->
+  -- | The path to search for in the memory map
+  [String] ->
+  -- | A list of addresses and names of the children of the path
+  Either String [(Integer, String)]
+listChildren mm path = case (path, canonicalTree) of
+  ([], self@(AnnInterconnect (_, absData) _ _)) -> Right [(absData.absoluteAddr, getName self)]
+  ([], AnnDeviceInstance (oldName, absData) _ devName) -> Right [(absData.absoluteAddr, fromMaybe devName oldName)]
+  (nonEmptyPath, _) -> getChildren nonEmptyPath canonicalTree
  where
+  canonicalTree :: CanonicalTreeAbsNorm
   canonicalTree = canonicalizeMemoryMapTree mm
 
   showPathComponent :: PathComp -> String
   showPathComponent (PathName _ s) = s
   showPathComponent (PathUnnamed n) = show n
 
-  getTreeName :: (HasCallStack) => CanonicalTreeAbsNorm -> String
-  getTreeName (AnnInterconnect (_, absData) _ _) = showPathComponent (last absData.path)
-  getTreeName (AnnDeviceInstance _ _ name) = name
+  getName :: CanonicalTreeAbsNorm -> String
+  getName (AnnInterconnect (_, absData) _ _) = showPathComponent $ last absData.path
+  getName (AnnDeviceInstance _ _ devName) = devName
 
-  traverseTree :: (HasCallStack, Num a) => CanonicalTreeAbsNorm -> [String] -> a
-  traverseTree (AnnInterconnect _ _ _) [] = error "Empty path given!"
-  traverseTree (AnnInterconnect (_, absData) _ _) [name1] =
-    let name0 = showPathComponent (last absData.path)
-     in if name0 /= name1
-          then error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
-          else fromIntegral absData.absoluteAddr
-  traverseTree
-    (AnnInterconnect (_, absData) _ (fmap snd -> components))
-    (name1 : next : t) =
-      let name0 = showPathComponent (last absData.path)
-       in if name0 == name1
-            then case find (\tree -> next == getTreeName tree) components of
-              Just comp -> traverseTree comp t
-              Nothing -> error [i|Failed to find device #{next} in interconnect.|]
-            else error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
-  traverseTree (AnnDeviceInstance (_, absData) _ _) [] = fromIntegral absData.absoluteAddr
-  traverseTree (AnnDeviceInstance _ _ name) (a : b : c) =
-    error
-      [i|Cannot index into #{name} farther than #{a}, but path continues: #{ppShow $ b : c}|]
-  traverseTree (AnnDeviceInstance (oldName, absData) _ devName) [regName] =
-    case find (\regNL -> regName == regNL.name.name) devDef.registers of
-      Just regNL -> fromIntegral (absData.absoluteAddr + regNL.value.address)
-      Nothing -> error [i|Failed to find register #{regName} in device #{devName}|]
+  getAbsRegs :: Address -> NamedLoc Register -> (Integer, String)
+  getAbsRegs baseAddress register =
+    (baseAddress + register.value.address, register.name.name)
+
+  returnInterconnectChildren :: CanonicalTreeAbsNorm -> (Integer, String)
+  returnInterconnectChildren node = (addr, getName node)
    where
-    devDef :: DeviceDefinition
-    devDef =
-      case mm.deviceDefs M.!? fromMaybe devName oldName of
-        Just d -> d
-        Nothing -> error [i|Device definition for #{devName} not found in memory map.|]
+    addr = case node of
+      (AnnInterconnect (_, absData) _ _) -> absData.absoluteAddr
+      (AnnDeviceInstance (_, absData) _ _) -> absData.absoluteAddr
+
+  getChildren ::
+    (HasCallStack) =>
+    [String] ->
+    CanonicalTreeAbsNorm ->
+    Either String [(Integer, String)]
+  getChildren [] ann = Left [i|This is a bug! Empty path on component #{ann}|]
+  getChildren (lookFor : rest) (AnnInterconnect (_, absData) _ successors) = do
+    when (lookFor /= interconnectName) $
+      Left [i|Interconnect name mismatch! Found #{interconnectName}, expected #{lookFor}|]
+    if null rest
+      then Right $ returnInterconnectChildren . snd <$> successors
+      else trySuccessors $ snd <$> successors
+   where
+    interconnectName = showPathComponent $ last absData.path
+    trySuccessors :: [CanonicalTreeAbsNorm] -> Either String [(Integer, String)]
+    trySuccessors [] = Left [i|Matching section #{rest} on component #{lookFor} in #{path} failed.|]
+    trySuccessors (ann : restSucc) = getChildren rest ann `bindLeft` (const $ trySuccessors restSucc)
+  getChildren (lookFor : rest) (AnnDeviceInstance (oldName, absData) _ devName) = do
+    when (lookFor /= devName) $
+      Left [i|Device name mismatch! Found #{devName}, expected #{lookFor}|]
+    unless (null rest) $
+      Left [i|Path #{path} attempts to find children of a register in device #{devName}|]
+    let deviceName = fromMaybe devName oldName
+    deviceDef <-
+      maybeToEither
+        [i|Device definition for #{deviceName} not find in memory map.|]
+        $ mm.deviceDefs M.!? deviceName
+    return $ getAbsRegs absData.absoluteAddr <$> deviceDef.registers
 
 canonicalizeMemoryMapTree :: (HasCallStack) => MemoryMap -> CanonicalTreeAbsNorm
 canonicalizeMemoryMapTree mm = canonicalizeDevNames annAbsTree0
@@ -148,11 +187,8 @@ canonicalizeMemoryMapTree mm = canonicalizeDevNames annAbsTree0
       [(Integer, MemoryMapTreeAbsNorm)] ->
       [(Integer, CanonicalTreeAbsNorm)]
     doCanonicalization _ [] = []
-    doCanonicalization counts ((addr, AnnInterconnect ann1 srcLoc1 subtree) : t) =
-      ( addr
-      , AnnInterconnect (Nothing, ann1) srcLoc1 (bimap id canonicalizeDevNames <$> subtree)
-      )
-        : doCanonicalization counts t
+    doCanonicalization counts ((addr, interconnect@(AnnInterconnect _ _ _)) : t) =
+      (addr, canonicalizeDevNames interconnect) : doCanonicalization counts t
     doCanonicalization counts0 ((addr, AnnDeviceInstance ann1 srcLoc1 devName0) : t) =
       (addr, AnnDeviceInstance (extraAnn, ann1) srcLoc1 devName1) : doCanonicalization counts1 t
      where
