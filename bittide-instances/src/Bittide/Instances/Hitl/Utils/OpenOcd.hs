@@ -115,7 +115,7 @@ initOpenOcd args optionalArgs = do
 
   let
     ocdProcName = "OpenOCD (" <> args.deviceInfo.deviceId <> ")"
-    ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
+    ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 20_000_000)
 
   return $ OcdInitData{log = output, handles = ocd, cleanup = ocdClean1}
 
