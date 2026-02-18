@@ -10,6 +10,7 @@ import spinal.lib.com.jtag.Jtag
 import spinal.lib.cpu.riscv.debug._
 import vexriscv.plugin._
 import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
+import vexriscv.ip.{DataCacheConfig}
 
 object Riscv32imc3 extends App {
   def cpu() : VexRiscv = {
@@ -24,9 +25,18 @@ object Riscv32imc3 extends App {
           compressedGen = true // C extension
         ),
 
-        new DBusSimplePlugin(
-          catchAddressMisaligned = true,
-          catchAccessFault = true
+        new DBusCachedPlugin(
+          config = new DataCacheConfig(
+            cacheSize        = 8,
+            bytePerLine      = 8,
+            wayCount         = 1,
+            addressWidth     = 32,
+            cpuDataWidth     = 32,
+            memDataWidth     = 32,
+            catchAccessError = true,
+            catchIllegal     = true,
+            catchUnaligned   = true
+          )
         ),
 
         new StaticMemoryTranslatorPlugin(
@@ -100,7 +110,10 @@ object Riscv32imc3 extends App {
           plugin.dBus.setAsDirectionLess()
           master(plugin.dBus.toWishbone()).setName("dBusWishbone")
         }
-
+        case plugin: DBusCachedPlugin => {
+          plugin.dBus.setAsDirectionLess()
+          master(plugin.dBus.toWishbone()).setName("dBusWishbone")
+        }
         case _ =>
       }
     }
