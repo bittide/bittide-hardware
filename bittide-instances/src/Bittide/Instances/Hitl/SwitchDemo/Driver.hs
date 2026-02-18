@@ -216,7 +216,7 @@ driver testName targets = do
     muGetUgns (_, d) gdb = do
       let
         captureUgnPrefixed :: Int -> String -> [String]
-        captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
+        captureUgnPrefixed linkNr reg = ["0", "3", "CaptureUgn" <> show linkNr, reg]
 
         readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
         readUgnMmio linkNr = do
