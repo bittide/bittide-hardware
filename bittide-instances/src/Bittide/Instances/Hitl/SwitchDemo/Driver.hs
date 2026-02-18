@@ -376,6 +376,7 @@ driver testName targets = do
 
   let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
   brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+    picocomOuts <- liftIO <$> sequence $ L.map (\x -> Picocom.handleToChan x.stdoutHandle) picocoms
     -- Start OpenOCD that will program the boot CPU
     brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
       let bootTapInfos = parseBootTapInfo <$> initOcdsData
@@ -387,9 +388,9 @@ driver testName targets = do
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
-          $ forConcurrently_ picocoms
-          $ \pico ->
-            waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
+          $ forConcurrently_ picocomOuts
+          $ \picoOut ->
+            waitForLineChan picoOut "[BT] Going into infinite loop.."
 
     let
       optionalInitArgs = L.repeat def
@@ -431,9 +432,9 @@ driver testName targets = do
               "Waiting for captured UGNs"
               60_000_000
               goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "[MU] All UGNs captured"
+            $ forConcurrently_ picocomOuts
+            $ \picoOut ->
+              waitForLineChan picoOut "[MU] All UGNs captured"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt muGdbs

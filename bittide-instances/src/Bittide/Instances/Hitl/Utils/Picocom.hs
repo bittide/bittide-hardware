@@ -9,9 +9,13 @@ import Prelude
 
 import Paths_bittide_instances
 
+import Control.Concurrent (forkIO)
+import Control.Concurrent.Chan
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Data.ByteString (ByteString, hGetSome)
 import Data.Maybe (fromJust)
+import GHC.IO.Handle (Handle)
 import System.Posix.Env (getEnvironment)
 import System.Process
 
@@ -93,6 +97,17 @@ startWithLogging ::
   IO (ProcessHandles, IO ())
 startWithLogging stdStreams devPath stdoutPath stderrPath =
   startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath []
+
+handleToChan :: Handle -> IO (Chan ByteString)
+handleToChan handle = do
+  chan <- newChan
+  _ <- forkIO (readHandle chan)
+  pure chan
+ where
+  readHandle chan = do
+    bytes <- hGetSome handle 4096
+    writeChan chan bytes
+    readHandle chan
 
 {- | Starts Picocom with the given device path, paths for logging stdout and stderr and
 extra environment variables.

@@ -7,7 +7,8 @@ module Project.Handle where
 
 import Prelude hiding (filter)
 
-import Data.ByteString (filter, unpack)
+import Control.Concurrent.Chan
+import Data.ByteString (ByteString, filter, unpack)
 import Data.ByteString.Char8 (hGetLine)
 import Data.ByteString.Internal (w2c)
 import Data.Word8 (isAscii, isControl)
@@ -35,24 +36,29 @@ expectLine_ h f = do
   result <- expectLine h f
   assertEither result
 
+expectLineChan_ :: (HasCallStack) => Chan ByteString -> (String -> Filter) -> Assertion
+expectLineChan_ c f = do
+  result <- expectLineChan c f
+  assertEither result
+
 {- | Utility function that reads lines from a handle, and applies a filter to
 each line. If the filter returns 'Continue', the function will continue
 reading lines. If the filter returns @Stop (Right ())@, the function will return
 successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
 the function will fail with the given message, along with a log of all processed lines.
 -}
-expectLine ::
-  (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
-expectLine = expectLine' []
+expectLineGeneric ::
+  (HasCallStack) => a -> (a -> IO ByteString) -> (String -> Filter) -> IO (Either String [String])
+expectLineGeneric = expectLine' []
  where
-  expectLine' acc h f = do
-    byteLine0 <- hGetLine h
+  expectLine' acc h r f = do
+    byteLine0 <- r h
     let
       byteLine1 = filter (\c -> isAscii c && not (isControl c)) byteLine0
       line = w2c <$> unpack byteLine1
       trimmed = trimEnd line
       acc' = acc <> [line]
-      cont = expectLine' acc' h f
+      cont = expectLine' acc' h r f
     if null trimmed
       then cont
       else case f trimmed of
@@ -62,6 +68,14 @@ expectLine = expectLine' []
           putStrLn (unlines acc')
           pure (Left msg)
 
+expectLine ::
+  (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
+expectLine h = expectLineGeneric h hGetLine
+
+expectLineChan ::
+  (HasCallStack) => (Chan ByteString) -> (String -> Filter) -> IO (Either String [String])
+expectLineChan c = expectLineGeneric c readChan
+
 {- | Utility function that reads lines from a handle, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
 it will get stuck if the expected line does not appear. Only use in combination
@@ -70,6 +84,14 @@ with sensible time outs (also see 'main').
 waitForLine :: Handle -> String -> IO ()
 waitForLine h expected = do
   expectLine_ h $ \s ->
+    trace ("Wait for \"" <> expected <> "\", got: " <> s) $
+      if s == expected
+        then Stop (Right ())
+        else Continue
+
+waitForLineChan :: Chan ByteString -> String -> IO ()
+waitForLineChan c expected = do
+  expectLineChan_ c $ \s ->
     trace ("Wait for \"" <> expected <> "\", got: " <> s) $
       if s == expected
         then Stop (Right ())
