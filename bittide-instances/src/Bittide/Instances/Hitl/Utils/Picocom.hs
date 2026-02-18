@@ -99,13 +99,13 @@ startWithLogging stdStreams devPath stdoutPath stderrPath =
   startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath []
 
 handleToChan :: Handle -> IO (Chan ByteString)
-handleToChan handle = do
-  chan <- newChan
-  _ <- forkIO (readHandle chan)
-  pure chan
+handleToChan h = do
+  c <- newChan
+  _ <- forkIO (readHandle c)
+  pure c
  where
   readHandle chan = do
-    bytes <- hGetSome handle 4096
+    bytes <- hGetSome h 4096
     writeChan chan bytes
     readHandle chan
 
