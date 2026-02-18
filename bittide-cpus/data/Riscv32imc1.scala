@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022-2024 Google LLC
+// SPDX-FileCopyrightText: 2022 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -10,8 +10,6 @@ import spinal.lib.com.jtag.Jtag
 import spinal.lib.cpu.riscv.debug._
 import vexriscv.plugin._
 import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
-import vexriscv.ip.{DataCacheConfig}
-import vexriscv.ip.fpu.FpuParameter
 
 object Riscv32imc1 extends App {
   def cpu() : VexRiscv = {
@@ -26,36 +24,9 @@ object Riscv32imc1 extends App {
           compressedGen = true // C extension
         ),
 
-        // new DBusSimplePlugin(
-        //   catchAddressMisaligned = true,
-        //   catchAccessFault = true
-        // ),
-
-        new DBusCachedPlugin(
-          /*
-          config = new DataCacheConfig(
-            cacheSize        = 2048,
-            bytePerLine      = 32,
-            wayCount         = 1,
-            addressWidth     = 32,
-            cpuDataWidth     = 32,
-            memDataWidth     = 32,
-            catchAccessError = true,
-            catchIllegal     = true,
-            catchUnaligned   = true
-          )
-          */
-          config = new DataCacheConfig(
-            cacheSize        = 8,
-            bytePerLine      = 8,
-            wayCount         = 1,
-            addressWidth     = 32,
-            cpuDataWidth     = 32,
-            memDataWidth     = 32,
-            catchAccessError = true,
-            catchIllegal     = true,
-            catchUnaligned   = true
-          )
+        new DBusSimplePlugin(
+          catchAddressMisaligned = true,
+          catchAccessFault = true
         ),
 
         new StaticMemoryTranslatorPlugin(
@@ -85,13 +56,6 @@ object Riscv32imc1 extends App {
         // M extension
         new MulPlugin,
         new DivPlugin,
-
-        // F extension
-        new FpuPlugin(
-          p = FpuParameter(
-            withDouble = false // enable for D extension
-          )
-        ),
 
         new LightShifterPlugin,
         new HazardSimplePlugin(
@@ -133,11 +97,6 @@ object Riscv32imc1 extends App {
           master(plugin.iBus.toWishbone()).setName("iBusWishbone")
         }
         case plugin: DBusSimplePlugin => {
-          plugin.dBus.setAsDirectionLess()
-          master(plugin.dBus.toWishbone()).setName("dBusWishbone")
-        }
-
-        case plugin: DBusCachedPlugin => {
           plugin.dBus.setAsDirectionLess()
           master(plugin.dBus.toWishbone()).setName("dBusWishbone")
         }
