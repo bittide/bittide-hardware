@@ -197,7 +197,7 @@ addStalling endOfMetacycle metacycleCount (incomingBus@WishboneS2M{..}, wbAddr, 
     | acknowledge && (wbAddr == maxBound - 1) =
         (incomingBus{readData = numConvert metacycleCount}, Nothing)
     | otherwise = (incomingBus, writeOp0)
-  memAddr = bitCoerce $ resize wbAddr
+  memAddr = resize wbAddr
 
 {-# OPAQUE scatterUnitWb #-}
 

@@ -394,7 +394,7 @@ wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
         | wbAcknowledge && writeEnable && internalAddress == packetLengthAddress =
             unpack $ resize writeData
         | axisHandshake =
-            satAdd SatBound packetLength (bitCoerce $ resize bytesInStream)
+            satAdd SatBound packetLength (resize bytesInStream)
         | otherwise =
             packetLength
 

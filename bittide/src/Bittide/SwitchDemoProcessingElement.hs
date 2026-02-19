@@ -21,7 +21,7 @@ which doesn't fit the 3 we're multiplying by hence yielding an undefined. This
 function works around that.
 -}
 zeroExtendTimesThree :: forall n. (1 <= n, KnownNat n) => Index n -> Index (n * 3)
-zeroExtendTimesThree = truncateB . mul (3 :: Index 4)
+zeroExtendTimesThree = extend . mul (3 :: Index 4)
 
 -- | Simple processing element used for the Bittide switch demo.
 switchDemoPe ::

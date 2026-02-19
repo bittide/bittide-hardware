@@ -81,7 +81,7 @@ this can be used to identify links and cycles in the simulation.
 linkData :: (KnownNat links) => [Vec links (Index (links + 1), Unsigned 32)]
 linkData = [fmap (,i) vecIndices | i <- [0 ..]]
  where
-  vecIndices = fmap (succ . bitCoerce . resize) indicesI
+  vecIndices = fmap (succ . resize) indicesI
 
 simSwitchWithCalendar ::
   forall links nBytes addrW.
