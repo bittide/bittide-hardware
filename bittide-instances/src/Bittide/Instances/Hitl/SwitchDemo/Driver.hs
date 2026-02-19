@@ -21,8 +21,10 @@ import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
+import Control.Concurrent.Chan (Chan)
 import Control.Monad (forM, forM_, unless)
 import Control.Monad.IO.Class
+import Data.ByteString (ByteString)
 import Data.Maybe (fromJust)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -117,6 +119,39 @@ initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
   Gdb.setTimeout gdb Nothing
   Gdb.runCommand gdb "echo connected to target device"
   pure ()
+
+initPicocomChan :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
+initPicocomChan hitlDir (_hwTarget, deviceInfo) targetIndex = do
+  devNullHandle <- openFile "/dev/null" WriteMode
+
+  let
+    devPath = deviceInfo.serial
+    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
+    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
+
+  -- Note that script at `devPath` already logs to `stdoutPath` and
+  -- `stderrPath`. This is what we're after: debug logging. To prevent race
+  -- conditions, we need to know when picocom is ready so we also shortly
+  -- interested in stderr in this Haskell process.
+  (picoChan, cleanup) <-
+    Picocom.startWithLoggingAndEnvChan
+      ( Picocom.StdStreams
+          { Picocom.stdin = CreatePipe
+          , Picocom.stdout = CreatePipe
+          , Picocom.stderr = UseHandle devNullHandle
+          }
+      )
+      devPath
+      stdoutPath
+      stderrPath
+      []
+
+  -- hSetBuffering pico.stdoutHandle LineBuffering
+
+  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
+    $ waitForLineChan picoChan "Terminal ready"
+
+  pure (picoChan, cleanup)
 
 initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
 initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
@@ -374,9 +409,9 @@ driver testName targets = do
     optionalBootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
     openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalBootInitArgs
 
-  let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
+  let picocomStarts = liftIO <$> L.zipWith (initPicocomChan hitlDir) targets [0 ..]
   brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-    picocomOuts <- liftIO <$> sequence $ L.map (\x -> Picocom.handleToChan x.stdoutHandle) picocoms
+    -- picocomOuts <- liftIO <$> sequence $ L.map (\x -> Picocom.handleToChan x.stdoutHandle) picocoms
     -- Start OpenOCD that will program the boot CPU
     brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
       let bootTapInfos = parseBootTapInfo <$> initOcdsData
@@ -388,7 +423,7 @@ driver testName targets = do
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
-          $ forConcurrently_ picocomOuts
+          $ forConcurrently_ picocoms
           $ \picoOut ->
             waitForLineChan picoOut "[BT] Going into infinite loop.."
 
@@ -432,7 +467,7 @@ driver testName targets = do
               "Waiting for captured UGNs"
               60_000_000
               goDumpCcSamples
-            $ forConcurrently_ picocomOuts
+            $ forConcurrently_ picocoms
             $ \picoOut ->
               waitForLineChan picoOut "[MU] All UGNs captured"
 
