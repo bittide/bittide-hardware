@@ -15,6 +15,7 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.ByteString (ByteString, hGetSome)
 import Data.Maybe (fromJust)
+import GHC.IO.Exception
 import GHC.IO.Handle (Handle)
 import System.Posix.Env (getEnvironment)
 import System.Process
@@ -101,7 +102,10 @@ startWithLogging stdStreams devPath stdoutPath stderrPath =
 handleToChan :: Handle -> IO (Chan ByteString)
 handleToChan h = do
   c <- newChan
-  _ <- forkIO (readHandle c)
+  _ <-
+    forkIO $
+      (readHandle c) `catch` \(e :: IOException) -> do
+        putStrLn $ "[handleToChan: " <> show h <> "] IOException: " <> show e
   pure c
  where
   readHandle chan = do
