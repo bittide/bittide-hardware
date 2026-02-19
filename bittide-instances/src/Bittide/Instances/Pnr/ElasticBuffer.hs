@@ -12,13 +12,8 @@ import Protocols
 import Protocols.Wishbone
 
 import Bittide.ClockControl (RelDataCount)
-import Bittide.ElasticBuffer (
-  ElasticBufferData,
-  Overflow,
-  Underflow,
-  xilinxElasticBufferWb,
- )
-import Bittide.SharedTypes (Bytes, withBittideByteOrder)
+import Bittide.ElasticBuffer
+import Bittide.SharedTypes (withBittideByteOrder)
 
 import qualified Clash.Explicit.Prelude as E
 
@@ -29,9 +24,9 @@ elasticBufferWb ::
   "clkRead" ::: Clock Fast ->
   "resetRead" ::: Reset Fast ->
   "clkWrite" ::: Clock Slow ->
-  "wbIn" ::: Signal Fast (WishboneM2S 30 4 (Bytes 4)) ->
+  "wbIn" ::: Signal Fast (WishboneM2S 30 4) ->
   "writeData" ::: Signal Slow (Unsigned 64) ->
-  ( "wbOut" ::: Signal Fast (WishboneS2M (Bytes 4))
+  ( "wbOut" ::: Signal Fast (WishboneS2M 4)
   , "dataCount" ::: Signal Fast (RelDataCount 5)
   , "underflow" ::: Signal Fast Underflow
   , "overflow" ::: Signal Fast Overflow

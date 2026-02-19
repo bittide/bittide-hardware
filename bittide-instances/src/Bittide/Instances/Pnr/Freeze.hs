@@ -60,7 +60,7 @@ freezeMM = getMMAny $ freezeExample @XilinxSystem clk rst
 freeze ::
   Clock XilinxSystem ->
   Reset XilinxSystem ->
-  Signal XilinxSystem (WishboneM2S 4 4 (BitVector 32)) ->
-  Signal XilinxSystem (WishboneS2M (BitVector 32))
+  Signal XilinxSystem (WishboneM2S 4 4) ->
+  Signal XilinxSystem (WishboneS2M 4)
 freeze clk rst m2s =
   snd $ fst $ toSignals (freezeExample @XilinxSystem clk rst) (((), m2s), ())

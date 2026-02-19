@@ -36,7 +36,6 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
 import Clash.Explicit.Prelude
 import Protocols
 
-import Clash.Class.BitPackC (Bytes)
 import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import GHC.Stack (withFrozenCallStack)
 import GHC.Stack.Types (HasCallStack)
@@ -75,10 +74,9 @@ deviceWb ::
   String ->
   Circuit
     ( ToConstBwd Mm
-    , Wishbone dom 'Standard aw (Bytes wordSize)
+    , Wishbone dom 'Standard aw wordSize
     )
-    ( Vec n (RegisterWb dom aw wordSize)
-    )
+    (Vec n (RegisterWb dom aw wordSize))
 deviceWb deviceName = circuit $ \(mm, wb) -> do
   (offsets0, metas0, wbs) <-
     V.unzip3 <| withFrozenCallStack deviceWithOffsetsWb deviceName -< (mm, wb)

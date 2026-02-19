@@ -6,7 +6,7 @@
 module Tests.ClockControl.Freeze where
 
 import Bittide.ClockControl.Freeze (counter, freeze)
-import Bittide.SharedTypes (Bytes, withByteOrderings)
+import Bittide.SharedTypes (withByteOrderings)
 import Clash.Class.BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
@@ -23,22 +23,20 @@ import Protocols.Wishbone.Standard.Hedgehog (
 import Test.Tasty
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
+import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 type AddressWidth = 4
 
 genWishboneTransfer ::
-  ( KnownNat aw
-  , KnownNat n
-  ) =>
+  (KnownNat aw) =>
   Gen (BitVector aw) ->
-  Gen (BitVector n) ->
-  Gen (WishboneMasterRequest aw (BitVector n))
-genWishboneTransfer genAddr genData =
+  Gen (WishboneMasterRequest aw 4)
+genWishboneTransfer genAddr =
   Gen.choice
     [ Read <$> genAddr <*> pure maxBound
-    , Write <$> genAddr <*> pure maxBound <*> genData
+    , Write <$> genAddr <*> pure maxBound <*> genDefinedBitVector
     ]
 
 data ModelState = ModelState
@@ -84,8 +82,8 @@ prop_wb = property $ do
   endian = BigEndian
 
   model ::
-    WishboneMasterRequest AddressWidth (BitVector 32) ->
-    WishboneS2M (BitVector 32) ->
+    WishboneMasterRequest AddressWidth 4 ->
+    WishboneS2M 4 ->
     ModelState ->
     Either String ModelState
   model _ WishboneS2M{err = True} s = Right s
@@ -128,17 +126,14 @@ prop_wb = property $ do
         , nFreezes = s.nFreezes + 1
         }
 
-  genInputs :: Gen [WishboneMasterRequest AddressWidth (Bytes 4)]
-  genInputs = Gen.list (Range.linear 0 500) (genWishboneTransfer genAddr genData)
-
-  genData :: Gen (BitVector 32)
-  genData = Gen.integral (Range.constant 0 maxBound)
+  genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
+  genInputs = Gen.list (Range.linear 0 500) (genWishboneTransfer genAddr)
 
   genAddr :: Gen (BitVector AddressWidth)
   genAddr = Gen.integral (Range.constant 0 maxBound)
 
   dutMm ::
-    Circuit (ToConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
+    Circuit (ToConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth 4) ()
   dutMm = withByteOrderings endian endian $ circuit $ \(mm, wb) -> do
     freeze @4 @32 clk rst
       -< ( (mm, wb)
@@ -157,7 +152,7 @@ prop_wb = property $ do
   lastPulseCounter = counter clk rst ena 2
   ebCounters = bundle $ counter clk rst ena <$> iterateI (+ 1) (3 :: Signed 32)
 
-  dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
+  dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
   dut = unMemmap dutMm
 
 tests :: TestTree
