@@ -83,17 +83,8 @@ import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
 import Bittide.ElasticBuffer (sticky)
-import Clash.Cores.Xilinx.Ila (
-  Depth (D1024),
-  IlaConfig (advancedTriggers, depth, stages),
-  ila,
-  ilaConfig,
- )
-import Clash.Cores.Xilinx.Xpm.Cdc.ArraySingle (xpmCdcArraySingle)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
-import Control.Monad (when)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Stack (HasCallStack)
@@ -121,9 +112,7 @@ data Meta = Meta
   deriving (Generic, NFDataX, BitPack)
 
 data Config dom = Config
-  { debugIla :: Bool
-  -- ^ Instantiate a debug ILAs
-  , debugFpgaIndex :: Signal dom (Unsigned 3)
+  { debugFpgaIndex :: Signal dom (Unsigned 3)
   -- ^ FPGA index to use for debug signals
   , resetManagerConfig :: ResetManager.Config
   -- ^ Configuration for 'ResetManager.resetManager'
@@ -132,8 +121,7 @@ data Config dom = Config
 defConfig :: Config dom
 defConfig =
   Config
-    { debugIla = False
-    , debugFpgaIndex = pure 0
+    { debugFpgaIndex = pure 0
     , resetManagerConfig = ResetManager.defConfig
     }
 
@@ -634,105 +622,27 @@ transceiverPrbsWith ::
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
 transceiverPrbsWith gthCore opts args@Input{clock, reset} =
-  when opts.debugIla debugIla `hwSeqX` result
+  Output
+    { txSampling = txUserData
+    , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
+    , txReady = withLockRxTx rxReadyNeighborSticky
+    , handshakeDoneTx = withLockRxTx prbsOkDelayed
+    , handshakeDone = prbsOkDelayed
+    , handshakeDoneFree = withLockRxFree prbsOkDelayed
+    , txSim
+    , txN = txN
+    , txP = txP
+    , txReset = txDomainReset
+    , txOutClock
+    , rxOutClock
+    , rxReset
+    , debugLinkUp
+    , debugLinkReady
+    , neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
+    , neighborTransmitReady = withLockRxFree txReadyNeighborSticky
+    , stats
+    }
  where
-  debugIla :: Signal free ()
-  debugIla =
-    setName @"transceiverDebugIla"
-      $ ila
-        ( ( ilaConfig
-              $ "ila_probe_fpgaIndex"
-              :> "ila_probe_transIndex"
-              :> "ila_probe_txRetries"
-              :> "ila_probe_rxRetries"
-              :> "ila_probe_rxFullRetries"
-              :> "ila_probe_failAfterUps"
-              :> "ila_probe_rx_data0"
-              :> "ila_probe_alignedRxData0"
-              :> "ila_probe_gtwiz_userdata_tx_in"
-              :> "ila_probe_reset_rx_done"
-              :> "ila_probe_reset_tx_done"
-              :> "ila_probe_reset"
-              :> "ila_probe_alignError"
-              :> "ila_probe_prbsErrors"
-              :> "ila_probe_alignedAlignBits"
-              :> "ila_probe_alignedMetaBits"
-              :> "ila_probe_rxCtrl0"
-              :> "ila_probe_rxCtrl1"
-              :> "ila_probe_rxCtrl2"
-              :> "ila_probe_rxCtrl3"
-              :> "ila_probe_prbsOk"
-              :> "ila_probe_prbsOkDelayed"
-              :> "ila_probe_rst_all"
-              :> "ila_probe_rst_rx_datapath"
-              :> "ila_probe_rxReset"
-              :> "ila_probe_txReset"
-              :> "ila_probe_metaTx"
-              :> "ila_probe_debugLinkUp"
-              :> "ila_probe_txLastFree"
-              :> "capture_ila"
-              :> "trigger_ila"
-              :> Nil
-          )
-            { advancedTriggers = True
-            , stages = 1
-            , depth = D1024
-            }
-        )
-        clock
-        opts.debugFpgaIndex
-        (pure args.transceiverIndex :: Signal free (Unsigned 3))
-        ((.txRetries) <$> stats)
-        ((.rxRetries) <$> stats)
-        ((.rxFullRetries) <$> stats)
-        ((.failAfterUps) <$> stats)
-        (xpmCdcArraySingle rxClock clock rx_data0)
-        (xpmCdcArraySingle rxClock clock alignedRxData0)
-        (xpmCdcArraySingle txClock clock gtwiz_userdata_tx_in)
-        (xpmCdcArraySingle rxClock clock reset_rx_done)
-        (xpmCdcArraySingle txClock clock reset_tx_done)
-        (unsafeToActiveHigh reset)
-        (xpmCdcArraySingle rxClock clock alignError)
-        (xpmCdcArraySingle rxClock clock prbsErrors)
-        (xpmCdcArraySingle rxClock clock alignedAlignBits)
-        (xpmCdcArraySingle rxClock clock alignedMetaBits)
-        (xpmCdcArraySingle rxClock clock rxCtrl0)
-        (xpmCdcArraySingle rxClock clock rxCtrl1)
-        (xpmCdcArraySingle rxClock clock rxCtrl2)
-        (xpmCdcArraySingle rxClock clock rxCtrl3)
-        (xpmCdcSingle rxClock clock prbsOk)
-        (xpmCdcSingle rxClock clock prbsOkDelayed)
-        (unsafeToActiveHigh resets.all)
-        (unsafeToActiveHigh resets.rxDatapath)
-        (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
-        (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
-        (xpmCdcArraySingle txClock clock metaTx)
-        debugLinkUp
-        txLastFree
-        (pure True :: Signal free Bool) -- capture
-        txLastFree -- trigger
-  result =
-    Output
-      { txSampling = txUserData
-      , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
-      , txReady = withLockRxTx rxReadyNeighborSticky
-      , handshakeDoneTx = withLockRxTx prbsOkDelayed
-      , handshakeDone = prbsOkDelayed
-      , handshakeDoneFree = withLockRxFree prbsOkDelayed
-      , txSim
-      , txN = txN
-      , txP = txP
-      , txReset = txDomainReset
-      , txOutClock
-      , rxOutClock
-      , rxReset
-      , debugLinkUp
-      , debugLinkReady
-      , neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
-      , neighborTransmitReady = withLockRxFree txReadyNeighborSticky
-      , stats
-      }
-
   debugLinkUp =
     withLockTxFree txUserData
       .&&. withLockRxFree rxUserData
@@ -857,7 +767,6 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
   txReadyNeighborSticky = sticky rxClock rxReset txReadyNeighbor
   txLast = indicateRxReady .&&. args.txStart .&&. withLockRxTx rxReadyNeighborSticky
-  txLastFree = xpmCdcSingle txClock clock txLast
 
   metaTx :: Signal tx Meta
   metaTx =
