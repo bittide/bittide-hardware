@@ -14,12 +14,12 @@ import Control.Concurrent.Chan
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.ByteString (ByteString)
-import Data.ByteString.Chat8 (hGetLine)
+import Data.ByteString.Char8 (hGetLine)
 import Data.Maybe (fromJust)
 import GHC.IO.Exception
 
--- import GHC.IO.Handle (Handle, BufferMode(..), hSetBuffering)
-import System.IO
+import GHC.IO.Handle (BufferMode (..), Handle, hFlush, hSetBuffering)
+import System.IO (stdout)
 import System.Posix.Env (getEnvironment)
 import System.Process
 
