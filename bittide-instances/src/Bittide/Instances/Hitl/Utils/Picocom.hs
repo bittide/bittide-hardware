@@ -13,7 +13,8 @@ import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.Chan
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.ByteString (ByteString, hGetSome)
+import Data.ByteString (ByteString)
+import Data.ByteString.Chat8 (hGetLine)
 import Data.Maybe (fromJust)
 import GHC.IO.Exception
 
@@ -80,7 +81,7 @@ handleToChan h = do
  where
   readHandle chan = do
     hSetBuffering h LineBuffering
-    bytes <- hGetSome h 4096
+    bytes <- hGetLine h
     writeChan chan bytes
     readHandle chan
 
