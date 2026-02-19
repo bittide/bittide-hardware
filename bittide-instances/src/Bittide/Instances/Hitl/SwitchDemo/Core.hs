@@ -30,7 +30,6 @@ import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
-import Data.Maybe (fromMaybe)
 import Protocols.Extra
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone.Extra (delayWishbone)
@@ -236,11 +235,9 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     -- Stop internal links
 
     -- Start ASIC processing element
-    -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
-    --      use it until the DNA is actually read out.
-    (Fwd peOut, _peState) <-
-      withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount))
-        -< (peWbMM, (Fwd localCounter, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
+    Fwd peOut <-
+      withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount) localCounter maybeDna peIn)
+        -< (peWbMM, peWb)
     -- Stop ASIC processing element
 
     -- Start clock control

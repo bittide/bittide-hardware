@@ -6,6 +6,7 @@ module Bittide.SwitchDemoProcessingElement where
 
 import Clash.Prelude
 
+import Data.Maybe (fromMaybe)
 import Data.Tuple (swap)
 import GHC.Stack (HasCallStack)
 
@@ -162,25 +163,16 @@ switchDemoPeWb ::
   , 1 <= bufferSize
   ) =>
   SNat bufferSize ->
-  -- | Local clock cycle counter
-  Circuit
-    ( ToConstBwd Mm
-    , ( CSignal dom (Unsigned 64)
-      , Bitbone dom addrW
-      , -- \| Device DNA
-        CSignal dom (BitVector 96)
-      , -- \| Incoming crossbar link
-        CSignal dom (BitVector 64)
-      )
-    )
-    ( -- \| Outgoing crossbar link
-      CSignal dom (BitVector 64)
-    , -- \| Current state
-      CSignal dom (SimplePeState bufferSize)
-    )
-switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
+  -- | External counter
+  Signal dom (Unsigned 64) ->
+  -- | DNA value
+  Signal dom (Maybe (BitVector 96)) ->
+  -- | Incoming crossbar link
+  Signal dom (BitVector 64) ->
+  Circuit (ToConstBwd Mm, Bitbone dom addrW) (CSignal dom (BitVector 64))
+switchDemoPeWb SNat localCounter maybeDna linkIn = withMemoryMap mm $ Circuit go
  where
-  go ((localCounter, wbM2S, dna, linkIn), _) = (((), wbS2M, (), ()), (linkOut, state))
+  go (wbM2S, _) = (wbS2M, linkOut)
    where
     readVec :: Vec (8 + bufferSize * 3 * 2 + 2) (Signal dom (BitVector 32))
     readVec =
@@ -190,12 +182,16 @@ switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
                 ++ unbundle (bitCoerce . map swapWords <$> buffer)
             )
 
-    (linkOut, buffer, state) =
+    -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
+    --      use it until the DNA is actually read out.
+    unsafeDna = (fromMaybe 0 <$> maybeDna)
+
+    (linkOut, buffer, _state) =
       switchDemoPe
         (SNat @bufferSize)
         localCounter
         linkIn
-        dna
+        unsafeDna
         readStart
         readCycles
         writeStart
