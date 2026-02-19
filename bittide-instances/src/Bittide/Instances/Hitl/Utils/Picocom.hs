@@ -160,4 +160,4 @@ startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
         <> " and stdoutHandler "
         <> show picoHandles'.stdoutHandle
     )
-    >> pure (picoHandles', cleanupProcess picoHandles)
+    >> pure (picoHandles', putStrLn "cleaning up picocom called" >> cleanupProcess picoHandles)
