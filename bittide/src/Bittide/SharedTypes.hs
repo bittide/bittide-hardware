@@ -163,7 +163,7 @@ mul2Index ::
   Index n ->
   b ->
   Index (n * 2)
-mul2Index n b = case clogProductRule @n of Refl -> bitCoerce (n, b)
+mul2Index n b = case clogWZProductRule @n of Refl -> bitCoerce (n, b)
 
 -- | Coerces an index of size (n*2) to index n with the LSB as separate boolean.
 div2Index ::
@@ -171,7 +171,7 @@ div2Index ::
   (KnownNat n, 1 <= n, BitPack b, BitSize b ~ 1) =>
   Index (n * 2) ->
   (Index n, b)
-div2Index = case clogProductRule @n of Refl -> bitCoerce
+div2Index = case clogWZProductRule @n of Refl -> bitCoerce
 
 -- | Delays the output controls to align them with the actual read / write timing.
 delayControls ::
