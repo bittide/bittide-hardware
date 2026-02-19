@@ -154,4 +154,10 @@ startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
         , process = picoPh
         }
 
-  pure (picoHandles', cleanupProcess picoHandles)
+  putStrLn
+    ( "Created picocom with log "
+        <> show stdoutPath
+        <> " and stdoutHandler "
+        <> show picoHandles'.stdoutHandle
+    )
+    >> pure (picoHandles', cleanupProcess picoHandles)
