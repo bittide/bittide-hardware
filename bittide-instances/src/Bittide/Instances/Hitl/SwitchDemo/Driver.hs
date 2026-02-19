@@ -480,8 +480,14 @@ driver testName targets = do
               else putStrLn "[ERROR] Last PE buffer did NOT have expected contents"
 
           -- Check the elastic buffer flags before the CC CPU is interrupted.
+          liftIO $ do
+            ebFlagCheckTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+            putStrLn [i|Clock before checking eb flags: #{ebFlagCheckTime}|]
           ebFlagsClears <- liftIO $ zipWithConcurrently checkElasticBufferFlags targets muGdbs
 
+          liftIO $ do
+            ccDumpSamplesTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+            putStrLn [i|Clock before dumping CC samples: #{ccDumpSamplesTime}|]
           liftIO goDumpCcSamples
 
           unless (L.and ebFlagsClears) $ fail "Some elastic buffers over or underflowed"
