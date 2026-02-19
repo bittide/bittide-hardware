@@ -79,10 +79,9 @@ fn main() -> ! {
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
 
-        // Store debug information. Stop capturing samples if we are stable to
-        // reduce plot sizes.
+        // Store debug information
         let has_sense_of_global_time = freeze.number_of_sync_pulses_seen() != 0;
-        if !prev_all_stable && has_sense_of_global_time {
+        if has_sense_of_global_time {
             sample_store.store(&freeze, stability, callisto.accumulated_speed_requests);
         }
 
