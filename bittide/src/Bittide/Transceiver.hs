@@ -112,17 +112,14 @@ data Meta = Meta
   deriving (Generic, NFDataX, BitPack)
 
 data Config dom = Config
-  { debugFpgaIndex :: Signal dom (Unsigned 3)
-  -- ^ FPGA index to use for debug signals
-  , resetManagerConfig :: ResetManager.Config
+  { resetManagerConfig :: ResetManager.Config
   -- ^ Configuration for 'ResetManager.resetManager'
   }
 
 defConfig :: Config dom
 defConfig =
   Config
-    { debugFpgaIndex = pure 0
-    , resetManagerConfig = ResetManager.defConfig
+    { resetManagerConfig = ResetManager.defConfig
     }
 
 data Input tx rx tx1 rx1 ref free rxS = Input
