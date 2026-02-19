@@ -16,7 +16,9 @@ import Control.Monad.IO.Class
 import Data.ByteString (ByteString, hGetSome)
 import Data.Maybe (fromJust)
 import GHC.IO.Exception
-import GHC.IO.Handle (Handle)
+
+-- import GHC.IO.Handle (Handle, BufferMode(..), hSetBuffering)
+import System.IO
 import System.Posix.Env (getEnvironment)
 import System.Process
 
@@ -109,6 +111,7 @@ handleToChan h = do
   pure c
  where
   readHandle chan = do
+    hSetBuffering h LineBuffering
     bytes <- hGetSome h 4096
     writeChan chan bytes
     readHandle chan
@@ -160,4 +163,6 @@ startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
         <> " and stdoutHandler "
         <> show picoHandles'.stdoutHandle
     )
-    >> pure (picoHandles', putStrLn "cleaning up picocom called" >> cleanupProcess picoHandles)
+    >> hFlush stdout
+    >> pure
+      (picoHandles', putStrLn "cleaning up picocom called" >> hFlush stdout >> cleanupProcess picoHandles)
