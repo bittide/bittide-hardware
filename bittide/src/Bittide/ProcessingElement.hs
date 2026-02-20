@@ -135,8 +135,9 @@ processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dB
   iBus2 <- removeMsb <| watchDogWb "iBus" iBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   Mm.withTag "no-generate"
     $ Mm.withDeviceTag "no-generate"
-    $ wbStorageDPC "InstructionMemory" depthI initI
-    -< (mmI, (iBus2, iMemBus))
+    $ wbStorage "InstructionMemory" depthI initI
+    -< (mmI, iBus3)
+  iBus3 <- arbiter -< [iMemBus, iBus2]
 
   idC -< extBusses
  where
@@ -152,9 +153,9 @@ processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dB
     forall aw dw.
     (KnownNat aw) =>
     Circuit
-      (Wishbone dom 'Standard (aw + 4) dw)
+      (Wishbone dom 'Standard (aw + pfxWidth) dw)
       (Wishbone dom 'Standard aw dw)
-  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
+  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + pfxWidth) -> BitVector aw)) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
 
