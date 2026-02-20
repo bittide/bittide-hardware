@@ -150,7 +150,6 @@ library
     clash-cores,
     clash-prelude,
     clash-protocols,
-    clash-protocols-memmap,
     containers,
     exceptions,
     extra,
