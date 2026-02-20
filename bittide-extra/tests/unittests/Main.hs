@@ -14,6 +14,7 @@ import qualified Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra
 import qualified Tests.Numeric.Extra
 import qualified Tests.Protocols.BiDf
 import qualified Tests.Protocols.Df.Extra
+import qualified Tests.Protocols.ReqResp
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
 setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 1000)
@@ -27,6 +28,7 @@ tests =
     , Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra.tests
     , Tests.Protocols.BiDf.tests
     , Tests.Protocols.Df.Extra.tests
+    , Tests.Protocols.ReqResp.tests
     ]
 
 main :: IO ()

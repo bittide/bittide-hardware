@@ -177,6 +177,7 @@ library
     Protocols.BiDf
     Protocols.Df.Extra
     Protocols.Extra
+    Protocols.ReqResp
     Protocols.Spi
     Protocols.Wishbone.Extra
     System.Timeout.Extra
@@ -193,6 +194,7 @@ test-suite unittests
     Tests.Numeric.Extra
     Tests.Protocols.BiDf
     Tests.Protocols.Df.Extra
+    Tests.Protocols.ReqResp
 
   build-depends:
     base,
