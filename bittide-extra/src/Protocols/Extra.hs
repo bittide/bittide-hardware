@@ -29,3 +29,15 @@ cSignalMap ::
   (a -> b) ->
   Circuit (CSignal dom a) (CSignal dom b)
 cSignalMap fn = applyC (fmap fn) (const $ ())
+
+-- | Verion of `Functor` for `Circuit`s.
+class FunctorC p where
+  fmapC :: Circuit a b -> Circuit (p a) (p b)
+
+instance FunctorC ((,) a) where
+  fmapC f = circuit $ \(a, b) -> do
+    b' <- f -< b
+    idC -< (a, b')
+
+instance FunctorC (Vec n) where
+  fmapC = repeatC
