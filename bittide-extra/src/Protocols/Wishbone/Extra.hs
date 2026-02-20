@@ -2,13 +2,11 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Protocols.Wishbone.Extra (delayWishbone, delayWishboneMm) where
+module Protocols.Wishbone.Extra (delayWishbone) where
 
 import Clash.Prelude
 import Protocols
 import Protocols.Wishbone
-
-import qualified Protocols.MemoryMap as Mm
 
 data DelayWishboneState aw n
   = WaitingForManager
@@ -53,13 +51,3 @@ delayWishbone = Circuit go
     mooreOut WaitingForManager = (emptyWishboneS2M, emptyWishboneM2S)
     mooreOut (WaitingForSubordinate m2s) = (emptyWishboneS2M, m2s)
     mooreOut (AcknowledgingManager s2m) = (s2m, emptyWishboneM2S)
-
-delayWishboneMm ::
-  forall dom aw n.
-  (HiddenClockResetEnable dom, KnownNat aw, KnownNat n, 1 <= n) =>
-  Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw n)
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard aw n)
-delayWishboneMm = circuit $ \(mm, wbIn) -> do
-  wbOut <- delayWishbone -< wbIn
-  idC -< (mm, wbOut)

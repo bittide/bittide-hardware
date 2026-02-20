@@ -34,10 +34,11 @@ import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..))
 import Bittide.SharedTypes (Byte, withBittideByteOrder)
 import Bittide.Sync (Sync)
-import Bittide.Wishbone (arbiterMm, extendAddressWidthWbMm, uartDf)
+import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
-import Clash.Protocols.Wishbone.Extra (xpmCdcHandshakeWbMm)
+import Clash.Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import Data.Char (ord)
+import Protocols.Extra
 import Protocols.MemoryMap (Mm)
 import Protocols.Spi (Spi)
 import VexRiscv (Jtag)
@@ -109,9 +110,9 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
   otherJtagBittide <- unsafeJtagSynchronizer refClk bittideClk -< otherJtag
 
   transceiverWb <- withRefClockResetEnable arbiterMm -< [muTransceiverWb, bootTransceiverWb]
-  muTransceiverWb <- extendAddressWidthWbMm -< muTransceiverWbWide
-  muTransceiverWbWide <-
-    xpmCdcHandshakeWbMm bittideClk bittideRst refClk refRst
+  muTransceiverWb <-
+    fmapC
+      (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
       -< muTransceiverWbBittide
 
   -- Start UART multiplexing
