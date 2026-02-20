@@ -245,8 +245,6 @@ library
     Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
     Clash.Explicit.Reset.Extra
     Clash.Functor.Extra
-    Clash.Protocols.Axi4.Extra
-    Clash.Protocols.Wishbone.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     Project.FilePath

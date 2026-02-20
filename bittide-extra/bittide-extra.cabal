@@ -170,6 +170,7 @@ library
     Data.List.Extra
     Numeric.Extra
     Project.Handle
+    Protocols.Axi4.Extra
     Protocols.Df.Extra
     Protocols.Extra
     Protocols.Spi

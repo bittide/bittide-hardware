@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Clash.Protocols.Axi4.Extra where
+module Protocols.Axi4.Extra where
 
 import Clash.Prelude
 
