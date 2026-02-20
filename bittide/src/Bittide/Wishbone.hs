@@ -299,29 +299,6 @@ maybeIlaWb True a b c d e = ilaWb a b c d e
 maybeIlaWb False _ _ _ _ _ = circuit $ \left -> do
   idC -< left
 
--- | Like 'ilaWb', but also handles memory maps.
-ilaWbMm ::
-  forall name dom addrW nBytes.
-  (HiddenClock dom) =>
-  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
-  --   unreliable when more than one ILA is used with the same arguments, but the
-  --   module name can be set reliably.
-  SSymbol name ->
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  --   Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
-  Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  --   by 'ilaConfig' equals 'D4096'.
-  Depth ->
-  WbToBool dom 'Standard addrW nBytes ->
-  WbToBool dom 'Standard addrW nBytes ->
-  Circuit
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
-    (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
-ilaWbMm name stages depth trigger capture = circuit $ \(mm, wbIn) -> do
-  wbOut <- ilaWb name stages depth trigger capture -< wbIn
-  idC -< (mm, wbOut)
-
 {- | Given a vector with elements and a mask, promote all values with a corresponding
 'True' to 'Just', others to 'Nothing'.
 
