@@ -16,7 +16,6 @@ import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
-import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)

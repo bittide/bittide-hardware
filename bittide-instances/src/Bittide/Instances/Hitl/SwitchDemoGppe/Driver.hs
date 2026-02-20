@@ -18,7 +18,6 @@ import Bittide.Instances.Hitl.SwitchDemo.Driver (
   parseTapInfo,
  )
 import Bittide.Instances.Hitl.Utils.Driver
-import Bittide.Instances.Hitl.Utils.Program
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_)
