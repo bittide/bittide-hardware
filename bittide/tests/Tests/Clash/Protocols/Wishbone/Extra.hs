@@ -12,7 +12,6 @@ import Bittide.DoubleBufferedRam (
   wbStorage,
  )
 import Clash.Prelude (withClockResetEnable)
-import Clash.Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Hedgehog (Gen, Property)
@@ -21,6 +20,7 @@ import Protocols
 import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
+import Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   wishbonePropWithModel,
