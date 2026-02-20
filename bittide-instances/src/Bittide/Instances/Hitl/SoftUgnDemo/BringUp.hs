@@ -36,11 +36,11 @@ import Bittide.SharedTypes (Byte, withBittideByteOrder)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
-import Clash.Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import Data.Char (ord)
 import Protocols.Extra
 import Protocols.MemoryMap (Mm)
 import Protocols.Spi (Spi)
+import Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import VexRiscv (Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc

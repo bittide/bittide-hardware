@@ -13,7 +13,7 @@ import qualified Tests.Axi4
 import qualified Tests.Axi4.Generators
 import qualified Tests.Axi4.Properties
 import qualified Tests.Calendar
-import qualified Tests.Clash.Protocols.Wishbone.Extra
+import qualified Tests.Clash.Protocols.Wishbone.Extra -- Should be moved to bittide-extra, but depends on wbStorage
 import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
 import qualified Tests.DelayWishbone
