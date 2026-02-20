@@ -22,9 +22,10 @@ import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes (BitboneMm)
 import Bittide.Sync (Sync, syncInCounterC, syncOutGenerateWbC, toSync)
-import Bittide.Wishbone (arbiterMm, extendAddressWidthWbMm, timeWb)
+import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, timeWb)
+import Protocols.Extra
 import Protocols.MemoryMap
-import Protocols.Wishbone.Extra (delayWishboneMm)
+import Protocols.Wishbone.Extra (delayWishbone)
 
 import qualified Protocols.Vec as Vec
 
@@ -102,11 +103,13 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
     -- We need to extend the width of both wishbone busses since we don't know which
     -- is wider.
     ccClockControlBusWide <-
-      extendAddressWidthWbMm @(Max (SwcccRemBusWidth otherWb) otherWbMu)
+      fmapC (extendAddressWidthWb @(Max (SwcccRemBusWidth otherWb) otherWbMu))
         -< ccClockControlBus
     muClockControlBusWide <-
-      extendAddressWidthWbMm @(Max (SwcccRemBusWidth otherWb) otherWbMu)
-        <| delayWishboneMm
+      fmapC
+        ( extendAddressWidthWb @(Max (SwcccRemBusWidth otherWb) otherWbMu)
+            <| delayWishbone
+        )
         -< muClockControlBus
 
     freeze hasClock hasReset

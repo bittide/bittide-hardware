@@ -29,9 +29,10 @@ import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
+import Protocols.Extra
 import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
-import Protocols.Wishbone.Extra (delayWishbone, delayWishboneMm)
+import Protocols.Wishbone.Extra (delayWishbone)
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
@@ -259,7 +260,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
               <$> rxClocks
               <*> rxs0
            )
-        <| repeatC (withBittideClockResetEnable delayWishboneMm)
+        <| repeatC (fmapC $ withBittideClockResetEnable delayWishbone)
         -< ebWbs
 
     -- Use of `dflipflop` to add pipelining should be replaced by

@@ -31,8 +31,9 @@ import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterface
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Data.Maybe (fromMaybe)
+import Protocols.Extra
 import Protocols.MemoryMap (Mm)
-import Protocols.Wishbone.Extra (delayWishboneMm)
+import Protocols.Wishbone.Extra (delayWishbone)
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
@@ -223,7 +224,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
               <$> rxClocks
               <*> rxs0
            )
-        <| repeatC (withBittideClockResetEnable delayWishboneMm)
+        <| repeatC (fmapC $ withBittideClockResetEnable delayWishbone)
         -< ebWbs
 
     rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn localCounter <$> rxs1) -< ugnWbs
