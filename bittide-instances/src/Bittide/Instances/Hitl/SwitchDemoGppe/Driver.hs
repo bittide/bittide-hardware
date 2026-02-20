@@ -24,8 +24,9 @@ import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class
 import Data.Vector.Internal.Check (HasCallStack)
+import Project.Chan
 import Project.FilePath
-import Project.Handle
+import Project.Handle (assertEither)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
@@ -77,7 +78,7 @@ driver testName targets = do
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
           $ forConcurrently_ picocoms
           $ \pico ->
-            waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
+            waitForLine pico "[BT] Going into infinite loop.."
 
   let
     optionalInitArgs = L.repeat def
@@ -127,7 +128,7 @@ driver testName targets = do
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico.stdoutHandle "[MU] All UGNs captured"
+                waitForLine pico "[MU] All UGNs captured"
 
             -- From here the actual test should be done, but for now it's just going to be
             -- waiting for the devices to print out over UART.
@@ -140,7 +141,7 @@ driver testName targets = do
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico.stdoutHandle "[PE] Hello!"
+                waitForLine pico "[PE] Hello!"
 
             liftIO goDumpCcSamples
 

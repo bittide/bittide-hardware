@@ -7,7 +7,6 @@ module Project.Handle where
 
 import Prelude hiding (filter)
 
-import Control.Concurrent.Chan
 import Data.ByteString (ByteString, filter, unpack)
 import Data.ByteString.Char8 (hGetLine)
 import Data.ByteString.Internal (w2c)
@@ -34,11 +33,6 @@ expectRight (Left msg) = error msg
 expectLine_ :: (HasCallStack) => Handle -> (String -> Filter) -> Assertion
 expectLine_ h f = do
   result <- expectLine h f
-  assertEither result
-
-expectLineChan_ :: (HasCallStack) => Chan ByteString -> (String -> Filter) -> Assertion
-expectLineChan_ c f = do
-  result <- expectLineChan c f
   assertEither result
 
 {- | Utility function that reads lines from a handle, and applies a filter to
@@ -72,10 +66,6 @@ expectLine ::
   (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
 expectLine h = expectLineGeneric h hGetLine
 
-expectLineChan ::
-  (HasCallStack) => (Chan ByteString) -> (String -> Filter) -> IO (Either String [String])
-expectLineChan c = expectLineGeneric c readChan
-
 {- | Utility function that reads lines from a handle, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
 it will get stuck if the expected line does not appear. Only use in combination
@@ -84,14 +74,6 @@ with sensible time outs (also see 'main').
 waitForLine :: Handle -> String -> IO ()
 waitForLine h expected = do
   expectLine_ h $ \s ->
-    trace ("Wait for \"" <> expected <> "\", got: " <> s) $
-      if s == expected
-        then Stop (Right ())
-        else Continue
-
-waitForLineChan :: Chan ByteString -> String -> IO ()
-waitForLineChan c expected = do
-  expectLineChan_ c $ \s ->
     trace ("Wait for \"" <> expected <> "\", got: " <> s) $
       if s == expected
         then Stop (Right ())
@@ -125,9 +107,9 @@ readUntil handle ending = do
 {- | Read lines from a handle until a specific line is encountered.
 Do not use on Handles that might return non-ASCII characters.
 -}
-readUntilLine :: Handle -> String -> IO [String]
-readUntilLine h expected = do
-  result <- expectLine h $ \s ->
+readUntilLineGeneric :: a -> (a -> IO ByteString) -> String -> IO [String]
+readUntilLineGeneric h f expected = do
+  result <- expectLineGeneric h f $ \s ->
     trace ("Reading until \"" <> expected <> "\", got: " <> s) $
       if s == expected
         then Stop (Right ())
@@ -135,6 +117,9 @@ readUntilLine h expected = do
   case result of
     Right lines' -> pure (init lines') -- Remove the expected line from the result
     Left err -> error err
+
+readUntilLine :: Handle -> String -> IO [String]
+readUntilLine h = readUntilLineGeneric h hGetLine
 
 {- | Read n characters from a handle.
 Do not use on Handles that might return non-ASCII characters.

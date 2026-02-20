@@ -30,8 +30,9 @@ import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Gdb (Gdb)
 import Numeric (showHex)
+import Project.Chan
 import Project.FilePath
-import Project.Handle
+import Project.Handle (assertEither)
 import System.Exit
 import System.FilePath
 import System.IO
@@ -120,8 +121,8 @@ initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
   Gdb.runCommand gdb "echo connected to target device"
   pure ()
 
-initPicocomChan :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
-initPicocomChan hitlDir (_hwTarget, deviceInfo) targetIndex = do
+initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
+initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
   devNullHandle <- openFile "/dev/null" WriteMode
 
   let
@@ -149,10 +150,11 @@ initPicocomChan hitlDir (_hwTarget, deviceInfo) targetIndex = do
   -- hSetBuffering pico.stdoutHandle LineBuffering
 
   T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
-    $ waitForLineChan picoChan "Terminal ready"
+    $ waitForLine picoChan "Terminal ready"
 
   pure (picoChan, cleanup)
 
+{-
 initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
 initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
   devNullHandle <- openFile "/dev/null" WriteMode
@@ -185,6 +187,7 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
     $ waitForLine pico.stdoutHandle "Terminal ready"
 
   pure (pico, cleanup)
+-}
 
 {- | Parse the tap info from OpenOCD log produced during startup. This function
 expects to find multiple JTAG IDs and exactly one GDB port. This is typically
@@ -409,9 +412,8 @@ driver testName targets = do
     optionalBootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
     openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalBootInitArgs
 
-  let picocomStarts = liftIO <$> L.zipWith (initPicocomChan hitlDir) targets [0 ..]
+  let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
   brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-    -- picocomOuts <- liftIO <$> sequence $ L.map (\x -> Picocom.handleToChan x.stdoutHandle) picocoms
     -- Start OpenOCD that will program the boot CPU
     brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
       let bootTapInfos = parseBootTapInfo <$> initOcdsData
@@ -425,7 +427,7 @@ driver testName targets = do
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
           $ forConcurrently_ picocoms
           $ \picoOut ->
-            waitForLineChan picoOut "[BT] Going into infinite loop.."
+            waitForLine picoOut "[BT] Going into infinite loop.."
 
     let
       optionalInitArgs = L.repeat def
@@ -469,7 +471,7 @@ driver testName targets = do
               goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \picoOut ->
-              waitForLineChan picoOut "[MU] All UGNs captured"
+              waitForLine picoOut "[MU] All UGNs captured"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt muGdbs

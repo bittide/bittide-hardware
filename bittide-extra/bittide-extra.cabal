@@ -170,6 +170,7 @@ library
     Control.Exception.Extra
     Data.List.Extra
     Numeric.Extra
+    Project.Chan
     Project.Handle
     Protocols.Df.Extra
     Protocols.Extra
