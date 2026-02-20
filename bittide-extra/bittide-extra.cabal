@@ -172,8 +172,10 @@ library
     Data.List.Extra
     Numeric.Extra
     Project.Handle
+    Protocols.BiDf
     Protocols.Df.Extra
     Protocols.Extra
+    Protocols.ReqResp
     Protocols.Spi
     Protocols.Wishbone.Extra
     System.Timeout.Extra
