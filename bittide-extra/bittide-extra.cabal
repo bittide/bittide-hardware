@@ -175,6 +175,7 @@ library
     Protocols.BiDf
     Protocols.Df.Extra
     Protocols.Extra
+    Protocols.ReqResp
     Protocols.Spi
     Protocols.Wishbone.Extra
     System.Timeout.Extra
