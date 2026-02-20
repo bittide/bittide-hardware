@@ -244,6 +244,16 @@ prop_bypassFifo =
     (C.exposeClockResetEnable id)
     (C.exposeClockResetEnable (Df.bypassFifo d1 (Df.fifo d8)))
 
+prop_stallNext :: Property
+prop_stallNext = H.property $ do
+  stalls <- forAll $ Gen.list (Range.linear 0 100) Gen.bool
+  idWithModelSingleDomainT
+    @System
+    defExpectOptions{eoStopAfterEmpty = Just 150}
+    (genData genSmallInt)
+    (\_ _ _ -> id)
+    (C.exposeClockResetEnable (Df.stallNext (fromList (stalls <> L.repeat True))))
+
 -- Start of shamelessly copied code from bittide
 
 {- | Version of 'blockRamByteAddressable' with undefined initial contents. It is similar

@@ -16,6 +16,7 @@ import qualified Clash.Explicit.Prelude as E
 import qualified Clash.Explicit.Signal.Delayed as ED
 import qualified Clash.Explicit.Signal.Delayed.Extra as ED
 import qualified Clash.Signal.Delayed as D
+import qualified Data.Maybe as Maybe
 import qualified Debug.Trace as Debug
 import qualified Protocols.Df as Df
 
@@ -233,6 +234,39 @@ bypassFifo SNat fifoCircuit = circuit $ \inp -> do
           nextState = BypassState{inReset = False, stored = nextReg, count = nextCount}
          in
           (nextState, ((inpAck, fifoOutAck), (out, fifoIn)))
+
+{- | Will stall the next incoming transaction until the `Bool` is `True`. If it becomes `False`
+ while a transaction is being processed it will not be affected, but the next transaction will
+be blocked until it is `True` again.
+-}
+stallNext ::
+  forall dom a.
+  (HiddenClockResetEnable dom, NFDataX a) =>
+  -- | Blocks when False
+  Signal dom Bool ->
+  Circuit (Df dom a) (Df dom a)
+stallNext rdyS = circuit $ \req -> do
+  ckt -< (req, Fwd rdyS)
+ where
+  ckt :: Circuit (Df dom a, CSignal dom Bool) (Df dom a)
+  ckt = Circuit goS
+
+  goS ((datS, rdyS'), ack) = ((ackOutS, ()), datOutS)
+   where
+    (ackOutS, datOutS) = unbundle $ mealy go False $ bundle $ (bundle (datS, rdyS'), ack)
+
+  go offering ((dat, rdy), Ack ackIn) = (nextOffering, (ackOut, datOut))
+   where
+    passThrough = offering || rdy
+    datOut
+      | passThrough = dat
+      | otherwise = Nothing
+
+    nextOffering
+      | Maybe.isJust dat && passThrough = not ackIn
+      | otherwise = False
+
+    ackOut = Ack (passThrough && ackIn)
 
 {- | `Df` version of `traceShowId`, introduces no state or logic of any form. Only prints when
 there is data available on the input side. Prints available data, clock cycle count in the
