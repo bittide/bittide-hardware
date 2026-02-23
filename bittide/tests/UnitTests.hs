@@ -12,6 +12,7 @@ import Test.Tasty.Hedgehog
 import qualified Tests.Axi4
 import qualified Tests.Axi4.Generators
 import qualified Tests.Axi4.Properties
+import qualified Tests.BitView
 import qualified Tests.Calendar
 import qualified Tests.Clash.Protocols.Wishbone.Extra
 import qualified Tests.ClockControl.Freeze
@@ -39,6 +40,7 @@ tests =
     [ Tests.Axi4.tests
     , Tests.Axi4.Generators.tests
     , Tests.Axi4.Properties.tests
+    , Tests.BitView.tests
     , Tests.Calendar.tests
     , Tests.Clash.Protocols.Wishbone.Extra.tests
     , Tests.ClockControl.Freeze.tests

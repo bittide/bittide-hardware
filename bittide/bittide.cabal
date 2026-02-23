@@ -189,6 +189,7 @@ library
     Bittide.Arithmetic.Time
     Bittide.Axi4
     Bittide.Axi4.Internal
+    Bittide.BitView
     Bittide.BootPe
     Bittide.Calculator
     Bittide.Calendar
@@ -292,6 +293,7 @@ test-suite unittests
     Tests.Axi4.Generators
     Tests.Axi4.Properties
     Tests.Axi4.Types
+    Tests.BitView
     Tests.Calendar
     Tests.Clash.Protocols.Wishbone.Extra
     Tests.ClockControl.Freeze
