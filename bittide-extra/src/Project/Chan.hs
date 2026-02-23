@@ -18,7 +18,7 @@ expectLine_ c f = do
   result <- expectLine c f
   assertEither result
 
-{- | Utility function that reads lines from a handle, and applies a filter to
+{- | Utility function that reads lines from a channel, and applies a filter to
 each line. If the filter returns 'Continue', the function will continue
 reading lines. If the filter returns @Stop (Right ())@, the function will return
 successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
@@ -28,7 +28,7 @@ expectLine ::
   (HasCallStack) => Chan ByteString -> (String -> Filter) -> IO (Either String [String])
 expectLine c = expectLineGeneric c readChan
 
-{- | Utility function that reads lines from a handle, and waits for a specific
+{- | Utility function that reads lines from a channel, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
 it will get stuck if the expected line does not appear. Only use in combination
 with sensible time outs (also see 'main').
@@ -41,5 +41,8 @@ waitForLine c expected = do
         then Stop (Right ())
         else Continue
 
+{- | Read lines from a channel until a specific line is encountered.
+Do not use on Handles that might return non-ASCII characters.
+-}
 readUntilLine :: Chan ByteString -> String -> IO [String]
 readUntilLine h = readUntilLineGeneric h readChan

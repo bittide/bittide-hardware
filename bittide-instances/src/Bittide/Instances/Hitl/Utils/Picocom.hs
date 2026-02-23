@@ -18,8 +18,7 @@ import Data.ByteString.Char8 (hGetLine)
 import Data.Maybe (fromJust)
 import GHC.IO.Exception
 
-import GHC.IO.Handle (BufferMode (..), Handle, hFlush, hSetBuffering)
-import System.IO (stdout)
+import GHC.IO.Handle (BufferMode (..), Handle, hSetBuffering)
 import System.Posix.Env (getEnvironment)
 import System.Process
 
@@ -63,12 +62,17 @@ start stdStreams devPath = do
 
   pure (picoHandles', cleanupProcess picoHandles)
 
+-- | Start picocom with the given device path and output to a channel.
 startWithChan :: StdStreams -> FilePath -> IO (Chan ByteString, IO ())
 startWithChan stdStreams devPath = do
   (pHandles, cleanupHandles) <- start stdStreams devPath
   (chan, cleanupChan) <- handleToChan pHandles.stdoutHandle
   pure (chan, cleanupChan >> cleanupHandles)
 
+{- | Starts a `Chan ByteString` from a given `Handle`. The channel acts as
+a buffer that prevents the handle from blocking on unread output. Bytestrings
+output by the handle can then be read through the channel output.
+-}
 handleToChan :: Handle -> IO (Chan ByteString, IO ())
 handleToChan h = do
   c <- newChan
@@ -136,23 +140,6 @@ startWithLogging ::
 startWithLogging stdStreams devPath stdoutPath stderrPath =
   startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath []
 
-{-
-handleToChan :: Handle -> IO (Chan ByteString)
-handleToChan h = do
-  c <- newChan
-  _ <-
-    forkIO $
-      (readHandle c) `catch` \(e :: IOException) -> do
-        putStrLn $ "[handleToChan: " <> show h <> "] IOException: " <> show e
-  pure c
- where
-  readHandle chan = do
-    hSetBuffering h LineBuffering
-    bytes <- hGetSome h 4096
-    writeChan chan bytes
-    readHandle chan
--}
-
 {- | Starts Picocom with the given device path, paths for logging stdout and stderr and
 extra environment variables.
 -}
@@ -194,15 +181,7 @@ startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
         , process = picoPh
         }
 
-  putStrLn
-    ( "Created picocom with log "
-        <> show stdoutPath
-        <> " and stdoutHandler "
-        <> show picoHandles'.stdoutHandle
-    )
-    >> hFlush stdout
-    >> pure
-      (picoHandles', putStrLn "cleaning up picocom called" >> hFlush stdout >> cleanupProcess picoHandles)
+  pure (picoHandles', cleanupProcess picoHandles)
 
 startWithLoggingAndEnvChan ::
   StdStreams ->
@@ -244,14 +223,4 @@ startWithLoggingAndEnvChan stdStreams devPath stdoutPath stderrPath extraEnv = d
 
   (chan, chanCleanup) <- handleToChan picoHandles'.stdoutHandle
 
-  putStrLn
-    ( "Created picocom with log "
-        <> show stdoutPath
-        <> " and stdoutHandler "
-        <> show picoHandles'.stdoutHandle
-    )
-    >> hFlush stdout
-    >> pure
-      ( chan
-      , putStrLn "cleaning up picocom called" >> hFlush stdout >> chanCleanup >> cleanupProcess picoHandles
-      )
+  pure (chan, chanCleanup >> cleanupProcess picoHandles)

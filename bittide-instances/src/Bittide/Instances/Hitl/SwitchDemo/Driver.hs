@@ -146,47 +146,10 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
       stderrPath
       []
 
-  -- hSetBuffering pico.stdoutHandle LineBuffering
-
   T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
     $ waitForLine picoChan "Terminal ready"
 
   pure (picoChan, cleanup)
-
-{-
-initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
-initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
-  devNullHandle <- openFile "/dev/null" WriteMode
-
-  let
-    devPath = deviceInfo.serial
-    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
-    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
-
-  -- Note that script at `devPath` already logs to `stdoutPath` and
-  -- `stderrPath`. This is what we're after: debug logging. To prevent race
-  -- conditions, we need to know when picocom is ready so we also shortly
-  -- interested in stderr in this Haskell process.
-  (pico, cleanup) <-
-    Picocom.startWithLoggingAndEnv
-      ( Picocom.StdStreams
-          { Picocom.stdin = CreatePipe
-          , Picocom.stdout = CreatePipe
-          , Picocom.stderr = UseHandle devNullHandle
-          }
-      )
-      devPath
-      stdoutPath
-      stderrPath
-      []
-
-  hSetBuffering pico.stdoutHandle LineBuffering
-
-  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
-    $ waitForLine pico.stdoutHandle "Terminal ready"
-
-  pure (pico, cleanup)
--}
 
 {- | Parse the tap info from OpenOCD log produced during startup. This function
 expects to find multiple JTAG IDs and exactly one GDB port. This is typically
@@ -425,8 +388,8 @@ driver testName targets = do
         liftIO
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
           $ forConcurrently_ picocoms
-          $ \picoOut ->
-            waitForLine picoOut "[BT] Going into infinite loop.."
+          $ \pico ->
+            waitForLine pico "[BT] Going into infinite loop.."
 
     let
       optionalInitArgs = L.repeat def
@@ -469,8 +432,8 @@ driver testName targets = do
               60_000_000
               goDumpCcSamples
             $ forConcurrently_ picocoms
-            $ \picoOut ->
-              waitForLine picoOut "[MU] All UGNs captured"
+            $ \pico ->
+              waitForLine pico "[MU] All UGNs captured"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt muGdbs

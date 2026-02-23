@@ -35,10 +35,10 @@ expectLine_ h f = do
   result <- expectLine h f
   assertEither result
 
-{- | Utility function that reads lines from a handle, and applies a filter to
-each line. If the filter returns 'Continue', the function will continue
-reading lines. If the filter returns @Stop (Right ())@, the function will return
-successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
+{- | Utility function that reads lines from a bytestring producing source, and
+applies a filter to each line. If the filter returns 'Continue', the function will
+continue reading lines. If the filter returns @Stop (Right ())@, the function will
+return successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
 the function will fail with the given message, along with a log of all processed lines.
 -}
 expectLineGeneric ::
@@ -62,6 +62,12 @@ expectLineGeneric = expectLine' []
           putStrLn (unlines acc')
           pure (Left msg)
 
+{- | Utility function that reads lines from a handle, and applies a filter to
+each line. If the filter returns 'Continue', the function will continue
+reading lines. If the filter returns @Stop (Right ())@, the function will return
+successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
+the function will fail with the given message, along with a log of all processed lines.
+-}
 expectLine ::
   (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
 expectLine h = expectLineGeneric h hGetLine
@@ -104,8 +110,9 @@ readUntil handle ending = do
         c <- hGetChar handle
         go (acc <> [bufHead]) (bufTail <> [c])
 
-{- | Read lines from a handle until a specific line is encountered.
-Do not use on Handles that might return non-ASCII characters.
+{- | Read lines from a generic bytestring producing source until a specific
+line is encountered. Do not use on Handles that might return non-ASCII
+characters.
 -}
 readUntilLineGeneric :: a -> (a -> IO ByteString) -> String -> IO [String]
 readUntilLineGeneric h f expected = do
@@ -118,6 +125,9 @@ readUntilLineGeneric h f expected = do
     Right lines' -> pure (init lines') -- Remove the expected line from the result
     Left err -> error err
 
+{- | Read lines from a handle until a specific line is encountered.
+Do not use on Handles that might return non-ASCII characters.
+-}
 readUntilLine :: Handle -> String -> IO [String]
 readUntilLine h = readUntilLineGeneric h hGetLine
 
