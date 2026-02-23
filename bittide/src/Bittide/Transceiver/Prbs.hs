@@ -7,6 +7,10 @@ are used to test the signal integrity of transceivers. The generator generates
 a PRBS stream, while the checker checks whether the received stream is the
 same as the generated stream. Note that the checker is "self synchronizing",
 meaning that it will synchronize with the generator after /polyLength/ cycles.
+
+Note: the implementations in this module may look like they introduce long
+combinational paths due to use of 'foldr' and 'mapAccumL', but in practice the
+generated hardware has a max logical depth of 5.
 -}
 module Bittide.Transceiver.Prbs where
 
@@ -68,6 +72,7 @@ generator clk rst ena Config =
       o = newBit +>>. bv
       tap = SNat @(polyLength - polyTap)
       newBit = bitStep bv tap
+{-# OPAQUE generator #-}
 
 -- | PRBS checker, see module documentation.
 checker ::
@@ -100,6 +105,7 @@ checker clk rst ena Config = mealy clk rst ena go (maxBound, maxBound)
       o = newBit +>>. bv
       tap = SNat @(polyLength - polyTap)
       bitErr = xor newBit (bitStep bv tap)
+{-# OPAQUE checker #-}
 
 bitStep ::
   ( BitSize a ~ ((1 + n) + i)

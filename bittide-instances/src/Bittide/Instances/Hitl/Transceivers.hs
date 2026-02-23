@@ -32,7 +32,7 @@ import Bittide.Transceiver
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
 import System.FilePath ((</>))
 
 import qualified Bittide.Transceiver.ResetManager as ResetManager
@@ -77,7 +77,6 @@ expectCounter clk rst = sticky clk rst . mealy clk rst enableGen go counterStart
 information.
 -}
 goTransceiversUpTest ::
-  Signal Basic125 (Index FpgaCount) ->
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
@@ -94,7 +93,7 @@ goTransceiversUpTest ::
   , "spiDone" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
   )
-goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs spiS2M =
+goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
   ( transceivers.txSims
   , transceivers.txNs
   , transceivers.txPs
@@ -151,7 +150,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs spiS2M =
       @Basic125
       @GthTxS
       @GthRxS
-      defConfig{debugFpgaIndex = bitCoerce <$> fpgaIndex}
+      defConfig
       Inputs
         { clock = sysClk
         , reset = gthAllReset
@@ -197,13 +196,12 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
       $ xpmCdcSingle sysClk sysClk syncIn
 
   (txs, txns, txps, allUp, anyErrors, _stats, _spiDone, spiM2S) =
-    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxs rxns rxps spiS2M
+    goTransceiversUpTest refClk sysClk testRst rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allUp
   failAfterUpSticky = sticky sysClk testRst failAfterUp
 
   startTest = isJust <$> maybeFpgaIndex
-  fpgaIndex = fromMaybe 0 <$> maybeFpgaIndex
 
   maybeFpgaIndex :: Signal Basic125 (Maybe (Index FpgaCount))
   maybeFpgaIndex =
