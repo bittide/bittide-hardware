@@ -12,6 +12,7 @@ import Test.Tasty.Hedgehog (HedgehogTestLimit (..))
 
 import qualified Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra
 import qualified Tests.Numeric.Extra
+import qualified Tests.Protocols.BiDf
 import qualified Tests.Protocols.Df.Extra
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
@@ -24,6 +25,7 @@ tests =
     "tests"
     [ Tests.Numeric.Extra.tests
     , Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra.tests
+    , Tests.Protocols.BiDf.tests
     , Tests.Protocols.Df.Extra.tests
     ]
 

@@ -190,6 +190,7 @@ test-suite unittests
   other-modules:
     Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra
     Tests.Numeric.Extra
+    Tests.Protocols.BiDf
     Tests.Protocols.Df.Extra
 
   build-depends:
