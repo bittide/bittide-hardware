@@ -13,12 +13,12 @@ import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.Chan
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.ByteString (ByteString)
+import Data.ByteString (ByteString, empty)
 import Data.ByteString.Char8 (hGetLine)
 import Data.Maybe (fromJust)
 import GHC.IO.Exception
 
-import GHC.IO.Handle (BufferMode (..), Handle, hSetBuffering)
+import GHC.IO.Handle (BufferMode (..), Handle, hIsEOF, hSetBuffering)
 import System.Posix.Env (getEnvironment)
 import System.Process
 
@@ -76,6 +76,7 @@ output by the handle can then be read through the channel output.
 handleToChan :: Handle -> IO (Chan ByteString, IO ())
 handleToChan h = do
   c <- newChan
+  hSetBuffering h LineBuffering
   threadId <-
     forkIO $
       (readHandle c) `catch` \(e :: IOException) -> do
@@ -84,10 +85,13 @@ handleToChan h = do
   pure (c, cleanup)
  where
   readHandle chan = do
-    hSetBuffering h LineBuffering
-    bytes <- hGetLine h
-    writeChan chan bytes
-    readHandle chan
+    eof <- hIsEOF h
+    if eof
+      then writeChan chan empty
+      else do
+        bytes <- hGetLine h
+        writeChan chan bytes
+        readHandle chan
 
 {- | Starts Picocom with the given device path and paths for logging stdout and stderr.
 Then perform the action and clean up the picocom process.
