@@ -9,7 +9,6 @@ module Tests.Protocols.BiDf (tests) where
 import Clash.Prelude as C
 
 import Clash.Hedgehog.Sized.Vector (genVec)
-import Data.Typeable (Typeable)
 import Hedgehog (Gen, Property, (===))
 import Protocols
 import Protocols.BiDf as BiDf
@@ -18,13 +17,10 @@ import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog.Extra (testProperty)
 import Test.Tasty.TH (testGroupGenerator)
 
-import qualified Data.List as L
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Protocols.BiDf as BiDf
 import qualified Protocols.Df as Df
-import qualified Protocols.Df.Extra as Df
 import qualified Protocols.Hedgehog as PH
 
 smallInt :: Gen Int
@@ -57,9 +53,9 @@ prop_loopback_id = H.property $ do
   gen :: Gen [Int]
   gen = Gen.list (Range.linear 0 10) smallInt
 
--- | Ensure that 'prefetch2' behaves as an identity when paired with loopback.
-prop_prefetch2_identity :: Property
-prop_prefetch2_identity = H.property $ do
+-- | Ensure that 'prefetch' behaves as an identity when paired with loopback.
+prop_prefetch_identity :: Property
+prop_prefetch_identity = H.property $ do
   stalls <- H.forAll genStalls
   let
     impl :: (HiddenClockResetEnable System) => Circuit (Df System Int) (Df System Int)
@@ -68,7 +64,7 @@ prop_prefetch2_identity = H.property $ do
       BiDf.loopback id
         <| BiDf.mapC (Df.fifo d8) idC
         <| stallC simConfig stalls
-        <| BiDf.prefetch2 @System
+        <| BiDf.prefetch @System
         -< biDf
       idC -< resp
 
@@ -80,12 +76,7 @@ prop_prefetch2_identity = H.property $ do
     (===)
  where
   simConfig = def
-  dfNames name = [name <> "_fwd", name <> "_bwd"]
-  bidefNames name =
-    L.concatMap
-      (\suffix -> [name <> "_request" <> suffix, name <> "_response" <> suffix])
-      (dfNames name)
-  expectOptions = defExpectOptions{eoResetCycles = 5} -- , eoDumpVcd = Just ("prefetch2.vcd", ["prefetch_request_fwd", "prefetch_request_bwd", "prefetch_response_fwd", "prefetch_response_bwd"])}
+  expectOptions = defExpectOptions{eoResetCycles = 5}
   gen :: Gen [Int]
   gen = Gen.list (Range.linear 10 10) smallInt
 

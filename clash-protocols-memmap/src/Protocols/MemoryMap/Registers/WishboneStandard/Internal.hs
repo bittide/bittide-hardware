@@ -391,7 +391,7 @@ memoryWbWithPrefetcher regConfig primitive SNat = circuit $ \wb -> do
   reqresp <- forceResetSanity <| addressableBytesWb @memDepth regConfig -< wb
   (reads, writes0) <- ReqResp.partitionEithers -< reqresp
   writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
-  reads1 <- BiDf.prefetch2 <| ReqResp.toBiDf -< reads
+  reads1 <- BiDf.prefetch <| ReqResp.toBiDf -< reads
   BiDf.fromBlockramWithMask primitive -< (reads1, writes1)
 
 {- | Stateless circuit that translates between a Wishbone register interface and a
