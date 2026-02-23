@@ -27,6 +27,7 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   -- * Byte addressable memory interfaces
   addressableBytesWb,
   memoryWb,
+  memoryWbWithPrefetcher,
 
   -- * Supporting types and functions
   registerConfig,

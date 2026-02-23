@@ -495,7 +495,7 @@ prop_addressableBytesWb =
       circuit $ \wb -> do
         mm <- ignoreMM
         [wb0] <- deviceWb "test" -< (mm, wb)
-        memoryWb clockGen resetGen memConf prim depth -< wb0
+        withClockResetEnable clk rst ena memoryWb memConf prim depth -< wb0
    where
     prim = blockRamByteAddressable clk ena depth
     memConf = registerConfig "buffer"

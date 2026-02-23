@@ -95,7 +95,7 @@ wbStorage memoryName depth initContent =
    in circuit $ \(mm, wbMaster0) -> do
         wbMaster1 <- matchEndianness -< wbMaster0
         [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
-        memoryWb hasClock hasReset (registerConfig "data") ram depth -< wb0
+        memoryWb (registerConfig "data") ram depth -< wb0
  where
   ram = case initContent of
     Nothing ->

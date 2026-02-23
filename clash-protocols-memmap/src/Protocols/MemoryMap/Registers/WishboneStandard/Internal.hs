@@ -5,7 +5,6 @@
 module Protocols.MemoryMap.Registers.WishboneStandard.Internal where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
 import Protocols
 
 import Clash.Class.BitPackC (BitPackC (..), ByteOrder, Bytes)
@@ -47,6 +46,7 @@ import Data.Either.Extra (fromLeft')
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.String.Interpolate as I
+import qualified Protocols.BiDf as BiDf
 import qualified Protocols.ReqResp as ReqResp
 
 data BusActivity a = BusRead a | BusWrite a
@@ -341,7 +341,7 @@ deviceWithOffsetsWb deviceName =
 
 memoryWb ::
   forall memDepth dom wordSize aw.
-  ( KnownDomain dom
+  ( CP.HiddenClockResetEnable dom
   , KnownNat memDepth
   , KnownNat wordSize
   , KnownNat aw
@@ -350,8 +350,6 @@ memoryWb ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
-  Clock dom ->
-  Reset dom ->
   RegisterConfig ->
   ( Signal dom (Index memDepth) ->
     Signal dom (Maybe (Index memDepth, Bytes wordSize)) ->
@@ -360,15 +358,41 @@ memoryWb ::
   ) ->
   SNat memDepth ->
   Circuit (RegisterWb dom aw wordSize) ()
-memoryWb clk rst regConfig primitive SNat = circuit $ \wb -> do
-  reqresp <-
-    CP.withReset rst forceResetSanity <| addressableBytesWb @memDepth regConfig -< wb
+memoryWb regConfig primitive SNat = circuit $ \wb -> do
+  reqresp <- forceResetSanity <| addressableBytesWb @memDepth regConfig -< wb
   (reads, writes0) <- ReqResp.partitionEithers -< reqresp
-  writes1 <- dropResponseData 0 -< writes0
+  writes1 <- dropResponse 0 -< writes0
   _vecUnit <- ram -< (reads, writes1)
   idC -< ()
  where
-  ram = withClockResetEnable clk rst enableGen (ReqResp.fromBlockramWithMask primitive)
+  ram = ReqResp.fromBlockramWithMask primitive
+
+memoryWbWithPrefetcher ::
+  forall memDepth dom wordSize aw.
+  ( CP.HiddenClockResetEnable dom
+  , KnownNat memDepth
+  , KnownNat wordSize
+  , KnownNat aw
+  , 1 <= memDepth
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  RegisterConfig ->
+  ( Enable dom ->
+    Signal dom (Index memDepth) ->
+    Signal dom (Maybe (Index memDepth, Bytes wordSize)) ->
+    Signal dom (BitVector wordSize) ->
+    Signal dom (Bytes wordSize)
+  ) ->
+  SNat memDepth ->
+  Circuit (RegisterWb dom aw wordSize) ()
+memoryWbWithPrefetcher regConfig primitive SNat = circuit $ \wb -> do
+  reqresp <- forceResetSanity <| addressableBytesWb @memDepth regConfig -< wb
+  (reads, writes0) <- ReqResp.partitionEithers -< reqresp
+  writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
+  reads1 <- BiDf.prefetch2 <| ReqResp.toBiDf -< reads
+  BiDf.fromBlockramWithMask primitive -< (reads1, writes1)
 
 {- | Stateless circuit that translates between a Wishbone register interface and a
 ReqResp protocol. This is the lovechild of the wbInterface pattern from wbStorage
@@ -401,8 +425,7 @@ addressableBytesWb ::
         )
         (Bytes wordSize)
     )
-addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
-  Dict -> Circuit go
+addressableBytesWb regConfig = Circuit go
  where
   meta =
     RegisterMeta

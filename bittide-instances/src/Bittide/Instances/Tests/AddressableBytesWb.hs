@@ -43,6 +43,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.MemoryMap.Registers.WishboneStandard.Internal (
   memoryWb,
+  memoryWbWithPrefetcher,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import System.Environment (lookupEnv)
@@ -72,14 +73,13 @@ addressableDeviceWb = circuit $ \(mm, wb) -> do
   [buffer] <- deviceWb "AddressableBuffer" -< (mm, wb)
 
   -- Use memoryWb with blockRamByteAddressable primitive
-  memoryWb hasClock hasReset (registerConfig "buffer") prim d8 -< buffer
+  memoryWb (registerConfig "buffer") prim d8 -< buffer
 
   idC
  where
   -- BlockRam primitive with separated byte enables
-  prim readAddr writeOp byteEnables =
-    case cancelMulDiv @wordSize @8 of
-      Dict -> blockRamByteAddressableU readAddr writeOp byteEnables
+  prim readAddr writeOp byteEnables = case cancelMulDiv @wordSize @8 of
+    Dict -> blockRamByteAddressableU readAddr writeOp byteEnables
 
 sim :: IO ()
 sim = do
