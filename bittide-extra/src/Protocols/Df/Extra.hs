@@ -4,10 +4,11 @@
 
 module Protocols.Df.Extra where
 
-import Clash.Prelude
+import Clash.Prelude hiding (traceSignal)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Maybe
 import Data.String.Interpolate (i)
+import Data.Typeable (Typeable)
 import Protocols
 import Protocols.Df (forceResetSanity)
 
@@ -245,6 +246,15 @@ trace msg =
   Circuit
     (unbundle . withClockResetEnable clockGen resetGen enableGen mealy go (0 :: Int) . bundle)
  where
-  go cnt (m2s, s2m) = (cnt + 1, (s2m, fmap f m2s))
+  go cnt ~(m2s, s2m) = (cnt + 1, (s2m', m2s))
    where
-    f m = Debug.trace [i| Df.Trace #{msg} | #{cnt}: #{showX m}, #{showX s2m}|] m
+    s2m' = Debug.trace [i| Df.Trace #{msg} | #{cnt}: #{showX m2s}, #{showX s2m}|] s2m
+
+-- | `Df` version of `Clash.Debug.traceSignal`. names forward signal (name_fwd) and backward signal (name_bwd)
+traceSignal ::
+  (KnownDomain dom, ShowX a, NFDataX a, BitPack a, Typeable a) =>
+  String ->
+  Circuit (Df dom a) (Df dom a)
+traceSignal name = Circuit go
+ where
+  go ~(fwd, bwd) = (E.traceSignal (name <> "_bwd") bwd, E.traceSignal (name <> "_fwd") fwd)
