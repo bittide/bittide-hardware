@@ -19,9 +19,13 @@ module Protocols.ReqResp where
 
 import qualified Clash.Prelude as C
 
+import Clash.Explicit.Prelude (NFDataX)
+import Data.Bifunctor (Bifunctor (..))
 import Data.Kind (Type)
 import Data.Maybe
 import Protocols
+import Protocols.BiDf (BiDf)
+import qualified Protocols.BiDf as BiDf
 import Protocols.Idle
 import Prelude as P
 
@@ -112,8 +116,8 @@ fromBlockRam primitive = Circuit go
     readValid = C.register False (fmap isJust readFwd C..&&. fmap not readValid)
     readBwd = liftA2 (\v d -> if v then Just d else Nothing) readValid readData
 
-dropResponseData :: resp -> Circuit (ReqResp dom req resp) (ReqResp dom req ())
-dropResponseData resp = applyC id (fmap $ fmap $ const resp)
+dropResponse :: resp -> Circuit (ReqResp dom req resp) (ReqResp dom req ())
+dropResponse resp = applyC id (fmap $ fmap $ const resp)
 
 {- | Force a @Nothing@ on the backward channel and @Nothing@ on the forward
 channel if reset is asserted.
@@ -123,3 +127,59 @@ forceResetSanity ::
   (C.HiddenReset dom) =>
   Circuit (ReqResp dom req resp) (ReqResp dom req resp)
 forceResetSanity = forceResetSanityGeneric
+
+-- | Convert a `ReqResp` protocol to two `Df` streams, one for requests and one for responses.
+toDfs ::
+  forall dom req resp.
+  (C.HiddenClockResetEnable dom) =>
+  Circuit (ReqResp dom req resp, Df dom resp) (Df dom req)
+toDfs = Circuit (first C.unbundle . C.unbundle . C.mealy go False . C.bundle . first C.bundle)
+ where
+  go accepted0 ~(~(reqLeft, resp), Ack reqRightAck) = (accepted1, ((resp, respAck), reqRight))
+   where
+    respAck = Ack True
+    reqRight
+      | accepted0 = Nothing
+      | otherwise = reqLeft
+    accepted1
+      | isNothing reqLeft = False -- no request
+      | isJust resp = False -- Receiving a response clears the state
+      | otherwise = reqRightAck -- A request for which we have not received a response yet
+
+-- | Convert two `Df` streams for requests and responses into a `ReqResp` protocol.
+fromDfs ::
+  forall dom req resp.
+  (C.HiddenClockResetEnable dom) =>
+  Circuit (Df dom req) (ReqResp dom req resp, Df dom resp)
+fromDfs = Circuit (second C.unbundle . C.unbundle . fmap go . C.bundle . second C.bundle)
+ where
+  go ~(req, ~(resp, reqAck)) = (reqAck, (req, resp))
+
+-- | Convert a `ReqResp` protocol to a `BiDf` protocol through `toDfs` and `BiDf.fromDfs`.
+toBiDf ::
+  forall dom req resp.
+  (C.HiddenClockResetEnable dom) =>
+  Circuit (ReqResp dom req resp) (BiDf dom req resp)
+toBiDf = circuit $ \reqresp -> do
+  request <- toDfs -< (reqresp, response)
+  (biDf, response) <- BiDf.fromDfs -< request
+  idC -< biDf
+
+-- | Convert a `BiDf` protocol to a `ReqResp` protocol through `fromDfs` and `BiDf.toDfs`.
+fromBiDf ::
+  forall dom req resp.
+  (C.HiddenClockResetEnable dom) =>
+  Circuit (BiDf dom req resp) (ReqResp dom req resp)
+fromBiDf = circuit $ \biDf -> do
+  request <- BiDf.toDfs -< (biDf, response)
+  (reqresp, response) <- fromDfs -< request
+  idC -< reqresp
+
+-- | Convert a `ReqResp` protocol where the response type is `()` to a `Df` stream of requests.
+requests ::
+  forall dom req.
+  (C.KnownDomain dom) =>
+  Circuit (ReqResp dom req ()) (Df dom req)
+requests = Circuit (C.unbundle . fmap go . C.bundle)
+ where
+  go ~(request, Ack ack) = (if ack then Just () else Nothing, request)
