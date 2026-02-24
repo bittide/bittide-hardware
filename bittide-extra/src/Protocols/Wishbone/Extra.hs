@@ -2,13 +2,16 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Protocols.Wishbone.Extra (delayWishbone, xpmCdcHandshakeWb) where
+module Protocols.Wishbone.Extra (delayWishbone, xpmCdcHandshakeWb, increaseBuswidth, trace) where
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (xpmCdcHandshakeDf)
 import Clash.Prelude
 import Data.Maybe (fromMaybe, isJust)
+import Data.String.Interpolate (i)
 import Protocols
 import Protocols.Wishbone
+
+import qualified Debug.Trace as Debug
 
 data DelayWishboneState aw n
   = WaitingForManager
@@ -218,3 +221,47 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
     state
       | ackIn = HwsForwarding
       | otherwise = HwsResponding s2mIn
+
+{- | Converts a bus of `width` bytes wide to bus of `(2 ^ power * width) based on the lower
+`power` bits of the address. For example, with `power = 1`, a 32-bit bus becomes a 64-bit bus,
+where even addresses access the lower 32 bits and odd addresses access the upper 32 bits.
+-}
+increaseBuswidth ::
+  forall dom mode aw width power.
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat width, KnownNat power, power <= aw) =>
+  SNat power ->
+  Circuit
+    (Wishbone dom mode aw width)
+    (Wishbone dom mode (aw - power) (2 ^ power * width))
+increaseBuswidth SNat = Circuit (unbundle . fmap go . bundle)
+ where
+  go (m2sLeft, s2mRight) = (s2mLeft, m2sRight)
+   where
+    m2sRight =
+      m2sLeft
+        { addr = newAddr
+        , writeData = newWriteData
+        , busSelect = newBusSelect
+        }
+    s2mLeft =
+      s2mRight
+        { readData = newReadData
+        }
+
+    newAddr = addrMsbs
+    bitShift = natToNum @width * fromIntegral addrLsbs
+    (addrMsbs, addrLsbs :: BitVector power) = bitCoerce (m2sLeft.addr)
+    newWriteData = pack (repeat m2sLeft.writeData)
+    newBusSelect = shiftL (resize m2sLeft.busSelect) bitShift
+    newReadData = (unpack s2mRight.readData) !! addrLsbs
+
+trace ::
+  (KnownNat aw, KnownNat nBytes) =>
+  String ->
+  Circuit (Wishbone dom mode aw nBytes) (Wishbone dom mode aw nBytes)
+trace msg = Circuit (unbundle . fmap go . bundle)
+ where
+  go (m2s, s2m)
+    | m2s.busCycle && m2s.strobe =
+        (Debug.trace ([i| #{msg} M2S: #{showX m2s}, S2M: #{showX s2m} |]) s2m, m2s)
+    | otherwise = (s2m, m2s)
