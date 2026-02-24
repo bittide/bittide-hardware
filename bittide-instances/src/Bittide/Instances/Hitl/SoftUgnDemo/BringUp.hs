@@ -101,19 +101,20 @@ bringUp ::
     , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
 bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, gppeMm, jtag, gths) -> do
-  (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
-    withRefClockResetEnable
-      $ bootPe bootPeConfig
-      -< (bootMm, bootJtag)
-
   [bootJtag, otherJtag] <- jtagChain -< jtag
   otherJtagBittide <- unsafeJtagSynchronizer refClk bittideClk -< otherJtag
 
   transceiverWb <- withRefClockResetEnable arbiterMm -< [muTransceiverWb, bootTransceiverWb]
   muTransceiverWb <-
-    fmapC
-      (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
+    fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
       -< muTransceiverWbBittide
+
+  -- Start boot PE
+  (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
+    withRefClockResetEnable
+      $ bootPe bootPeConfig
+      -< (bootMm, bootJtag)
+  -- Stop boot PE
 
   -- Start UART multiplexing
   uartTxBytes <-
