@@ -47,6 +47,7 @@ import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.String.Interpolate as I
 import qualified Protocols.BiDf as BiDf
+import qualified Protocols.Df as Df
 import qualified Protocols.ReqResp as ReqResp
 
 data BusActivity a = BusRead a | BusWrite a
@@ -389,10 +390,12 @@ memoryWbWithPrefetcher ::
   Circuit (RegisterWb dom aw wordSize) ()
 memoryWbWithPrefetcher regConfig primitive SNat = circuit $ \wb -> do
   reqresp <- forceResetSanity <| addressableBytesWb @memDepth regConfig -< wb
-  (reads, writes0) <- ReqResp.partitionEithers -< reqresp
-  writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
-  reads1 <- BiDf.prefetch <| ReqResp.toBiDf -< reads
-  BiDf.fromBlockramWithMask primitive -< (reads1, writes1)
+  (reads0, writes0) <- ReqResp.partitionEithers -< reqresp
+  [writes1, invalidate0] <- Df.fanout <| ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
+  invalidate1 <- applyC (fmap (fmap (\(addr, _, _) -> Just addr))) id -< invalidate0
+  reads1 <- ReqResp.toBiDf -< reads0
+  reads2 <- BiDf.prefetch -< (reads1, invalidate1)
+  BiDf.fromBlockramWithMask primitive -< (reads2, writes1)
 
 {- | Stateless circuit that translates between a Wishbone register interface and a
 ReqResp protocol. This is the lovechild of the wbInterface pattern from wbStorage

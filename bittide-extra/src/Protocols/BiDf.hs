@@ -102,12 +102,50 @@ fromDfs = fromSignals $ \(reqData, ~((reqAck, respData), respAck)) ->
 data PrefetchState req = Empty | OfferingRequest req | WaitingForResponse req
   deriving (Generic, NFDataX, BitPack, Show, ShowX, Eq)
 
-{- | Like 'toDf' but speculatively prefetches the successor of the last request.
+{- | Component that handles invalidating a prefetched requests.
+Can be used to invalidate any request, or a specific request without having to
+worry about backpressure.
+-}
+prefetchDrop ::
+  forall dom req resp.
+  (HiddenClockResetEnable dom, NFDataX req) =>
+  Signal dom (Maybe (Maybe req)) ->
+  Circuit () (Df dom (Maybe req))
+prefetchDrop req = circuit $ do
+  Df.compressor Nothing (\s i -> (i, Just s)) -< Fwd req
+
+-- | Component to invalidate any prefetched request without having to worry about backpressure.
+prefetchDropAny ::
+  forall dom req resp.
+  (HiddenClockResetEnable dom, NFDataX req) =>
+  Signal dom Bool ->
+  Circuit () (Df dom (Maybe req))
+prefetchDropAny drop = prefetchDrop (mux drop (pure (Just Nothing)) (pure Nothing))
+
+-- | Component to invalidate a specific prefetched request without having to worry about backpressure.
+prefetchDropSpecific ::
+  forall dom req resp.
+  ( HiddenClockResetEnable dom
+  , Eq req
+  , NFDataX req
+  ) =>
+  Signal dom (Maybe req) ->
+  Circuit () (Df dom (Maybe req))
+prefetchDropSpecific req = prefetchDrop (fmap (fmap Just) req)
+
+class DeepBundle
+
+{- | Speculatively prefetches the successor of the last request for requests that are not `maxBound`.
+
 When there is no pending user request, this circuit speculatively issues a request
 for @succ lastRequest@ to hide memory latency. When a real user request arrives,
 it checks if the prefetched request matches - if so, it's a cache hit and the
 response is immediately available. Otherwise, it drops the prefetch and issues
 the new request.
+
+The second `Df` input can be used to clear the cached request. If the payload of the second `Df`
+is `Just req`, the circuit will drop the cached request if it matches `req`. If the payload
+is `Nothing`, the circuit will drop the cached request unconditionally.
 
 State: (prefetchedReq, prefetchedResp, lastUserReq)
 - prefetchedReq: the request we speculatively sent
@@ -119,24 +157,37 @@ prefetch ::
   ( HiddenClockResetEnable dom
   , Eq req
   , Enum req
+  , Bounded req
   , NFDataX req
   , NFDataX resp
   ) =>
-  Circuit (BiDf dom req resp) (BiDf dom req resp)
+  --      (((req, ack), mreq), (ack, resp)) -> (((ack, resp), ack), (req, ack))
+  Circuit (BiDf dom req resp, Df dom (Maybe req)) (BiDf dom req resp)
 prefetch =
-  Circuit (bimap unbundle unbundle . unbundle . mealy go Empty . bundle . bimap bundle bundle)
+  Circuit
+    ( bimap (first unbundle . unbundle) unbundle
+        . unbundle
+        . mealy go Empty
+        . bundle
+        . bimap (bundle . first bundle) bundle
+    )
  where
-  go storedReq0 ~(~(reqLeft, Ack respLeftAck0), ~(Ack reqRightAck, respRight)) =
-    (storedReq1, ((Ack reqLeftAck, respLeft), (reqRight, Ack respRightAck)))
+  go storedReq0 ~(~(~(reqLeft, Ack respLeftAck0), invalidate), ~(Ack reqRightAck, respRight)) =
+    (storedReq1, (((Ack reqLeftAck, respLeft), Ack invalidateDone), (reqRight, Ack respRightAck)))
    where
     -- Check if we have a cache hit: user request matches prefetched request
     emptyReg = storedReq0 == Empty
-    (hit, miss) = case (storedReq0, reqLeft) of
-      (WaitingForResponse prefReq, Just req) | isJust respRight -> (req == prefReq, req /= prefReq)
+    (clear, invalidateDone) = case (invalidate, storedReq0) of
+      (Just _, Empty) -> (False, True) -- No request to invalidate
+      (Just Nothing, WaitingForResponse _) -> (isJust reqLeft, True) -- Unconditional invalidation
+      (Just (Just reqA), OfferingRequest reqB) -> (False, reqA /= reqB) -- Prematurely ack invalidation if the prefetched request is different from the invalidation request
+      (Just (Just reqA), WaitingForResponse reqB) -> (isJust reqLeft && reqA == reqB, True)
       _ -> (False, False)
 
-    -- hit = reqLeft == storedReq0 && isJust respRight
-    -- miss = isJust reqLeft && not hit && isJust respRight
+    (hit, miss) = case (storedReq0, reqLeft) of
+      (WaitingForResponse stored, Just req) | isJust respRight -> (req == stored, req /= stored)
+      _ -> (False, False)
+
     requestAccepted = isJust reqRight && reqRightAck
     responseAccepted = isJust respLeft && respLeftAck0
 
@@ -146,20 +197,22 @@ prefetch =
     -- Determine what request to issue
     reqRight = case storedReq0 of
       Empty -> reqLeft -- No prefetched request, just forward user request
-      (OfferingRequest prefReq) -> Just prefReq -- Keep offering prefetched request until it's accepted
-      (WaitingForResponse prefReq) | responseAccepted -> Just $ succ prefReq
+      (OfferingRequest stored) -> Just stored -- Keep offering prefetched request until it's accepted
+      (WaitingForResponse stored) | responseAccepted && stored /= maxBound -> Just $ succ stored
       -- (WaitingForResponse _) | miss             -> reqLeft -- Cache miss, drop prefetched request and forward user request
-      (WaitingForResponse _) -> Nothing
+      _ -> Nothing
 
     -- Output response handling
     respLeft
+      | clear = Nothing -- Dont forward invalidated response
       | hit = respRight -- Cache hit: forward response
       | otherwise = Nothing
 
     -- Update prefetched request
     storedReq1
+      | clear = Empty -- Invalidate prefetched request
       | requestAccepted = WaitingForResponse (fromJustX reqRight) -- Some request has been accepted
-      | responseAccepted = OfferingRequest (fromJustX reqRight) -- Cache hit, but request not accepted. Keep offering the same request until it is accepted.
+      | responseAccepted = maybe Empty OfferingRequest reqRight -- Cache hit, but request not accepted. Keep offering the same request until it is accepted.
       | emptyReg = maybe Empty OfferingRequest reqLeft -- No pending request, wait for user request
       | miss = Empty -- Cache miss, drop stored request
       | otherwise = storedReq0 -- Keep current request
