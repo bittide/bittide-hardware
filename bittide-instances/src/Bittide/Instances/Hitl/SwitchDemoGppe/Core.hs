@@ -172,16 +172,14 @@ gppe ::
     ( CSignal dom (BitVector 64)
     , Df dom (BitVector 8)
     )
-gppe externalCounter maybeDna linkIn = circuit $ \(mm, nmuWbMms, jtag) -> do
+gppe externalCounter maybeDna linkIn = circuit $ \(mm, nmuWbs, jtag) -> do
   -- Core and interconnect
   [scatterBus, gatherBus, timeBus, uartBus, dnaBus] <-
     processingElement NoDumpVcd gppeConfig -< (mm, jtag)
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
-  (nmuMms, nmuWbs) <- Vec.unzip -< nmuWbMms
-  nmuWbsDelayed <- repeatC delayWishbone -< nmuWbs
-  [scatterCalendarBus, gatherCalendarBus] <- Vec.zip -< (nmuMms, nmuWbsDelayed)
+  [scatterCalendarBus, gatherCalendarBus] <- repeatC (fmapC delayWishbone) -< nmuWbs
 
   -- Scatter Gather units
   scatterUnitWbC scatterConfig linkIn -< (scatterBus, scatterCalendarBus)
@@ -245,8 +243,8 @@ core ::
     , "CC" ::: ToConstBwd Mm
     , "GPPE" ::: ToConstBwd Mm
     , Jtag Bittide
-    , CSignal Bittide (BitVector LinkCount)
-    , CSignal Bittide (BitVector LinkCount)
+    , "MASK" ::: CSignal Bittide (BitVector LinkCount)
+    , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     )
     ( CSignal Bittide (Maybe SpeedChange)
@@ -260,7 +258,7 @@ core ::
         ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMM, ccMM, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let
@@ -269,11 +267,11 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     -- Start management unit
     (muUartBytesBittide, muWbAll) <-
-      withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMM, muJtag)
+      withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (muSgWbs, muWbs3) <- Vec.split -< muWbs2
-    [ (switchWbMM, switchWb)
+    [ (switchMm, switchWb)
       , muTransceiverBus
       , muCallistoBus
       ] <-
@@ -299,7 +297,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     switchIn <- Vec.append -< ([gppeTx], rxs2)
     (switchOut, _calEntry) <-
-      withBittideClockResetEnable $ switchC calendarConfig -< (switchWbMM, (switchIn, switchWb))
+      withBittideClockResetEnable $ switchC calendarConfig -< (switchMm, (switchIn, switchWb))
     ([Fwd gppeRx], txs) <- Vec.split -< switchOut
     -- Stop internal links
 
@@ -324,7 +322,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           rxResets
           NoDumpVcd
           ccConfig
-        -< (ccMM, muCallistoBus, (ccJtag, mask, linksSuitableForCc))
+        -< (ccMm, muCallistoBus, (ccJtag, mask, linksSuitableForCc))
 
     withBittideClockResetEnable
       (wbStorage "SampleMemory" (SNat @36_000))
@@ -335,20 +333,21 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-    -- Stop Clock control
 
-    let swCcOut1 =
-          if clashSimulation
-            then
-              let
-                -- Should all clock control steps be run in simulation?
-                -- False means that clock control will always immediately be done.
-                simulateCc = False
-               in
-                if simulateCc
-                  then swCcOut0
-                  else pure Nothing
-            else swCcOut0
+    let
+      swCcOut1 =
+        if clashSimulation
+          then
+            let
+              -- Should all clock control steps be run in simulation?
+              -- False means that clock control will always immediately be done.
+              simulateCc = False
+             in
+              if simulateCc
+                then swCcOut0
+                else pure Nothing
+          else swCcOut0
+    -- Stop Clock control
 
     idC
       -< ( Fwd swCcOut1

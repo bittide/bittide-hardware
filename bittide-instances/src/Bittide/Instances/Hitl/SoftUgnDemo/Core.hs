@@ -124,6 +124,7 @@ managementUnit ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
+  -- | External counter
   Signal dom (Unsigned 64) ->
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
@@ -143,7 +144,7 @@ managementUnit externalCounter maybeDna =
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    _cnt <- timeWb (Just externalCounter) -< timeBus
+    _localCounter <- timeWb (Just externalCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
@@ -170,7 +171,7 @@ gppe ::
     ( Vec LinkCount (CSignal dom (BitVector 64))
     , Df dom (BitVector 8)
     )
-gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
+gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbs, jtag) -> do
   -- Core and interconnect
   (scatterBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
   (gatherBusses, wbs1) <- Vec.split -< wbs0
@@ -178,12 +179,10 @@ gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
-  (nmuMms, nmuWbs) <- Vec.unzip -< nmuWbMms
-  nmuWbsDelayed <- repeatC delayWishbone -< nmuWbs
-  nmuWbMmsDelayed <- Vec.zip -< (nmuMms, nmuWbsDelayed)
+  nmuWbsDelayed <- repeatC (fmapC delayWishbone) -< nmuWbs
 
   -- Scatter Gather units
-  (scatterCalendarBusses, gatherCalendarBusses) <- Vec.split -< nmuWbMmsDelayed
+  (scatterCalendarBusses, gatherCalendarBusses) <- Vec.split -< nmuWbsDelayed
   idleSink
     <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) linksIn)
     <| Vec.zip
@@ -276,7 +275,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable gppe localCounter maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop general purpose processing element
 
-    -- Start Clock control
+    -- Start clock control
     ( sync
       , Fwd swCcOut0
       , [ ccUartBus
@@ -303,20 +302,21 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-    -- Stop Clock control
 
-    let swCcOut1 =
-          if clashSimulation
-            then
-              let
-                -- Should all clock control steps be run in simulation?
-                -- False means that clock control will always immediately be done.
-                simulateCc = False
-               in
-                if simulateCc
-                  then swCcOut0
-                  else pure Nothing
-            else swCcOut0
+    let
+      swCcOut1 =
+        if clashSimulation
+          then
+            let
+              -- Should all clock control steps be run in simulation?
+              -- False means that clock control will always immediately be done.
+              simulateCc = False
+             in
+              if simulateCc
+                then swCcOut0
+                else pure Nothing
+          else swCcOut0
+    -- Stop clock control
 
     -- Use of `dflipflop` to add pipelining should be replaced by
     -- https://github.com/bittide/bittide-hardware/pull/1134
