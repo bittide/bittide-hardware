@@ -120,13 +120,11 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, j
   uartTxBytes <-
     withRefClockResetEnable
       $ asciiDebugMux d1024 uartLabels
-      -< [bootUartBytes, muUartBytes, ccUartBytes]
+      <| Vec.append
+      -< ([bootUartBytes], uartBytes)
   (_uartInBytes, uartTx) <- withRefClockResetEnable $ uartDf baud -< (uartTxBytes, Fwd 0)
 
-  muUartBytes <-
-    dcFifoDf d5 bittideClk bittideRst refClk refRst -< muUartBytesBittide
-  ccUartBytes <-
-    dcFifoDf d5 bittideClk bittideRst refClk refRst -< ccUartBytesBittide
+  uartBytes <- fmapC $ dcFifoDf d5 bittideClk bittideRst refClk refRst -< uartBytesBittide
   -- Stop UART multiplexing
 
   Fwd tOutputs <-
@@ -147,8 +145,7 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, j
     , Fwd localCounter
     , switchDataOut
     , sync
-    , muUartBytesBittide
-    , ccUartBytesBittide
+    , uartBytesBittide
     , muTransceiverWbBittide
     ) <-
     core
