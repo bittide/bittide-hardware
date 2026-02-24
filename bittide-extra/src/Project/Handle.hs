@@ -41,9 +41,9 @@ continue reading lines. If the filter returns @Stop (Right ())@, the function wi
 return successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
 the function will fail with the given message, along with a log of all processed lines.
 -}
-expectLineGeneric ::
+expectLineWith ::
   (HasCallStack) => a -> (a -> IO ByteString) -> (String -> Filter) -> IO (Either String [String])
-expectLineGeneric = expectLine' []
+expectLineWith = expectLine' []
  where
   expectLine' acc h r f = do
     byteLine0 <- r h
@@ -70,7 +70,7 @@ the function will fail with the given message, along with a log of all processed
 -}
 expectLine ::
   (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
-expectLine h = expectLineGeneric h hGetLine
+expectLine h = expectLineWith h hGetLine
 
 {- | Utility function that reads lines from a handle, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
@@ -114,9 +114,9 @@ readUntil handle ending = do
 line is encountered. Do not use on Handles that might return non-ASCII
 characters.
 -}
-readUntilLineGeneric :: a -> (a -> IO ByteString) -> String -> IO [String]
-readUntilLineGeneric h f expected = do
-  result <- expectLineGeneric h f $ \s ->
+readUntilLineWith :: a -> (a -> IO ByteString) -> String -> IO [String]
+readUntilLineWith h f expected = do
+  result <- expectLineWith h f $ \s ->
     trace ("Reading until \"" <> expected <> "\", got: " <> s) $
       if s == expected
         then Stop (Right ())
@@ -129,7 +129,7 @@ readUntilLineGeneric h f expected = do
 Do not use on Handles that might return non-ASCII characters.
 -}
 readUntilLine :: Handle -> String -> IO [String]
-readUntilLine h = readUntilLineGeneric h hGetLine
+readUntilLine h = readUntilLineWith h hGetLine
 
 {- | Read n characters from a handle.
 Do not use on Handles that might return non-ASCII characters.

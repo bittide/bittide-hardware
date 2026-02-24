@@ -8,7 +8,7 @@ import Prelude hiding (filter)
 import Control.Concurrent.Chan
 import Data.ByteString (ByteString)
 import Debug.Trace
-import Project.Handle (Filter (..), assertEither, expectLineGeneric, readUntilLineGeneric)
+import Project.Handle (Filter (..), assertEither, expectLineWith, readUntilLineWith)
 
 import Test.Tasty.HUnit
 
@@ -26,7 +26,7 @@ the function will fail with the given message, along with a log of all processed
 -}
 expectLine ::
   (HasCallStack) => Chan ByteString -> (String -> Filter) -> IO (Either String [String])
-expectLine c = expectLineGeneric c readChan
+expectLine c = expectLineWith c readChan
 
 {- | Utility function that reads lines from a channel, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
@@ -45,4 +45,4 @@ waitForLine c expected = do
 Do not use on Handles that might return non-ASCII characters.
 -}
 readUntilLine :: Chan ByteString -> String -> IO [String]
-readUntilLine h = readUntilLineGeneric h readChan
+readUntilLine h = readUntilLineWith h readChan

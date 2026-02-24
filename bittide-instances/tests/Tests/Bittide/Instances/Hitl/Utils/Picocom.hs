@@ -56,6 +56,9 @@ testWritingToChan = do
   logSize <- getFileSize outputLog
   assertBool "Channel log size is above 1MB" (1000000 < logSize)
 
+  lastLine <- last <$> lines <$> readFile outputLog
+  assertEqual "Last line is still captured" "line 99999" lastLine
+
   -- Clean up
   chanCleanup >> pCleanup
   pure ()
