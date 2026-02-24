@@ -26,7 +26,10 @@ import qualified Protocols.Hedgehog as PH
 import qualified Protocols.Vec as Vec
 
 smallInt :: Gen Int
-smallInt = Gen.integral (Range.linear 0 10)
+smallInt = Gen.integral (Range.linear 0 20)
+
+smallList :: Gen a -> Gen [a]
+smallList gen = Gen.list (Range.linear 0 20) gen
 
 genStalls :: (KnownNat n) => Gen (Vec n ((StallAck, [Int])))
 genStalls = do
@@ -132,6 +135,36 @@ prop_fanin = H.property $ do
   gen = genVec (Gen.list (Range.linear 0 10) smallInt)
   -- Since stalling can change the order of the samples, we only check if they are all present
   prop expected sampled = L.sort (L.concat (toList sampled)) H.=== L.sort (L.concat (toList expected))
+
+prop_prefetch :: Property
+prop_prefetch = H.property $ do
+  stalls <- H.forAll genStalls
+  let
+    impl ::
+      (HiddenClockResetEnable System) => Circuit (Df System Int, Df System (Maybe Int)) (Df System Integer)
+    impl = circuit $ \(req, invalidate) -> do
+      (biDf, resp) <- BiDf.fromDfs -< req
+      BiDf.loopback toInteger
+        <| BiDf.map (Df.bypassFifo d1 (Df.fifo d8)) idC
+        <| stallC simConfig stalls
+        <| BiDf.prefetch @System
+        -< (biDf, invalidate)
+      idC -< resp
+
+  PH.propWithModelSingleDomainT @System
+    expectOptions
+    gen
+    (\_ _ _ -> fmap toInteger . fst)
+    (exposeClockResetEnable impl)
+    ((H.===))
+ where
+  simConfig = def
+  expectOptions = defExpectOptions
+  gen :: Gen ([Int], [Maybe Int])
+  gen = do
+    requests <- smallList smallInt
+    invalidates <- smallList (Gen.maybe smallInt)
+    pure (requests, invalidates)
 
 tests :: TestTree
 tests = $(testGroupGenerator)
