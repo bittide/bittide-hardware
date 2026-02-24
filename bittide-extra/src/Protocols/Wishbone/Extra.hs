@@ -252,8 +252,8 @@ increaseBuswidth SNat = Circuit (unbundle . fmap go . bundle)
     bitShift = natToNum @width * fromIntegral addrLsbs
     (addrMsbs, addrLsbs :: BitVector power) = bitCoerce (m2sLeft.addr)
     newWriteData = pack (repeat m2sLeft.writeData)
-    newBusSelect = shiftL (resize m2sLeft.busSelect) bitShift
-    newReadData = (unpack s2mRight.readData) !! addrLsbs
+    newBusSelect = rotateL (resize m2sLeft.busSelect) bitShift
+    newReadData = reverse (unpack s2mRight.readData) !! addrLsbs
 
 trace ::
   (KnownNat aw, KnownNat nBytes) =>
