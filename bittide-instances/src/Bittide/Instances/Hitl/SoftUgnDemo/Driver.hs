@@ -18,15 +18,15 @@ import Bittide.Instances.Hitl.SwitchDemo.Driver (
   parseTapInfo,
  )
 import Bittide.Instances.Hitl.Utils.Driver
-import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Ugn
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class
 import Data.Vector.Internal.Check (HasCallStack)
+import Project.Chan
 import Project.FilePath
-import Project.Handle
+import Project.Handle (assertEither)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
@@ -78,7 +78,7 @@ driver testName targets = do
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
           $ forConcurrently_ picocoms
           $ \pico ->
-            waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
+            waitForLine pico "[BT] Going into infinite loop.."
 
   let
     optionalInitArgs = L.repeat def
@@ -128,7 +128,7 @@ driver testName targets = do
                   goDumpCcSamples
                 $ mapConcurrently
                   ( \pico -> do
-                      parseCaptureCounters pico.stdoutHandle
+                      parseCaptureCounters pico
                   )
                   picocoms
             let
@@ -149,7 +149,7 @@ driver testName targets = do
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico.stdoutHandle "[MU] All calendars initialized"
+                waitForLine pico "[MU] All calendars initialized"
 
             -- From here the actual test should be done, but for now it's just going to be
             -- waiting for the devices to print out over UART.
@@ -163,7 +163,7 @@ driver testName targets = do
                   goDumpCcSamples
                 $ mapConcurrently
                   ( \pico -> do
-                      parseSoftwareUgns pico.stdoutHandle
+                      parseSoftwareUgns pico
                   )
                   picocoms
 
@@ -233,7 +233,7 @@ driver testName targets = do
                   goDumpCcSamples
                 $ forConcurrently_ picocoms
                 $ \pico ->
-                  waitForLine pico.stdoutHandle "[PE] Test status: Success"
+                  waitForLine pico "[PE] Test status: Success"
 
             liftIO goDumpCcSamples
 

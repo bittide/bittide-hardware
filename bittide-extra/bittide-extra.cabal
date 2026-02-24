@@ -171,6 +171,7 @@ library
     Control.Exception.Extra
     Data.List.Extra
     Numeric.Extra
+    Project.Chan
     Project.Handle
     Protocols.Axi4.Extra
     Protocols.Df.Extra

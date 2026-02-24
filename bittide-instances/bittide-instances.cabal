@@ -312,6 +312,7 @@ test-suite unittests
     Df.WbToDf
     Tests.Bittide.Instances.Hitl.Utils.MemoryMap
     Tests.Bittide.Instances.Hitl.Utils.OpenOcd
+    Tests.Bittide.Instances.Hitl.Utils.Picocom
     Tests.ClockControlWb
     Wishbone.Axi
     Wishbone.CaptureUgn

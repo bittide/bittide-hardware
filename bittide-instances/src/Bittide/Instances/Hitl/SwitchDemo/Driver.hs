@@ -16,20 +16,22 @@ import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
-import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
+import Control.Concurrent.Chan (Chan)
 import Control.Monad (forM, forM_, unless)
 import Control.Monad.IO.Class
+import Data.ByteString (ByteString)
 import Data.Maybe (fromJust)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Gdb (Gdb)
 import Numeric (showHex)
+import Project.Chan
 import Project.FilePath
-import Project.Handle
+import Project.Handle (assertEither)
 import System.Exit
 import System.FilePath
 import System.IO
@@ -127,7 +129,7 @@ initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
   Gdb.runCommand gdb "echo connected to target device"
   pure ()
 
-initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
+initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
 initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
   devNullHandle <- openFile "/dev/null" WriteMode
 
@@ -140,8 +142,8 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
   -- `stderrPath`. This is what we're after: debug logging. To prevent race
   -- conditions, we need to know when picocom is ready so we also shortly
   -- interested in stderr in this Haskell process.
-  (pico, cleanup) <-
-    Picocom.startWithLoggingAndEnv
+  (picoChan, cleanup) <-
+    Picocom.startWithLoggingAndEnvChan
       ( Picocom.StdStreams
           { Picocom.stdin = CreatePipe
           , Picocom.stdout = CreatePipe
@@ -153,12 +155,10 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
       stderrPath
       []
 
-  hSetBuffering pico.stdoutHandle LineBuffering
-
   T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
-    $ waitForLine pico.stdoutHandle "Terminal ready"
+    $ waitForLine picoChan "Terminal ready"
 
-  pure (pico, cleanup)
+  pure (picoChan, cleanup)
 
 {- | Parse the tap info from OpenOCD log produced during startup. This function
 expects to find multiple JTAG IDs and exactly one GDB port. This is typically
@@ -383,7 +383,7 @@ driver testName targets = do
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
           $ forConcurrently_ picocoms
           $ \pico ->
-            waitForLine pico.stdoutHandle "[BT] Going into infinite loop.."
+            waitForLine pico "[BT] Going into infinite loop.."
 
     let
       optionalInitArgs = L.repeat def
@@ -427,7 +427,7 @@ driver testName targets = do
               goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->
-              waitForLine pico.stdoutHandle "[MU] All UGNs captured"
+              waitForLine pico "[MU] All UGNs captured"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt muGdbs

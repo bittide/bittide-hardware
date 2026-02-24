@@ -26,20 +26,22 @@ import Prelude
 import Clash.Prelude (BitVector, Index, Natural, Unsigned, bitCoerce)
 
 import Bittide.Instances.Hitl.Setup
+import Control.Concurrent.Chan
 import Control.Monad (forM_, unless, when)
+import Data.ByteString (ByteString)
 import Data.Either.Extra (eitherToMaybe, mapLeft)
 import Data.Functor (void)
 import Data.List (findIndex)
 import Data.Maybe (fromJust, mapMaybe)
 import Data.String.Interpolate (i)
 import Numeric (showHex)
-import Project.Handle
+import Project.Chan
+import Project.Handle (expectRight)
 import Text.Parsec
 import Text.Parsec.String (Parser)
 
 import qualified Clash.Prelude as CP
 import qualified Data.List as L
-import qualified System.IO as IO
 
 -- * Data Types
 
@@ -419,11 +421,11 @@ parsing each counter capture line into a 'CounterCapture' structure.
 
 The hardware capture unit snapshots both local and remote counters when a link comes up.
 -}
-parseCaptureCounters :: IO.Handle -> IO [CounterCapture]
-parseCaptureCounters handle = do
+parseCaptureCounters :: Chan ByteString -> IO [CounterCapture]
+parseCaptureCounters chan = do
   -- Collect all lines until we see the end marker
-  waitForLine handle "[MU] Starting UGN captures"
-  capturedLines <- readUntilLine handle "[MU] All UGNs captured"
+  waitForLine chan "[MU] Starting UGN captures"
+  capturedLines <- readUntilLine chan "[MU] All UGNs captured"
   putStrLn [i|Got captured lines: #{capturedLines}|]
   let parseResults = fmap (runParser parseCounterCapture () "counter captures") capturedLines
 
@@ -438,12 +440,12 @@ to measure propagation delays. Returns separate lists for incoming and outgoing 
 Software UGN discovery measures one-way delays by timestamping messages as they travel
 between nodes.
 -}
-parseSoftwareUgns :: IO.Handle -> IO ([UgnEdge], [UgnEdge])
-parseSoftwareUgns handle = do
+parseSoftwareUgns :: Chan ByteString -> IO ([UgnEdge], [UgnEdge])
+parseSoftwareUgns chan = do
   -- Collect all lines until we see the completion marker
-  waitForLine handle "[PE] Incoming Link UGNs:"
-  incomingLines <- readUntilLine handle "[PE] Outgoing Link UGNs:"
-  outgoingLines <- readUntilLine handle "[PE] End of UGN Edge edges"
+  waitForLine chan "[PE] Incoming Link UGNs:"
+  incomingLines <- readUntilLine chan "[PE] Outgoing Link UGNs:"
+  outgoingLines <- readUntilLine chan "[PE] End of UGN Edge edges"
   let
     parseResultsIncoming = fmap (runParser parseUgnEdge () "incoming ugn edges") incomingLines
     parseResultsOutgoing = fmap (runParser parseUgnEdge () "outgoing ugn edges") outgoingLines

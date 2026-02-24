@@ -8,15 +8,15 @@ module Bittide.Instances.Hitl.Driver.Si539xConfiguration where
 
 import Clash.Prelude
 
+import Project.Chan
 import Project.FilePath
-import Project.Handle
+import Project.Handle (assertEither)
 
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.SwitchDemo.Driver (initGdb, initPicocom, parseTapInfo)
-import Bittide.Instances.Hitl.Utils.Program
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -79,6 +79,6 @@ driverFunc _name targets = do
           $ T.tryWithTimeout T.PrintActionTime "Waiting for test success" 15_000_000
           $ forConcurrently_ picocoms
           $ \pico ->
-            waitForLine pico.stdoutHandle "All tests passed"
+            waitForLine pico "All tests passed"
 
   pure ExitSuccess

@@ -7,7 +7,7 @@ module Project.Handle where
 
 import Prelude hiding (filter)
 
-import Data.ByteString (filter, unpack)
+import Data.ByteString (ByteString, filter, unpack)
 import Data.ByteString.Char8 (hGetLine)
 import Data.ByteString.Internal (w2c)
 import Data.Word8 (isAscii, isControl)
@@ -35,24 +35,24 @@ expectLine_ h f = do
   result <- expectLine h f
   assertEither result
 
-{- | Utility function that reads lines from a handle, and applies a filter to
-each line. If the filter returns 'Continue', the function will continue
-reading lines. If the filter returns @Stop (Right ())@, the function will return
-successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
+{- | Utility function that reads lines from a bytestring producing source, and
+applies a filter to each line. If the filter returns 'Continue', the function will
+continue reading lines. If the filter returns @Stop (Right ())@, the function will
+return successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
 the function will fail with the given message, along with a log of all processed lines.
 -}
-expectLine ::
-  (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
-expectLine = expectLine' []
+expectLineWith ::
+  (HasCallStack) => a -> (a -> IO ByteString) -> (String -> Filter) -> IO (Either String [String])
+expectLineWith = expectLine' []
  where
-  expectLine' acc h f = do
-    byteLine0 <- hGetLine h
+  expectLine' acc h r f = do
+    byteLine0 <- r h
     let
       byteLine1 = filter (\c -> isAscii c && not (isControl c)) byteLine0
       line = w2c <$> unpack byteLine1
       trimmed = trimEnd line
       acc' = acc <> [line]
-      cont = expectLine' acc' h f
+      cont = expectLine' acc' h r f
     if null trimmed
       then cont
       else case f trimmed of
@@ -61,6 +61,16 @@ expectLine = expectLine' []
         Stop (Left msg) -> do
           putStrLn (unlines acc')
           pure (Left msg)
+
+{- | Utility function that reads lines from a handle, and applies a filter to
+each line. If the filter returns 'Continue', the function will continue
+reading lines. If the filter returns @Stop (Right ())@, the function will return
+successfully with the accumulated lines. If the filter returns @Stop (Left msg)@,
+the function will fail with the given message, along with a log of all processed lines.
+-}
+expectLine ::
+  (HasCallStack) => Handle -> (String -> Filter) -> IO (Either String [String])
+expectLine h = expectLineWith h hGetLine
 
 {- | Utility function that reads lines from a handle, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
@@ -100,12 +110,13 @@ readUntil handle ending = do
         c <- hGetChar handle
         go (acc <> [bufHead]) (bufTail <> [c])
 
-{- | Read lines from a handle until a specific line is encountered.
-Do not use on Handles that might return non-ASCII characters.
+{- | Read lines from a generic bytestring producing source until a specific
+line is encountered. Do not use on Handles that might return non-ASCII
+characters.
 -}
-readUntilLine :: Handle -> String -> IO [String]
-readUntilLine h expected = do
-  result <- expectLine h $ \s ->
+readUntilLineWith :: a -> (a -> IO ByteString) -> String -> IO [String]
+readUntilLineWith h f expected = do
+  result <- expectLineWith h f $ \s ->
     trace ("Reading until \"" <> expected <> "\", got: " <> s) $
       if s == expected
         then Stop (Right ())
@@ -113,6 +124,12 @@ readUntilLine h expected = do
   case result of
     Right lines' -> pure (init lines') -- Remove the expected line from the result
     Left err -> error err
+
+{- | Read lines from a handle until a specific line is encountered.
+Do not use on Handles that might return non-ASCII characters.
+-}
+readUntilLine :: Handle -> String -> IO [String]
+readUntilLine h = readUntilLineWith h hGetLine
 
 {- | Read n characters from a handle.
 Do not use on Handles that might return non-ASCII characters.
