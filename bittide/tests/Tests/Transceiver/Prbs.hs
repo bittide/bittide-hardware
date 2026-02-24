@@ -8,6 +8,7 @@ module Tests.Transceiver.Prbs where
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClock)
 
+import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Clash.Hedgehog.Sized.Index (genIndex)
 
 import Hedgehog

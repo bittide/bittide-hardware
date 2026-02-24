@@ -11,6 +11,7 @@ module Tests.DoubleBufferedRam (tests) where
 
 import Clash.Prelude
 
+import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector

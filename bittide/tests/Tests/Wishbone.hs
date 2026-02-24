@@ -10,6 +10,7 @@ module Tests.Wishbone (tests, simpleSlave, simpleSlave', wbRead) where
 
 import Clash.Prelude hiding (sample)
 
+import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector (unsafeFromList)
 import Data.Bifunctor
