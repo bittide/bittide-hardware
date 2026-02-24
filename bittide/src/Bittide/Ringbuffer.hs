@@ -12,15 +12,17 @@ import Clash.Class.BitPackC
 import Data.Maybe
 import Protocols
 import Protocols.Extra
+import Protocols.Idle
+import Protocols.MemoryMap (Access (..))
 
 import GHC.Stack (HasCallStack)
 import qualified Protocols.Df as Df
 import qualified Protocols.Df.Extra as Df
-import Protocols.Idle
 import qualified Protocols.ReqResp as ReqResp
 import qualified Protocols.Wishbone.Extra as Wb
 
 import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (..),
   addressableBytesWb,
   deviceWb,
   matchEndianness,
@@ -60,7 +62,11 @@ transmitRingbufferWb primitive SNat = circuit $ \wb -> do
   readAddress <- Df.iterate (satSucc SatWrap) 0
   applyC (fmap $ fromMaybe 0) id <| Df.toMaybe <| ram -< (readAddress, writes1)
  where
-  regConfig = registerConfig "data"
+  regConfig =
+    (registerConfig "data")
+      { access = WriteOnly
+      , description = "Buffer that continuously transmits frames to the network"
+      }
   ram = withClockResetEnable hasClock hasReset enableGen (Df.fromBlockRamWithMask primitive)
 {-# OPAQUE receiveRingbufferWb #-}
 receiveRingbufferWb ::
@@ -102,5 +108,9 @@ receiveRingbufferWb primitive SNat = circuit $ \(wb, Fwd frames) -> do
   readData <- ram -< (readAddress, Fwd writes)
   idC -< ()
  where
-  regConfig = registerConfig "data"
+  regConfig =
+    (registerConfig "data")
+      { access = ReadOnly
+      , description = "Buffer that continuously receives frames from the network"
+      }
   ram = withClockResetEnable hasClock hasReset enableGen (Df.fromBlockRam primitive)
