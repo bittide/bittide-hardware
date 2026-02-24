@@ -147,8 +147,7 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, j
     , Fwd localCounter
     , switchDataOut
     , sync
-    , muUartBytesBittide
-    , ccUartBytesBittide
+    , [muUartBytesBittide, ccUartBytesBittide]
     , muTransceiverWbBittide
     ) <-
     core

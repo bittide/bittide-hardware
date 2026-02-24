@@ -251,11 +251,8 @@ core ::
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
-    , "MU_UART" ::: Df Bittide (BitVector 8)
-    , "CC_UART" ::: Df Bittide (BitVector 8)
-    , "GPPE_UART" ::: Df Bittide (BitVector 8)
-    , "MU_TRANSCEIVER"
-        ::: (BitboneMm Bittide NmuRemBusWidth)
+    , "UARTS" ::: Vec 3 (Df Bittide (BitVector 8))
+    , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
@@ -354,9 +351,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
          , Fwd localCounter
          , txs
          , sync
-         , muUartBytesBittide
-         , ccUartBytesBittide
-         , gppeUartBytesBittide
+         , [muUartBytesBittide, ccUartBytesBittide, gppeUartBytesBittide]
          , muTransceiverBus
          )
  where
