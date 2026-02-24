@@ -46,7 +46,7 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   txOut <- transmitRingbufferWbC memDepth -< wbTx
   receiveRingbufferWbC memDepth -< (wbRx, txOut)
-  _cnt <- timeWb -< timeBus
+  _cnt <- timeWb Nothing -< timeBus
   idC -< uartTx
  where
   peConfig binary = unsafePerformIO $ do
@@ -57,13 +57,15 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
     pure
       PeConfig
         { cpu = vexRiscv0
+        , depthI = SNat @IMemWords
+        , depthD = SNat @DMemWords
         , initI =
-            NonReloadable @IMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
         , initD =
-            NonReloadable @DMemWords
+            Just
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath

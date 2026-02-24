@@ -36,13 +36,13 @@ wbInterface ::
   , KnownNat addrW
   ) =>
   -- | Wishbone (master -> slave) data.
-  WishboneM2S addrW nBytes (Bytes nBytes) ->
+  WishboneM2S addrW nBytes ->
   -- | Read data to be sent over the (slave -> master) port.
   Bytes nBytes ->
   -- | (slave -> master data, write address memory element, write data memory element)
-  (WishboneS2M (Bytes nBytes), Index addresses, Maybe (Bytes nBytes))
+  (WishboneS2M nBytes, Index addresses, Maybe (Bytes nBytes))
 wbInterface WishboneM2S{..} readData =
-  ( (emptyWishboneS2M @(Bytes nBytes)){readData, acknowledge, err}
+  ( (emptyWishboneS2M @0){readData, acknowledge, err}
   , wbAddr
   , writeOp
   )
@@ -125,12 +125,12 @@ transmitRingbufferWb ::
   -- | Configuration for the ringbuffer.
   SNat memDepth ->
   -- | Wishbone (master -> slave) port for CPU access.
-  Signal dom (WishboneM2S awTx 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S awTx 4) ->
   -- | 1. Transmitted data to link
   --   2. Wishbone (slave -> master) port
   --   3. Memory map
   ( Signal dom (BitVector 64)
-  , Signal dom (WishboneS2M (Bytes 4))
+  , Signal dom (WishboneS2M 4)
   , Mm
   )
 transmitRingbufferWb memDepthSnat@SNat wbIn = (txFrame, delayControls wbOut, SimOnly memoryMap)
@@ -256,12 +256,12 @@ receiveRingbufferWb ::
   -- | Configuration for the ringbuffer.
   SNat memDepth ->
   -- | Wishbone (master -> slave) port for CPU access.
-  Signal dom (WishboneM2S awRx 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S awRx 4) ->
   -- | Incoming frame from Bittide link.
   Signal dom (BitVector 64) ->
   -- | 1. Wishbone (slave -> master) port
   --   2. Memory map
-  (Signal dom (WishboneS2M (Bytes 4)), Mm)
+  (Signal dom (WishboneS2M 4), Mm)
 receiveRingbufferWb memDepthSnat@SNat wbIn linkIn =
   case clogProductRule @memDepth of
     Refl ->
