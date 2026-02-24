@@ -12,7 +12,7 @@ import Project.Handle (Filter (..), assertEither, expectLineGeneric, readUntilLi
 
 import Test.Tasty.HUnit
 
--- | Version of `expectLine` that directly throws an error on `Left`.
+-- | Version of 'expectLine' that directly throws an error on 'Left'.
 expectLine_ :: (HasCallStack) => Chan ByteString -> (String -> Filter) -> Assertion
 expectLine_ c f = do
   result <- expectLine c f
