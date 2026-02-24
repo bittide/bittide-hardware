@@ -235,6 +235,15 @@ prop_iterate =
     assert (len >= 5)
     L.take len expected === actual
 
+prop_bypassFifo :: Property
+prop_bypassFifo =
+  idWithModelSingleDomain
+    @System
+    defExpectOptions
+    (genData genSmallInt)
+    (C.exposeClockResetEnable id)
+    (C.exposeClockResetEnable (Df.bypassFifo d1 (Df.fifo d8)))
+
 -- Start of shamelessly copied code from bittide
 
 {- | Version of 'blockRamByteAddressable' with undefined initial contents. It is similar

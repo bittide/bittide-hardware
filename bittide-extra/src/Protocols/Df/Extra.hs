@@ -5,6 +5,7 @@
 module Protocols.Df.Extra where
 
 import Clash.Prelude
+import Data.Bifunctor (Bifunctor (..))
 import Data.Maybe
 import Data.String.Interpolate (i)
 import Protocols
@@ -144,6 +145,93 @@ iterate f s0 = Circuit (((),) . mealy go s0 . snd)
     next
       | stalled = now
       | otherwise = f now
+
+data BypassState a maxDelay
+  = BypassState
+  { inReset :: Bool
+  , stored :: Maybe a
+  , count :: Index (maxDelay + 1)
+  }
+  deriving (Generic, NFDataX)
+
+{- | Fifos inherently have latency, this circuit allows you to bypass the fifo when it is empty
+to allow for 0 latency communication when possible, while still adhering to the Df protocol.
+-}
+bypassFifo ::
+  forall dom maxDelay a.
+  (HiddenClockResetEnable dom, NFDataX a, 1 <= maxDelay) =>
+  SNat maxDelay ->
+  Circuit (Df dom a) (Df dom a) ->
+  Circuit (Df dom a) (Df dom a)
+bypassFifo SNat fifoCircuit = circuit $ \inp -> do
+  fifoOut <- fifoCircuit -< fifoIn
+  (out, fifoIn) <- bypassCkt -< (inp, fifoOut)
+  idC -< out
+ where
+  bypassCkt =
+    Circuit
+      ( bimap unbundle unbundle
+          . unbundle
+          . mealy go initState
+          . bundle
+          . bimap bundle bundle
+      )
+  initState :: BypassState a maxDelay
+  initState = BypassState{inReset = True, stored = Nothing, count = 0}
+
+  -- Reset state
+  go state ~(~(inp, fifoOut), ~(Ack outAck, Ack fifoInAck))
+    | state.inReset = (initState{inReset = False}, ((Ack False, Ack False), (Nothing, Nothing)))
+    | isNothing state.stored && state.count == 0 =
+        let
+          inpAck = Ack True
+          fifoOutAck = Ack False
+          out = inp
+          fifoIn = Nothing
+          -- If we receive backpressure while trying to bypass, buffer the input
+          -- to adhere to the Df protocol.
+          nextReg
+            | isJust inp && not outAck = inp
+            | otherwise = Nothing
+
+          nextCount = 0
+          nextState = BypassState{inReset = False, stored = nextReg, count = nextCount}
+         in
+          (nextState, ((inpAck, fifoOutAck), (out, fifoIn)))
+    | isJust state.stored =
+        let
+          fifoIn = inp
+          inpAck = Ack fifoInAck
+          out = state.stored
+          fifoOutAck = Ack False
+
+          -- We receive backpressure on a buffered valued, if we receive a new value we have to
+          -- put it in the fifo and thus increase the count
+          nextCount
+            | isJust inp = maxBound
+            | otherwise = state.count
+
+          nextReg = if outAck then Nothing else state.stored
+          nextState = BypassState{inReset = False, stored = nextReg, count = nextCount}
+         in
+          (nextState, ((inpAck, fifoOutAck), (out, fifoIn)))
+    -- Fifo is not empty, count is nonzero.
+    | otherwise =
+        let
+          inpAck = Ack fifoInAck
+          fifoOutAck = Ack outAck
+          out = fifoOut
+          fifoIn = inp
+
+          -- When the fifo produces a sample, reset the count to maxBound
+          nextCount
+            | isJust fifoOut = maxBound
+            | otherwise = satPred SatZero state.count
+
+          nextReg = Nothing
+          nextState = BypassState{inReset = False, stored = nextReg, count = nextCount}
+         in
+          (nextState, ((inpAck, fifoOutAck), (out, fifoIn)))
 
 {- | `Df` version of `traceShowId`, introduces no state or logic of any form. Only prints when
 there is data available on the input side. Prints available data, clock cycle count in the
