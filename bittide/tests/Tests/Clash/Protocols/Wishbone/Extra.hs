@@ -11,6 +11,7 @@ import Bittide.DoubleBufferedRam (
   ContentType (Vec),
   wbStorage,
  )
+import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Clash.Prelude (withClockResetEnable)
 import Data.Map (Map)
 import Data.String.Interpolate (i)
@@ -19,7 +20,7 @@ import Protocols
 import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
-import Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
+import Protocols.Wishbone.Extra (increaseBuswidth, xpmCdcHandshakeWb)
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   wishbonePropWithModel,
@@ -28,12 +29,25 @@ import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog (testProperty)
 import Test.Tasty.TH (testGroupGenerator)
 
+import qualified Clash.Prelude as C
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 type AddressWidth = 4
+
+genWishboneTransfer ::
+  (KnownNat aw, KnownNat nBytes) =>
+  Gen (BitVector aw) ->
+  Gen (WishboneMasterRequest aw nBytes)
+genWishboneTransfer genAddr =
+  Gen.choice
+    [ Read <$> genAddr <*> pure maxBound
+    , Write <$> genAddr <*> pure maxBound <*> genDefinedBitVector
+    ]
+
 mergeWithMask ::
   forall n m.
   (KnownNat n, KnownNat m) =>
@@ -122,6 +136,79 @@ prop_xpmCdcHandshakeWb = property $ do
   genBoundedIntegral :: forall a. (Integral a, Bounded a) => Gen a
   genBoundedIntegral = Gen.integral Range.constantBounded
 
+testIncreaseBuswidth ::
+  forall power nBytes.
+  -- \| We are restricted by our 4 byte wide `wbStorage` backend.
+  (KnownNat power, (2 ^ power) * nBytes ~ 4, nBytes ~ 4 `DivRU` (2 ^ power)) =>
+  SNat power ->
+  Property
+testIncreaseBuswidth power = property $ do
+  let
+    eOpts = defExpectOptions
+
+    -- Depth is half the number of addresses to also tests error on out-of-range accesses.
+    depth = SNat @(2 ^ (AddressWidth - 2))
+    lastAddress = snatToNum $ predSNat depth
+    lastAddressSmall = lastAddress * (natToNum @(2 ^ power))
+    genAddr = Gen.integral (Range.linear 0 lastAddressSmall)
+    genInputs = Gen.list (Range.linear 1 10) (genWishboneTransfer genAddr)
+
+    dutMem :: Circuit (Wishbone System 'Standard AddressWidth 4) ()
+    dutMem =
+      withClockResetEnable clk rst ena
+        $ unMemmap
+        $ wbStorage "test" depth (Just (Vec (repeat 0)))
+
+    dut :: Circuit (Wishbone System 'Standard (AddressWidth + power) nBytes) ()
+    dut = withClockResetEnable clk rst ena (increaseBuswidth power |> dutMem)
+
+  H.footnote [i| Depth: #{snatToInteger depth}, Last Address: #{lastAddress}|]
+
+  withClockResetEnable clk rst ena
+    $ wishbonePropWithModel
+      @System
+      eOpts
+      (memoryModel (fromIntegral lastAddressSmall))
+      dut
+      genInputs
+      (Map.fromList (L.zip [0 .. lastAddressSmall] (L.repeat 0)))
+ where
+  clk = clockGen
+  rst = noReset
+  ena = enableGen
+
+prop_increaseBuswidth_0 :: Property
+prop_increaseBuswidth_0 = testIncreaseBuswidth d0
+
+prop_increaseBuswidth_1 :: Property
+prop_increaseBuswidth_1 = testIncreaseBuswidth d1
+
+prop_increaseBuswidth_2 :: Property
+prop_increaseBuswidth_2 = testIncreaseBuswidth d2
+
+prop_memoryModel :: Property
+prop_memoryModel = property $ do
+  let
+    eOpts = defExpectOptions
+    dut :: (C.HiddenClockResetEnable System) => Circuit (Wishbone System 'Standard AddressWidth 4) ()
+    dut =
+      unMemmap (wbStorage "test" d8 (Just (Vec (repeat 0))))
+
+  withClockResetEnable clk rst ena
+    $ wishbonePropWithModel
+      @System
+      eOpts
+      (memoryModel 16)
+      dut
+      genInputs
+      (Map.fromList (L.zip [0 .. lastAddress] (L.repeat 0)))
+ where
+  clk = clockGen
+  rst = noReset
+  ena = enableGen
+  lastAddress = natToNum @(2 ^ (AddressWidth - 1)) -- Less elements to also test error propagation.
+  genAddr = Gen.integral (Range.linear 0 (lastAddress * 2))
+  genInputs = Gen.list (Range.linear 1 10) (genWishboneTransfer genAddr)
 
 tests :: TestTree
 tests = $(testGroupGenerator)
