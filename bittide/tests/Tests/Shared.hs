@@ -7,12 +7,9 @@ module Tests.Shared where
 
 import Clash.Prelude
 
-import Clash.Hedgehog.Sized.Unsigned
-
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
 import GHC.Stack (HasCallStack)
-import Hedgehog
 import Protocols (Circuit (..), toSignals)
 import Protocols.Wishbone as Wb
 import Protocols.Wishbone.Standard.Hedgehog (WishboneMasterRequest (..), validatorCircuit)
@@ -22,7 +19,6 @@ import Bittide.SharedTypes
 
 import qualified Data.List as L
 import qualified GHC.TypeNats as TypeNats
-import qualified Hedgehog.Range as Range
 
 data IsInBounds a b c where
   InBounds :: (a <= b, b <= c) => IsInBounds a b c
@@ -45,12 +41,6 @@ isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
 isInBounds a b c = case (compareSNat a b, compareSNat b c) of
   (SNatLE, SNatLE) -> InBounds
   _ -> NotInBounds
-
-{- | We use a custom generator for BitVector's because the current Clash implementation
-uses genVec which is slow.
--}
-genDefinedBitVector :: forall n m. (MonadGen m, KnownNat n) => m (BitVector n)
-genDefinedBitVector = pack <$> genUnsigned Range.constantBounded
 
 -- | Single datatype to represent successful and unsuccessful Wishbone transactions.
 data Transaction addrW nBytes

@@ -25,8 +25,8 @@ import Protocols.Wishbone
 
 import Bittide.SharedTypes (Byte)
 import Bittide.Wishbone (WishboneRequest (..), WishboneResponse (..))
+import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Hedgehog (Gen)
-import Tests.Shared (genDefinedBitVector)
 
 import qualified Hedgehog.Gen as Gen
 

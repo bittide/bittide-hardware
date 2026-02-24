@@ -9,6 +9,7 @@ module Tests.Switch (tests, zipList, unzipList) where
 
 import Clash.Prelude
 
+import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Vector
 import Hedgehog
@@ -19,7 +20,6 @@ import Bittide.Calendar
 import Bittide.SharedTypes
 import Bittide.Switch
 import Tests.Calendar hiding (tests)
-import Tests.Shared
 
 import Data.Maybe
 import Data.Proxy

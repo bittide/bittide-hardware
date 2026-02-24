@@ -8,6 +8,7 @@ module Tests.Calendar (tests, genCalendarConfig, genValidEntry, unrollCalendar) 
 
 import Clash.Prelude
 
+import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Data.Maybe (fromJust)
