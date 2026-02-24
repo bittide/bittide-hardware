@@ -162,7 +162,7 @@ prop_fromDSignal =
     dut
  where
   reference clk ena = withClock clk $ withEnable ena $ delayN d10 (0 :: Int)
-  dut clk rst ena = Df.fromDSignal clk rst ena (reference clk)
+  dut clk rst _ = Df.fromDSignal clk rst (reference clk)
 
 {- | Verify that the circuit always produces less backpressure than it receives
 This should check that the circuit can run at without more stalls than strictly necessary
@@ -173,10 +173,10 @@ prop_fromDSignalBackpressure = H.property $ do
   stalls <- forAll (Gen.list (Range.linear 0 10) (Gen.integral (Range.linear 0 10)))
   let
     reference clk ena = withClock @System clk $ withEnable ena $ delayN d5 ()
-    dut clk rst ena = Df.fromDSignal clk rst ena (reference clk)
-    top clk rst ena = circuit $ do
+    dut clk rst = Df.fromDSignal clk rst (reference clk)
+    top clk rst = circuit $ do
       (drive1, driveMonitor) <- circuitMonitor <| driveC def inputData
-      (sample1, sampleMonitor) <- circuitMonitor <| dut clk rst ena -< drive1
+      (sample1, sampleMonitor) <- circuitMonitor <| dut clk rst -< drive1
       withReset rst Df.consume <| Df.stall def{resetCycles = 0} StallCycle stalls -< sample1
       idC -< (driveMonitor, sampleMonitor)
 
@@ -187,7 +187,7 @@ prop_fromDSignalBackpressure = H.property $ do
     getStalls = L.scanl (\acc inps -> if isStalled inps then succ acc else acc) (0 :: Int)
     getTransfers = L.foldl (\acc inps -> if isTransfer inps then succ acc else acc) (0 :: Int)
     getIdles = L.foldl (\acc inps -> if isIdle inps then succ acc else acc) (0 :: Int)
-    (driveSignals, sampleSignals) = sampleC def{timeoutAfter = 200} (top clockGen resetGen enableGen)
+    (driveSignals, sampleSignals) = sampleC def{timeoutAfter = 200} (top clockGen resetGen)
     driveStalls = getStalls driveSignals
     sampleStalls = getStalls sampleSignals
 

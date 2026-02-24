@@ -77,7 +77,7 @@ its write channel. Writes are always acked immediately, reads receive backpressu
 based on the outgoing `Df` channel.
 -}
 fromBlockRamWithMask ::
-  (HiddenClockResetEnable dom, Num addr, NFDataX addr, KnownNat words) =>
+  (KnownDomain dom, HiddenClock dom, HiddenReset dom, Num addr, NFDataX addr, KnownNat words) =>
   ( Enable dom ->
     Signal dom addr ->
     Signal dom (Maybe (addr, BitVector (words * 8))) ->
@@ -95,19 +95,16 @@ fromBlockRamWithMask primitive = circuit $ \(r, w) -> do
     write = fmap (\(addr, _, dat) -> (addr, dat)) <$> writeOp
     mask = maybe 0 (\(_, mask', _) -> mask') <$> writeOp
     primitiveD ena readD = ED.fromBlockRamWithMask (primitive ena) readD write mask
-  fromDSignal hasClock hasReset hasEnable primitiveD <| forceResetSanity -< r
+  fromDSignal hasClock hasReset primitiveD <| forceResetSanity -< r
 
-{- | Creates a `Df` wrapper around a block RAM primitive. Writes are always acked
-immediately, reads receive backpressure based on the outgoing `Df` channel.
--}
 fromBlockRam ::
-  (HiddenClockResetEnable dom, Num addr, NFDataX addr, NFDataX a) =>
+  (KnownDomain dom, HiddenClock dom, HiddenReset dom, Num addr, NFDataX addr, NFDataX a) =>
   (Enable dom -> Signal dom addr -> Signal dom (Maybe (addr, a)) -> Signal dom a) ->
   Circuit (Df dom addr, Df dom (addr, a)) (Df dom a)
 fromBlockRam primitive = circuit $ \(r, w) -> do
   Fwd (D.fromSignal -> write) <- Df.toMaybe <| forceResetSanity -< w
   let primitiveD ena readD = ED.fromBlockRam (primitive ena) readD write
-  fromDSignal hasClock hasReset hasEnable primitiveD <| forceResetSanity -< r
+  fromDSignal hasClock hasReset primitiveD <| forceResetSanity -< r
 
 -- | Converts a delay annotated circuit with enable port into a `Df` circuit.
 fromDSignal ::
@@ -119,19 +116,18 @@ fromDSignal ::
   ) =>
   Clock dom ->
   Reset dom ->
-  Enable dom ->
   (Enable dom -> D.DSignal dom 0 a -> D.DSignal dom n b) ->
   Circuit (Df dom a) (Df dom b)
-fromDSignal clk rst ena0 f = withReset rst Df.forceResetSanity |> Circuit go
+fromDSignal clk rst f = withReset rst Df.forceResetSanity |> Circuit go
  where
   go (dataLeft, ackRight) = (fmap Ack ackLeft, D.toSignal dataRight)
    where
     ackLeft = fmap not (D.toSignal dataRightValid) .||. fmap (\(Ack ack) -> ack) ackRight
     dataLeftValid = fmap isJust dataLeft
-    dataRightValid = ED.delayI False ena1 clk $ D.fromSignal dataLeftValid
+    dataRightValid = ED.delayI False ena clk $ D.fromSignal dataLeftValid
     dataRight = liftA2 (\v d -> if v then Just d else Nothing) dataRightValid data_
-    ena1 = E.andEnable ena0 ackLeft
-    data_ = f ena1 (D.fromSignal (fromJustX <$> dataLeft))
+    ena = E.toEnable ackLeft
+    data_ = f ena (D.fromSignal (fromJustX <$> dataLeft))
 
 -- | Generates an infinite stream of values by repeatedly applying a function.
 iterate ::
