@@ -35,7 +35,7 @@ import Bittide.Hitl (
   testCasesFromEnum,
  )
 import Clash.Cores.Xilinx.Ddr4
-import Clash.Protocols.Axi4.Extra
+import Protocols.Axi4.Extra
 
 import Bittide.Instances.Domains
 

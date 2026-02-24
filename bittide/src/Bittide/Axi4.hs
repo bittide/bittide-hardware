@@ -49,7 +49,6 @@ import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Ila hiding (Data)
-import Clash.Protocols.Axi4.Extra
 import Clash.Sized.Internal.BitVector (popCountBV)
 import Data.Bifunctor (bimap, first, second)
 import Data.Constraint
@@ -59,6 +58,7 @@ import Data.Proxy
 import Data.Typeable (Typeable)
 import Protocols
 import Protocols.Axi4.Common
+import Protocols.Axi4.Extra
 import Protocols.Axi4.ReadAddress
 import Protocols.Axi4.ReadData
 import Protocols.Axi4.Stream as AS

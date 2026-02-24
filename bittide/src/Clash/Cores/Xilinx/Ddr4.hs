@@ -24,7 +24,7 @@ import Protocols.Axi4.WriteAddress
 import Protocols.Axi4.WriteData
 import Protocols.Axi4.WriteResponse
 
-import Clash.Protocols.Axi4.Extra
+import Protocols.Axi4.Extra
 
 import qualified Data.Map as Map
 
