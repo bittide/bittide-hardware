@@ -32,6 +32,7 @@ import qualified Tests.SwitchDemoProcessingElement.Calculator
 import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
+import qualified Tests.WireDemoProcessingElement
 import qualified Tests.Wishbone
 import qualified Tests.Wishbone.Arbiter
 
@@ -62,6 +63,7 @@ tests =
     , Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.tests
     , Tests.Transceiver.WordAlign.tests
+    , Tests.WireDemoProcessingElement.tests
     , Tests.Wishbone.tests
     , Tests.Wishbone.Arbiter.tests
     ]
