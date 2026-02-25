@@ -31,7 +31,7 @@ import Gdb (Gdb)
 import Numeric (showHex)
 import Project.Chan
 import Project.FilePath
-import Project.Handle (assertEither)
+import Project.Handle (assertEither, expectRight)
 import System.Exit
 import System.FilePath
 import System.IO
