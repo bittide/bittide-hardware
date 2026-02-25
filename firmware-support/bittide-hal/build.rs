@@ -366,6 +366,30 @@ fn annotate_types(
 
 fn generate_type_ref_imports(ctx: &IrCtx, refs: &TypeReferences) -> TokenStream {
     let mut code = TokenStream::new();
+    if refs.use_bitvec {
+        code.extend(quote! {
+            use crate::manual_additions::bitvector::BitVector;
+            use bittide_macros::BitVector;
+        });
+    }
+    if refs.use_index {
+        code.extend(quote! {
+            use crate::manual_additions::index::Index;
+            use bittide_macros::Index;
+        });
+    }
+    if refs.use_signed {
+        code.extend(quote! {
+            use crate::manual_additions::signed::Signed;
+            use bittide_macros::Signed;
+        });
+    }
+    if refs.use_unsigned {
+        code.extend(quote! {
+            use crate::manual_additions::unsigned::Unsigned;
+            use bittide_macros::Unsigned;
+        });
+    }
     for ty_ref in &refs.references {
         let name = &ctx.type_names[*ty_ref].base;
         let module = ident(IdentType::Module, name);

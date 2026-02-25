@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::soft_ugn_demo_mu::devices::{GatherUnit, ScatterUnit};
+use bittide_macros::BitVector;
 
 impl GatherUnit {
     /// Write a slice to the gather memory.
@@ -10,7 +11,7 @@ impl GatherUnit {
     ///
     /// The source memory size must be smaller or equal to the memory size of
     /// the `GatherUnit` memory.
-    pub fn write_slice(&self, src: &[[u8; 8]], offset: usize) {
+    pub fn write_slice(&self, src: &[BitVector!(64)], offset: usize) {
         assert!(src.len() + offset <= Self::GATHER_MEMORY_LEN);
         let mut off = offset;
         for &val in src {
@@ -38,7 +39,7 @@ impl ScatterUnit {
     ///
     /// The destination memory size must be smaller or equal to the memory size
     ///  of the `ScatterUnit`.
-    pub fn read_slice(&self, dst: &mut [[u8; 8]], offset: usize) {
+    pub fn read_slice(&self, dst: &mut [BitVector!(64)], offset: usize) {
         assert!(dst.len() + offset <= Self::SCATTER_MEMORY_LEN);
         let mut off = offset;
         for val in dst {

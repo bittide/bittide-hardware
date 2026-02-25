@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::shared_devices::addressable_buffer::AddressableBuffer;
+use bittide_macros::bitvector;
 
 impl AddressableBuffer {
     /// Returns a reference to the data as a contiguous byte slice.
@@ -31,7 +32,7 @@ impl AddressableBuffer {
     /// Clears the contents of the entire data by setting all bytes to zero.
     pub fn clear(&self) {
         for i in 0..Self::DATA_LEN {
-            unsafe { self.set_data_unchecked(i, [0u8; 4]) };
+            unsafe { self.set_data_unchecked(i, bitvector!(0x0, n = 32)) };
         }
     }
 

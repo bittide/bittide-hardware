@@ -19,11 +19,12 @@ workspace = true
 default = []
 
 [dependencies]
+bittide-hal = { path = "../bittide-hal" }
+bittide-macros = { path = "../bittide-macros" }
 fdt = "0.1.0"
+itertools = { version = "0.14.0", default-features = false }
 log = "0.4.21"
 ufmt = "0.2.0"
-bittide-hal = { path = "../bittide-hal" }
-itertools = { version = "0.14.0", default-features = false }
 
 [dependencies.heapless]
 version = "0.8"
@@ -40,10 +41,10 @@ default-features = false
 features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"]
 
 [dev-dependencies]
-proptest = "1.0"
-object = { version = "0.28", features = ["write"] }
-libc = "0.2"
-test-strategy = "0.2.0"
-rand = "0.8"
 lazy_static = "1.0"
+libc = "0.2"
+object = { version = "0.28", features = ["write"] }
+proptest = "1.0"
+rand = "0.8"
 tempfile = "3"
+test-strategy = "0.2.0"
