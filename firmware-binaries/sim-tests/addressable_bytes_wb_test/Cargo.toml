@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 heapless = "0.8.0"
 riscv = { version = "0.11.1", features = ["critical-section-single-hart"] }

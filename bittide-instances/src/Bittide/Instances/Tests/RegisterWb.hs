@@ -434,7 +434,7 @@ memoryMap =
     $ dutWithVcdAndPeConfig NoDumpVcd
     $ emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
 
-type IMemWords = DivRU (40 * 1024) 4
+type IMemWords = DivRU (48 * 1024) 4
 type DMemWords = DivRU (16 * 1024) 4
 
 getDumpVcd :: IO DumpVcd

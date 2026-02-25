@@ -7,6 +7,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use bittide_macros::bitvector;
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use bittide_hal::hals::addressable_bytes_wb as hal;
@@ -63,7 +64,7 @@ fn main() -> ! {
     uwriteln!(uart, "Starting addressable_bytes_wb_test").unwrap();
 
     // Test data: 8 words with distinct patterns
-    let test_data: [[u8; 4]; 8] = [
+    let test_data = [
         [0x00, 0x10, 0x20, 0x30],
         [0x01, 0x11, 0x21, 0x31],
         [0x02, 0x12, 0x22, 0x32],
@@ -72,7 +73,8 @@ fn main() -> ! {
         [0x05, 0x15, 0x25, 0x35],
         [0x06, 0x16, 0x26, 0x36],
         [0x07, 0x17, 0x27, 0x37],
-    ];
+    ]
+    .map(|bytes| bitvector!(bytes, n = 32));
 
     // Test 1: Word-based access for whole memory
     uwriteln!(uart, "Test word-based access").unwrap();
@@ -86,7 +88,11 @@ fn main() -> ! {
 
     buffer.clear();
     for i in 0..8 {
-        expect("Clearing failed", Some([0u8; 4]), buffer.data(i));
+        expect(
+            "Clearing failed",
+            Some(bitvector!(0x0, n = 32)),
+            buffer.data(i),
+        );
     }
     uwriteln!(uart, "  PASS").unwrap();
 
@@ -115,7 +121,11 @@ fn main() -> ! {
 
         buffer.clear();
         for i in 0..8 {
-            expect("Clearing failed", Some([0u8; 4]), buffer.data(i));
+            expect(
+                "Clearing failed",
+                Some(bitvector!(0x0, n = 32)),
+                buffer.data(i),
+            );
         }
     }
 
@@ -139,7 +149,11 @@ fn main() -> ! {
 
                 buffer.clear();
                 for i in 0..8 {
-                    expect("Test 3 clear", Some([0u8; 4]), buffer.data(i));
+                    expect(
+                        "Test 3 clear",
+                        Some(bitvector!(0x0, n = 32)),
+                        buffer.data(i),
+                    );
                 }
             }
         }

@@ -57,7 +57,10 @@ fn main() -> ! {
     // Test 1: Basic loopback — data written to TX arrives at RX (possibly rotated).
     let pattern_a = make_pattern(0);
     tx.write_slice(&pattern_a, 0);
-    timer.wait(Duration::from_cycles(LEN as u32, timer.frequency()));
+    timer.wait(Duration::from_cycles(
+        LEN as u32,
+        timer.frequency().into_inner(),
+    ));
     let rx_data = read_rx(&rx);
     if !verify_loopback(&pattern_a, &rx_data) {
         all_passed = false;
@@ -69,7 +72,10 @@ fn main() -> ! {
     rx.set_enable(false);
     let pattern_b = make_pattern(0x80);
     tx.write_slice(&pattern_b, 0);
-    timer.wait(Duration::from_cycles(LEN as u32, timer.frequency()));
+    timer.wait(Duration::from_cycles(
+        LEN as u32,
+        timer.frequency().into_inner(),
+    ));
     let rx_after_rx_disable = read_rx(&rx);
     if rx_after_rx_disable != rx_data {
         all_passed = false;
@@ -79,7 +85,10 @@ fn main() -> ! {
 
     // Test 3: receive_enable=true resumes RX updates.
     rx.set_enable(true);
-    timer.wait(Duration::from_cycles(LEN as u32, timer.frequency()));
+    timer.wait(Duration::from_cycles(
+        LEN as u32,
+        timer.frequency().into_inner(),
+    ));
     let rx_after_rx_enable = read_rx(&rx);
     if !verify_loopback(&pattern_b, &rx_after_rx_enable) {
         all_passed = false;
@@ -91,7 +100,10 @@ fn main() -> ! {
     tx.set_enable(false);
     let pattern_c = make_pattern(0x40);
     tx.write_slice(&pattern_c, 0);
-    timer.wait(Duration::from_cycles(LEN as u32, timer.frequency()));
+    timer.wait(Duration::from_cycles(
+        LEN as u32,
+        timer.frequency().into_inner(),
+    ));
     let rx_after_tx_disable = read_rx(&rx);
     let all_zero = rx_after_tx_disable.iter().all(|w| *w == [0u8; 8]);
     if !all_zero {
@@ -102,7 +114,10 @@ fn main() -> ! {
 
     // Test 5: write_enable=true resumes transmission.
     tx.set_enable(true);
-    timer.wait(Duration::from_cycles(LEN as u32, timer.frequency()));
+    timer.wait(Duration::from_cycles(
+        LEN as u32,
+        timer.frequency().into_inner(),
+    ));
     let rx_after_tx_enable = read_rx(&rx);
     if !verify_loopback(&pattern_c, &rx_after_tx_enable) {
         all_passed = false;
@@ -119,7 +134,10 @@ fn main() -> ! {
     tx.clear();
     let pattern_d: [[u8; 8]; LEN] = core::array::from_fn(|i| (0x1000 + i as u64).to_le_bytes());
     tx.write_slice(&pattern_d, 0);
-    timer.wait(Duration::from_cycles(LEN as u32, timer.frequency()));
+    timer.wait(Duration::from_cycles(
+        LEN as u32,
+        timer.frequency().into_inner(),
+    ));
     let rx_aligned_data = read_rx(&rx_aligned.buffer);
     if pattern_d != rx_aligned_data {
         all_passed = false;
