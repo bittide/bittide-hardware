@@ -2,10 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::shared_devices::clock_control::ClockControl;
-use bittide_hal::types::callisto_config::CallistoConfig;
-use bittide_hal::types::maybe::Maybe;
-use bittide_hal::types::speed_change::SpeedChange;
+use bittide_hal::{
+    manual_additions::IntoAs,
+    shared_devices::clock_control::ClockControl,
+    types::{callisto_config::CallistoConfig, maybe::Maybe, speed_change::SpeedChange},
+};
 
 /// Rust sibling of
 /// `Bittide.ClockControl.Callisto.Types.Stability`.
@@ -83,7 +84,7 @@ impl Callisto {
         self.accumulated_speed_requests += speed_change_to_sign(speed_request);
 
         if let Maybe::Just(wait_time) = self.config.wait_time {
-            self.update_reframe_state(wait_time as usize, cc.links_stable()[0] != 0, c_des);
+            self.update_reframe_state(wait_time.into_as(), cc.links_stable()[0] != 0, c_des);
         }
 
         speed_request

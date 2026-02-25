@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::shared_devices::elastic_buffer::ElasticBuffer;
+use bittide_macros::Signed;
 
 impl ElasticBuffer {
     /// Minimum occupancy value for the elastic buffer (signed 8-bit).
@@ -18,7 +19,7 @@ impl ElasticBuffer {
     /// 2. Waits for completion with `adjustment_wait`
     ///
     /// Negative values drain (remove frames), positive values fill (add frames).
-    pub fn set_adjustment(&self, adjustment: i32) {
+    pub fn set_adjustment(&self, adjustment: Signed!(32)) {
         self.set_adjustment_async(adjustment);
         self.set_adjustment_wait(());
     }
@@ -34,9 +35,9 @@ impl ElasticBuffer {
     ///
     /// Returns the number of frames added or dropped
     pub fn set_occupancy(&self, target: i8) -> i8 {
-        let current = self.data_count();
+        let current = self.data_count().into_inner();
         let delta = target - current;
-        self.set_adjustment(delta as i32);
+        self.set_adjustment(delta.into());
         delta
     }
 
@@ -50,9 +51,9 @@ impl ElasticBuffer {
     ///
     /// Returns the number of frames added or dropped
     pub fn set_occupancy_async(&self, target: i8) -> i8 {
-        let current = self.data_count();
+        let current = self.data_count().into_inner();
         let delta = target - current;
-        self.set_adjustment_async(delta as i32);
+        self.set_adjustment_async(delta.into());
         delta
     }
 

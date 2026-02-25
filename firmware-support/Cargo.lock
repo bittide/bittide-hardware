@@ -71,6 +71,7 @@ dependencies = [
 name = "bittide-hal-c"
 version = "0.1.0"
 dependencies = [
+ "bittide-macros",
  "cc",
  "memmap-generate",
 ]
