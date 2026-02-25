@@ -13,9 +13,9 @@ insignificant for timing purposes.
  - [`Clock`] Manages time and provides utility methods for waiting and updating time.
 */
 
-use crate::shared_devices::Timer;
-use crate::types::TimeCmd;
+use crate::{manual_additions::unsigned::Unsigned, shared_devices::Timer, types::TimeCmd};
 
+use bittide_macros::Unsigned;
 use core::cmp;
 use core::fmt;
 use core::ops;
@@ -292,7 +292,7 @@ impl Timer {
     ///
     /// Returns:
     /// - The current value of the time counter as a `u64`.
-    fn get_counter(&self) -> u64 {
+    fn get_counter(&self) -> Unsigned!(64) {
         self.freeze();
         self.scratchpad()
     }
@@ -301,30 +301,30 @@ impl Timer {
     pub fn now(&self) -> Instant {
         let cycles = self.get_counter();
         let frequency = self.frequency();
-        Instant::from_cycles(cycles, frequency)
+        Instant::from_cycles(cycles.into(), frequency.into())
     }
 
     /// Wait for a `Duration` without stalling.
     pub fn wait(&self, duration: Duration) {
-        let now = self.get_counter();
-        let cycles = duration.cycles(self.frequency());
+        let now = self.get_counter().into_inner();
+        let cycles = duration.cycles(self.frequency().into_inner());
         let _ = self.wait_until_raw(now + cycles);
     }
 
     /// Wait until we have passed an `Instant`.
     #[must_use]
     pub fn wait_until(&self, target: Instant) -> WaitResult {
-        let target_cycles = target.get_cycles(self.frequency());
+        let target_cycles = target.get_cycles(self.frequency().into());
         self.wait_until_raw(target_cycles)
     }
 
     #[must_use]
     pub fn wait_until_raw(&self, target: u64) -> WaitResult {
-        let now = self.get_counter();
+        let now = self.get_counter().into_inner();
         if now > target {
             return WaitResult::AlreadyPassed;
         }
-        self.set_scratchpad(target);
+        self.set_scratchpad(Unsigned::new(target).unwrap());
         while !self.cmp_result() {
             continue;
         }
@@ -333,24 +333,24 @@ impl Timer {
 
     /// Stall the CPU until the comparison set by `timer_cmp` is `True`.
     pub fn wait_stall(&self, duration: Duration) {
-        let now = self.get_counter();
-        let duration = duration.cycles(self.frequency());
+        let now = self.get_counter().into_inner();
+        let duration = duration.cycles(self.frequency().into());
         let _ = self.wait_until_stall_raw(now + duration);
     }
 
     #[must_use]
     pub fn wait_until_stall(&self, target: Instant) -> WaitResult {
-        let target_cycles = target.get_cycles(self.frequency());
+        let target_cycles = target.get_cycles(self.frequency().into_inner());
         self.wait_until_stall_raw(target_cycles)
     }
 
     #[must_use]
     pub fn wait_until_stall_raw(&self, target: u64) -> WaitResult {
-        let now = self.get_counter();
+        let now = self.get_counter().into_inner();
         if now > target {
             return WaitResult::AlreadyPassed;
         }
-        self.set_scratchpad(target);
+        self.set_scratchpad(Unsigned::new(target).unwrap());
         self.wait_for_cmp();
         WaitResult::Success
     }

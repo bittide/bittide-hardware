@@ -10,7 +10,7 @@ impl Dna {
     pub fn dna(&self) -> [u8; 12] {
         loop {
             match self.maybe_dna() {
-                Maybe::Just(value) => return value,
+                Maybe::Just(value) => return value.into_inner(),
                 Maybe::Nothing => continue,
             }
         }

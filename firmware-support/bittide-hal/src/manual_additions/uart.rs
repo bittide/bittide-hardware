@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::shared_devices::uart::Uart;
+use crate::{manual_additions::bitvector::BitVector, shared_devices::uart::Uart};
 
 pub struct UartStatus {
     pub receive_buffer_empty: bool,
@@ -65,7 +65,7 @@ impl Uart {
         if self.read_status().transmit_buffer_full {
             Err(TransmitBufferFull)
         } else {
-            self.set_data([data]);
+            self.set_data(BitVector::new([data]).unwrap());
             Ok(())
         }
     }
