@@ -50,7 +50,7 @@ fn initialize_calendars(uart: &mut Uart) {
     ];
     uwriteln!(uart, "  Initializing {} calendars", calendars.len()).unwrap();
     let mut i = 0;
-    calendars.map(|cal| {
+    let _ = calendars.map(|cal| {
         cal.initialize_as_ringbuffer(NUM_ENTRIES);
         uwriteln!(uart, "    Initialized calendar {}", i).unwrap();
         i += 1;
