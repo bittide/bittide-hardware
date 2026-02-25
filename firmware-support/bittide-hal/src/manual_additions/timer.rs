@@ -183,6 +183,15 @@ pub struct Duration {
 }
 
 impl Duration {
+    /// Create a new `Duration` from a number of clock cycles at a given frequency;
+    pub fn from_cycles(cycles: u32, frequency: u64) -> Duration {
+        if frequency == 0 {
+            panic!("Tried to create a Duration with a frequency of 0 hertz.")
+        }
+        let micros = (cycles as u64 * 1e6 as u64) / frequency;
+        Duration { micros }
+    }
+
     /// Create a new `Duration` from a number of microseconds.
     pub fn from_micros(micros: u64) -> Duration {
         Duration { micros }
