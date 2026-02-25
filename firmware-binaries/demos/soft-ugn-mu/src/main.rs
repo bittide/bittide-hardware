@@ -5,9 +5,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
-use bittide_hal::manual_additions::calendar::RingbufferCalendar;
-use bittide_hal::shared_devices::{Transceivers, Uart};
+use bittide_hal::{
+    hals::soft_ugn_demo_mu::DeviceInstances,
+    manual_additions::calendar::RingbufferCalendar,
+    shared_devices::{Transceivers, Uart},
+};
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
@@ -132,7 +134,7 @@ fn main() -> ! {
                     "Capture UGN {}: local = {}, remote = {}",
                     i,
                     capture_ugn.local_counter(),
-                    capture_ugn.remote_counter()
+                    capture_ugn.remote_counter(),
                 )
                 .unwrap();
                 *done = true;
@@ -153,7 +155,7 @@ fn main() -> ! {
 
     loop {
         for (i, eb) in elastic_buffers.iter().enumerate() {
-            let occupancy = eb.data_count();
+            let occupancy = eb.data_count().into_inner();
             let (min, max) = occupancy_ranges[i];
 
             // Check if occupancy exceeds current range

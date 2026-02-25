@@ -78,7 +78,7 @@ fn check_frequency(
     domain_diff_counters.set_enable(0, false);
 
     let diff = match (start, end) {
-        (Some(s), Some(e)) => e - s,
+        (Some(s), Some(e)) => e.into_inner() - s.into_inner(),
         _ => return Err(FrequencyCheckError::CounterInaccessible),
     };
 

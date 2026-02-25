@@ -5,8 +5,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::hals::switch_demo_mu::DeviceInstances;
-use bittide_hal::shared_devices::{ElasticBuffer, Transceivers};
+use bittide_hal::{
+    hals::switch_demo_mu::DeviceInstances,
+    shared_devices::{ElasticBuffer, Transceivers},
+};
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
