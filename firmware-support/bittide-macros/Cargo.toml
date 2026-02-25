@@ -13,6 +13,7 @@ workspace = true
 proc-macro = true
 
 [dependencies]
+proc-macro-crate = "3.5.0"
 proc-macro2 = "*"
-syn = "2.0"
 quote = "1.0"
+syn = {version = "2.0", features = ["full"]}
