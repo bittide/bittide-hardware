@@ -304,6 +304,7 @@ test-suite unittests
     Tests.ElasticBuffer
     Tests.GeneralPurposeProcessingElement.Calculator
     Tests.ProcessingElement.ReadElf
+    Tests.ProgrammableMux
     Tests.ScatterGather
     Tests.Shared
     Tests.Switch
