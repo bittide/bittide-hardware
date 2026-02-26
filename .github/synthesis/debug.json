@@ -1,0 +1,4 @@
+[
+  {"top": "softUgnDemoTest",       "stage": "test", "cc_report": true},
+  {"top": "switchDemoTest",        "stage": "test", "cc_report": true}
+]
