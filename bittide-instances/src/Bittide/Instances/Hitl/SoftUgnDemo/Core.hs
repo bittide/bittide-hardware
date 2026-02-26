@@ -77,7 +77,7 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (64 * 2024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing
     , initD = Nothing
