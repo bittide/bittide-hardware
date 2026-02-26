@@ -58,13 +58,12 @@ type Baud = 921_600
 baud :: SNat Baud
 baud = SNat
 
-uartLabels :: Vec 4 (Vec 2 Byte)
+uartLabels :: Vec 3 (Vec 2 Byte)
 uartLabels =
   fmap (fromIntegral . ord)
     <$> ( $(listToVecTH "BT")
             :> $(listToVecTH "MU")
             :> $(listToVecTH "CC")
-            :> $(listToVecTH "PE")
             :> Nil
         )
 

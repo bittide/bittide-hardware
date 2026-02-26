@@ -55,8 +55,8 @@ driver testName targets = do
   forM_ targets (assertProbe "probe_test_start")
 
   let
-    -- BOOT / MU / CC / GPPE IDs
-    expectedJtagIds = [0x0514C001, 0x1514C001, 0x2514C001, 0x3514C001]
+    -- BOOT / MU / CC IDs
+    expectedJtagIds = [0x0514C001, 0x1514C001, 0x2514C001]
     toInitArgs (_, deviceInfo) targetIndex =
       Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
     initArgs = L.zipWith toInitArgs targets [0 ..]
@@ -89,11 +89,11 @@ driver testName targets = do
     let
       allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-      _bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos :: [Ocd.TapInfo]
-      (_bootTapInfos, muTapInfos, ccTapInfos, gppeTapInfos)
+      _bootTapInfos, muTapInfos, ccTapInfos :: [Ocd.TapInfo]
+      (_bootTapInfos, muTapInfos, ccTapInfos)
         | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
-        , [boots, mus, ccs, gppes] <- L.transpose allTapInfos =
-            (boots, mus, ccs, gppes)
+        , [boots, mus, ccs] <- L.transpose allTapInfos =
+            (boots, mus, ccs)
         | otherwise =
             error
               $ "Unexpected number of OpenOCD taps initialized. Expected: "
@@ -109,132 +109,116 @@ driver testName targets = do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
-        Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
-          liftIO
-            $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppeTapInfos targets
-          liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gppeGdbs
+        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue muGdbs
 
-          brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-            liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-            liftIO $ mapConcurrently_ Gdb.continue muGdbs
-
-            hardwareCaptureCounters <-
-              liftIO
-                $ T.tryWithTimeoutOn
-                  T.PrintActionTime
-                  "Waiting for hardware UGNs"
-                  (3 * 60_000_000)
-                  goDumpCcSamples
-                $ mapConcurrently
-                  ( \pico -> do
-                      parseCaptureCounters pico
-                  )
-                  picocoms
-            let
-              hardwareUgns =
-                L.zipWith
-                  (\i ccs -> (timingOracleToUgnEdge . counterCaptureToTimingOracle i) <$> ccs)
-                  [0 ..]
-                  hardwareCaptureCounters
-              hardwareRoundtrips = calculateRoundtripLatencies $ L.concat hardwareUgns
-            _ <- liftIO $ do
-              putStrLn "\n=== Hardware UGN Roundtrip Latencies ==="
-              mapM print hardwareRoundtrips
+          hardwareCaptureCounters <-
             liftIO
               $ T.tryWithTimeoutOn
                 T.PrintActionTime
-                "Waiting for calendar initialization"
-                (30_000_000)
+                "Waiting for hardware UGNs"
+                (3 * 60_000_000)
+                goDumpCcSamples
+              $ mapConcurrently parseCaptureCounters picocoms
+          let
+            hardwareUgns =
+              L.zipWith
+                (\i ccs -> (timingOracleToUgnEdge . counterCaptureToTimingOracle i) <$> ccs)
+                [0 ..]
+                hardwareCaptureCounters
+            hardwareRoundtrips = calculateRoundtripLatencies $ L.concat hardwareUgns
+          _ <- liftIO $ do
+            putStrLn "\n=== Hardware UGN Roundtrip Latencies ==="
+            mapM print hardwareRoundtrips
+          liftIO
+            $ T.tryWithTimeoutOn
+              T.PrintActionTime
+              "Waiting for calendar initialization"
+              (30_000_000)
+              goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico "[MU] All calendars initialized"
+
+          softwareUgnsPerNode <-
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Waiting for software UGNs"
+                (60_000_000)
+                goDumpCcSamples
+              $ mapConcurrently parseSoftwareUgns picocoms
+
+          liftIO $ do
+            putStrLn "\n=== Hardware UGNs ==="
+            forM_ (L.zip hardwareUgns [0 :: Int ..]) $ \(hw, idx) ->
+              putStrLn $ "Node " <> show idx <> ": " <> show (L.length hw) <> " edges"
+
+            putStrLn "\n=== Software UGNs ==="
+            forM_ (L.zip softwareUgnsPerNode [0 :: Int ..]) $ \((swIn, swOut), idx) ->
+              putStrLn
+                $ "Node "
+                <> show idx
+                <> ": "
+                <> show (L.length swIn + L.length swOut)
+                <> " edges"
+
+            -- Process UGN edges and calculate roundtrip latencies
+            let hardwareUgnsFlat = postProcessHardwareUgns hardwareUgns
+            softwareUgnsFlat <- postProcessSoftwareUgns softwareUgnsPerNode
+
+            let
+              swExtraLatency = 2 -- gather read latency + extra link registers
+              mismatchedUgns =
+                findMismatchedUgnEdges
+                  (fmap (addLatencyEdge swExtraLatency) hardwareUgnsFlat)
+                  softwareUgnsFlat
+              softwareRoundtrips = calculateRoundtripLatencies softwareUgnsFlat
+            unless (L.null mismatchedUgns) $ do
+              putStrLn "\n=== Mismatched UGN Edges ==="
+              forM_ mismatchedUgns $ \(hw, sw) -> do
+                putStrLn $ "Hardware: " <> show hw
+                putStrLn $ "Software: " <> show sw
+
+            putStrLn "\n=== Software Roundtrip Latencies ==="
+            mapM_ print softwareRoundtrips
+
+            -- Compare roundtrip latencies
+            matched <-
+              compareRoundtripLatencies
+                (fmap (adjustLatencyRoundTrip (2 * swExtraLatency)) hardwareRoundtrips)
+                softwareRoundtrips
+
+            unless matched $ do
+              putStrLn "\n=== Per-Node Details ==="
+              forM_ (L.zip3 hardwareUgns softwareUgnsPerNode [0 :: Int ..]) $ \(hw, (swIn, swOut), idx) -> do
+                let sw = swIn L.++ swOut
+                when (L.length hw /= L.length sw) $ do
+                  putStrLn $ "\nNode " <> show idx <> " edge count differs:"
+                  putStrLn $ "  Hardware: " <> show (L.length hw) <> " edges"
+                  putStrLn
+                    $ "  Software: "
+                    <> show (L.length sw)
+                    <> " edges ("
+                    <> show (L.length swIn)
+                    <> " in + "
+                    <> show (L.length swOut)
+                    <> " out)"
+              error "Roundtrip latencies did not match between hardware and software"
+            when (not $ L.null mismatchedUgns) $ error "Some UGN edges did not match!"
+
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Waiting for CPU test status"
+                (1_000_000)
                 goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico ->
-                waitForLine pico "[MU] All calendars initialized"
+                waitForLine pico "[MU] Test status: Success"
 
-            -- From here the actual test should be done, but for now it's just going to be
-            -- waiting for the devices to print out over UART.
-            liftIO $ mapConcurrently_ Gdb.continue gppeGdbs
-            softwareUgnsPerNode <-
-              liftIO
-                $ T.tryWithTimeoutOn
-                  T.PrintActionTime
-                  "Waiting for software UGNs"
-                  (60_000_000)
-                  goDumpCcSamples
-                $ mapConcurrently
-                  ( \pico -> do
-                      parseSoftwareUgns pico
-                  )
-                  picocoms
+          liftIO goDumpCcSamples
 
-            liftIO $ do
-              putStrLn "\n=== Hardware UGNs ==="
-              forM_ (L.zip hardwareUgns [0 :: Int ..]) $ \(hw, idx) ->
-                putStrLn $ "Node " <> show idx <> ": " <> show (L.length hw) <> " edges"
-
-              putStrLn "\n=== Software UGNs ==="
-              forM_ (L.zip softwareUgnsPerNode [0 :: Int ..]) $ \((swIn, swOut), idx) ->
-                putStrLn
-                  $ "Node "
-                  <> show idx
-                  <> ": "
-                  <> show (L.length swIn + L.length swOut)
-                  <> " edges"
-
-              -- Process UGN edges and calculate roundtrip latencies
-              let hardwareUgnsFlat = postProcessHardwareUgns hardwareUgns
-              softwareUgnsFlat <- postProcessSoftwareUgns softwareUgnsPerNode
-
-              let
-                swExtraLatency = 2 -- gather read latency + extra link registers
-                mismatchedUgns =
-                  findMismatchedUgnEdges
-                    (fmap (addLatencyEdge swExtraLatency) hardwareUgnsFlat)
-                    softwareUgnsFlat
-                softwareRoundtrips = calculateRoundtripLatencies softwareUgnsFlat
-              unless (L.null mismatchedUgns) $ do
-                putStrLn "\n=== Mismatched UGN Edges ==="
-                forM_ mismatchedUgns $ \(hw, sw) -> do
-                  putStrLn $ "Hardware: " <> show hw
-                  putStrLn $ "Software: " <> show sw
-
-              putStrLn "\n=== Software Roundtrip Latencies ==="
-              mapM_ print softwareRoundtrips
-
-              -- Compare roundtrip latencies
-              matched <-
-                compareRoundtripLatencies
-                  (fmap (adjustLatencyRoundTrip (2 * swExtraLatency)) hardwareRoundtrips)
-                  softwareRoundtrips
-
-              unless matched $ do
-                putStrLn "\n=== Per-Node Details ==="
-                forM_ (L.zip3 hardwareUgns softwareUgnsPerNode [0 :: Int ..]) $ \(hw, (swIn, swOut), idx) -> do
-                  let sw = swIn L.++ swOut
-                  when (L.length hw /= L.length sw) $ do
-                    putStrLn $ "\nNode " <> show idx <> " edge count differs:"
-                    putStrLn $ "  Hardware: " <> show (L.length hw) <> " edges"
-                    putStrLn
-                      $ "  Software: "
-                      <> show (L.length sw)
-                      <> " edges ("
-                      <> show (L.length swIn)
-                      <> " in + "
-                      <> show (L.length swOut)
-                      <> " out)"
-                error "Roundtrip latencies did not match between hardware and software"
-              when (not $ L.null mismatchedUgns) $ error "Some UGN edges did not match!"
-
-              liftIO
-                $ T.tryWithTimeoutOn
-                  T.PrintActionTime
-                  "Waiting for CPU test status"
-                  (1_000_000)
-                  goDumpCcSamples
-                $ forConcurrently_ picocoms
-                $ \pico ->
-                  waitForLine pico "[PE] Test status: Success"
-
-            liftIO goDumpCcSamples
-
-            pure ExitSuccess
+          pure ExitSuccess

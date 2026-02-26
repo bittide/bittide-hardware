@@ -432,7 +432,7 @@ parseCaptureCounters chan = do
   -- Parse using high-level parser
   mapM (expectRight . mapLeft show) parseResults
 
-{- | Parse software UGN edges from processing element (PE) output.
+{- | Parse software UGN edges from management unit (MU) output.
 
 Reads UGN edges discovered through the software protocol, which exchanges messages
 to measure propagation delays. Returns separate lists for incoming and outgoing edges.
@@ -443,9 +443,9 @@ between nodes.
 parseSoftwareUgns :: Chan ByteString -> IO ([UgnEdge], [UgnEdge])
 parseSoftwareUgns chan = do
   -- Collect all lines until we see the completion marker
-  waitForLine chan "[PE] Incoming Link UGNs:"
-  incomingLines <- readUntilLine chan "[PE] Outgoing Link UGNs:"
-  outgoingLines <- readUntilLine chan "[PE] End of UGN Edge edges"
+  waitForLine chan "[MU] Incoming Link UGNs:"
+  incomingLines <- readUntilLine chan "[MU] Outgoing Link UGNs:"
+  outgoingLines <- readUntilLine chan "[MU] End of UGN Edge edges"
   let
     parseResultsIncoming = fmap (runParser parseUgnEdge () "incoming ugn edges") incomingLines
     parseResultsOutgoing = fmap (runParser parseUgnEdge () "outgoing ugn edges") outgoingLines
@@ -482,11 +482,11 @@ parseCounterCapture = do
 {- | Parse a UGN edge from processing element output.
 
 Expected format:
-@[PE] Port N: src_node=S, src_port=SP, dst_node=D, dst_port=DP, ugn=U@
+@[MU] Port N: src_node=S, src_port=SP, dst_node=D, dst_port=DP, ugn=U@
 -}
 parseUgnEdge :: Parser UgnEdge
 parseUgnEdge = do
-  cpuPrefix "PE"
+  cpuPrefix "MU"
   spaces
   _ <- string "Port "
   _ <- parseIndex @LinkCount -- port number not used in edge construction

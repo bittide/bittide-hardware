@@ -53,7 +53,6 @@ $( do
           , ("SoftUgnDemoBoot", SoftUgnDemo.boot)
           , ("SoftUgnDemoMu", SoftUgnDemo.mu)
           , ("SoftUgnDemoCc", SoftUgnDemo.cc)
-          , ("SoftUgnDemoGppe", SoftUgnDemo.gppe)
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoBoot", SwitchDemo.boot)
           , ("SwitchDemoMu", SwitchDemo.mu)

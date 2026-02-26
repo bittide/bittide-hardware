@@ -40,7 +40,7 @@ import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
 -- | The number of CPUs in 'core'
-type InternalCpuCount = 3
+type InternalCpuCount = 2
 
 type FifoSize = 5 -- = 2^5 = 32
 
@@ -56,10 +56,12 @@ type NmuInternalBusses = 3 + PeInternalBusses
 {- Busses per link:
     - UGN component
     - Elastic buffer
+    - Scatter unit
     - Scatter calendar
+    - Gather unit
     - Gather calendar
 -}
-type PeripheralsPerLink = 4
+type PeripheralsPerLink = 6
 
 {- External busses:
     - Transceivers
@@ -76,7 +78,7 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (128 * 1024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing
     , initD = Nothing
@@ -93,24 +95,6 @@ ccConfig ::
 ccConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv2
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
-    , initI = Nothing
-    , initD = Nothing
-    , iBusTimeout = d0
-    , dBusTimeout = d0
-    , includeIlaWb = False
-    }
-
-gppeConfig ::
-  ( KnownNat n
-  , 2 <= n
-  , PrefixWidth n <= 30
-  ) =>
-  PeConfig n
-gppeConfig =
-  PeConfig
-    { cpu = Riscv32imc.vexRiscv3
     , depthI = SNat @(Div (64 * 1024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing
@@ -155,58 +139,6 @@ managementUnit externalCounter maybeDna =
     -- Output
     idC -< (uartOut, restBusses)
 
-gppe ::
-  ( HiddenClockResetEnable dom
-  , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
-  -- | External counter
-  Signal dom (Unsigned 64) ->
-  -- | DNA value
-  Signal dom (Maybe (BitVector 96)) ->
-  Vec LinkCount (Signal dom (BitVector 64)) ->
-  Circuit
-    ( ToConstBwd Mm
-    , Vec (2 * LinkCount) ((BitboneMm dom NmuRemBusWidth))
-    , Jtag dom
-    )
-    ( Vec LinkCount (CSignal dom (BitVector 64))
-    , Df dom (BitVector 8)
-    )
-gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbs, jtag) -> do
-  -- Core and interconnect
-  (scatterBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
-  (gatherBusses, wbs1) <- Vec.split -< wbs0
-  [timeBus, uartBus, dnaBus] <- idC -< wbs1
-
-  -- Synthesis fails on timing check unless these signals are registered. Remove as soon
-  -- as possible.
-  nmuWbsDelayed <- repeatC (fmapC delayWishbone) -< nmuWbs
-
-  -- Scatter Gather units
-  (scatterCalendarBusses, gatherCalendarBusses) <- Vec.split -< nmuWbsDelayed
-  idleSink
-    <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) linksIn)
-    <| Vec.zip
-    -< (scatterBusses, scatterCalendarBusses)
-  linksOut <-
-    repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (gatherBusses, gatherCalendarBusses)
-
-  -- Peripherals
-  _cnt <- timeWb (Just externalCounter) -< timeBus
-  (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
-  readDnaPortE2WbWorker maybeDna -< dnaBus
-
-  -- Output
-  idC -< (linksOut, uart)
- where
-  maxCalDepth = SNat @4000
-  scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  repetitionBits = d16
-  sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
-
 core ::
   ( ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -231,9 +163,9 @@ core ::
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
   circuit $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
-    [muMm, ccMm, gppeMm] <- idC -< memoryMaps
+    [muMm, ccMm] <- idC -< memoryMaps
 
-    [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
+    [muJtag, ccJtag] <- jtagChain -< jtag
 
     let
       maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
@@ -244,7 +176,9 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (muSgWbs, [muTransceiverBus, muCallistoBus]) <- Vec.split -< muWbs2
+    (scatterBusses, scatterCalendarBusses, muWbs3) <- Vec.split3 -< muWbs2
+    (gatherBusses, gatherCalendarBusses, muWbs4) <- Vec.split3 -< muWbs3
+    [muTransceiverBus, muCallistoBus] <- idC -< muWbs4
     -- Stop management unit
 
     -- Start internal links
@@ -270,10 +204,28 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< ugnWbs
     -- Stop internal links
 
-    -- Start general purpose processing element
-    (Fwd txs, gppeUartBytesBittide) <-
-      withBittideClockResetEnable gppe localCounter maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
-    -- Stop general purpose processing element
+    -- Start ringbuffers
+    let
+      maxCalDepth = SNat @4000
+      scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+      gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+      repetitionBits = d16
+      sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
+
+    scatterCalendarBussesDelayed <-
+      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< scatterCalendarBusses
+    gatherCalendarBussesDelayed <-
+      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< gatherCalendarBusses
+
+    idleSink
+      <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs2)
+      <| Vec.zip
+      -< (scatterBusses, scatterCalendarBussesDelayed)
+    Fwd txs <-
+      repeatC (withBittideClockResetEnable (gatherUnitWbC gatherConfig))
+        <| Vec.zip
+        -< (gatherBusses, gatherCalendarBussesDelayed)
+    -- Stop ringbuffers
 
     -- Start clock control
     ( sync
@@ -325,7 +277,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
          , Fwd localCounter
          , Fwd (dflipflop bitClk <$> txs)
          , sync
-         , [muUartBytesBittide, ccUartBytesBittide, gppeUartBytesBittide]
+         , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
          )
  where
