@@ -23,6 +23,7 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
+import Bittide.ProgrammableMux (programmableMux)
 import Bittide.ScatterGather
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
@@ -53,16 +54,19 @@ type NmuInternalBusses = 3 + PeInternalBusses
 {- Busses per link:
     - UGN component
     - Elastic buffer
+    - Scatter unit
     - Scatter calendar
+    - Gather unit
     - Gather calendar
 -}
-type PeripheralsPerLink = 4
+type PeripheralsPerLink = 6
 
 {- External busses:
+    - Programmable mux
     - Transceivers
     - Callisto
 -}
-type NmuExternalBusses = 2 + (LinkCount * PeripheralsPerLink)
+type NmuExternalBusses = 3 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
 
 muConfig ::
@@ -90,24 +94,6 @@ ccConfig ::
 ccConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv2
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
-    , initI = Nothing
-    , initD = Nothing
-    , iBusTimeout = d0
-    , dBusTimeout = d0
-    , includeIlaWb = False
-    }
-
-gppeConfig ::
-  ( KnownNat n
-  , 2 <= n
-  , PrefixWidth n <= 30
-  ) =>
-  PeConfig n
-gppeConfig =
-  PeConfig
-    { cpu = Riscv32imc.vexRiscv3
     , depthI = SNat @(Div (64 * 1024) 4)
     , depthD = SNat @(Div (64 * 1024) 4)
     , initI = Nothing
@@ -152,58 +138,6 @@ managementUnit externalCounter maybeDna =
     -- Output
     idC -< (uartOut, restBusses)
 
-gppe ::
-  ( HiddenClockResetEnable dom
-  , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
-  -- | External counter
-  Signal dom (Unsigned 64) ->
-  -- | DNA value
-  Signal dom (Maybe (BitVector 96)) ->
-  Vec LinkCount (Signal dom (BitVector 64)) ->
-  Circuit
-    ( ToConstBwd Mm
-    , Vec (2 * LinkCount) ((BitboneMm dom NmuRemBusWidth))
-    , Jtag dom
-    )
-    ( Vec LinkCount (CSignal dom (BitVector 64))
-    , Df dom (BitVector 8)
-    )
-gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbs, jtag) -> do
-  -- Core and interconnect
-  (scatterBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
-  (gatherBusses, wbs1) <- Vec.split -< wbs0
-  [timeBus, uartBus, dnaBus] <- idC -< wbs1
-
-  -- Synthesis fails on timing check unless these signals are registered. Remove as soon
-  -- as possible.
-  nmuWbsDelayed <- repeatC (fmapC delayWishbone) -< nmuWbs
-
-  -- Scatter Gather units
-  (scatterCalendarBusses, gatherCalendarBusses) <- Vec.split -< nmuWbsDelayed
-  idleSink
-    <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) linksIn)
-    <| Vec.zip
-    -< (scatterBusses, scatterCalendarBusses)
-  linksOut <-
-    repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (gatherBusses, gatherCalendarBusses)
-
-  -- Peripherals
-  _cnt <- timeWb (Just externalCounter) -< timeBus
-  (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
-  readDnaPortE2WbWorker maybeDna -< dnaBus
-
-  -- Output
-  idC -< (linksOut, uart)
- where
-  maxCalDepth = SNat @4000
-  scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  repetitionBits = d16
-  sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
-
 core ::
   ( ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -215,7 +149,6 @@ core ::
   Circuit
     ( "MU" ::: ToConstBwd Mm
     , "CC" ::: ToConstBwd Mm
-    , "GPPE" ::: ToConstBwd Mm
     , Jtag Bittide
     , "MASK" ::: CSignal Bittide (BitVector LinkCount)
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
@@ -225,12 +158,12 @@ core ::
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
-    , "UARTS" ::: Vec 3 (Df Bittide (BitVector 8))
+    , "UARTS" ::: Vec 2 (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
-    [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
+  circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+    [muJtag, ccJtag] <- jtagChain -< jtag
 
     let
       maybeDna = readDnaPortE2 bitClk bitRst bitEna simDna2
@@ -241,7 +174,9 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (muSgWbs, [muTransceiverBus, muCallistoBus]) <- Vec.split -< muWbs2
+    (scatterBusses, scatterCalendarBusses, muWbs3) <- Vec.split3 -< muWbs2
+    (gatherBusses, gatherCalendarBusses, muWbs4) <- Vec.split3 -< muWbs3
+    [programmableMuxBus, muTransceiverBus, muCallistoBus] <- idC -< muWbs4
     -- Stop management unit
 
     -- Start internal links
@@ -267,10 +202,33 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
         -< ugnWbs
     -- Stop internal links
 
-    -- Start general purpose processing element
-    (Fwd txs, gppeUartBytesBittide) <-
-      withBittideClockResetEnable gppe localCounter maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
-    -- Stop general purpose processing element
+    -- Start ringbuffers
+    let
+      maxCalDepth = SNat @4000
+      scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+      gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+      repetitionBits = d16
+      sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
+
+    idleSink
+      <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs2)
+      <| Vec.zip
+      -< (scatterBusses, scatterCalendarBusses)
+    txsMu <-
+      repeatC (withBittideClockResetEnable (gatherUnitWbC gatherConfig))
+        <| Vec.zip
+        -< (gatherBusses, gatherCalendarBusses)
+    -- Stop ringbuffers
+
+    -- Start programmable mux
+    -- We don't actually need the programmable mux in this demo since there is no business
+    -- logic. We still add it with null-links connected from the PE side.
+    txsPe <- repeatC idC -< Fwd (pure 0)
+    (_peRst, Fwd txs) <-
+      withBittideClockResetEnable
+        $ programmableMux localCounter
+        -< (programmableMuxBus, txsMu, txsPe)
+    -- Stop programmable mux
 
     -- Start clock control
     ( sync
@@ -322,7 +280,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
          , Fwd localCounter
          , Fwd (dflipflop bitClk <$> txs)
          , sync
-         , [muUartBytesBittide, ccUartBytesBittide, gppeUartBytesBittide]
+         , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
          )
  where

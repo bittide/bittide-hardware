@@ -14,16 +14,15 @@ import VexRiscv (JtagIn (..))
 
 import qualified Protocols.Spi as Spi
 
-boot, mu, cc, gppe :: MemoryMap
-(boot, mu, cc, gppe) = (bootMm, muMm, ccMm, gppeMm)
+boot, mu, cc :: MemoryMap
+(boot, mu, cc) = (bootMm, muMm, ccMm)
  where
   Circuit circuitFn = withBittideByteOrder $ bringUp clockGen noReset
 
-  ((SimOnly bootMm, SimOnly muMm, SimOnly ccMm, SimOnly gppeMm, _, _), _) =
+  ((SimOnly bootMm, SimOnly muMm, SimOnly ccMm, _, _), _) =
     circuitFn
       (
         ( ()
-        , ()
         , ()
         , ()
         , pure (JtagIn 0 0 0)
