@@ -458,8 +458,16 @@ wbInterface ::
   ( WishboneS2M wordSize
   , Maybe (Either (Index n) (Index n, BitVector wordSize, Bytes wordSize))
   )
-wbInterface access wbM2S respData = (wbS2M, req)
+wbInterface access wbM2S respData
+  | addrMaxInteger < indexMaxInteger =
+      clashCompileError
+        [I.__i| Address range (#{addrMaxInteger}) is too small to address all #{indexMaxInteger} words of the register.
+
+    Consider increasing the address width or reducing the number of words.|]
+  | otherwise = (wbS2M, req)
  where
+  addrMaxInteger = toInteger (maxBound :: BitVector aw)
+  indexMaxInteger = toInteger (maxBound :: Index n)
   -- Wishbone
   wbS2M =
     (emptyWishboneS2M @0)
