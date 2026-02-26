@@ -210,14 +210,19 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       repetitionBits = d16
       sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
 
+    scatterCalendarBussesDelayed <-
+      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< scatterCalendarBusses
+    gatherCalendarBussesDelayed <-
+      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< gatherCalendarBusses
+
     idleSink
       <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs2)
       <| Vec.zip
-      -< (scatterBusses, scatterCalendarBusses)
+      -< (scatterBusses, scatterCalendarBussesDelayed)
     txsMu <-
       repeatC (withBittideClockResetEnable (gatherUnitWbC gatherConfig))
         <| Vec.zip
-        -< (gatherBusses, gatherCalendarBusses)
+        -< (gatherBusses, gatherCalendarBussesDelayed)
     -- Stop ringbuffers
 
     -- Start programmable mux
