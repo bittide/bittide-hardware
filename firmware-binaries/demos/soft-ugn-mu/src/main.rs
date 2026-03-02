@@ -122,6 +122,7 @@ fn main() -> ! {
         .iter()
         .map(|eb| eb.auto_center_total_adjustments());
 
+    uwriteln!(uart, "Start printing hardware UGNs").unwrap();
     for (i, (capture_ugn, eb_delta)) in capture_ugns.iter().zip(eb_deltas).enumerate() {
         uwriteln!(
             uart,
@@ -133,7 +134,7 @@ fn main() -> ! {
         )
         .unwrap();
     }
-    uwriteln!(uart, "Captured all hardware UGNs").unwrap();
+    uwriteln!(uart, "Printed all hardware UGNs").unwrap();
 
     // Initialize scatter/gather calendars with incrementing counters
     uwriteln!(uart, "Initializing scatter/gather calendars").unwrap();
