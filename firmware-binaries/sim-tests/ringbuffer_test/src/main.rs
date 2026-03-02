@@ -5,8 +5,8 @@
 #![cfg_attr(not(test), no_main)]
 
 use bittide_hal::{
-    manual_additions::timer::Duration, ringbuffer_test::DeviceInstances,
-    shared_devices::TransmitRingbuffer,
+    manual_additions::timer::Duration,
+    ringbuffer_test::{devices::TransmitRingbuffer, DeviceInstances},
 };
 use core::fmt::Write;
 #[cfg(not(test))]

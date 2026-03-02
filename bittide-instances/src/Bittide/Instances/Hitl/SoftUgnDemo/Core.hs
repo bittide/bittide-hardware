@@ -7,11 +7,10 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
-import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
-import Bittide.DoubleBufferedRam (wbStorage)
+import Bittide.DoubleBufferedRam (blockRamByteAddressableU, wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (LinkCount)
@@ -23,7 +22,7 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
-import Bittide.ScatterGather
+import Bittide.Ringbuffer (receiveRingbufferWb, transmitRingbufferWb)
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
@@ -56,12 +55,10 @@ type NmuInternalBusses = 3 + PeInternalBusses
 {- Busses per link:
     - UGN component
     - Elastic buffer
-    - Scatter unit
-    - Scatter calendar
-    - Gather unit
-    - Gather calendar
+    - Receive ringbuffer
+    - Transmit ringbuffer
 -}
-type PeripheralsPerLink = 6
+type PeripheralsPerLink = 4
 
 {- External busses:
     - Transceivers
@@ -176,8 +173,8 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (scatterBusses, scatterCalendarBusses, muWbs3) <- Vec.split3 -< muWbs2
-    (gatherBusses, gatherCalendarBusses, muWbs4) <- Vec.split3 -< muWbs3
+    (rxBufferBusses, muWbs3) <- Vec.split -< muWbs2
+    (txBufferBusses, muWbs4) <- Vec.split -< muWbs3
     [muTransceiverBus, muCallistoBus] <- idC -< muWbs4
     -- Stop management unit
 
@@ -198,7 +195,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     -- Use of `dflipflop` to add pipelining should be replaced by
     -- https://github.com/bittide/bittide-hardware/pull/1134
-    Fwd rxs2 <-
+    rxs2 <-
       withBittideClockResetEnable
         $ Vec.vecCircuits ((captureUgn localCounter . dflipflop bitClk) <$> rxs1)
         -< ugnWbs
@@ -206,25 +203,17 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     -- Start ringbuffers
     let
-      maxCalDepth = SNat @4000
-      scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-      gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-      repetitionBits = d16
-      sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
-
-    scatterCalendarBussesDelayed <-
-      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< scatterCalendarBusses
-    gatherCalendarBussesDelayed <-
-      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< gatherCalendarBusses
+      bufferDepth = SNat @4000
+      rxPrim ena = blockRamU bitClk bitRst ena NoClearOnReset bufferDepth
+      txPrim ena = withClockResetEnable bitClk bitRst ena blockRamByteAddressableU
 
     idleSink
-      <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs2)
+      <| fmapC (withBittideClockResetEnable receiveRingbufferWb rxPrim bufferDepth)
       <| Vec.zip
-      -< (scatterBusses, scatterCalendarBussesDelayed)
+      -< (rxBufferBusses, rxs2)
     Fwd txs <-
-      repeatC (withBittideClockResetEnable (gatherUnitWbC gatherConfig))
-        <| Vec.zip
-        -< (gatherBusses, gatherCalendarBussesDelayed)
+      fmapC (withBittideClockResetEnable transmitRingbufferWb txPrim bufferDepth) -< txBufferBusses
+
     -- Stop ringbuffers
 
     -- Start clock control
