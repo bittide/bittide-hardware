@@ -4,14 +4,13 @@
 module Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, hasClock, hasReset, withClockResetEnable, withEnable)
 import Protocols
 
-import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
-import Bittide.DoubleBufferedRam (wbStorage)
+import Bittide.DoubleBufferedRam (blockRamByteAddressableU, wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (LinkCount)
@@ -23,7 +22,7 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
-import Bittide.ScatterGather
+import Bittide.Ringbuffer (receiveRingbufferWb, transmitRingbufferWb)
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
@@ -56,10 +55,8 @@ type NmuInternalBusses = 3 + PeInternalBusses
 {- Busses per link:
     - UGN component
     - Elastic buffer
-    - Scatter calendar
-    - Gather calendar
 -}
-type PeripheralsPerLink = 4
+type PeripheralsPerLink = 2
 
 {- External busses:
     - Transceivers
@@ -168,30 +165,23 @@ gppe ::
   Vec LinkCount (Signal dom (BitVector 64)) ->
   Circuit
     ( ToConstBwd Mm
-    , Vec (2 * LinkCount) ((BitboneMm dom NmuRemBusWidth))
     , Jtag dom
     )
     ( Vec LinkCount (CSignal dom (BitVector 64))
     , Df dom (BitVector 8)
     )
-gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbs, jtag) -> do
+gppe externalCounter maybeDna linksIn = circuit $ \(mm, jtag) -> do
   -- Core and interconnect
-  (scatterBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
-  (gatherBusses, wbs1) <- Vec.split -< wbs0
+  (rxBufferBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
+  (txBufferBusses, wbs1) <- Vec.split -< wbs0
   [timeBus, uartBus, dnaBus] <- idC -< wbs1
 
-  -- Synthesis fails on timing check unless these signals are registered. Remove as soon
-  -- as possible.
-  nmuWbsDelayed <- repeatC (fmapC delayWishbone) -< nmuWbs
-
   -- Scatter Gather units
-  (scatterCalendarBusses, gatherCalendarBusses) <- Vec.split -< nmuWbsDelayed
   idleSink
-    <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) linksIn)
+    <| fmapC (receiveRingbufferWb rxPrim bufferDepth)
     <| Vec.zip
-    -< (scatterBusses, scatterCalendarBusses)
-  linksOut <-
-    repeatC (gatherUnitWbC gatherConfig) <| Vec.zip -< (gatherBusses, gatherCalendarBusses)
+    -< (rxBufferBusses, Fwd linksIn)
+  linksOut <- fmapC (transmitRingbufferWb txPrim bufferDepth) -< txBufferBusses
 
   -- Peripherals
   _cnt <- timeWb (Just externalCounter) -< timeBus
@@ -201,11 +191,9 @@ gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbs, jtag) -> do
   -- Output
   idC -< (linksOut, uart)
  where
-  maxCalDepth = SNat @4000
-  scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  repetitionBits = d16
-  sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
+  bufferDepth = SNat @4000
+  rxPrim ena = blockRamU hasClock hasReset ena NoClearOnReset bufferDepth
+  txPrim ena = withEnable ena blockRamByteAddressableU
 
 core ::
   ( ?busByteOrder :: ByteOrder
@@ -243,8 +231,8 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     (muUartBytesBittide, muWbAll) <-
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
-    (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (muSgWbs, [muTransceiverBus, muCallistoBus]) <- Vec.split -< muWbs2
+    (ebWbs, [muTransceiverBus, muCallistoBus]) <- Vec.split -< muWbs1
+
     -- Stop management unit
 
     -- Start internal links
@@ -272,7 +260,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     -- Start general purpose processing element
     (Fwd txs, gppeUartBytesBittide) <-
-      withBittideClockResetEnable gppe localCounter maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
+      withBittideClockResetEnable gppe localCounter maybeDna rxs2 -< (gppeMm, gppeJtag)
     -- Stop general purpose processing element
 
     -- Start clock control

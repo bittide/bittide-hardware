@@ -54,12 +54,6 @@ impl_valid_entry_type! {
     mask: 12,
 }
 
-impl_valid_entry_type! {
-    type: [crate::types::ValidEntry_16],
-    repeat: u16,
-    mask: 16,
-}
-
 /// Abstraction trait over all the methods that a calendar type should provide
 pub trait CalendarInterface {
     type EntryType: Copy + ValidEntryType;
@@ -315,15 +309,6 @@ impl_calendar_interface! {
     write: u8,
     read: u8,
     entry: crate::types::ValidEntry_12<u8>,
-}
-
-impl_calendar_interface! {
-    cal: crate::hals::soft_ugn_demo_mu::devices::Calendar,
-    metacycle: u32,
-    shadow: u16,
-    write: u16,
-    read: u16,
-    entry: crate::types::ValidEntry_16<u16>,
 }
 
 pub trait RingbufferCalendar {

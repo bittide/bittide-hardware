@@ -4,8 +4,8 @@
 
 #include "hals/soft_ugn_demo_gppe/device_instances.h"
 
-#include "bittide_gather.h"
-#include "bittide_scatter.h"
+#include "bittide_ring_receive.h"
+#include "bittide_ring_transmit.h"
 #include "bittide_timer.h"
 #include "bittide_uart.h"
 #include "bittide_ugn.h"
@@ -16,21 +16,21 @@
 #include "ringbuffer_align.h"
 
 // ============================================================================
-// Gather Unit Functions (TX/Outgoing)
+// Transmit Ringbuffer Functions (TX/Outgoing)
 // ============================================================================
 
-void ringbuffer_set_alignment(GatherUnit gather,
+void ringbuffer_set_alignment(TransmitRingbuffer tx_ring,
                               enum RingbufferAlignState state) {
   uint64_t encoded_msg = (uint64_t)(state);
-  gather_unit_set_gather_memory_unchecked(gather, 0,
-                                          (uint8_t const *)&encoded_msg);
+  transmit_ringbuffer_set_data_unchecked(tx_ring, 0,
+                                         (uint8_t const *)&encoded_msg);
 }
 
 // ============================================================================
-// Scatter Unit Functions (RX/Incoming)
+// Receive Ringbuffer Functions (RX/Incoming)
 // ============================================================================
 
-bool ringbuffer_find_alignment(ScatterUnit scatter, int16_t buffer_size,
+bool ringbuffer_find_alignment(ReceiveRingbuffer rx_ring, int16_t buffer_size,
                                int16_t *found_offset,
                                enum RingbufferAlignState *found_state) {
   // Initialize outputs
@@ -39,11 +39,10 @@ bool ringbuffer_find_alignment(ScatterUnit scatter, int16_t buffer_size,
 
   // Scan the entire ringbuffer
   for (int16_t rx_idx = 0; rx_idx < buffer_size; rx_idx++) {
-    uint64_t scatter_data;
-    scatter_unit_get_scatter_memory_unchecked(scatter, rx_idx,
-                                              (uint8_t *)&scatter_data);
+    uint64_t rx_data;
+    receive_ringbuffer_get_data_unchecked(rx_ring, rx_idx, (uint8_t *)&rx_data);
 
-    enum RingbufferAlignState state = (enum RingbufferAlignState)(scatter_data);
+    enum RingbufferAlignState state = (enum RingbufferAlignState)(rx_data);
 
     // Check if we found an alignment message
     if (state == RINGBUFFER_ALIGN_ANNOUNCE ||
@@ -58,11 +57,10 @@ bool ringbuffer_find_alignment(ScatterUnit scatter, int16_t buffer_size,
 }
 
 enum RingbufferAlignState
-ringbuffer_get_alignment_at_offset(ScatterUnit scatter, int16_t offset) {
-  uint64_t scatter_data;
-  scatter_unit_get_scatter_memory_unchecked(scatter, offset,
-                                            (uint8_t *)&scatter_data);
-  return (enum RingbufferAlignState)(scatter_data);
+ringbuffer_get_alignment_at_offset(ReceiveRingbuffer rx_ring, int16_t offset) {
+  uint64_t rx_data;
+  receive_ringbuffer_get_data_unchecked(rx_ring, offset, (uint8_t *)&rx_data);
+  return (enum RingbufferAlignState)(rx_data);
 }
 
 // ============================================================================
@@ -85,17 +83,17 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
 
   // Step 2: Initialize - Write ALIGNMENT_ANNOUNCE to TX index 0, clear rest
   for (int32_t port = 0; port < num_ports; port++) {
-    GatherUnit gather = ugn_ctx->gather_units[port];
+    TransmitRingbuffer tx_ring = ugn_ctx->transmit_ringbuffers[port];
 
     // Clear rest of buffer
     uint64_t empty_msg = (uint64_t)(RINGBUFFER_ALIGN_EMPTY);
-    for (int16_t i = 1; i < GATHER_UNIT_GATHER_MEMORY_LEN; i++) {
-      gather_unit_set_gather_memory_unchecked(gather, i,
-                                              (uint8_t const *)&empty_msg);
+    for (int16_t i = 1; i < TRANSMIT_RINGBUFFER_DATA_LEN; i++) {
+      transmit_ringbuffer_set_data_unchecked(tx_ring, i,
+                                             (uint8_t const *)&empty_msg);
     }
 
     // Write ALIGNMENT_ANNOUNCE at index 0
-    ringbuffer_set_alignment(gather, RINGBUFFER_ALIGN_ANNOUNCE);
+    ringbuffer_set_alignment(tx_ring, RINGBUFFER_ALIGN_ANNOUNCE);
   }
 
   // ========================================================================
@@ -112,12 +110,12 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
         continue; // Already found offset for this port
       }
 
-      ScatterUnit scatter = ugn_ctx->scatter_units[port];
+      ReceiveRingbuffer rx_ring = ugn_ctx->receive_ringbuffers[port];
 
       // Use the scan function to search for alignment messages
       int16_t found_offset;
       enum RingbufferAlignState found_state;
-      if (ringbuffer_find_alignment(scatter, 4000, &found_offset,
+      if (ringbuffer_find_alignment(rx_ring, 4000, &found_offset,
                                     &found_state)) {
         // Found message
         if (found_state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
@@ -149,8 +147,8 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
 
   // Change all outgoing messages to ACKNOWLEDGE
   for (int32_t port = 0; port < num_ports; port++) {
-    GatherUnit gather = ugn_ctx->gather_units[port];
-    ringbuffer_set_alignment(gather, RINGBUFFER_ALIGN_ACKNOWLEDGE);
+    TransmitRingbuffer tx_ring = ugn_ctx->transmit_ringbuffers[port];
+    ringbuffer_set_alignment(tx_ring, RINGBUFFER_ALIGN_ACKNOWLEDGE);
   }
 
   // Wait for all partners to send ACKNOWLEDGE
@@ -163,11 +161,11 @@ void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
         continue; // Already received ACK for this port
       }
 
-      ScatterUnit scatter = ugn_ctx->scatter_units[port];
+      ReceiveRingbuffer rx_ring = ugn_ctx->receive_ringbuffers[port];
 
       // Check at the known position for ACKNOWLEDGE
       enum RingbufferAlignState state =
-          ringbuffer_get_alignment_at_offset(scatter, incoming_offsets[port]);
+          ringbuffer_get_alignment_at_offset(rx_ring, incoming_offsets[port]);
 
       if (state == RINGBUFFER_ALIGN_ACKNOWLEDGE) {
         received_ack[port] = true;
