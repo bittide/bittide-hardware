@@ -28,7 +28,7 @@ fn main() -> ! {
         uart,
         "(0x{:16X},0x{:16X})",
         capture_ugn.local_counter(),
-        u64::from_ne_bytes(capture_ugn.remote_counter())
+        capture_ugn.remote_counter()
     )
     .unwrap();
     loop {
