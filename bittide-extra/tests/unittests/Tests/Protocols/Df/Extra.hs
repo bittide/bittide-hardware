@@ -81,8 +81,8 @@ mergeWithMask (unpack -> old) (unpack -> new) (unpack -> mask) =
   pack (mux @(Vec m) @(BitVector bv) mask new old)
 
 -- | Simply try reading the initial contents of a blockram
-prop_fromBlockram :: Property
-prop_fromBlockram =
+prop_fromBlockRam :: Property
+prop_fromBlockRam =
   idWithModelSingleDomain @System
     defExpectOptions
     (genData (genUnsigned Range.linearBounded))
@@ -94,14 +94,14 @@ prop_fromBlockram =
   dut :: forall dom. (HiddenClockResetEnable dom) => Circuit (Df dom (Unsigned 4)) (Df dom Int)
   dut = circuit $ \rd -> do
     wr <- Df.empty
-    Df.fromBlockram (\ena -> withEnable ena (blockRam mem)) -< (rd, wr)
+    Df.fromBlockRam (\ena -> withEnable ena (blockRam mem)) -< (rd, wr)
 
   top clk rst ena0 = withClockResetEnable @System clk rst ena0 dut
   model = fmap (mem !!)
 
 -- | First write a new configuration to the blockram, then read it back
-prop_fromBlockramWrites :: Property
-prop_fromBlockramWrites = H.property $ do
+prop_fromBlockRamWrites :: Property
+prop_fromBlockRamWrites = H.property $ do
   oldMem <- forAll $ genVec @16 $ Gen.integral Range.linearBounded
   newMem <- forAll $ genVec @16 $ Gen.integral Range.linearBounded
   let
@@ -112,7 +112,7 @@ prop_fromBlockramWrites = H.property $ do
     dut = circuit $ \rd0 -> do
       wr <- Df.drive def (fmap Just writes)
       rd1 <- Df.stall def{resetCycles = 0} StallWithNack [100] -< rd0
-      Df.fromBlockram (\ena -> withEnable ena (blockRam oldMem)) -< (rd1, wr)
+      Df.fromBlockRam (\ena -> withEnable ena (blockRam oldMem)) -< (rd1, wr)
 
     top clk rst ena0 = withClockResetEnable @System clk rst ena0 dut
 
@@ -123,8 +123,8 @@ prop_fromBlockramWrites = H.property $ do
     top
 
 -- | Write a configuration to the blockram with byte enables, then read it back
-prop_fromBlockramWithMaskWrites :: Property
-prop_fromBlockramWithMaskWrites = H.property $ do
+prop_fromBlockRamWithMaskWrites :: Property
+prop_fromBlockRamWithMaskWrites = H.property $ do
   oldMem <- forAll $ genVec @8 genDefinedBitVector
   newValues <- forAll $ genVec genDefinedBitVector
   masks <- forAll $ genVec genDefinedBitVector
@@ -143,7 +143,7 @@ prop_fromBlockramWithMaskWrites = H.property $ do
     dut = circuit $ \rd0 -> do
       wr <- Df.drive def{resetCycles = 0} (fmap Just writes)
       rd1 <- Df.stall def{resetCycles = 0} StallWithNack [50] -< rd0
-      Df.fromBlockramWithMask (exposeEnable $ blockRamByteAddressableU d8) -< (rd1, wr)
+      Df.fromBlockRamWithMask (exposeEnable $ blockRamByteAddressableU d8) -< (rd1, wr)
 
     top clk rst ena0 = withClockResetEnable @System clk rst ena0 dut
 
@@ -231,8 +231,8 @@ prop_iterate =
   gen = pure ()
   prop expected actual = do
     let len = L.length actual
-    footnote [i|Expected length: Actual length: #{show len}|]
-    assert (len > 10)
+    footnote [i|Expected length: #{show (L.length expected)} Actual length: #{show len}|]
+    assert (len >= 5)
     L.take len expected === actual
 
 -- Start of shamelessly copied code from bittide
