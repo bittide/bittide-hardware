@@ -76,7 +76,7 @@ ackWhen canDrop = Circuit $ \_ -> (Ack <$> canDrop, ())
 its write channel. Writes are always acked immediately, reads receive backpressure
 based on the outgoing `Df` channel.
 -}
-fromBlockramWithMask ::
+fromBlockRamWithMask ::
   (HiddenClockResetEnable dom, Num addr, NFDataX addr, KnownNat words) =>
   ( Enable dom ->
     Signal dom addr ->
@@ -89,24 +89,24 @@ fromBlockramWithMask ::
     , Df dom (addr, BitVector words, BitVector (words * 8))
     )
     (Df dom (BitVector (words * 8)))
-fromBlockramWithMask primitive = circuit $ \(r, w) -> do
+fromBlockRamWithMask primitive = circuit $ \(r, w) -> do
   Fwd (D.fromSignal -> writeOp) <- Df.toMaybe <| forceResetSanity -< w
   let
     write = fmap (\(addr, _, dat) -> (addr, dat)) <$> writeOp
     mask = maybe 0 (\(_, mask', _) -> mask') <$> writeOp
-    primitiveD ena readD = ED.fromBlockramWithMask (primitive ena) readD write mask
+    primitiveD ena readD = ED.fromBlockRamWithMask (primitive ena) readD write mask
   fromDSignal hasClock hasReset hasEnable primitiveD <| forceResetSanity -< r
 
 {- | Creates a `Df` wrapper around a block RAM primitive. Writes are always acked
 immediately, reads receive backpressure based on the outgoing `Df` channel.
 -}
-fromBlockram ::
+fromBlockRam ::
   (HiddenClockResetEnable dom, Num addr, NFDataX addr, NFDataX a) =>
   (Enable dom -> Signal dom addr -> Signal dom (Maybe (addr, a)) -> Signal dom a) ->
   Circuit (Df dom addr, Df dom (addr, a)) (Df dom a)
-fromBlockram primitive = circuit $ \(r, w) -> do
+fromBlockRam primitive = circuit $ \(r, w) -> do
   Fwd (D.fromSignal -> write) <- Df.toMaybe <| forceResetSanity -< w
-  let primitiveD ena readD = ED.fromBlockram (primitive ena) readD write
+  let primitiveD ena readD = ED.fromBlockRam (primitive ena) readD write
   fromDSignal hasClock hasReset hasEnable primitiveD <| forceResetSanity -< r
 
 -- | Converts a delay annotated circuit with enable port into a `Df` circuit.
