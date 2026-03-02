@@ -66,11 +66,11 @@ captureUgn localCounter (C.dflipflop -> linkIn) = circuit $ \bus -> do
     rawLinkIn = fromJust . fromData <$> linkIn
     trigger = C.mealy goTrigger HasNotCaptured linkIn
   capturedLocalCounter <- shutter trigger -< Fwd localCounter
-  capturedRemoteCounter <- shutter trigger -< Fwd rawLinkIn
+  capturedRemoteCounter <- shutter trigger -< Fwd (unpack <$> rawLinkIn)
   capturedHasCaptured <- shutter trigger -< Fwd (pure True)
 
   registerWbI_ localCounterConfig 0 -< (wbLocalCounter, capturedLocalCounter)
-  registerWbI_ remoteCounterConfig 0 -< (wbRemoteCounter, capturedRemoteCounter)
+  registerWbI_ remoteCounterConfig (0 :: Unsigned 64) -< (wbRemoteCounter, capturedRemoteCounter)
   registerWbI_ elasticBufferDeltaConfig (0 :: Signed 32) -< (wbEbDelta, Fwd noWrite)
   registerWbI_ hasCapturedConfig False -< (wbHasCaptured, capturedHasCaptured)
 
