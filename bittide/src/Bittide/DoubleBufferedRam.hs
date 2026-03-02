@@ -8,7 +8,7 @@ module Bittide.DoubleBufferedRam where
 import Clash.Prelude
 
 import Data.Maybe
-import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df, toSignals)
+import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df, toSignals, (<|))
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
@@ -16,13 +16,20 @@ import Bittide.SharedTypes hiding (delayControls)
 import Clash.Class.BitPackC (ByteOrder (..))
 import Data.Typeable
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (unMemmap)
+
+import Protocols.MemoryMap (Access (..), unMemmap)
 import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (..),
+  addressableBytesWb,
   deviceWb,
   matchEndianness,
   memoryWb,
   registerConfig,
  )
+
+import qualified Protocols.BiDf as BiDf
+import qualified Protocols.Df as Df
+import qualified Protocols.ReqResp as ReqResp
 
 data ContentType n a
   = Vec (Vec n a)
@@ -95,9 +102,29 @@ wbStorage memoryName depth initContent =
    in circuit $ \(mm, wbMaster0) -> do
         wbMaster1 <- matchEndianness -< wbMaster0
         [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
-        memoryWb hasClock hasReset (registerConfig "data") ram depth -< wb0
+        reqresp <- ReqResp.forceResetSanity <| addressableBytesWb @depth regConfig -< wb0
+        (reads0, writes0) <- ReqResp.partitionEithers -< reqresp
+        reads1 <- ReqResp.toBiDf -< reads0
+        reads2 <- BiDf.prefetch -< (reads1, invalidate1)
+        [writes1, invalidate0] <- Df.fanout <| ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
+        invalidate1 <- Df.map (\(a, _, _) -> Nothing) -< invalidate0
+        BiDf.fromBlockRamWithMask (ram @dom) -< (reads2, writes1)
+        idC -< ()
  where
-  ram = case initContent of
+  regConfig =
+    (registerConfig "data")
+      { access = ReadWrite
+      , description = "Storage element with a single wishbone port. Allows for word-aligned addresses."
+      }
+  ram ::
+    forall dom0.
+    (KnownDomain dom0, HiddenClock dom0, HiddenReset dom0) =>
+    Enable dom0 ->
+    Signal dom0 (Index depth) ->
+    Signal dom0 (Maybe (Index depth, Bytes 4)) ->
+    Signal dom0 (BitVector 4) ->
+    Signal dom0 (Bytes 4)
+  ram ena = withEnable ena $ case initContent of
     Nothing ->
       blockRamByteAddressableU
     Just content ->
