@@ -35,7 +35,7 @@ vexRiscvTcpTest ::
 vexRiscvTcpTest diffClk cpuReset sgmiiClk inp = testStarted `hwSeqX` (j, u, s)
  where
   (sysClk, sysRst) = clockWizardDifferential diffClk cpuReset
-  (j, u, s, _) = vexRiscEthernet sysClk sysRst sgmiiClk inp
+  (j, u, s) = vexRiscEthernet sysClk sysRst sgmiiClk inp
 
   testStarted :: Signal Basic125B Bool
   testStarted = hitlVioBool sysClk testStarted (pure True)
