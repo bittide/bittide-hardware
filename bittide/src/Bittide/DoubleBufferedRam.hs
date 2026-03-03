@@ -7,21 +7,22 @@ module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
-import Protocols (Circuit, toSignals, (<|))
-import Protocols.Wishbone
-
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
 import Clash.Class.BitPackC (ByteOrder (..))
+import Data.Constraint (Dict (Dict))
+import Data.Constraint.Nat.Lemmas (cancelMulDiv)
 import Data.Typeable
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (unMemmap)
+import Protocols (Circuit, ToConstBwd, toSignals, (<|))
+import Protocols.MemoryMap (Mm, unMemmap)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   addressableBytesWb,
   deviceWb,
   matchEndianness,
   registerConfig,
  )
+import Protocols.Wishbone
 
 import qualified Protocols.ReqResp as ReqResp
 
@@ -62,23 +63,25 @@ initializedRam content rd wr = case content of
 allows for word aligned reads and writes.
 -}
 wbStorage ::
-  forall dom depth aw.
+  forall dom depth aw nBytes.
   ( HasCallStack
   , HiddenClockResetEnable dom
   , KnownNat aw
+  , KnownNat nBytes
+  , 1 <= nBytes
   , 1 <= depth
   , ?busByteOrder :: ByteOrder
   ) =>
   String ->
   SNat depth ->
-  Maybe (ContentType depth (Bytes 4)) ->
-  Circuit (BitboneMm dom aw) ()
+  Maybe (ContentType depth (Bytes nBytes)) ->
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard aw nBytes) ()
 wbStorage memoryName SNat initContent =
   let ?regByteOrder = BigEndian
    in circuit $ \(mm, wbMaster0) -> do
         wbMaster1 <- matchEndianness -< wbMaster0
         [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
-        reqresp <- addressableBytesWb regConfig -< wb0
+        reqresp <- addressableBytesWb @depth regConfig -< wb0
         (reads, writes0) <- ReqResp.partition partitionRamOp -< reqresp
         writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
         _vecUnit <- ram -< (reads, writes1)
@@ -86,11 +89,9 @@ wbStorage memoryName SNat initContent =
  where
   regConfig = registerConfig "data"
   ram = ReqResp.fromBlockRamWithMask
-    $ case initContent of
-      Nothing ->
-        blockRamByteAddressableU
-      Just content ->
-        blockRamByteAddressable @_ @depth content
+    $ case (initContent, cancelMulDiv @(nBytes) @8) of
+      (Nothing, Dict) -> blockRamByteAddressableU
+      (Just content, Dict) -> blockRamByteAddressable @_ @depth content
 
   partitionRamOp = \case
     RamRead addr -> Left addr
@@ -100,16 +101,18 @@ wbStorage memoryName SNat initContent =
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
 wbStorage' ::
-  forall dom depth aw.
+  forall dom depth aw nBytes.
   ( HiddenClockResetEnable dom
   , KnownNat aw
   , KnownNat depth
   , 1 <= depth
+  , KnownNat nBytes
+  , 1 <= nBytes
   ) =>
   SNat depth ->
-  Maybe (ContentType depth (Bytes 4)) ->
-  Signal dom (WishboneM2S aw 4) ->
-  Signal dom (WishboneS2M 4)
+  Maybe (ContentType depth (Bytes nBytes)) ->
+  Signal dom (WishboneM2S aw nBytes) ->
+  Signal dom (WishboneS2M nBytes)
 wbStorage' depth initContent wbIn =
   let ?busByteOrder = BigEndian
    in fst $ toSignals (unMemmap $ wbStorage "" depth initContent) (wbIn, ())

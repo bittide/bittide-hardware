@@ -261,7 +261,7 @@ wbStorageBehavior = property $ do
   go ::
     forall words m. (KnownNat words, 2 <= words, Monad m) => SNat words -> PropertyT m ()
   go depth@SNat = do
-    content <- forAll $ genVec @words genDefinedBitVector
+    content <- forAll $ genVec @words (genDefinedBitVector @32)
     wbRequests <-
       forAll
         $ Gen.list
