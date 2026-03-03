@@ -29,17 +29,13 @@ import qualified Protocols.ReqResp as ReqResp
 data ContentType n a
   = Vec (Vec n a)
   | Blob (MemBlob n (BitSize a))
-  | BlobVec (Vec (Regs a 8) (MemBlob n 8))
   | File FilePath
-  | FileVec (Vec (Regs a 8) FilePath)
 
 instance (Show a, KnownNat n, Typeable a) => Show (ContentType n a) where
   show = \case
     (Vec _) -> "Vec: " <> nAnda
     (Blob _) -> "Blob: " <> nAnda
-    (BlobVec _) -> "BlobVec: " <> nAnda
     (File fp) -> "File: " <> nAnda <> ", filepath = " <> fp
-    (FileVec fps) -> "File: " <> nAnda <> ", filepaths = " <> show fps
    where
     nAnda = "(" <> show (natToNatural @n) <> " of type (" <> show (typeRep $ Proxy @a) <> "))"
 
@@ -61,20 +57,7 @@ initializedRam ::
 initializedRam content rd wr = case content of
   Vec vec -> blockRam vec rd wr
   Blob blob -> bitCoerce <$> blockRamBlob blob rd (bitCoerce <$> wr)
-  BlobVec blobVec ->
-    getDataBe @8
-      . RegisterBank
-      <$> bundle
-        ((`blockRamBlob` rd) <$> blobVec <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr))
   File fp -> bitCoerce <$> blockRamFile (SNat @n) fp rd (bitCoerce <$> wr)
-  FileVec fpVec ->
-    getDataBe @8
-      . RegisterBank
-      <$> bundle
-        ( (\fp -> blockRamFile (SNat @n) fp rd)
-            <$> fpVec
-            <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr)
-        )
 
 {- | Wishbone storage element with 'Circuit' interface from "Protocols.Wishbone" that
 allows for word aligned reads and writes.
@@ -147,11 +130,9 @@ blockRamByteAddressable initContent readAddr newEntry byteSelect =
   getDataBe @8 . RegisterBank <$> case initContent of
     Blob _ -> clashCompileError "blockRamByteAddressable: Singular MemBlobs are not supported. "
     Vec vecOfA -> go (byteRam . Vec <$> transpose (fmap getBytes vecOfA))
-    BlobVec blobs -> go (fmap (byteRam . Blob) blobs)
     File _ ->
       clashCompileError
         "blockRamByteAddressable: Singular source files for initial content are not supported. "
-    FileVec blobs -> go (fmap (byteRam . File) blobs)
  where
   go brams = readBytes
    where
