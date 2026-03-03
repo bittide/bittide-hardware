@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-module Bittide.Instances.Hitl.SwitchDemoGppe.Core (core) where
+module Bittide.Instances.Hitl.SwitchDemoGppe.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -38,6 +38,9 @@ import VexRiscv (DumpVcd (..), Jtag)
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
+
+-- | The number of CPUs in 'core'
+type InternalCpuCount = 3
 
 type FifoSize = 5 -- = 2^5 = 32
 
@@ -239,9 +242,7 @@ core ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "MU" ::: ToConstBwd Mm
-    , "CC" ::: ToConstBwd Mm
-    , "GPPE" ::: ToConstBwd Mm
+    ( Vec InternalCpuCount (ToConstBwd Mm)
     , Jtag Bittide
     , "MASK" ::: CSignal Bittide (BitVector LinkCount)
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
@@ -251,11 +252,13 @@ core ::
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
-    , "UARTS" ::: Vec 3 (Df Bittide (BitVector 8))
+    , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+    [muMm, ccMm, gppeMm] <- idC -< memoryMaps
+
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let
