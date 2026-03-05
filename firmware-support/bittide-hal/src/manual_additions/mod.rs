@@ -4,11 +4,11 @@
 
 pub mod addressable_buffer;
 pub use addressable_buffer::AlignedArray;
-pub mod aligned_ringbuffer;
 pub mod calendar;
 pub mod capture_ugn;
 pub mod dna;
 pub mod elastic_buffer;
+pub mod ringbuffer_test;
 pub mod scatter_gather_pe;
 pub mod si539x_spi;
 pub mod soft_ugn_demo_gppe;

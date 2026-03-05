@@ -5,9 +5,10 @@
 
 module Bittide.Instances.Tests.Ringbuffer where
 
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (delayN)
 import Clash.Prelude (
   HiddenClockResetEnable,
+  delayN,
   exposeEnable,
   hasClock,
   withClockResetEnable,
@@ -43,14 +44,15 @@ dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
 dutMM =
   (\(SimOnly mm, _) -> mm)
     $ withClockResetEnable @System clockGen (resetGenN d2) enableGen
-    $ toSignals (dutWithBinary "") ((), pure $ deepErrorX "memoryMap")
+    $ toSignals (dutWithBinary d0 "") ((), pure $ deepErrorX "memoryMap")
 
--- | Parameterized DUT that loads a specific firmware binary.
+-- | Parameterized DUT that loads a specific firmware binary with configurable latency.
 dutWithBinary ::
-  (HasCallStack, HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
+  (HasCallStack, HiddenClockResetEnable dom, 1 <= DomainPeriod dom, KnownNat latency) =>
+  SNat latency ->
   String ->
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
-dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
+dutWithBinary latency binaryName = withBittideByteOrder $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [uartBus, wbTx, wbRx, timeBus] <-
     processingElement NoDumpVcd (peConfig binaryName) -< (mm, jtagIdle)
@@ -58,8 +60,10 @@ dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
   txOut <-
     transmitRingbufferWb (exposeEnable $ blockRamByteAddressable (Vec (repeat 0))) memDepth
       -< wbTx
+  -- Add configurable latency between TX and RX ringbuffers
+  txOutDelayed <- applyC (toSignal . delayN latency 0 . fromSignal) id -< txOut
   receiveRingbufferWb (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth
-    -< (wbRx, txOut)
+    -< (wbRx, txOutDelayed)
   _cnt <- timeWb Nothing -< timeBus
   idC -< uartTx
  where
@@ -94,18 +98,53 @@ type DMemWords = DivRU (256 * 1024) 4
 
 -- Ringbuffer test simulation
 simRingbuffer :: IO ()
-simRingbuffer = putStr simResultRingbuffer
+simRingbuffer = putStr $ simResultRingbuffer d0
 
-simResultRingbuffer :: (HasCallStack) => String
-simResultRingbuffer = chr . fromIntegral <$> catMaybes uartStream
+simResultRingbuffer :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
+simResultRingbuffer lat = chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def{timeoutAfter = 250_000} dutNoMM
+  uartStream = sampleC def{timeoutAfter = 500_000} (dutNoMM lat)
 
-  dutNoMM :: (HasCallStack) => Circuit () (Df System (BitVector 8))
-  dutNoMM = circuit $ do
+  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df System (BitVector 8))
+  dutNoMM latency = circuit $ do
     mm <- ignoreMM
     uartTx <-
       withClockResetEnable clockGen (resetGenN d2) enableGen
-        $ (dutWithBinary "ringbuffer_test")
+        $ (dutWithBinary latency "ringbuffer_test")
+        -< mm
+    idC -< uartTx
+
+simSmolTcp :: IO ()
+simSmolTcp = putStr $ simResultSmolTcp d0
+
+simResultSmolTcp :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
+simResultSmolTcp lat = chr . fromIntegral <$> catMaybes uartStream
+ where
+  uartStream = sampleC def{timeoutAfter = 500_000} (dutNoMM lat)
+
+  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df System (BitVector 8))
+  dutNoMM latency = circuit $ do
+    mm <- ignoreMM
+    uartTx <-
+      withClockResetEnable clockGen (resetGenN d2) enableGen
+        $ (dutWithBinary latency "ringbuffer_smoltcp_test")
+        -< mm
+    idC -< uartTx
+
+simAlignedRingbuffer :: IO ()
+simAlignedRingbuffer = putStr $ simResultAlignedRingbuffer d0
+
+simResultAlignedRingbuffer ::
+  forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
+simResultAlignedRingbuffer lat = chr . fromIntegral <$> catMaybes uartStream
+ where
+  uartStream = sampleC def{timeoutAfter = 250_000} (dutNoMM lat)
+
+  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df System (BitVector 8))
+  dutNoMM latency = circuit $ do
+    mm <- ignoreMM
+    uartTx <-
+      withClockResetEnable clockGen (resetGenN d2) enableGen
+        $ (dutWithBinary latency "aligned_ringbuffer_test")
         -< mm
     idC -< uartTx
