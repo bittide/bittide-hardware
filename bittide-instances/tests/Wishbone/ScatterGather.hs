@@ -78,57 +78,5 @@ case_scatter_gather_c_test = do
  where
   msg = "Received the following from the CPU over UART:\n" <> simResultC
 
--- Aligned ringbuffer test simulation
-simAlignedRingbuffer :: IO ()
-simAlignedRingbuffer = putStr simResultAlignedRingbuffer
-
-simResultAlignedRingbuffer :: (HasCallStack) => String
-simResultAlignedRingbuffer = chr . fromIntegral <$> catMaybes uartStream
- where
-  uartStream = sampleC def{timeoutAfter = 200_000} dutNoMM
-
-  dutNoMM :: (HasCallStack) => Circuit () (Df System (BitVector 8))
-  dutNoMM = circuit $ do
-    mm <- ignoreMM
-    uartTx <-
-      withClockResetEnable clockGen (resetGenN d2) enableGen
-        $ (dutWithBinary "aligned_ringbuffer_test")
-        -< mm
-    idC -< uartTx
-
-case_aligned_ringbuffer_test :: Assertion
-case_aligned_ringbuffer_test = do
-  assertBool
-    msg
-    ("*** ALL TESTS PASSED ***" `isInfixOf` simResultAlignedRingbuffer)
- where
-  msg = "Received the following from the CPU over UART:\n" <> simResultAlignedRingbuffer
-
--- Ringbuffer smoltcp test simulation
-simRingbufferSmoltcp :: IO ()
-simRingbufferSmoltcp = putStr simResultRingbufferSmoltcp
-
-simResultRingbufferSmoltcp :: (HasCallStack) => String
-simResultRingbufferSmoltcp = chr . fromIntegral <$> catMaybes uartStream
- where
-  uartStream = sampleC def{timeoutAfter = 1_000_000} dutNoMM
-
-  dutNoMM :: (HasCallStack) => Circuit () (Df Slow (BitVector 8))
-  dutNoMM = circuit $ do
-    mm <- ignoreMM
-    uartTx <-
-      withClockResetEnable clockGen (resetGenN d2) enableGen
-        $ (dutWithBinary "ringbuffer_smoltcp_test")
-        -< mm
-    idC -< uartTx
-
-case_ringbuffer_smoltcp_test :: Assertion
-case_ringbuffer_smoltcp_test = do
-  assertBool
-    msg
-    ("SUCCESS: Data matches!" `isInfixOf` simResultRingbufferSmoltcp)
- where
-  msg = "Received the following from the CPU over UART:\n" <> simResultRingbufferSmoltcp
-
 tests :: TestTree
 tests = $(testGroupGenerator)

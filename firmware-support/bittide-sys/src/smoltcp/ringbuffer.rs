@@ -28,8 +28,8 @@
 //! 4. If CRC validates, extract payload and consume packet
 //! 5. Track sequence numbers to detect repeated packets
 
-use bittide_hal::hals::scatter_gather_pe::devices::{GatherUnit, ScatterUnit};
-use bittide_hal::manual_additions::aligned_ringbuffer::{ReceiveRingbuffer, TransmitRingbuffer};
+use bittide_hal::hals::ringbuffer_test::devices::{ReceiveRingbuffer, TransmitRingbuffer};
+use bittide_hal::manual_additions::ringbuffer_test::ringbuffers::AlignedReceiveBuffer;
 use crc::{Crc, CRC_32_ISCSI};
 use log::trace;
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
@@ -69,7 +69,7 @@ fn is_valid(buffer: &[u8]) -> bool {
 /// The MTU is automatically calculated from the minimum of the scatter and gather
 /// buffer sizes (in bytes), minus space for packet header (which includes CRC32).
 pub struct RingbufferDevice {
-    rx_buffer: ReceiveRingbuffer,
+    rx_buffer: AlignedReceiveBuffer,
     tx_buffer: TransmitRingbuffer,
     mtu: usize,
     /// Last valid sequence number we saw (to detect repeated packets)
@@ -83,12 +83,21 @@ impl RingbufferDevice {
     ///
     /// The ringbuffers must already be aligned using the alignment protocol.
     /// The MTU is calculated as the minimum of the RX and TX buffer sizes in bytes.
-    pub fn new(rx_buffer: ReceiveRingbuffer, tx_buffer: TransmitRingbuffer) -> Self {
+    pub fn new(rx_buffer: AlignedReceiveBuffer, tx_buffer: TransmitRingbuffer) -> Self {
         // Calculate MTU from buffer sizes (each word is 8 bytes)
         // Reserve space for packet header (CRC is part of header)
-        let rx_bytes = ScatterUnit::SCATTER_MEMORY_LEN * 8;
-        let tx_bytes = GatherUnit::GATHER_MEMORY_LEN * 8;
+        let rx_bytes = ReceiveRingbuffer::DATA_LEN * 8;
+        let tx_bytes = TransmitRingbuffer::DATA_LEN * 8;
         let mtu = rx_bytes.min(tx_bytes) - PACKET_HEADER_SIZE;
+
+        if rx_buffer.is_aligned() {
+            assert!(
+                rx_buffer.verify_aligned_to(&tx_buffer),
+                "RX buffer is aligned but not to the provided TX buffer, expected reference {:p}, got 0x{:X}",
+                &tx_buffer.0,
+                rx_buffer.get_alignment_reference(),
+            );
+        }
 
         Self {
             rx_buffer,
@@ -150,7 +159,7 @@ impl Device for RingbufferDevice {
 
         // Allocate aligned buffer for reading from ringbuffer
         // Use a flat byte buffer and cast it to [[u8; 8]] for the API
-        let mut packet_buffer = [0u8; ScatterUnit::SCATTER_MEMORY_LEN * 8];
+        let mut packet_buffer = [0u8; ReceiveRingbuffer::DATA_LEN * 8];
 
         let word_slice = unsafe {
             core::slice::from_raw_parts_mut(packet_buffer.as_mut_ptr() as *mut [u8; 8], num_words)
@@ -173,7 +182,7 @@ impl Device for RingbufferDevice {
         self.last_rx_seq = seq_num;
 
         // Extract payload (skip header, exclude CRC)
-        let mut payload = [0u8; ScatterUnit::SCATTER_MEMORY_LEN * 8];
+        let mut payload = [0u8; ReceiveRingbuffer::DATA_LEN * 8];
         payload[..packet_len]
             .copy_from_slice(&packet_buffer[PACKET_HEADER_SIZE..PACKET_HEADER_SIZE + packet_len]);
 
@@ -203,7 +212,7 @@ impl Device for RingbufferDevice {
 /// Contains a local copy of the packet payload that has been validated
 /// against CRC32 corruption.
 pub struct RxToken {
-    buffer: [u8; ScatterUnit::SCATTER_MEMORY_LEN * 8],
+    buffer: [u8; ReceiveRingbuffer::DATA_LEN * 8],
     length: usize,
 }
 
@@ -237,7 +246,7 @@ impl phy::TxToken for TxToken<'_> {
         );
 
         // Prepare buffer: header + payload
-        let mut buffer = [0u8; GatherUnit::GATHER_MEMORY_LEN * 8];
+        let mut buffer = [0u8; TransmitRingbuffer::DATA_LEN * 8];
 
         // Write header fields using direct pointer writes
         // Header format: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)

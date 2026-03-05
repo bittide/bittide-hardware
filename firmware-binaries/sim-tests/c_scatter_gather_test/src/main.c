@@ -152,6 +152,7 @@ void c_main(void) {
   } else {
     uart_puts(uart, "Scatter/Gather HAL tests FAILED\n");
   }
+  uart_puts(uart, "Test done\n");
 
   while (1) {
   }

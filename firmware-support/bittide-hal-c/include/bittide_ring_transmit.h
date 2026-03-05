@@ -41,7 +41,7 @@
  */
 static inline void transmit_ringbuffer_write_slice_unchecked(
     TransmitRingbuffer unit, uint64_t *src, uint32_t offset, uint32_t len) {
-    for (uint32_t i = 0; i < len; i++) {
+  for (uint32_t i = 0; i < len; i++) {
     transmit_ringbuffer_set_data_unchecked(unit, offset + i,
                                            (uint8_t const *)&src[i]);
   }

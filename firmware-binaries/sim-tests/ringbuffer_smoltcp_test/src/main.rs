@@ -5,11 +5,9 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(sync_unsafe_cell)]
 
-use bittide_hal::manual_additions::aligned_ringbuffer::{
-    find_alignment_offset, ReceiveRingbuffer, TransmitRingbuffer,
-};
+use bittide_hal::manual_additions::ringbuffer_test::ringbuffers::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Instant;
-use bittide_hal::scatter_gather_pe::DeviceInstances;
+use bittide_hal::ringbuffer_test::DeviceInstances;
 use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
 use core::fmt::Write;
 use log::LevelFilter;
@@ -47,24 +45,20 @@ fn main() -> ! {
         log::set_max_level_racy(LevelFilter::Trace);
     }
 
-    // Step 1: Find alignment offset
+    // Set up ringbuffers
     writeln!(uart, "Step 1: Finding ringbuffer alignment...").ok();
-    let rx_offset = {
-        let scatter = INSTANCES.scatter_unit;
-        let gather = INSTANCES.gather_unit;
-        let hal_tx_temp = TransmitRingbuffer::new(gather);
-        let hal_rx_temp = ReceiveRingbuffer::new(scatter, 0);
-        find_alignment_offset(&hal_tx_temp, &hal_rx_temp)
-    };
+    let tx_buffer = INSTANCES.transmit_ringbuffer;
+    let rx_buffer = INSTANCES.receive_ringbuffer;
+    let mut rx_aligned = AlignedReceiveBuffer::new(rx_buffer);
+    rx_aligned.align(&tx_buffer);
+    let rx_offset = rx_aligned
+        .get_alignment_offset()
+        .expect("Failed to find RX buffer alignment");
     writeln!(uart, "  Alignment offset: {}", rx_offset).ok();
 
     // Step 2: Create smoltcp device
     writeln!(uart, "Step 2: Creating RingbufferDevice...").ok();
-    let scatter = INSTANCES.scatter_unit;
-    let gather = INSTANCES.gather_unit;
-    let rx_buffer = ReceiveRingbuffer::new(scatter, rx_offset);
-    let tx_buffer = TransmitRingbuffer::new(gather);
-    let mut device = RingbufferDevice::new(rx_buffer, tx_buffer);
+    let mut device = RingbufferDevice::new(rx_aligned, tx_buffer);
     let mtu = device.mtu();
     writeln!(uart, "  MTU: {} bytes", mtu).ok();
 
