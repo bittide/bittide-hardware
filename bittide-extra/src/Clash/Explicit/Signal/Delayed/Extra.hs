@@ -7,21 +7,21 @@ import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Signal.Delayed as D
 
 -- | Creates a delay annotated circuit from a block RAM primitive.
-fromBlockram ::
+fromBlockRam ::
   (KnownDomain dom, Num addr, NFDataX addr, NFDataX a, KnownNat d) =>
   (Signal dom addr -> Signal dom (Maybe (addr, a)) -> Signal dom a) ->
   ( D.DSignal dom d addr ->
     D.DSignal dom d (Maybe (addr, a)) ->
     D.DSignal dom (d + 1) a
   )
-fromBlockram prim readAddr writeAddr = D.forward SNat (D.fromSignal dataOut)
+fromBlockRam prim readAddr writeAddr = D.forward SNat (D.fromSignal dataOut)
  where
   dataOut = prim (D.toSignal readAddr) (D.toSignal writeAddr)
 
 {- | Creates a delay annotated circuit from a block RAM primitive. Supports byte enables
 for its write input.
 -}
-fromBlockramWithMask ::
+fromBlockRamWithMask ::
   forall dom addr n d.
   (KnownDomain dom, Num addr, NFDataX addr, KnownNat n, KnownNat d) =>
   ( Signal dom addr ->
@@ -34,6 +34,6 @@ fromBlockramWithMask ::
     DSignal dom d (BitVector n) ->
     DSignal dom (d + 1) (BitVector (n * 8))
   )
-fromBlockramWithMask prim readAddr writeAddr writeMask = D.forward SNat (D.fromSignal dataOut)
+fromBlockRamWithMask prim readAddr writeAddr writeMask = D.forward SNat (D.fromSignal dataOut)
  where
   dataOut = prim (D.toSignal readAddr) (D.toSignal writeAddr) (D.toSignal writeMask)
