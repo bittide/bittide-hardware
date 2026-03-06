@@ -22,8 +22,6 @@
 
 #ifdef HAL_SCATTER_GATHER_PE_DEVICE_GATHER_UNIT_H
 #include "hals/scatter_gather_pe/devices/gather_unit.h"
-#elif defined HAL_SOFT_UGN_DEMO_GPPE_DEVICE_GATHER_UNIT_H
-#include "hals/soft_ugn_demo_gppe/devices/gather_unit.h"
 #elif defined HAL_SWITCH_DEMO_GPPE_PE_DEVICE_GATHER_UNIT_H
 #include "hals/switch_demo_gppe_pe/devices/gather_unit.h"
 #else
@@ -74,6 +72,7 @@ static inline bool gather_unit_write_slice(GatherUnit unit, uint64_t *src,
 
   return true;
 }
+
 /**
  * Write a slice of data to gather memory with wrapping
  *
@@ -102,6 +101,7 @@ static inline void gather_unit_write_slice_wrapping(GatherUnit unit,
                                       second_part_len);
   }
 }
+
 /**
  * Wait for the next metacycle boundary
  *
@@ -126,4 +126,5 @@ static inline void gather_unit_clear(GatherUnit unit) {
     gather_unit_set_gather_memory_unchecked(unit, i, 0);
   }
 }
+
 #endif // BITTIDE_GATHER_H
