@@ -174,6 +174,7 @@ int c_main(void) {
 
   uart_puts(uart, "\r\n=== All tests PASSED! ===\r\n\r\n");
   uart_puts(uart, "C Timer HAL test completed successfully!\r\n");
+  uart_puts(uart, "Test done\r\n");
 
   // Infinite loop to keep program running
   while (1) {

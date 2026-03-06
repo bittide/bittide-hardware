@@ -12,15 +12,17 @@ import Clash.Class.BitPackC
 import Data.Maybe
 import Protocols
 import Protocols.Extra
+import Protocols.Idle
+import Protocols.MemoryMap (Access (..))
 
 import GHC.Stack (HasCallStack)
 import qualified Protocols.Df as Df
 import qualified Protocols.Df.Extra as Df
-import Protocols.Idle
 import qualified Protocols.ReqResp as ReqResp
 import qualified Protocols.Wishbone.Extra as Wb
 
 import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (..),
   addressableBytesWb,
   deviceWb,
   matchEndianness,
@@ -54,13 +56,16 @@ transmitRingbufferWb primitive SNat = circuit $ \wb -> do
   [wb0] <- deviceWb "TransmitRingbuffer" <| fmapC (matchEndianness <| Wb.increaseBuswidth d1) -< wb
   reqresp <- addressableBytesWb @memDepth regConfig -< wb0
   (reads, writes0) <- ReqResp.partitionEithers -< reqresp
-  writes1 <- ReqResp.toDfs -< (writes0, writeAcks)
-  writeAcks <- Df.pure 0
+  writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
   idleSink -< reads
   readAddress <- Df.iterate (satSucc SatWrap) 0
   applyC (fmap $ fromMaybe 0) id <| Df.toMaybe <| ram -< (readAddress, writes1)
  where
-  regConfig = registerConfig "data"
+  regConfig =
+    (registerConfig "data")
+      { access = WriteOnly
+      , description = "Buffer that continuously transmits frames to the network"
+      }
   ram = withClockResetEnable hasClock hasReset enableGen (Df.fromBlockRamWithMask primitive)
 {-# OPAQUE receiveRingbufferWb #-}
 receiveRingbufferWb ::
@@ -87,9 +92,6 @@ receiveRingbufferWb ::
     )
     ()
 receiveRingbufferWb primitive SNat = circuit $ \(wb, Fwd frames) -> do
-  let
-    writeAddress = register (0 :: Index memDepth) $ fmap (satSucc SatWrap) writeAddress
-    writes = fmap Just $ bundle (writeAddress, frames)
   [wb0] <-
     deviceWb "ReceiveRingbuffer"
       <| fmapC
@@ -99,8 +101,15 @@ receiveRingbufferWb primitive SNat = circuit $ \(wb, Fwd frames) -> do
   (reads, cpuWrites) <- ReqResp.partitionEithers -< reqresp
   readAddress <- ReqResp.toDfs -< (reads, readData)
   idleSink -< cpuWrites
-  readData <- ram -< (readAddress, Fwd writes)
+
+  writeAddress <- Df.iterate (satSucc SatWrap) 0
+  writes <- Df.zip -< (writeAddress, Fwd (fmap Just frames))
+  readData <- ram -< (readAddress, writes)
   idC -< ()
  where
-  regConfig = registerConfig "data"
+  regConfig =
+    (registerConfig "data")
+      { access = ReadOnly
+      , description = "Buffer that continuously receives frames from the network"
+      }
   ram = withClockResetEnable hasClock hasReset enableGen (Df.fromBlockRam primitive)

@@ -160,6 +160,7 @@ library
     aeson,
     aeson-pretty,
     base >=4.19.0.0,
+    bittide-extra,
     bytestring >=0.10 && <0.13,
     clash-bitpackc,
     clash-prelude,
@@ -244,6 +245,7 @@ test-suite unittests
 
   build-depends:
     base,
+    bittide-extra,
     clash-bitpackc,
     clash-prelude,
     clash-prelude-hedgehog,

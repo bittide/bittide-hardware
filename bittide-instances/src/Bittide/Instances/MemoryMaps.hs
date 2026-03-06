@@ -25,9 +25,11 @@ import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfigurati
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as SwitchDemoGppe
+import qualified Bittide.Instances.Tests.AddressableBytesWb as AddressableBytesWb
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.NestedInterconnect as NestedInterconnect
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
+import qualified Bittide.Instances.Tests.Ringbuffer as Ringbuffer
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
 import qualified Bittide.Instances.Tests.TimeWb as TimeWb
@@ -42,12 +44,14 @@ $( do
     -- Add new memory maps here  --
     -------------------------------
     let memoryMaps =
-          [ ("Ethernet", vexRiscvEthernetMM)
+          [ ("AddressableBytesWb", AddressableBytesWb.memoryMap)
+          , ("Ethernet", vexRiscvEthernetMM)
           , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
           , ("Freeze", freezeMM)
           , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWb", RegisterWb.memoryMap)
+          , ("RingbufferTest", Ringbuffer.dutMM)
           , ("ScatterGatherPe", ScatterGather.dutMM)
           , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
           , ("SoftUgnDemoBoot", SoftUgnDemo.boot)

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "ringbuffer_smoltcp_test"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+
+[dependencies]
+riscv-rt = "0.11.0"
+riscv = "0.10.1"
+bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+ufmt = "0.2.0"
+
+[dependencies.smoltcp]
+version = "0.12.0"
+default-features = false
+features = ["medium-ip", "medium-ethernet", "proto-ipv4", "socket-tcp"]
+
+[dependencies.log]
+version = "0.4.21"
+features = ["max_level_trace", "release_max_level_info"]
+
+[build-dependencies]
+memmap-generate = { path = "../../../firmware-support/memmap-generate" }
