@@ -33,13 +33,17 @@ where
 }
 
 fn test_ok() -> ! {
-    test_result(|w| uwriteln!(w, "OK").unwrap())
+    test_result(|w| {
+        uwriteln!(w, "OK").unwrap();
+        uwriteln!(w, "Test done").unwrap();
+    })
 }
 
 fn test_fail(msg: impl FnOnce(&mut dyn WriterAny)) -> ! {
     test_result(|w| {
         uwrite!(w, "FAIL: ").unwrap();
         msg(w);
+        uwriteln!(w, "Test done").unwrap();
     });
 }
 

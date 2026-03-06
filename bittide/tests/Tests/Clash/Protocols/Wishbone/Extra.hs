@@ -166,7 +166,7 @@ testIncreaseBuswidth power = property $ do
 
     -- Depth is half the number of addresses to also tests error on out-of-range accesses.
     depth = SNat @(2 ^ (AddressWidth - 2))
-    lastAddress = snatToNum $ predSNat depth
+    lastAddress = snatToNum $ mulSNat d2 depth
     lastAddressSmall = lastAddress * (natToNum @(2 ^ power))
     genAddr = Gen.integral (Range.linear 0 lastAddressSmall)
     genInputs = Gen.list (Range.linear 1 10) (genWishboneTransfer genAddr)
