@@ -5,6 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use bittide_hal::manual_additions::unsigned::Unsigned;
 use core::panic::PanicInfo;
 use itertools::izip;
 
@@ -68,7 +69,7 @@ fn main() -> ! {
                 )
                 .map(|(i, counter)| {
                     if domain_diff_counters.enable(i).unwrap_or(false) {
-                        Some(counter)
+                        Some(counter.into_inner())
                     } else {
                         None
                     }
@@ -81,7 +82,8 @@ fn main() -> ! {
 
         // Store debug information. Stop capturing samples if we are stable to
         // reduce plot sizes.
-        let has_sense_of_global_time = freeze.number_of_sync_pulses_seen() != 0;
+        let has_sense_of_global_time =
+            freeze.number_of_sync_pulses_seen() != Unsigned::new(0).unwrap();
         if !prev_all_stable && has_sense_of_global_time {
             sample_store.store(&freeze, stability, callisto.accumulated_speed_requests);
         }

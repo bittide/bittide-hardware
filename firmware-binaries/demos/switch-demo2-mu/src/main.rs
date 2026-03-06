@@ -106,7 +106,7 @@ fn main() -> ! {
                     "Capture UGN {}: local = {}, remote = {}",
                     i,
                     capture_ugn.local_counter(),
-                    capture_ugn.remote_counter()
+                    capture_ugn.remote_counter(),
                 )
                 .unwrap();
                 *done = true;

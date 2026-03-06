@@ -77,6 +77,10 @@ pub fn generate_type_desc<'ir>(
 ) -> (&'ir str, proc_macro2::TokenStream, TypeReferences) {
     let mut refs = TypeReferences {
         references: BTreeSet::new(),
+        use_bitvec: false,
+        use_index: false,
+        use_signed: false,
+        use_unsigned: false,
     };
     let desc = &ctx.type_descs[handle];
     let type_name = &ctx.type_names[desc.name];
@@ -427,6 +431,10 @@ pub fn generate_device_desc<'ir>(
 ) -> (&'ir str, proc_macro2::TokenStream, TypeReferences) {
     let mut refs = TypeReferences {
         references: BTreeSet::new(),
+        use_bitvec: false,
+        use_index: false,
+        use_signed: false,
+        use_unsigned: false,
     };
     let desc = &ctx.device_descs[handle];
     let name = &ctx.identifiers[desc.name];
@@ -661,6 +669,10 @@ fn generate_reg_set_method(
 /// Types referenced during code generation.
 pub struct TypeReferences {
     pub references: BTreeSet<Handle<TypeName>>,
+    pub use_bitvec: bool,
+    pub use_index: bool,
+    pub use_signed: bool,
+    pub use_unsigned: bool,
 }
 
 fn generate_type_ref(
@@ -675,11 +687,11 @@ fn generate_type_ref(
         TypeRef::BitVector(handle) => {
             let size = &ctx.type_refs[lookup_sub(variant, *handle)];
 
-            if let TypeRef::Nat(n) = size {
-                // TODO maybe special case on n == 1 like the C backend?
-                let n = n.div_ceil(8) as usize;
-                let n_lit = Literal::usize_unsuffixed(n);
-                quote! { [u8; #n_lit] }
+            if let &TypeRef::Nat(n) = size {
+                refs.use_bitvec = true;
+                let n = n as usize;
+                let len = n.div_ceil(8);
+                quote! { BitVector<#n, #len> }
             } else {
                 quote! { compile_error!("BitVector with length not known after monomorphisation") }
             }
@@ -687,10 +699,16 @@ fn generate_type_ref(
         TypeRef::Unsigned(handle) => {
             let size = &ctx.type_refs[lookup_sub(variant, *handle)];
 
-            if let TypeRef::Nat(n) = size {
-                let n = po2_type(*n);
-                let name = format!("u{n}");
-                ident(IdentType::Raw, name).into_token_stream()
+            if let &TypeRef::Nat(n) = size {
+                if n > 128 {
+                    let msg = format!("Unsigned length {n} is outside of allowed range 0..=128!");
+                    quote! { compile_error!(#msg) }
+                } else {
+                    refs.use_unsigned = true;
+                    let n = (n as u8).div_ceil(8).next_power_of_two() * 8;
+                    let backer = ident(IdentType::Raw, format!("u{n}")).into_token_stream();
+                    quote! { Unsigned<#n, #backer> }
+                }
             } else {
                 quote! { compile_error!("Unsigned with length not known after monomorphisation") }
             }
@@ -698,10 +716,16 @@ fn generate_type_ref(
         TypeRef::Signed(handle) => {
             let size = &ctx.type_refs[lookup_sub(variant, *handle)];
 
-            if let TypeRef::Nat(n) = size {
-                let n = po2_type(*n);
-                let name = format!("i{n}");
-                ident(IdentType::Raw, name).into_token_stream()
+            if let &TypeRef::Nat(n) = size {
+                if n > 128 {
+                    let msg = format!("Signed length {n} is outside of allowed range 0..=128!");
+                    quote! { compile_error!(#msg) }
+                } else {
+                    refs.use_signed = true;
+                    let n = (n as u8).div_ceil(8).next_power_of_two() * 8;
+                    let backer = ident(IdentType::Raw, format!("i{n}")).into_token_stream();
+                    quote! { Signed<#n, #backer> }
+                }
             } else {
                 quote! { compile_error!("Signed with length not known after monomorphisation") }
             }
@@ -710,9 +734,11 @@ fn generate_type_ref(
             let size = &ctx.type_refs[lookup_sub(variant, *handle)];
 
             if let TypeRef::Nat(n) = size {
-                let n = po2_type(n.ilog2() as u64);
-                let name = format!("u{n}");
-                ident(IdentType::Raw, name).into_token_stream()
+                refs.use_index = true;
+                let n = *n as u128;
+                let backer =
+                    ident(IdentType::Raw, format!("u{}", index_size(n))).into_token_stream();
+                quote! { Index<#n, #backer> }
             } else {
                 quote! { compile_error!("Index with length not known after monomorphisation") }
             }
@@ -902,4 +928,10 @@ fn type_to_ident(ctx: &IrCtx, ty: Handle<TypeRef>) -> String {
             ident
         }
     }
+}
+
+fn index_size(n: u128) -> u32 {
+    (u128::BITS - (n - 1).leading_zeros())
+        .next_power_of_two()
+        .max(8)
 }

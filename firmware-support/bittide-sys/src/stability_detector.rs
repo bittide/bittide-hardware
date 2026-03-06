@@ -3,7 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::{
-    manual_additions::timer::{Duration, Instant},
+    manual_additions::{
+        bitvector::BitVector,
+        timer::{Duration, Instant},
+    },
     shared_devices::clock_control::ClockControl,
 };
 use itertools::izip;
@@ -79,8 +82,8 @@ impl StabilityDetector {
             .enumerate()
         {
             let active = test_bit(link_mask_rev[0], i);
-            let diff0 = data_count_stored.abs_diff(min_seen);
-            let diff1 = data_count_stored.abs_diff(max_seen);
+            let diff0 = data_count_stored.abs_diff(min_seen.into_inner());
+            let diff1 = data_count_stored.abs_diff(max_seen.into_inner());
             let height_violated = diff0 > self.margin || diff1 > self.margin;
 
             let (stable, settled) = if height_violated || !active {
@@ -88,7 +91,7 @@ impl StabilityDetector {
                 // link is inactive. The latter prevents inactive links from
                 // being considered stable.
                 *maybe_start = Some(now);
-                *data_count_stored = data_count;
+                *data_count_stored = data_count.into_inner();
                 cc.set_clear_data_counts_seen(true);
                 (false, false)
             } else {
@@ -110,7 +113,7 @@ impl StabilityDetector {
             // if it happened to stabilize very close to its margins and, just
             // by "luck", the next sample pushes it over the edge.
             if !*prev_stable && stable {
-                *data_count_stored = data_count;
+                *data_count_stored = data_count.into_inner();
                 cc.set_clear_data_counts_seen(true);
             }
             *prev_stable = stable;
@@ -119,8 +122,8 @@ impl StabilityDetector {
         // XXX: These values are currently hardcoded to 8 bits, which would
         //      break if we ever have more than 8 links. We'll cross that bridge
         //      when we get there.
-        cc.set_links_settled([settleds as u8]);
-        cc.set_links_stable([stables as u8]);
+        cc.set_links_settled(BitVector::new([settleds as u8]).unwrap());
+        cc.set_links_stable(BitVector::new([stables as u8]).unwrap());
 
         Stability {
             stable: stables as u8,

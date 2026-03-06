@@ -10,7 +10,11 @@
 // Non-aliased imports
 use bittide_hal::{
     hals::switch_c as hal,
-    manual_additions::calendar::{CalendarEntryType, CalendarType},
+    manual_additions::{
+        calendar::{CalendarEntryType, CalendarType},
+        index::Index,
+        unsigned::Unsigned,
+    },
     types::ValidEntry_12,
 };
 use ufmt::{uDebug, uwrite, uwriteln};
@@ -53,32 +57,32 @@ fn expect<T: uDebug + PartialEq>(msg: &str, expected: T, actual: T) {
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let active_entry0: [u8; 16] = core::array::from_fn(|i| i as u8);
-    let mut active_entry1: [u8; 16] = active_entry0;
+    let active_entry0 = core::array::from_fn(|i| Index::new(i as u8).unwrap());
+    let mut active_entry1 = active_entry0;
     active_entry1.reverse();
 
     let cal_active = [
         ValidEntry_12 {
             ve_entry: active_entry0,
-            ve_repeat: 8,
+            ve_repeat: Unsigned::new(8).unwrap(),
         },
         ValidEntry_12 {
             ve_entry: active_entry1,
-            ve_repeat: 16,
+            ve_repeat: Unsigned::new(16).unwrap(),
         },
     ];
 
     let cal_shadow: [CalendarEntryType<Calendar>; 16] = core::array::from_fn(|i| ValidEntry_12 {
-        ve_entry: core::array::from_fn(|_j| i as u8),
-        ve_repeat: i as u16,
+        ve_entry: core::array::from_fn(|_j| Index::new(i as u8).unwrap()),
+        ve_repeat: Unsigned::new(i as u16).unwrap(),
     });
 
     let calendar = &mut INSTANCES.switch_calendar;
     // Test End of metacycle register and metacycle count
     calendar.wait_for_end_of_metacycle();
-    let bootmetacycle = calendar.metacycle_count();
+    let bootmetacycle = calendar.metacycle_count().into_inner();
     calendar.wait_for_end_of_metacycle();
-    let next_metacycle = calendar.metacycle_count();
+    let next_metacycle = calendar.metacycle_count().into_inner();
     expect("(1) Metacycle increment", 1, next_metacycle - bootmetacycle);
     //
 

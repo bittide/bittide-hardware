@@ -53,6 +53,7 @@ dependencies = [
 name = "bittide-hal-c"
 version = "0.1.0"
 dependencies = [
+ "bittide-macros",
  "cc",
  "memmap-generate",
 ]
@@ -243,6 +244,7 @@ name = "elastic_buffer_wb_test"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-macros",
  "bittide-sys",
  "memmap-generate",
  "riscv-rt",
@@ -468,6 +470,7 @@ name = "registerwb_test"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-macros",
  "bittide-sys",
  "heapless",
  "memmap-generate",
@@ -682,6 +685,7 @@ name = "soft-ugn-mu"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-macros",
  "bittide-sys",
  "memmap-generate",
  "riscv-rt",

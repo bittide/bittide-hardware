@@ -4,9 +4,12 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-use bittide_hal::elastic_buffer_wb_test::DeviceInstances;
-use bittide_hal::manual_additions::timer::Duration;
-use bittide_hal::shared_devices::ElasticBuffer;
+use bittide_hal::{
+    elastic_buffer_wb_test::DeviceInstances,
+    manual_additions::{signed::Signed, timer::Duration, unsigned::Unsigned},
+    shared_devices::ElasticBuffer,
+};
+use bittide_macros::{signed, unsigned};
 #[cfg(not(test))]
 use riscv_rt::entry;
 use ufmt::uwriteln;
@@ -34,7 +37,7 @@ fn test_set_occupancy_to_midpoint(
     }
 
     // Action: Calculate how many elements to add/remove to reach 0
-    let count_before = elastic_buffer.data_count();
+    let count_before = elastic_buffer.data_count().into_inner();
     let target = 0i8;
     let delta = target - count_before;
 
@@ -60,7 +63,7 @@ fn test_set_occupancy_to_midpoint(
     .unwrap();
 
     // Verify: Count is exactly at the midpoint (0)
-    if !underflow_initial && !overflow_initial && count_after == target {
+    if !underflow_initial && !overflow_initial && count_after.into_inner() == target {
         uwriteln!(uart, "  PASS").unwrap();
         true
     } else {
@@ -88,7 +91,7 @@ fn test_zero_adjustment(
     uwriteln!(uart, "  Before adjustment(0): count={}", count_before).unwrap();
 
     // Test single zero adjustment
-    elastic_buffer.set_adjustment(0);
+    elastic_buffer.set_adjustment(signed!(0, n = 32));
 
     timer.wait(Duration::from_micros(1));
     let count_after_first = elastic_buffer.data_count();
@@ -106,9 +109,9 @@ fn test_zero_adjustment(
     }
 
     // Test multiple zero adjustments in succession
-    elastic_buffer.set_adjustment(0);
-    elastic_buffer.set_adjustment(0);
-    elastic_buffer.set_adjustment(0);
+    elastic_buffer.set_adjustment(signed!(0, n = 32));
+    elastic_buffer.set_adjustment(signed!(0, n = 32));
+    elastic_buffer.set_adjustment(signed!(0, n = 32));
 
     timer.wait(Duration::from_micros(1));
     let count_after_multiple = elastic_buffer.data_count();
@@ -156,12 +159,12 @@ fn test_multiple_drain_commands(
     }
 
     // Action: Use set_adjustment HAL function to remove 5 frames
-    let count_before = elastic_buffer.data_count() as i32;
+    let count_before = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  Before set_adjustment(-5): count={}", count_before).unwrap();
 
-    elastic_buffer.set_adjustment(-5);
+    elastic_buffer.set_adjustment(signed!(-5, n = 32));
 
-    let count_after = elastic_buffer.data_count() as i32;
+    let count_after = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  After set_adjustment(-5): count={}", count_after).unwrap();
 
     // Verify: Count decreased by exactly 5
@@ -204,7 +207,7 @@ fn test_underflow_flag_sticky(
     }
 
     // Action 1: Drain past empty to trigger underflow
-    let count_before = elastic_buffer.data_count();
+    let count_before = elastic_buffer.data_count().into_inner();
     let drains_needed = count_before as i32 - (ElasticBuffer::MIN_OCCUPANCY as i32 - 1);
     uwriteln!(
         uart,
@@ -214,7 +217,7 @@ fn test_underflow_flag_sticky(
     )
     .unwrap();
 
-    elastic_buffer.set_adjustment(-drains_needed);
+    elastic_buffer.set_adjustment(Signed::new(-drains_needed).unwrap());
 
     let count_after_drain = elastic_buffer.data_count();
     let underflow_after_drain = elastic_buffer.underflow();
@@ -237,7 +240,7 @@ fn test_underflow_flag_sticky(
     }
 
     // Action 2: Issue Fill adjustment to test stickiness
-    elastic_buffer.set_adjustment(1);
+    elastic_buffer.set_adjustment(signed!(1, n = 32));
     timer.wait(Duration::from_micros(1));
 
     let underflow_after_fill = elastic_buffer.underflow();
@@ -311,7 +314,7 @@ fn test_overflow_flag_sticky(
     }
 
     // Action 1: Fill past capacity to trigger overflow
-    let count_before = elastic_buffer.data_count() as i32;
+    let count_before = elastic_buffer.data_count().into_inner() as i32;
     let fills_needed = ElasticBuffer::MAX_OCCUPANCY as i32 - count_before + 1;
     uwriteln!(
         uart,
@@ -321,9 +324,9 @@ fn test_overflow_flag_sticky(
     )
     .unwrap();
 
-    elastic_buffer.set_adjustment(fills_needed);
+    elastic_buffer.set_adjustment(Signed::new(fills_needed).unwrap());
 
-    let count_after_fill = elastic_buffer.data_count() as i32;
+    let count_after_fill = elastic_buffer.data_count().into_inner() as i32;
     let overflow_after_fill = elastic_buffer.overflow();
     uwriteln!(
         uart,
@@ -344,7 +347,7 @@ fn test_overflow_flag_sticky(
     }
 
     // Action 2: Issue Drain adjustment to test stickiness
-    elastic_buffer.set_adjustment(-1);
+    elastic_buffer.set_adjustment(signed!(-1, n = 32));
 
     timer.wait(Duration::from_micros(1));
     let overflow_after_drain = elastic_buffer.overflow();
@@ -393,14 +396,14 @@ fn test_multiple_items_command(
     elastic_buffer.set_occupancy(0);
 
     timer.wait(Duration::from_micros(1));
-    let count_before = elastic_buffer.data_count();
+    let count_before = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  Initial count: {}", count_before).unwrap();
 
     // Test 1: Fill multiple items (n=10)
-    elastic_buffer.set_adjustment(10);
+    elastic_buffer.set_adjustment(signed!(10, n = 32));
 
     timer.wait(Duration::from_micros(1));
-    let count_after_fill = elastic_buffer.data_count();
+    let count_after_fill = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  After filling 10: count={}", count_after_fill).unwrap();
 
     if count_after_fill != count_before + 10 {
@@ -415,10 +418,10 @@ fn test_multiple_items_command(
     }
 
     // Test 2: Drain multiple items (n=5)
-    elastic_buffer.set_adjustment(-5);
+    elastic_buffer.set_adjustment(signed!(-5, n = 32));
 
     timer.wait(Duration::from_micros(1));
-    let count_after_drain = elastic_buffer.data_count();
+    let count_after_drain = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  After draining 5: count={}", count_after_drain).unwrap();
 
     if count_after_drain != count_after_fill - 5 {
@@ -449,17 +452,17 @@ fn test_back_to_back(
     elastic_buffer.set_occupancy(0);
 
     timer.wait(Duration::from_micros(1));
-    let count_initial = elastic_buffer.data_count();
+    let count_initial = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
 
     // Submit two adjustments back-to-back without waiting between them
     // The second should stall until the first completes
-    elastic_buffer.set_adjustment_async(3);
-    elastic_buffer.set_adjustment_async(-2);
+    elastic_buffer.set_adjustment_async(signed!(3, n = 32));
+    elastic_buffer.set_adjustment_async(signed!(-2, n = 32));
     elastic_buffer.set_adjustment_wait(());
 
     timer.wait(Duration::from_micros(1));
-    let count_after = elastic_buffer.data_count();
+    let count_after = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  After both adjustments: count={}", count_after).unwrap();
 
     // Verify: count should be initial + 3 - 2 = initial + 1
@@ -491,15 +494,15 @@ fn test_async_wait_async_wait(
     elastic_buffer.set_occupancy(0);
 
     timer.wait(Duration::from_micros(1));
-    let count_initial = elastic_buffer.data_count();
+    let count_initial = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  Initial count: {}", count_initial).unwrap();
 
     // First adjustment: submit and wait
-    elastic_buffer.set_adjustment_async(7);
+    elastic_buffer.set_adjustment_async(signed!(7, n = 32));
     elastic_buffer.set_adjustment_wait(());
 
     timer.wait(Duration::from_micros(1));
-    let count_after_first = elastic_buffer.data_count();
+    let count_after_first = elastic_buffer.data_count().into_inner();
     uwriteln!(
         uart,
         "  After first filling 7 + wait: count={}",
@@ -508,11 +511,11 @@ fn test_async_wait_async_wait(
     .unwrap();
 
     // Second adjustment: submit and wait
-    elastic_buffer.set_adjustment_async(-4);
+    elastic_buffer.set_adjustment_async(signed!(-4, n = 32));
     elastic_buffer.set_adjustment_wait(());
 
     timer.wait(Duration::from_micros(1));
-    let count_after_second = elastic_buffer.data_count();
+    let count_after_second = elastic_buffer.data_count().into_inner();
     uwriteln!(
         uart,
         "  After second draining 4 + wait: count={}",
@@ -553,19 +556,19 @@ fn test_auto_center_basic_centering(
     // Set buffer to +10
     elastic_buffer.set_occupancy(10);
     timer.wait(Duration::from_micros(1));
-    let count_before = elastic_buffer.data_count();
+    let count_before = elastic_buffer.data_count().into_inner();
     uwriteln!(uart, "  Initial count: {}", count_before).unwrap();
 
     // Set margin to 2 and enable auto-center
-    elastic_buffer.set_auto_center_margin(2);
+    elastic_buffer.set_auto_center_margin(unsigned!(2, n = 16));
     elastic_buffer.set_auto_center_enable(true);
 
     // Wait for it to become idle
     elastic_buffer.wait_auto_center_idle();
 
     timer.wait(Duration::from_micros(1));
-    let count_after = elastic_buffer.data_count();
-    let total_adjustments = elastic_buffer.auto_center_total_adjustments();
+    let count_after = elastic_buffer.data_count().into_inner();
+    let total_adjustments = elastic_buffer.auto_center_total_adjustments().into_inner();
     uwriteln!(
         uart,
         "  After auto-center: count={}, total_adjustments={}",
@@ -620,14 +623,14 @@ fn test_auto_center_margin_parameter(
         uwriteln!(uart, "  Testing margin={}", margin).unwrap();
 
         // Set margin and enable
-        elastic_buffer.set_auto_center_margin(margin);
+        elastic_buffer.set_auto_center_margin(Unsigned::new(margin).unwrap());
         elastic_buffer.set_auto_center_enable(true);
 
         // Wait for idle
         elastic_buffer.wait_auto_center_idle();
 
         timer.wait(Duration::from_micros(1));
-        let count_after = elastic_buffer.data_count();
+        let count_after = elastic_buffer.data_count().into_inner();
         let margin_signed = margin as i8;
 
         uwriteln!(
@@ -723,7 +726,7 @@ fn test_auto_center_idle_state(
     timer.wait(Duration::from_micros(1));
 
     // Enable auto-center
-    elastic_buffer.set_auto_center_margin(2);
+    elastic_buffer.set_auto_center_margin(unsigned!(2, n = 16));
     elastic_buffer.set_auto_center_enable(true);
 
     // Wait for completion
@@ -762,7 +765,7 @@ fn test_auto_center_total_adjustments_tracking(
     timer.wait(Duration::from_micros(1));
 
     // Verify total starts at 0
-    let total_initial = elastic_buffer.auto_center_total_adjustments();
+    let total_initial = elastic_buffer.auto_center_total_adjustments().into_inner();
     if total_initial != 0 {
         uwriteln!(
             uart,
@@ -776,11 +779,11 @@ fn test_auto_center_total_adjustments_tracking(
     // Set buffer to +15 and center
     elastic_buffer.set_occupancy(15);
     timer.wait(Duration::from_micros(1));
-    elastic_buffer.set_auto_center_margin(0);
+    elastic_buffer.set_auto_center_margin(unsigned!(0, n = 16));
     elastic_buffer.set_auto_center_enable(true);
     elastic_buffer.wait_auto_center_idle();
 
-    let total_after_first = elastic_buffer.auto_center_total_adjustments();
+    let total_after_first = elastic_buffer.auto_center_total_adjustments().into_inner();
     uwriteln!(
         uart,
         "  After centering from +15: total={}",
@@ -806,7 +809,7 @@ fn test_auto_center_total_adjustments_tracking(
     elastic_buffer.set_auto_center_enable(true);
     elastic_buffer.wait_auto_center_idle();
 
-    let total_after_second = elastic_buffer.auto_center_total_adjustments();
+    let total_after_second = elastic_buffer.auto_center_total_adjustments().into_inner();
     uwriteln!(
         uart,
         "  After centering from -10: total={}",
@@ -842,11 +845,11 @@ fn test_auto_center_reset_functionality(
     elastic_buffer.reset_auto_center();
     elastic_buffer.set_occupancy(12);
     timer.wait(Duration::from_micros(1));
-    elastic_buffer.set_auto_center_margin(0);
+    elastic_buffer.set_auto_center_margin(unsigned!(0, n = 16));
     elastic_buffer.set_auto_center_enable(true);
     elastic_buffer.wait_auto_center_idle();
 
-    let total_before_reset = elastic_buffer.auto_center_total_adjustments();
+    let total_before_reset = elastic_buffer.auto_center_total_adjustments().into_inner();
     uwriteln!(
         uart,
         "  Total adjustments before reset: {}",
@@ -864,7 +867,7 @@ fn test_auto_center_reset_functionality(
     timer.wait(Duration::from_micros(1));
 
     // Verify total is 0
-    let total_after_reset = elastic_buffer.auto_center_total_adjustments();
+    let total_after_reset = elastic_buffer.auto_center_total_adjustments().into_inner();
     if total_after_reset != 0 {
         uwriteln!(
             uart,
@@ -907,19 +910,19 @@ fn test_auto_center_with_manual_adjustments(
     timer.wait(Duration::from_micros(1));
 
     // Enable auto-center
-    elastic_buffer.set_auto_center_margin(2);
+    elastic_buffer.set_auto_center_margin(unsigned!(2, n = 16));
     elastic_buffer.set_auto_center_enable(true);
     timer.wait(Duration::from_micros(1));
 
     // Submit a manual adjustment while auto-center is active
-    elastic_buffer.set_adjustment(5);
+    elastic_buffer.set_adjustment(signed!(5, n = 32));
     timer.wait(Duration::from_micros(1));
 
     // Wait for auto-center to finish
     elastic_buffer.wait_auto_center_idle();
 
-    let count_final = elastic_buffer.data_count();
-    let total_adjustments = elastic_buffer.auto_center_total_adjustments();
+    let count_final = elastic_buffer.data_count().into_inner();
+    let total_adjustments = elastic_buffer.auto_center_total_adjustments().into_inner();
 
     uwriteln!(
         uart,
@@ -962,15 +965,15 @@ fn test_auto_center_already_centered(
     elastic_buffer.set_occupancy(0);
     timer.wait(Duration::from_micros(1));
 
-    let count_before = elastic_buffer.data_count();
+    let count_before = elastic_buffer.data_count().into_inner();
 
     // Enable auto-center with margin 2
-    elastic_buffer.set_auto_center_margin(2);
+    elastic_buffer.set_auto_center_margin(unsigned!(2, n = 16));
     elastic_buffer.set_auto_center_enable(true);
     elastic_buffer.wait_auto_center_idle();
 
-    let count_after = elastic_buffer.data_count();
-    let total_adjustments = elastic_buffer.auto_center_total_adjustments();
+    let count_after = elastic_buffer.data_count().into_inner();
+    let total_adjustments = elastic_buffer.auto_center_total_adjustments().into_inner();
 
     uwriteln!(
         uart,
@@ -1017,14 +1020,14 @@ fn test_auto_center_wait_idle(
     timer.wait(Duration::from_micros(1));
 
     // Enable auto-center
-    elastic_buffer.set_auto_center_margin(2);
+    elastic_buffer.set_auto_center_margin(unsigned!(2, n = 16));
     elastic_buffer.set_auto_center_enable(true);
 
     // Immediately call wait_idle
     elastic_buffer.wait_auto_center_idle();
 
     // Should not return until idle, and buffer should be centered
-    let count_after = elastic_buffer.data_count();
+    let count_after = elastic_buffer.data_count().into_inner();
     let is_idle = elastic_buffer.auto_center_is_idle();
 
     uwriteln!(
@@ -1069,12 +1072,12 @@ fn test_auto_center_zero_margin(
     timer.wait(Duration::from_micros(1));
 
     // Set margin to 0
-    elastic_buffer.set_auto_center_margin(0);
+    elastic_buffer.set_auto_center_margin(unsigned!(0, n = 16));
     elastic_buffer.set_auto_center_enable(true);
     elastic_buffer.wait_auto_center_idle();
     timer.wait(Duration::from_micros(1));
 
-    let count_after = elastic_buffer.data_count();
+    let count_after = elastic_buffer.data_count().into_inner();
     uwriteln!(
         uart,
         "  After centering with margin=0: count={}",
@@ -1109,7 +1112,7 @@ fn test_auto_center_persistence_across_multiple_perturbations(
     elastic_buffer.reset_auto_center();
     elastic_buffer.set_occupancy(0);
     timer.wait(Duration::from_micros(1));
-    elastic_buffer.set_auto_center_margin(2);
+    elastic_buffer.set_auto_center_margin(unsigned!(2, n = 16));
     elastic_buffer.set_auto_center_enable(true);
     elastic_buffer.wait_auto_center_idle();
 
@@ -1119,13 +1122,13 @@ fn test_auto_center_persistence_across_multiple_perturbations(
         uwriteln!(uart, "  Applying perturbation: {}", perturbation).unwrap();
 
         // Manually adjust buffer off-center
-        elastic_buffer.set_adjustment(perturbation);
+        elastic_buffer.set_adjustment(Signed::new(perturbation).unwrap());
         timer.wait(Duration::from_micros(1));
 
         // Wait for auto-center to fix it
         elastic_buffer.wait_auto_center_idle();
 
-        let count = elastic_buffer.data_count();
+        let count = elastic_buffer.data_count().into_inner();
         uwriteln!(uart, "    After re-centering: count={}", count).unwrap();
 
         // Verify it's centered again
