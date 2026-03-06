@@ -95,18 +95,11 @@ dut dnaA dnaB = withBittideByteOrder $ circuit $ do
   mm <- ignoreMM
   Fwd localCounter <- timeWb Nothing -< (mmTime, timeBus)
 
-  (linkAB, _stateAB) <-
-    switchDemoPeWb d2 -< (mmA, (Fwd localCounter, peBusA, dnaAC, linkBA))
+  Fwd linkAB <- switchDemoPeWb d2 localCounter (Just <$> dnaA) linkBA -< (mmA, peBusA)
 
-  (linkBA, _stateBA) <-
-    switchDemoPeWb d2 -< (mmB, (Fwd localCounter, peBusB, dnaBC, linkAB))
-  dnaAC <- signalToCSignal dnaA
-  dnaBC <- signalToCSignal dnaB
+  Fwd linkBA <- switchDemoPeWb d2 localCounter (Just <$> dnaB) linkAB -< (mmB, peBusB)
   idC -< uartTx
  where
-  signalToCSignal :: Signal dom a -> Circuit () (CSignal dom a)
-  signalToCSignal = Circuit . const . ((),)
-
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let

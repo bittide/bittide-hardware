@@ -9,6 +9,7 @@ import Protocols
 
 import Bittide.Instances.Hitl.SwitchDemoGppe.BringUp (bringUp)
 import Bittide.SharedTypes (withBittideByteOrder)
+import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Protocols.MemoryMap (MemoryMap)
 import VexRiscv (JtagIn (..))
 
@@ -19,13 +20,12 @@ boot, mu, cc, gppe :: MemoryMap
  where
   Circuit circuitFn = withBittideByteOrder $ bringUp clockGen noReset
 
-  ((SimOnly bootMm, SimOnly muMm, SimOnly ccMm, SimOnly gppeMm, _, _), _) =
+  (SimOnly bootMm, SimOnly muMm, SimOnly ccMm, SimOnly gppeMm) = vecToTuple memoryMaps
+
+  ((memoryMaps, _, _), _) =
     circuitFn
       (
-        ( ()
-        , ()
-        , ()
-        , ()
+        ( repeat ()
         , pure (JtagIn 0 0 0)
         , (clockGen, SimOnly (repeat 0), 0, 0, repeat "", repeat "")
         )

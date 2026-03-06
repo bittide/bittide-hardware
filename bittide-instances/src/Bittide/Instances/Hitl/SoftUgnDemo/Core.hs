@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-module Bittide.Instances.Hitl.SoftUgnDemo.Core (core) where
+module Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -38,6 +38,9 @@ import VexRiscv (DumpVcd (..), Jtag)
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
+
+-- | The number of CPUs in 'core'
+type InternalCpuCount = 3
 
 type FifoSize = 5 -- = 2^5 = 32
 
@@ -124,6 +127,7 @@ managementUnit ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
+  -- | External counter
   Signal dom (Unsigned 64) ->
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
@@ -143,7 +147,7 @@ managementUnit externalCounter maybeDna =
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
-    _cnt <- timeWb (Just externalCounter) -< timeBus
+    _localCounter <- timeWb (Just externalCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
@@ -170,7 +174,7 @@ gppe ::
     ( Vec LinkCount (CSignal dom (BitVector 64))
     , Df dom (BitVector 8)
     )
-gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
+gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbs, jtag) -> do
   -- Core and interconnect
   (scatterBusses, wbs0) <- Vec.split <| processingElement NoDumpVcd gppeConfig -< (mm, jtag)
   (gatherBusses, wbs1) <- Vec.split -< wbs0
@@ -178,12 +182,10 @@ gppe externalCounter maybeDna linksIn = circuit $ \(mm, nmuWbMms, jtag) -> do
 
   -- Synthesis fails on timing check unless these signals are registered. Remove as soon
   -- as possible.
-  (nmuMms, nmuWbs) <- Vec.unzip -< nmuWbMms
-  nmuWbsDelayed <- repeatC delayWishbone -< nmuWbs
-  nmuWbMmsDelayed <- Vec.zip -< (nmuMms, nmuWbsDelayed)
+  nmuWbsDelayed <- repeatC (fmapC delayWishbone) -< nmuWbs
 
   -- Scatter Gather units
-  (scatterCalendarBusses, gatherCalendarBusses) <- Vec.split -< nmuWbMmsDelayed
+  (scatterCalendarBusses, gatherCalendarBusses) <- Vec.split -< nmuWbsDelayed
   idleSink
     <| Vec.vecCircuits (fmap (scatterUnitWbC scatterConfig) linksIn)
     <| Vec.zip
@@ -214,9 +216,7 @@ core ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "MU" ::: ToConstBwd Mm
-    , "CC" ::: ToConstBwd Mm
-    , "GPPE" ::: ToConstBwd Mm
+    ( Vec InternalCpuCount (ToConstBwd Mm)
     , Jtag Bittide
     , "MASK" ::: CSignal Bittide (BitVector LinkCount)
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
@@ -226,14 +226,13 @@ core ::
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
-    , "MU_UART" ::: Df Bittide (BitVector 8)
-    , "CC_UART" ::: Df Bittide (BitVector 8)
-    , "GPPE_UART" ::: Df Bittide (BitVector 8)
-    , "MU_TRANSCEIVER"
-        ::: (BitboneMm Bittide NmuRemBusWidth)
+    , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
+    , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, gppeMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+    [muMm, ccMm, gppeMm] <- idC -< memoryMaps
+
     [muJtag, ccJtag, gppeJtag] <- jtagChain -< jtag
 
     let
@@ -276,7 +275,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable gppe localCounter maybeDna rxs2 -< (gppeMm, muSgWbs, gppeJtag)
     -- Stop general purpose processing element
 
-    -- Start Clock control
+    -- Start clock control
     ( sync
       , Fwd swCcOut0
       , [ ccUartBus
@@ -303,20 +302,21 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-    -- Stop Clock control
 
-    let swCcOut1 =
-          if clashSimulation
-            then
-              let
-                -- Should all clock control steps be run in simulation?
-                -- False means that clock control will always immediately be done.
-                simulateCc = False
-               in
-                if simulateCc
-                  then swCcOut0
-                  else pure Nothing
-            else swCcOut0
+    let
+      swCcOut1 =
+        if clashSimulation
+          then
+            let
+              -- Should all clock control steps be run in simulation?
+              -- False means that clock control will always immediately be done.
+              simulateCc = False
+             in
+              if simulateCc
+                then swCcOut0
+                else pure Nothing
+          else swCcOut0
+    -- Stop clock control
 
     -- Use of `dflipflop` to add pipelining should be replaced by
     -- https://github.com/bittide/bittide-hardware/pull/1134
@@ -325,9 +325,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
          , Fwd localCounter
          , Fwd (dflipflop bitClk <$> txs)
          , sync
-         , muUartBytesBittide
-         , ccUartBytesBittide
-         , gppeUartBytesBittide
+         , [muUartBytesBittide, ccUartBytesBittide, gppeUartBytesBittide]
          , muTransceiverBus
          )
  where

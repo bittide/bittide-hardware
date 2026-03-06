@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-module Bittide.Instances.Hitl.SwitchDemo.Core (core) where
+module Bittide.Instances.Hitl.SwitchDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -30,7 +30,6 @@ import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
-import Data.Maybe (fromMaybe)
 import Protocols.Extra
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone.Extra (delayWishbone)
@@ -39,6 +38,9 @@ import VexRiscv (DumpVcd (..), Jtag)
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
+
+-- | The number of CPUs in 'core'
+type InternalCpuCount = 2
 
 type FifoSize = 5 -- = 2^5 = 32
 
@@ -65,6 +67,40 @@ type PeripheralsPerLink = 2
 -}
 type NmuExternalBusses = 4 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
+
+muConfig ::
+  ( KnownNat n
+  , PrefixWidth (n + NmuInternalBusses) <= 30
+  ) =>
+  PeConfig (n + NmuInternalBusses)
+muConfig =
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv1
+    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthD = SNat @(Div (64 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
+    }
+
+ccConfig ::
+  ( KnownNat n
+  , PrefixWidth (n + SwcccInternalBusses) <= 30
+  ) =>
+  PeConfig (n + SwcccInternalBusses)
+ccConfig =
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv2
+    , depthI = SNat @(Div (64 * 1024) 4)
+    , depthD = SNat @(Div (64 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
+    }
 
 managementUnit ::
   forall dom.
@@ -132,40 +168,6 @@ calendarConfig =
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-muConfig ::
-  ( KnownNat n
-  , PrefixWidth (n + NmuInternalBusses) <= 30
-  ) =>
-  PeConfig (n + NmuInternalBusses)
-muConfig =
-  PeConfig
-    { cpu = Riscv32imc.vexRiscv1
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
-    , initI = Nothing
-    , initD = Nothing
-    , iBusTimeout = d0
-    , dBusTimeout = d0
-    , includeIlaWb = False
-    }
-
-ccConfig ::
-  ( KnownNat n
-  , PrefixWidth (n + SwcccInternalBusses) <= 30
-  ) =>
-  PeConfig (n + SwcccInternalBusses)
-ccConfig =
-  PeConfig
-    { cpu = Riscv32imc.vexRiscv2
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
-    , initI = Nothing
-    , initD = Nothing
-    , iBusTimeout = d0
-    , dBusTimeout = d0
-    , includeIlaWb = False
-    }
-
 core ::
   ( ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -175,24 +177,23 @@ core ::
   Vec LinkCount (Clock GthRx) ->
   Vec LinkCount (Reset GthRx) ->
   Circuit
-    ( "MU" ::: ToConstBwd Mm
-    , "CC" ::: ToConstBwd Mm
+    ( Vec InternalCpuCount (ToConstBwd Mm)
     , Jtag Bittide
-    , CSignal Bittide (BitVector LinkCount)
-    , CSignal Bittide (BitVector LinkCount)
-    , Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
+    , "MASK" ::: CSignal Bittide (BitVector LinkCount)
+    , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
+    , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
     )
     ( CSignal Bittide (Maybe SpeedChange)
     , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
-    , "MU_UART" ::: Df Bittide (BitVector 8)
-    , "CC_UART" ::: Df Bittide (BitVector 8)
-    , "MU_TRANSCEIVER"
-        ::: (BitboneMm Bittide NmuRemBusWidth)
+    , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
+    , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
     )
 core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(muMm, ccMm, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+  circuit $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+    [muMm, ccMm] <- idC -< memoryMaps
+
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     let
@@ -204,8 +205,8 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    [ (peWbMM, peWb)
-      , (switchWbMM, switchWb)
+    [ peBus
+      , (switchMm, switchWb)
       , muTransceiverBus
       , muCallistoBus
       ] <-
@@ -229,18 +230,16 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn localCounter <$> rxs1) -< ugnWbs
 
-    rxs3 <- Vec.append -< ([Fwd peOut], rxs2)
+    switchIn <- Vec.append -< ([peOut], rxs2)
     (switchOut, _calEntry) <-
-      withBittideClockResetEnable $ switchC calendarConfig -< (switchWbMM, (rxs3, switchWb))
+      withBittideClockResetEnable $ switchC calendarConfig -< (switchMm, (switchIn, switchWb))
     ([Fwd peIn], txs) <- Vec.split -< switchOut
     -- Stop internal links
 
     -- Start ASIC processing element
-    -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
-    --      use it until the DNA is actually read out.
-    (Fwd peOut, _peState) <-
-      withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount))
-        -< (peWbMM, (Fwd localCounter, peWb, Fwd (fromMaybe 0 <$> maybeDna), Fwd peIn))
+    peOut <-
+      withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount) localCounter maybeDna peIn)
+        -< peBus
     -- Stop ASIC processing element
 
     -- Start clock control
@@ -270,7 +269,6 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-    -- Stop clock control
 
     let
       swCcOut1 =
@@ -285,14 +283,14 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
                 then swCcOut0
                 else pure Nothing
           else swCcOut0
+    -- Stop clock control
 
     idC
       -< ( Fwd swCcOut1
          , Fwd localCounter
          , txs
          , sync
-         , muUartBytesBittide
-         , ccUartBytesBittide
+         , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
          )
  where

@@ -29,7 +29,7 @@ import Bittide.Instances.Domains (
   GthTxS,
  )
 import Bittide.Instances.Hitl.Setup (LinkCount)
-import Bittide.Instances.Hitl.SwitchDemoGppe.Core (core)
+import Bittide.Instances.Hitl.SwitchDemoGppe.Core (InternalCpuCount, core)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..))
 import Bittide.SharedTypes (Byte, withBittideByteOrder)
@@ -47,6 +47,7 @@ import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
+import qualified Protocols.Vec as Vec
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -88,10 +89,7 @@ bringUp ::
   "REFCLK" ::: Clock Basic125 ->
   "TEST_RST" ::: Reset Basic125 ->
   Circuit
-    ( "BOOT" ::: ToConstBwd Mm
-    , "MU" ::: ToConstBwd Mm
-    , "CC" ::: ToConstBwd Mm
-    , "GPPE" ::: ToConstBwd Mm
+    ( Vec (InternalCpuCount + 1) (ToConstBwd Mm)
     , Jtag Basic125
     , Gth.Gths GthRx GthRxS Bittide GthTxS Ext200 LinkCount
     )
@@ -100,34 +98,33 @@ bringUp ::
     , "UART_TX" ::: CSignal Basic125 Bit
     , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
-bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, gppeMm, jtag, gths) -> do
-  (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
-    withRefClockResetEnable
-      $ bootPe bootPeConfig
-      -< (bootMm, bootJtag)
+bringUp refClk refRst = withBittideByteOrder $ circuit $ \(memoryMaps, jtag, gths) -> do
+  ([bootMm], coreMemoryMaps) <- Vec.split -< memoryMaps
 
   [bootJtag, otherJtag] <- jtagChain -< jtag
   otherJtagBittide <- unsafeJtagSynchronizer refClk bittideClk -< otherJtag
 
   transceiverWb <- withRefClockResetEnable arbiterMm -< [muTransceiverWb, bootTransceiverWb]
   muTransceiverWb <-
-    fmapC
-      (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
+    fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
       -< muTransceiverWbBittide
+
+  -- Start boot PE
+  (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
+    withRefClockResetEnable
+      $ bootPe bootPeConfig
+      -< (bootMm, bootJtag)
+  -- Stop boot PE
 
   -- Start UART multiplexing
   uartTxBytes <-
     withRefClockResetEnable
       $ asciiDebugMux d1024 uartLabels
-      -< [bootUartBytes, muUartBytes, ccUartBytes, gppeUartBytes]
+      <| Vec.append
+      -< ([bootUartBytes], uartBytes)
   (_uartInBytes, uartTx) <- withRefClockResetEnable $ uartDf baud -< (uartTxBytes, Fwd 0)
 
-  muUartBytes <-
-    dcFifoDf d5 bittideClk bittideRst refClk refRst -< muUartBytesBittide
-  ccUartBytes <-
-    dcFifoDf d5 bittideClk bittideRst refClk refRst -< ccUartBytesBittide
-  gppeUartBytes <-
-    dcFifoDf d5 bittideClk bittideRst refClk refRst -< gppeUartBytesBittide
+  uartBytes <- fmapC $ dcFifoDf d5 bittideClk bittideRst refClk refRst -< uartBytesBittide
   -- Stop UART multiplexing
 
   Fwd tOutputs <-
@@ -148,9 +145,7 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
     , Fwd localCounter
     , switchDataOut
     , sync
-    , muUartBytesBittide
-    , ccUartBytesBittide
-    , gppeUartBytesBittide
+    , uartBytesBittide
     , muTransceiverWbBittide
     ) <-
     core
@@ -158,9 +153,7 @@ bringUp refClk refRst = withBittideByteOrder $ circuit $ \(bootMm, muMm, ccMm, g
       (bittideClk, bittideRst, enableGen)
       tOutputs.rxClocks
       (unsafeFromActiveLow <$> tOutputs.handshakesDone)
-      -< ( muMm
-         , ccMm
-         , gppeMm
+      -< ( coreMemoryMaps
          , otherJtagBittide
          , Fwd (pure maxBound)
          , Fwd linksSuitableForCc

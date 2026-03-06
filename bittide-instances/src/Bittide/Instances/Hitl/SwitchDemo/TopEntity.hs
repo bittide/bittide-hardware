@@ -79,7 +79,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncI
   testReset :: Reset Basic125
   testReset = unsafeFromActiveLow testStart `orReset` refRst
 
-  ( (_bootMm, _muMm, _ccMm, jtagOut, (txs, txns, txps))
+  ( (_memoryMaps, jtagOut, (txs, txns, txps))
     , ( spiM2S
         , syncOut
         , uartTx
@@ -88,7 +88,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncI
     ) =
       toSignals
         (bringUp refClk testReset)
-        ( ((), (), (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
+        ( (repeat (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
         , (spiS2M, syncIn, (), ())
         )
 {-# OPAQUE switchDemoTest #-}
