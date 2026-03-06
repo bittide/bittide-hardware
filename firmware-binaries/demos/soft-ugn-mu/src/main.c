@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "hals/soft_ugn_demo_gppe/device_instances.h"
+#include "hals/soft_ugn_demo_mu/device_instances.h"
 
 #include "bittide_dna.h"
 #include "bittide_gather.h"  // Linter says we dont need this include, but we do

@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 This chapter describes the specific hardware setup used to perform a test where each node
 is able to determine the UGNs to its neighbors without communicating with a host PC that
 is able to read all of the information from each of the nodes in the system. This is
-accomplished through the firmware on the GPPE.
+accomplished through the firmware on the management unit (MU).
 
 ## Architecture
 {{#drawio path="diagrams/softUgnDemo.drawio" page=0}}
@@ -28,15 +28,14 @@ accomplished through the firmware on the GPPE.
     4. (Keeps calibrating clocks.)
 3. Management unit CPU
     1. Gets programmed by the host
-    2. Centers elastic buffers
-    3. Initializes the [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md).
-    4. Sets the channels to "user" mode. This makes the channels accept data from the outside world instead of their negotiation state machinery.
-    5. Prints UGNs captured by hardware component to UART.
-4. General purpose procesisng element (PE)
-    1. Gets programmed by the host
-    2. Waits for the management unit to initialize the calendars
-    3. Calls the "c_main" and runs the software UGN discovery protocol
-    4. Prints the discovered UGNs over UART
+    2. Sets the channels to "user" mode. This makes the channels accept data from the outside world instead of their negotiation state machinery.
+    3. Waits for hardware UGN to be captured
+    4. Start auto-centering elastic buffers
+    5. Waits for clocks to be considered stable
+    6. Stops auto-centering the elastic buffers
+    7. Prints UGNs captured by hardware component to UART.
+    8. Initializes the [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md).
+    9. Calls the "c_main" and runs the software UGN discovery protocol
 
 ### Domain related
 Components:
@@ -50,7 +49,6 @@ Components:
 ### Node related
 Components:
 - Management unit (MU)
-- 1x general purpose processing element (PE)
 - 7 [scatter](../components/scatter-unit.md) and [gather](../components/gather-unit.md) units, one of each per elastic buffer
 
 ### Management unit
@@ -60,25 +58,14 @@ Connected components:
 - FPGA DNA register
 
 The management unit has access to and is responsible for all [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md) in
-the node. In this demo, it programs the calendars with increasing values (0, 1, 2, ...),
-effectively creating a transparent link for the GPPE to access the scatter/gather units directly.
-It also centers the elastic buffers to ensure stable communication.
+the node. In this demo, it programs the calendars with increasing values (0, 1, 2, ...), effectively creating a transparent link for the MU to access the scatter/gather units directly. It also centers the elastic buffers to ensure stable communication.
+Finally it runs a distributed protocol to discover the Uninterpretable Garbage Numbers (UGNs) of the network links. For a detailed description of the procedure, see [Software UGN Discovery Procedure](soft-ugn-procedure.md). It uses the scatter/gather units (enabled by the MU) to exchange timestamped messages with neighbors, calculating the propagation delays in software.
 
 To change the binary run on this CPU, one may either:
 - Edit `bittide-instances/src/bittide/Instances/Hitl/SoftUgnDemo/Driver.hs`, line 215 (at
   time of writing) to use another binary instead of `soft-ugn-mu`
 - Edit the source files in `firmware-binaries/soft-ugn-mu/` to change the binary
   pre-selected by the driver function
-
-### General purpose processing element
-This component is labeled as "PE" in the diagram above. Connected components:
-- 7 [scatter](../components/scatter-unit.md) and [gather](../components/gather-unit.md) units, one of each per elastic buffer
-- UART (for debugging)
-- Timer
-- FPGA DNA register
-
-The general purpose processing element runs the `soft-ugn-gppe` firmware, which implements a distributed protocol to discover the Uninterpretable Garbage Numbers (UGNs) of the network links. For a detailed description of the procedure, see [Software UGN Discovery Procedure](soft-ugn-procedure.md). It uses the scatter/gather units (enabled by the MU) to exchange timestamped messages with neighbors,
-calculating the propagation delays in software.
 
 ### Debugging related
 - UART arbiter
@@ -105,7 +92,6 @@ Tests are configured to run the following binaries on the system's CPUs:
 - Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `soft-ugn-mu` (`firmware-binaries/demos/soft-ugn-mu`)
-- General purpose processing element: `soft-ugn-gppe` (`firmware-binaries/demos/soft-ugn-gppe`)
 
 One may change this by either:
 1. Changing the driver function so that it loads different binaries onto the CPUs. This

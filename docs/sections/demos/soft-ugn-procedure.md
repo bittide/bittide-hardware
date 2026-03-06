@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Software UGN Discovery Procedure
 
-The Software UGN (Uninterpretable Garbage Number) Discovery Procedure is a distributed mechanism used by Bittide nodes to determine network propagation delays to their neighbors without centralized coordination. This procedure runs on the General Purpose Processing Element (GPPE) of each node.
+The Software UGN (Uninterpretable Garbage Number) Discovery Procedure is a distributed mechanism used by Bittide nodes to determine network propagation delays to their neighbors without centralized coordination. This procedure runs on the Management Unit (MU) of each node.
 
 ## Overview
 
@@ -50,7 +50,7 @@ Events are scheduled according to the send and receive periods:
 
 1.  **Initialization**:
     *   The MU configures scatter/gather calendars to 1:1 mapping (ringbuffer mode).
-    *   The GPPE aligns its software pointers to the hardware buffer positions leveraging the [Ringbuffer Alignment Procedure](../ringbuffer-alignment.md).
+    *   The MU aligns its software pointers to the hardware buffer positions leveraging the [Ringbuffer Alignment Procedure](../ringbuffer-alignment.md).
     *   Initial `SEND` and `RECEIVE` events are scheduled for all ports.
 
 2.  **Discovery Loop**:
