@@ -8,7 +8,7 @@ module Bittide.DoubleBufferedRam where
 import Clash.Prelude
 
 import Data.Maybe
-import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df, toSignals)
+import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df, toSignals, (<|))
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
@@ -18,11 +18,13 @@ import Data.Typeable
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (unMemmap)
 import Protocols.MemoryMap.Registers.WishboneStandard (
+  addressableBytesWb,
   deviceWb,
   matchEndianness,
-  memoryWb,
   registerConfig,
  )
+
+import qualified Protocols.ReqResp as ReqResp
 
 data ContentType n a
   = Vec (Vec n a)
@@ -82,7 +84,6 @@ wbStorage ::
   ( HasCallStack
   , HiddenClockResetEnable dom
   , KnownNat aw
-  , KnownNat depth
   , 1 <= depth
   , ?busByteOrder :: ByteOrder
   ) =>
@@ -90,18 +91,24 @@ wbStorage ::
   SNat depth ->
   Maybe (ContentType depth (Bytes 4)) ->
   Circuit (BitboneMm dom aw) ()
-wbStorage memoryName depth initContent =
+wbStorage memoryName SNat initContent =
   let ?regByteOrder = BigEndian
    in circuit $ \(mm, wbMaster0) -> do
         wbMaster1 <- matchEndianness -< wbMaster0
         [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
-        memoryWb hasClock hasReset (registerConfig "data") ram depth -< wb0
+        reqresp <- addressableBytesWb regConfig -< wb0
+        (reads, writes0) <- ReqResp.partitionEithers -< reqresp
+        writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
+        _vecUnit <- ram -< (reads, writes1)
+        idC -< ()
  where
-  ram = case initContent of
-    Nothing ->
-      blockRamByteAddressableU
-    Just content ->
-      blockRamByteAddressable @_ @depth content
+  regConfig = registerConfig "data"
+  ram = ReqResp.fromBlockRamWithMask
+    $ case initContent of
+      Nothing ->
+        blockRamByteAddressableU
+      Just content ->
+        blockRamByteAddressable @_ @depth content
 {-# OPAQUE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
