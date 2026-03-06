@@ -24,9 +24,13 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   registerWithOffsetWbI,
   registerWithOffsetWbDfI,
 
+  -- * Byte addressable memory interfaces
+  addressableBytesWb,
+
   -- * Supporting types and functions
   registerConfig,
   busActivityWrite,
+  matchEndianness,
   BusReadBehavior (..),
   BusActivity (..),
   DeviceConfig (..),
