@@ -23,7 +23,7 @@ module Bittide.Instances.Hitl.Utils.Ugn where
 
 import Prelude
 
-import Clash.Prelude (BitVector, Index, Natural, Unsigned, bitCoerce)
+import Clash.Prelude (BitVector, Index, Natural, Signed, Unsigned, bitCoerce, checkedFromIntegral)
 
 import Bittide.Instances.Hitl.Setup
 import Control.Concurrent.Chan
@@ -416,7 +416,7 @@ deduplicateSoftwareUgns edges = do
 
 {- | Parse hardware UGN counter captures from UART output.
 
-Reads lines between @[MU] Starting UGN captures@ and @[MU] All UGNs captured@,
+Reads lines between @[MU] Start printing hardware UGNs@ and @[MU] Printed all hardware UGNs@,
 parsing each counter capture line into a 'CounterCapture' structure.
 
 The hardware capture unit snapshots both local and remote counters when a link comes up.
@@ -424,8 +424,8 @@ The hardware capture unit snapshots both local and remote counters when a link c
 parseCaptureCounters :: Chan ByteString -> IO [CounterCapture]
 parseCaptureCounters chan = do
   -- Collect all lines until we see the end marker
-  waitForLine chan "[MU] Starting UGN captures"
-  capturedLines <- readUntilLine chan "[MU] All UGNs captured"
+  waitForLine chan "[MU] Start printing hardware UGNs"
+  capturedLines <- readUntilLine chan "[MU] Printed all hardware UGNs"
   putStrLn [i|Got captured lines: #{capturedLines}|]
   let parseResults = fmap (runParser parseCounterCapture () "counter captures") capturedLines
 
@@ -456,8 +456,9 @@ parseSoftwareUgns chan = do
 
 {- | Parse a counter capture line from management unit output.
 
-Expected format: @[MU] Capture UGN N: local = L, remote = R@
-where N is the port number, L is the local counter, and R is the remote counter.
+Expected format: @[MU] Capture UGN N: local = L, remote = R, eb_delta = D@
+where N is the port number, L is the local counter, R is the remote counter, and D is the
+number of frames added/removed from the elastic buffer after capturing the counters.
 -}
 parseCounterCapture :: Parser CounterCapture
 parseCounterCapture = do
@@ -470,7 +471,13 @@ parseCounterCapture = do
   spaces
   _ <- string ", remote = "
   remote <- parseUnsigned
-  return $ CounterCapture idx local remote
+  spaces
+  _ <- string ", eb_delta = "
+  ebDelta <- parseSigned
+  return $ CounterCapture idx (addSigned local ebDelta) remote
+ where
+  addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
+  addSigned local delta = checkedFromIntegral (toInteger local + toInteger delta)
 
 {- | Parse a UGN edge from processing element output.
 
