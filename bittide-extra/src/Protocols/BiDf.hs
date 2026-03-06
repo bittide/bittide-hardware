@@ -122,10 +122,7 @@ bimap ::
   Circuit (BiDf dom req resp') (BiDf dom req' resp)
 bimap f g = map (Df.map f) (Df.map g)
 
-{- | Merge a number of 'BiDf's, preferring requests from the last channel.
-TODO: Check why this does not work if we insert delays on the individual `Df` channels of the
-right hand side `BiDf`s. See `Tests.Protocols.BiDf.prop_fanin`.
--}
+-- | Merge a number of 'BiDf's, preferring requests from the last channel.
 fanin ::
   forall n dom req resp.
   ( KnownNat n
