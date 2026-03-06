@@ -38,6 +38,7 @@ import Protocols.BiDf (BiDf)
 import Protocols.Idle
 
 import qualified Clash.Prelude as C
+import qualified Protocols as Df
 import qualified Protocols.BiDf as BiDf
 
 {- |
@@ -65,6 +66,30 @@ instance Protocol (ReqResp dom req resp) where
 instance IdleCircuit (ReqResp dom req resp) where
   idleFwd _ = pure Nothing
   idleBwd _ = pure Nothing
+
+instance
+  ( C.KnownDomain dom
+  , C.NFDataX req
+  , C.NFDataX resp
+  , Show req
+  , Show resp
+  , ShowX req
+  , ShowX resp
+  ) =>
+  Simulate (ReqResp dom req resp)
+  where
+  type SimulateFwdType (ReqResp dom req resp) = [Maybe req]
+  type SimulateBwdType (ReqResp dom req resp) = [Maybe resp]
+  type SimulateChannels (ReqResp dom req resp) = 1
+  simToSigFwd _ = C.fromList_lazy
+  simToSigBwd _ = C.fromList_lazy
+  sigToSimFwd _ = C.sample_lazy
+  sigToSimBwd _ = C.sample_lazy
+  stallC conf stalls = C.withClockResetEnable clockGen resetGen enableGen $ circuit $ \rr0 -> do
+    reqs0 <- toDfs -< (rr0, resps)
+    reqs1 <- Df.stallC conf stalls -< reqs0
+    (rr1, resps) <- fromDfs -< reqs1
+    idC -< rr1
 
 leftToMaybe :: Either a b -> Maybe a
 leftToMaybe (Left x) = Just x
