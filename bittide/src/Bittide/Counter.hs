@@ -4,6 +4,7 @@
 
 module Bittide.Counter (
   Active,
+  counterSource,
   domainDiffCounter,
   domainDiffCountersWbC,
 ) where
@@ -227,3 +228,21 @@ extendSuccCounter clk rst counterLower =
    where
     m1 = if overflow then m0 + 1 else m0
     n1 = concatUnsigneds m1 n0
+
+{- | Counter source for bittide systems that contains a counter whose result has been delayed
+by @d@ cycles to improve timing for distribution across the design.
+TODO: Should we set the inital contents such that its indistinguishable from a normal freerunning counter?
+-}
+counterSource ::
+  forall dom d n.
+  (KnownDomain dom, KnownNat d, KnownNat n) =>
+  SNat d ->
+  Clock dom ->
+  Reset dom ->
+  Signal dom (Unsigned n)
+counterSource d clk rst = cntDelayed
+ where
+  cnt = register clk rst enableGen 0 (cnt + 1)
+  cntDelayed = applyN (snatToNum d :: Int) cnt
+  applyN 0 x = x
+  applyN n x = applyN (n - 1) (dflipflop clk x)
