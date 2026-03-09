@@ -218,6 +218,8 @@ fn main() -> ! {
                 }
                 let now = to_smoltcp_instant(INSTANCES.timer.now());
                 let mut sockets = socket_set(&mut sockets_storage[..]);
+                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
+                trace!("manager link {} poll result {:?}", link, poll_result);
                 {
                     let socket = sockets.get::<tcp::Socket>(socket_handle);
                     trace!(
@@ -230,6 +232,11 @@ fn main() -> ! {
                         socket.state()
                     );
                 }
+                trace!(
+                    "manager link {} ip addrs {:?}",
+                    link,
+                    ifaces[link].ip_addrs()
+                );
                 {
                     let mut smoltcp_link = SmoltcpLink::new(
                         &mut ifaces[link],
@@ -246,8 +253,6 @@ fn main() -> ! {
                     );
                     manager.step(&mut smoltcp_link);
                 }
-                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
-                trace!("manager link {} poll result {:?}", link, poll_result);
                 let state = manager.state();
                 if state != last_state {
                     info!(
@@ -321,6 +326,8 @@ fn main() -> ! {
             let now = to_smoltcp_instant(INSTANCES.timer.now());
             for link in 0..LINK_COUNT {
                 let mut sockets = socket_set(&mut sockets_storage[link][..]);
+                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
+                trace!("subordinate link {} poll result {:?}", link, poll_result);
                 {
                     let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
                     trace!(
@@ -333,6 +340,11 @@ fn main() -> ! {
                         socket.state()
                     );
                 }
+                trace!(
+                    "subordinate link {} ip addrs {:?}",
+                    link,
+                    ifaces[link].ip_addrs()
+                );
                 {
                     let mut smoltcp_link = SmoltcpLink::new(
                         &mut ifaces[link],
@@ -349,8 +361,6 @@ fn main() -> ! {
                     );
                     subordinates[link].step(&mut smoltcp_link);
                 }
-                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
-                trace!("subordinate link {} poll result {:?}", link, poll_result);
                 let state = subordinates[link].state();
                 if state != last_states[link] {
                     info!(
