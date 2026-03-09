@@ -11,7 +11,7 @@ use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::net_state::{
-    Manager, ManagerState, SmoltcpLink, Subordinate, SubordinateState, UgnEdge, UgnReport,
+    Manager, SmoltcpLink, Subordinate, SubordinateState, UgnEdge, UgnReport,
 };
 use bittide_sys::smoltcp::soft_ugn_ringbuffer::{AlignedReceiveBuffer, RingbufferDevice};
 use bittide_sys::stability_detector::Stability;
@@ -182,19 +182,6 @@ fn main() -> ! {
         });
         iface
     });
-    let mut sockets_storage: [[SocketStorage<'static>; 1]; LINK_COUNT] =
-        core::array::from_fn(|_| Default::default());
-    let socket_handles: [SocketHandle; LINK_COUNT] = core::array::from_fn(|idx| {
-        let rx_buf = unsafe { &mut TCP_RX_BUFS[idx][..] };
-        let tx_buf = unsafe { &mut TCP_TX_BUFS[idx][..] };
-        let socket = tcp::Socket::new(
-            tcp::SocketBuffer::new(rx_buf),
-            tcp::SocketBuffer::new(tx_buf),
-        );
-        let mut sockets = socket_set(&mut sockets_storage[idx][..]);
-        sockets.add(socket)
-    });
-
     let dna = INSTANCES.dna.dna();
     info!("My dna: {:?}", dna);
     let is_manager = dna == MANAGER_DNA;
@@ -205,25 +192,35 @@ fn main() -> ! {
 
     if is_manager {
         info!("Starting manager state machines...");
-        let mut managers: [Manager; LINK_COUNT] = core::array::from_fn(|_| Manager::new());
-        let mut done = [false; LINK_COUNT];
-        let mut last_states: [ManagerState; LINK_COUNT] =
-            core::array::from_fn(|_| ManagerState::WaitForPhy);
-        let mut tick: u32 = 0;
+        let mut reports: [Option<UgnReport>; LINK_COUNT] = [None; LINK_COUNT];
+        for link in 0..LINK_COUNT {
+            info!("Starting manager for link {}", link);
+            let rx_buf = unsafe { &mut TCP_RX_BUFS[link][..] };
+            let tx_buf = unsafe { &mut TCP_TX_BUFS[link][..] };
+            let socket = tcp::Socket::new(
+                tcp::SocketBuffer::new(rx_buf),
+                tcp::SocketBuffer::new(tx_buf),
+            );
+            let mut sockets_storage: [SocketStorage<'static>; 1] = Default::default();
+            let socket_handle = {
+                let mut sockets = socket_set(&mut sockets_storage[..]);
+                sockets.add(socket)
+            };
+            let mut manager = Manager::new();
+            let mut last_state = manager.state();
+            let mut tick: u32 = 0;
 
-        trace!("Starting main event loop...");
-        loop {
-            tick = tick.wrapping_add(1);
-            if tick % LOG_TICK_EVERY == 0 {
-                info!("manager loop tick {}", tick);
-            }
-            let now = to_smoltcp_instant(INSTANCES.timer.now());
-            for link in 0..LINK_COUNT {
-                trace!("Polling link {}...", link);
-                let mut sockets = socket_set(&mut sockets_storage[link][..]);
+            trace!("Starting manager loop for link {}", link);
+            loop {
+                tick = tick.wrapping_add(1);
+                if tick % LOG_TICK_EVERY == 0 {
+                    info!("manager link {} tick {}", link, tick);
+                }
+                let now = to_smoltcp_instant(INSTANCES.timer.now());
+                let mut sockets = socket_set(&mut sockets_storage[..]);
                 let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
                 trace!("manager link {} poll result {:?}", link, poll_result);
-                let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
+                let socket = sockets.get::<tcp::Socket>(socket_handle);
                 trace!(
                     "manager link {} socket open {} active {} can_send {} can_recv {}",
                     link,
@@ -235,7 +232,7 @@ fn main() -> ! {
                 let mut smoltcp_link = SmoltcpLink::new(
                     &mut ifaces[link],
                     &mut sockets,
-                    socket_handles[link],
+                    socket_handle,
                     link,
                     true,
                     false,
@@ -243,32 +240,28 @@ fn main() -> ! {
                 trace!(
                     "manager link {} step from state {:?}",
                     link,
-                    managers[link].state()
+                    manager.state()
                 );
-                managers[link].step(&mut smoltcp_link);
-                let state = managers[link].state();
-                if state != last_states[link] {
+                manager.step(&mut smoltcp_link);
+                let state = manager.state();
+                if state != last_state {
                     info!(
                         "manager link {} state {:?} -> {:?}",
-                        link, last_states[link], state
+                        link, last_state, state
                     );
-                    last_states[link] = state;
+                    last_state = state;
                 }
-                if managers[link].is_done() {
+                if manager.is_done() {
                     trace!("manager link {} is done", link);
-                    done[link] = true;
+                    break;
                 }
             }
-
-            if done.iter().all(|v| *v) {
-                info!("All manager links done");
-                break;
-            }
+            reports[link] = manager.report();
         }
 
         info!("UGN reports from subordinates:");
-        for (idx, manager) in managers.iter().enumerate() {
-            if let Some(report) = manager.report() {
+        for (idx, report) in reports.iter().enumerate() {
+            if let Some(report) = report {
                 info!("Link {}: {} edges", idx, report.count);
                 for (edge_idx, edge) in report.edges.iter().enumerate() {
                     if edge_idx >= report.count as usize {
@@ -298,6 +291,18 @@ fn main() -> ! {
             core::array::from_fn(|_| Subordinate::new());
         let mut last_states: [SubordinateState; LINK_COUNT] =
             core::array::from_fn(|_| SubordinateState::WaitForPhy);
+        let mut sockets_storage: [[SocketStorage<'static>; 1]; LINK_COUNT] =
+            core::array::from_fn(|_| Default::default());
+        let socket_handles: [SocketHandle; LINK_COUNT] = core::array::from_fn(|idx| {
+            let rx_buf = unsafe { &mut TCP_RX_BUFS[idx][..] };
+            let tx_buf = unsafe { &mut TCP_TX_BUFS[idx][..] };
+            let socket = tcp::Socket::new(
+                tcp::SocketBuffer::new(rx_buf),
+                tcp::SocketBuffer::new(tx_buf),
+            );
+            let mut sockets = socket_set(&mut sockets_storage[idx][..]);
+            sockets.add(socket)
+        });
         let mut tick: u32 = 0;
         for link in 0..LINK_COUNT {
             subordinates[link].set_report(build_report_for_link(link, &capture_ugns[link], &dna));
