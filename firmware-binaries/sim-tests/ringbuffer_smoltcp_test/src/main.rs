@@ -8,12 +8,14 @@
 use bittide_hal::manual_additions::ringbuffer_test::ringbuffers::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::ringbuffer_test::DeviceInstances;
+use bittide_sys::net_state::{Manager, NetMedium, Subordinate, UgnEdge, UgnReport};
 use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
 use core::fmt::Write;
-use log::LevelFilter;
-use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
+use log::{info, trace, LevelFilter};
+use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
 use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
+use ufmt::uwriteln;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -27,12 +29,164 @@ fn to_smoltcp_instant(instant: Instant) -> smoltcp::time::Instant {
     smoltcp::time::Instant::from_micros(instant.micros() as i64)
 }
 
+struct SmoltcpManagerMedium<'a, 'b> {
+    iface: &'a mut Interface,
+    sockets: &'a mut SocketSet<'b>,
+    client_handle: SocketHandle,
+}
+
+impl<'a, 'b> SmoltcpManagerMedium<'a, 'b> {
+    fn new(
+        iface: &'a mut Interface,
+        sockets: &'a mut SocketSet<'b>,
+        client_handle: SocketHandle,
+    ) -> Self {
+        Self {
+            iface,
+            sockets,
+            client_handle,
+        }
+    }
+}
+
+impl NetMedium for SmoltcpManagerMedium<'_, '_> {
+    fn phy_ready(&self, _link: usize) -> bool {
+        true
+    }
+
+    fn setup_interface(&mut self, _link: usize, local_ip: [u8; 4]) {
+        let ip = IpCidr::new(
+            IpAddress::v4(local_ip[0], local_ip[1], local_ip[2], local_ip[3]),
+            24,
+        );
+        self.iface.update_ip_addrs(|addrs| {
+            if !addrs.contains(&ip) {
+                let _ = addrs.push(ip);
+            }
+        });
+    }
+
+    fn connect(&mut self, _link: usize, peer_ip: [u8; 4]) -> bool {
+        let client = self.sockets.get_mut::<tcp::Socket>(self.client_handle);
+        if !client.is_open() && !client.is_active() {
+            let cx = self.iface.context();
+            let _ = client.connect(
+                cx,
+                (
+                    IpAddress::v4(peer_ip[0], peer_ip[1], peer_ip[2], peer_ip[3]),
+                    SERVER_PORT,
+                ),
+                CLIENT_PORT,
+            );
+        }
+        client.is_active()
+    }
+
+    fn listen(&mut self, _link: usize) -> bool {
+        false
+    }
+
+    fn send(&mut self, _link: usize, data: &[u8]) -> bool {
+        let client = self.sockets.get_mut::<tcp::Socket>(self.client_handle);
+        if client.can_send() {
+            let _ = client.send_slice(data);
+            return true;
+        }
+        false
+    }
+
+    fn recv(&mut self, _link: usize, buf: &mut [u8]) -> Option<usize> {
+        let client = self.sockets.get_mut::<tcp::Socket>(self.client_handle);
+        if client.can_recv() {
+            if let Ok(len) = client.recv_slice(buf) {
+                return Some(len);
+            }
+        }
+        None
+    }
+
+    fn timed_out(&self, _link: usize) -> bool {
+        false
+    }
+}
+
+struct SmoltcpSubordinateMedium<'a, 'b> {
+    iface: &'a mut Interface,
+    sockets: &'a mut SocketSet<'b>,
+    server_handle: SocketHandle,
+}
+
+impl<'a, 'b> SmoltcpSubordinateMedium<'a, 'b> {
+    fn new(
+        iface: &'a mut Interface,
+        sockets: &'a mut SocketSet<'b>,
+        server_handle: SocketHandle,
+    ) -> Self {
+        Self {
+            iface,
+            sockets,
+            server_handle,
+        }
+    }
+}
+
+impl NetMedium for SmoltcpSubordinateMedium<'_, '_> {
+    fn phy_ready(&self, _link: usize) -> bool {
+        true
+    }
+
+    fn setup_interface(&mut self, _link: usize, local_ip: [u8; 4]) {
+        let ip = IpCidr::new(
+            IpAddress::v4(local_ip[0], local_ip[1], local_ip[2], local_ip[3]),
+            24,
+        );
+        self.iface.update_ip_addrs(|addrs| {
+            if !addrs.contains(&ip) {
+                let _ = addrs.push(ip);
+            }
+        });
+    }
+
+    fn connect(&mut self, _link: usize, _peer_ip: [u8; 4]) -> bool {
+        false
+    }
+
+    fn listen(&mut self, _link: usize) -> bool {
+        let server = self.sockets.get_mut::<tcp::Socket>(self.server_handle);
+        if !server.is_open() {
+            let _ = server.listen(SERVER_PORT);
+        }
+        server.is_open()
+    }
+
+    fn send(&mut self, _link: usize, data: &[u8]) -> bool {
+        let server = self.sockets.get_mut::<tcp::Socket>(self.server_handle);
+        if server.can_send() {
+            let _ = server.send_slice(data);
+            return true;
+        }
+        false
+    }
+
+    fn recv(&mut self, _link: usize, buf: &mut [u8]) -> Option<usize> {
+        let server = self.sockets.get_mut::<tcp::Socket>(self.server_handle);
+        if server.can_recv() {
+            if let Ok(len) = server.recv_slice(buf) {
+                return Some(len);
+            }
+        }
+        None
+    }
+
+    fn timed_out(&self, _link: usize) -> bool {
+        false
+    }
+}
+
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let timer = INSTANCES.timer;
-
-    writeln!(uart, "\n=== Ringbuffer smoltcp Loopback Test ===").ok();
 
     // Set up logging
     unsafe {
@@ -40,13 +194,15 @@ fn main() -> ! {
         let logger = &mut (*LOGGER.get());
         logger.set_logger(uart.clone());
         logger.set_timer(INSTANCES.timer);
-        logger.display_source = LevelFilter::Debug;
+        logger.display_source = LevelFilter::Warn;
         log::set_logger_racy(logger).ok();
         log::set_max_level_racy(LevelFilter::Trace);
     }
 
+    info!("=== Ringbuffer smoltcp Loopback Test ===");
+
     // Set up ringbuffers
-    writeln!(uart, "Step 1: Finding ringbuffer alignment...").ok();
+    info!("Step 1: Finding ringbuffer alignment...");
     let tx_buffer = INSTANCES.transmit_ringbuffer;
     let rx_buffer = INSTANCES.receive_ringbuffer;
     let mut rx_aligned = AlignedReceiveBuffer::new(rx_buffer);
@@ -54,28 +210,26 @@ fn main() -> ! {
     let rx_offset = rx_aligned
         .get_alignment_offset()
         .expect("Failed to find RX buffer alignment");
-    writeln!(uart, "  Alignment offset: {}", rx_offset).ok();
+    trace!("  Alignment offset: {}", rx_offset);
 
     // Step 2: Create smoltcp device
-    writeln!(uart, "Step 2: Creating RingbufferDevice...").ok();
+    info!("Step 2: Creating RingbufferDevice...");
     let mut device = RingbufferDevice::new(rx_aligned, tx_buffer);
     let mtu = device.mtu();
-    writeln!(uart, "  MTU: {} bytes", mtu).ok();
+    trace!("  MTU: {} bytes", mtu);
 
-    // Step 3: Configure interface with static IP
-    writeln!(uart, "Step 3: Configuring network interface...").ok();
+    // Step 3: Configure network interface
+    info!("Step 3: Configuring network interface...");
     let hw_addr = HardwareAddress::Ip;
-    let ip_addr = IpCidr::new(IpAddress::v4(127, 0, 0, 1), 8); // Loopback address
     let config = Config::new(hw_addr);
     let now = to_smoltcp_instant(timer.now());
     let mut iface = Interface::new(config, &mut device, now);
     iface.update_ip_addrs(|addrs| {
-        addrs.push(ip_addr).unwrap();
+        addrs.clear();
     });
-    writeln!(uart, "  IP: {}", ip_addr).ok();
 
     // Step 4: Create TCP sockets
-    writeln!(uart, "Step 4: Creating TCP sockets...").ok();
+    info!("Step 4: Creating TCP sockets...");
 
     // Server socket - reduced buffer sizes to fit in memory
     static mut SERVER_RX_BUF: [u8; 256] = [0; 256];
@@ -96,112 +250,92 @@ fn main() -> ! {
     let server_handle = sockets.add(server_socket);
     let client_handle = sockets.add(client_socket);
 
-    // Step 5: Set up server to listen
-    writeln!(
-        uart,
-        "Step 5: Starting TCP server on port {}...",
-        SERVER_PORT
-    )
-    .ok();
-    let server = sockets.get_mut::<tcp::Socket>(server_handle);
-    server.listen(SERVER_PORT).unwrap();
-    writeln!(uart, "  Server listening").ok();
-
-    // Step 6: Connect client to server
-    writeln!(uart, "Step 6: Connecting client to server...").ok();
-    let client = sockets.get_mut::<tcp::Socket>(client_handle);
-    let cx = iface.context();
-    client
-        .connect(cx, (IpAddress::v4(127, 0, 0, 1), SERVER_PORT), CLIENT_PORT)
-        .unwrap();
-    writeln!(uart, "  Connection initiated").ok();
+    // Step 5: Initialize link state machines
+    info!("Step 5: Initializing link state machines...");
 
     // Main event loop
-    writeln!(uart, "Step 7: Running main event loop...").ok();
-    let test_data = b"Hello from smoltcp!";
-    let mut received_data = [0u8; 64];
-    let mut received_len = 0;
-    let mut data_sent = false;
-    let mut connection_established = false;
+    info!("Step 7: Running main event loop...");
+    let mut done_logged = false;
 
-    for _ in 0..200 {
+    let mut manager = Manager::new();
+    let mut subordinate = Subordinate::new();
+    subordinate.set_report(build_placeholder_report());
+
+    for _ in 0..1000 {
         let timestamp = to_smoltcp_instant(timer.now());
         iface.poll(timestamp, &mut device, &mut sockets);
 
-        // Check if connection is established
-        let client = sockets.get::<tcp::Socket>(client_handle);
-        if client.is_active() && !connection_established {
-            writeln!(uart, "  Connection established!").ok();
-            connection_established = true;
-        }
+        let mut manager_medium = SmoltcpManagerMedium::new(&mut iface, &mut sockets, client_handle);
+        manager.step(&mut manager_medium, 0);
 
-        // Send data from client
-        if client.is_active() && !data_sent {
-            let client = sockets.get_mut::<tcp::Socket>(client_handle);
-            if client.can_send() {
-                if let Ok(sent) = client.send_slice(test_data) {
-                    writeln!(uart, "  Sent {} bytes", sent).ok();
-                    data_sent = true;
-                }
-            }
-        }
+        let mut subordinate_medium =
+            SmoltcpSubordinateMedium::new(&mut iface, &mut sockets, server_handle);
+        subordinate.step(&mut subordinate_medium, 0);
 
-        // Receive data on server
-        if data_sent && received_len == 0 {
-            let server = sockets.get_mut::<tcp::Socket>(server_handle);
-            if server.can_recv() {
-                if let Ok(len) = server.recv_slice(&mut received_data) {
-                    received_len = len;
-                    writeln!(uart, "  Received {} bytes", len).ok();
-                    break;
-                }
-            }
+        if manager.is_done() && subordinate.is_done() && !done_logged {
+            info!("  Manager collected UGN report");
+            done_logged = true;
+            break;
         }
     }
 
     // Verify results
-    writeln!(uart, "Step 8: Verifying results...").ok();
+    info!("Step 8: Verifying results...");
 
-    if !connection_established {
-        writeln!(uart, "  FAILURE: Connection timeout!").ok();
-    } else if !data_sent {
-        writeln!(uart, "  FAILURE: Failed to send data!").ok();
-    } else if received_len == 0 {
-        writeln!(uart, "  FAILURE: Failed to receive data!").ok();
-    } else {
-        let received_slice = &received_data[..received_len];
-        if received_len == test_data.len() && received_slice == test_data {
-            writeln!(uart, "  SUCCESS: Data matches!").ok();
-            writeln!(
-                uart,
-                "  Sent:     {:?}",
-                core::str::from_utf8(test_data).unwrap()
-            )
-            .ok();
-            writeln!(
-                uart,
-                "  Received: {:?}",
-                core::str::from_utf8(received_slice).unwrap()
-            )
-            .ok();
-        } else {
-            writeln!(uart, "  FAILURE: Data mismatch!").ok();
-            writeln!(
-                uart,
-                "  Expected {} bytes: {:?}",
-                test_data.len(),
-                test_data
-            )
-            .ok();
-            writeln!(uart, "  Got {} bytes: {:?}", received_len, received_slice).ok();
+    if !done_logged {
+        info!("  FAILURE: UGN report timeout!");
+    } else if let Some(report) = manager.report() {
+        info!("  SUCCESS: Manager received {} UGN edges", report.count);
+        for (idx, edge) in report.edges.iter().enumerate() {
+            if idx >= report.count as usize {
+                break;
+            }
+            info!(
+                "  Edge {}: {}:{} -> {}:{}, ugn={}, valid={}",
+                idx,
+                edge.src_node,
+                edge.src_port,
+                edge.dst_node,
+                edge.dst_port,
+                edge.ugn,
+                edge.is_valid
+            );
         }
+    } else {
+        info!("  FAILURE: Missing UGN report data!");
     }
 
-    writeln!(uart, "\n=== Test Complete ===").ok();
+    uwriteln!(uart, "=== Test Complete ===").unwrap();
 
     loop {
         continue;
     }
+}
+
+fn build_placeholder_report() -> UgnReport {
+    let mut report = UgnReport {
+        count: 2,
+        ..Default::default()
+    };
+    report.edges[0] = UgnEdge {
+        src_node: 1,
+        src_port: 0,
+        dst_node: 0,
+        dst_port: 0,
+        ugn: 123,
+        is_valid: 1,
+        _padding: [0; 7],
+    };
+    report.edges[1] = UgnEdge {
+        src_node: 1,
+        src_port: 1,
+        dst_node: 0,
+        dst_port: 1,
+        ugn: 456,
+        is_valid: 1,
+        _padding: [0; 7],
+    };
+    report
 }
 
 #[cfg(not(test))]

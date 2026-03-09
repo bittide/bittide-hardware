@@ -2,56 +2,110 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-//! smoltcp Device implementation for aligned ringbuffers.
-//!
-//! This module provides a `Device` implementation that uses scatter/gather units
-//! as ringbuffers for point-to-point communication. The ringbuffers must
-//! be aligned using the alignment protocol before use.
-//!
-//! The device uses IP medium for point-to-point links.
-//!
-//! # Packet Format
-//!
-//! Each packet consists of:
-//! - Header (8 bytes): CRC32 (4 bytes LE) + sequence number (2 bytes LE) + length (2 bytes LE)
-//! - Payload (variable, up to MTU)
-//!
-//! The CRC32 is calculated over sequence + length + payload (i.e., everything except the CRC itself).
-//!
-//! # Volatile Buffer Handling
-//!
-//! The receive ringbuffer is volatile - its contents can change at any time due to
-//! incoming data. To safely handle this, we:
-//! 1. Read the packet header to get CRC, sequence number, and length
-//! 2. Copy the entire packet (header + payload) to a local buffer
-//! 3. Verify the CRC32 over sequence + length + payload
-//! 4. If CRC validates, extract payload and consume packet
-//! 5. Track sequence numbers to detect repeated packets
+//! smoltcp Device implementation for aligned soft-UGN ringbuffers.
 
-use bittide_hal::hals::ringbuffer_test::devices::{ReceiveRingbuffer, TransmitRingbuffer};
-use bittide_hal::manual_additions::ringbuffer_test::ringbuffers::AlignedReceiveBuffer;
+use bittide_hal::hals::soft_ugn_demo_mu::devices::{ReceiveRingbuffer, TransmitRingbuffer};
 use crc::{Crc, CRC_32_ISCSI};
-use log::{trace, warn};
+use log::trace;
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
-/// Size of packet header: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)
+const ALIGNMENT_EMPTY: u64 = 0;
+const ALIGNMENT_ANNOUNCE: u64 = 0xBADC0FFEE;
+const ALIGNMENT_ACKNOWLEDGE: u64 = 0xDEADABBA;
 const PACKET_HEADER_SIZE: usize = 8;
-
-/// Minimum IP packet size (20 byte IPv4 header minimum)
 const MIN_IP_PACKET_SIZE: usize = 20;
-
-/// CRC-32 (Castagnoli) instance for packet integrity checking.
-/// Initialized at compile-time for zero-cost runtime usage.
 const CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
-/// Verify packet integrity by checking the CRC32 in the header.
-///
-/// Returns true if the CRC stored in the first 4 bytes matches the calculated
-/// CRC over bytes[4..] (sequence + length + payload). Uses unaligned-safe reads.
-///
-/// # Arguments
-/// * `buffer` - Complete packet buffer including header and payload
+pub struct AlignedReceiveBuffer {
+    rx: ReceiveRingbuffer,
+    rx_alignment_offset: Option<usize>,
+    tx_reference: usize,
+}
+
+impl AlignedReceiveBuffer {
+    pub fn new(rx: ReceiveRingbuffer) -> Self {
+        Self {
+            rx,
+            rx_alignment_offset: None,
+            tx_reference: 0,
+        }
+    }
+
+    pub fn align(&mut self, tx: &TransmitRingbuffer) {
+        let announce_pattern = [ALIGNMENT_ANNOUNCE.to_le_bytes()];
+        tx.write_slice(&announce_pattern, 0);
+
+        let empty_pattern: [[u8; 8]; 1] = [ALIGNMENT_EMPTY.to_le_bytes()];
+        for i in 1..TransmitRingbuffer::DATA_LEN {
+            tx.write_slice(&empty_pattern, i);
+        }
+
+        let rx_offset = 'outer: loop {
+            for rx_idx in 0..ReceiveRingbuffer::DATA_LEN {
+                let mut data_buf = [[0u8; 8]; 1];
+                self.rx.read_slice(&mut data_buf, rx_idx);
+                let value = u64::from_le_bytes(data_buf[0]);
+
+                if value == ALIGNMENT_ANNOUNCE || value == ALIGNMENT_ACKNOWLEDGE {
+                    break 'outer rx_idx;
+                }
+            }
+        };
+
+        let ack_pattern = [ALIGNMENT_ACKNOWLEDGE.to_le_bytes()];
+        tx.write_slice(&ack_pattern, 0);
+
+        loop {
+            let mut data_buf = [[0u8; 8]; 1];
+            self.rx.read_slice(&mut data_buf, rx_offset);
+            let value = u64::from_le_bytes(data_buf[0]);
+            if value == ALIGNMENT_ACKNOWLEDGE {
+                break;
+            }
+        }
+
+        self.rx_alignment_offset = Some(rx_offset);
+        self.tx_reference = tx.0 as *const _ as usize;
+    }
+
+    pub fn is_aligned(&self) -> bool {
+        self.rx_alignment_offset.is_some()
+    }
+
+    pub fn verify_aligned_to(&self, tx: &TransmitRingbuffer) -> bool {
+        self.is_aligned() && self.tx_reference == (tx.0 as *const _ as usize)
+    }
+
+    pub fn get_alignment_reference(&self) -> usize {
+        self.tx_reference
+    }
+
+    pub fn read_slice(&self, dst: &mut [[u8; 8]], offset: usize) {
+        assert!(dst.len() + offset <= ReceiveRingbuffer::DATA_LEN);
+        let rx_offset = self
+            .rx_alignment_offset
+            .expect("Alignment offset not discovered yet. Call align() first.");
+        let mut aligned_offset = offset + rx_offset;
+        if aligned_offset >= ReceiveRingbuffer::DATA_LEN {
+            aligned_offset -= ReceiveRingbuffer::DATA_LEN;
+        }
+        read_slice_with_wrap(&self.rx, dst, aligned_offset)
+    }
+}
+
+fn read_slice_with_wrap(rx: &ReceiveRingbuffer, dst: &mut [[u8; 8]], offset: usize) {
+    assert!(dst.len() <= ReceiveRingbuffer::DATA_LEN);
+    if dst.len() + offset <= ReceiveRingbuffer::DATA_LEN {
+        rx.read_slice(dst, offset);
+    } else {
+        let first_part_len = ReceiveRingbuffer::DATA_LEN - offset;
+        let (first, second) = dst.split_at_mut(first_part_len);
+        rx.read_slice(first, offset);
+        rx.read_slice(second, 0);
+    }
+}
+
 fn is_valid(buffer: &[u8]) -> bool {
     if buffer.len() < PACKET_HEADER_SIZE {
         return false;
@@ -61,31 +115,16 @@ fn is_valid(buffer: &[u8]) -> bool {
     stored_crc == calculated_crc
 }
 
-/// Device implementation for ringbuffer communication.
-///
-/// Provides a simple interface for point-to-point IP communication using
-/// scatter/gather units. The ringbuffers handle all internal state management.
-///
-/// The MTU is automatically calculated from the minimum of the scatter and gather
-/// buffer sizes (in bytes), minus space for packet header (which includes CRC32).
 pub struct RingbufferDevice {
     rx_buffer: AlignedReceiveBuffer,
     tx_buffer: TransmitRingbuffer,
     mtu: usize,
-    /// Last valid sequence number we saw (to detect repeated packets)
     last_rx_seq: u16,
-    /// Transmit sequence number (incremented for each packet sent)
     tx_seq_num: u16,
 }
 
 impl RingbufferDevice {
-    /// Create a new ringbuffer device.
-    ///
-    /// The ringbuffers must already be aligned using the alignment protocol.
-    /// The MTU is calculated as the minimum of the RX and TX buffer sizes in bytes.
     pub fn new(rx_buffer: AlignedReceiveBuffer, tx_buffer: TransmitRingbuffer) -> Self {
-        // Calculate MTU from buffer sizes (each word is 8 bytes)
-        // Reserve space for packet header (CRC is part of header)
         let rx_bytes = ReceiveRingbuffer::DATA_LEN * 8;
         let tx_bytes = TransmitRingbuffer::DATA_LEN * 8;
         let mtu = rx_bytes.min(tx_bytes) - PACKET_HEADER_SIZE;
@@ -108,7 +147,6 @@ impl RingbufferDevice {
         }
     }
 
-    /// Get the maximum transmission unit (in bytes) for this device.
     pub fn mtu(&self) -> usize {
         self.mtu
     }
@@ -126,47 +164,38 @@ impl Device for RingbufferDevice {
     }
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
-        // Read packet header: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)
         let mut header_buf: [[u8; 8]; 1] = [[0u8; 8]; 1];
         self.rx_buffer.read_slice(&mut header_buf, 0);
 
-        // Extract CRC, sequence number, and length from header using direct pointer reads
         let header_ptr = header_buf[0].as_ptr();
-        let _stored_crc = unsafe { (header_ptr as *const u32).read_unaligned() };
         let seq_num = unsafe { (header_ptr.add(4) as *const u16).read_unaligned() };
         let packet_len = unsafe { (header_ptr.add(6) as *const u16).read_unaligned() } as usize;
 
-        // Check if this is the same packet we saw before (based on sequence number)
         if seq_num == self.last_rx_seq {
-            // trace!("Detected repeated packet with seq {}", seq_num);
+            trace!("Detected repeated packet with seq {}", seq_num);
             return None;
         }
 
-        // Validate packet length
         if packet_len < MIN_IP_PACKET_SIZE || packet_len > self.mtu {
-            warn!(
+            trace!(
                 "Invalid packet length: {} (must be {}-{})",
-                packet_len, MIN_IP_PACKET_SIZE, self.mtu
+                packet_len,
+                MIN_IP_PACKET_SIZE,
+                self.mtu
             );
             return None;
         }
 
-        // Calculate total packet size: header + payload
         let total_len = PACKET_HEADER_SIZE + packet_len;
         let num_words = total_len.div_ceil(8);
-
-        // Allocate aligned buffer for reading from ringbuffer
-        // Use a flat byte buffer and cast it to [[u8; 8]] for the API
         let mut packet_buffer = [0u8; ReceiveRingbuffer::DATA_LEN * 8];
 
         let word_slice = unsafe {
             core::slice::from_raw_parts_mut(packet_buffer.as_mut_ptr() as *mut [u8; 8], num_words)
         };
 
-        // Copy entire packet from ringbuffer (header + payload)
         self.rx_buffer.read_slice(word_slice, 0);
 
-        // Validate CRC (packet_buffer is already in the right format)
         if !is_valid(&packet_buffer[..total_len]) {
             trace!("CRC validation failed for packet seq {}", seq_num);
             return None;
@@ -179,7 +208,6 @@ impl Device for RingbufferDevice {
         );
         self.last_rx_seq = seq_num;
 
-        // Extract payload (skip header, exclude CRC)
         let mut payload = [0u8; ReceiveRingbuffer::DATA_LEN * 8];
         payload[..packet_len]
             .copy_from_slice(&packet_buffer[PACKET_HEADER_SIZE..PACKET_HEADER_SIZE + packet_len]);
@@ -205,10 +233,6 @@ impl Device for RingbufferDevice {
     }
 }
 
-/// Receive token for ringbuffer device.
-///
-/// Contains a local copy of the packet payload that has been validated
-/// against CRC32 corruption.
 pub struct RxToken {
     buffer: [u8; ReceiveRingbuffer::DATA_LEN * 8],
     length: usize,
@@ -224,7 +248,6 @@ impl phy::RxToken for RxToken {
     }
 }
 
-/// Transmit token for ringbuffer device
 pub struct TxToken<'a> {
     tx_buffer: &'a mut TransmitRingbuffer,
     mtu: usize,
@@ -243,35 +266,25 @@ impl phy::TxToken for TxToken<'_> {
             self.mtu
         );
 
-        // Prepare buffer: header + payload
         let mut buffer = [0u8; TransmitRingbuffer::DATA_LEN * 8];
-
-        // Write header fields using direct pointer writes
-        // Header format: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)
         let header_ptr = buffer.as_mut_ptr();
         unsafe {
-            // Write sequence and length (CRC written later after payload)
             (header_ptr.add(4) as *mut u16).write_unaligned(self.seq_num.to_le());
             (header_ptr.add(6) as *mut u16).write_unaligned((len as u16).to_le());
         }
 
-        // Let smoltcp fill the packet data
         let result = f(&mut buffer[PACKET_HEADER_SIZE..PACKET_HEADER_SIZE + len]);
 
-        // Calculate total length and seal packet with CRC in header
         let total_len = PACKET_HEADER_SIZE + len;
         let crc = CRC.checksum(&buffer[4..total_len]);
         unsafe {
             (header_ptr as *mut u32).write_unaligned(crc.to_le());
         }
 
-        // Convert to word array for ringbuffer using pointer cast
         let num_words = total_len.div_ceil(8);
-        // The buffer is correctly sized and alignment is maintained.
         let word_slice =
             unsafe { core::slice::from_raw_parts(buffer.as_ptr() as *const [u8; 8], num_words) };
 
-        // Write to ringbuffer starting at offset 0
         self.tx_buffer.write_slice(word_slice, 0);
 
         trace!(

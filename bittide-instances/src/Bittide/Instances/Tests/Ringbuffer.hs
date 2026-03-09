@@ -34,6 +34,8 @@ import Bittide.Ringbuffer
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 
+import qualified Data.List as L
+
 createDomain vSystem{vName = "Slow", vPeriod = hzToPeriod 1000000}
 
 -- | Memory depth for the ringbuffers (16 entries of 8 bytes each)
@@ -43,7 +45,7 @@ memDepth = SNat
 dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
 dutMM =
   (\(SimOnly mm, _) -> mm)
-    $ withClockResetEnable @System clockGen (resetGenN d2) enableGen
+    $ withClockResetEnable @Slow clockGen (resetGenN d2) enableGen
     $ toSignals (dutWithBinary d0 "") ((), pure $ deepErrorX "memoryMap")
 
 -- | Parameterized DUT that loads a specific firmware binary with configurable latency.
@@ -96,16 +98,22 @@ dutWithBinary latency binaryName = withBittideByteOrder $ circuit $ \mm -> do
 type IMemWords = DivRU (300 * 1024) 4
 type DMemWords = DivRU (256 * 1024) 4
 
+takeUntilList :: (Eq a) => [a] -> [a] -> [a]
+takeUntilList _ [] = []
+takeUntilList prefix xs@(y : ys)
+  | prefix `L.isPrefixOf` xs = []
+  | otherwise = y : takeUntilList prefix ys
+
 -- Ringbuffer test simulation
 simRingbuffer :: IO ()
 simRingbuffer = putStr $ simResultRingbuffer d0
 
 simResultRingbuffer :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
-simResultRingbuffer lat = chr . fromIntegral <$> catMaybes uartStream
+simResultRingbuffer lat = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def{timeoutAfter = 500_000} (dutNoMM lat)
+  uartStream = sampleC def{timeoutAfter = 1_000_000} (dutNoMM lat)
 
-  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df System (BitVector 8))
+  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df Slow (BitVector 8))
   dutNoMM latency = circuit $ do
     mm <- ignoreMM
     uartTx <-
@@ -118,11 +126,11 @@ simSmolTcp :: IO ()
 simSmolTcp = putStr $ simResultSmolTcp d0
 
 simResultSmolTcp :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
-simResultSmolTcp lat = chr . fromIntegral <$> catMaybes uartStream
+simResultSmolTcp lat = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def{timeoutAfter = 500_000} (dutNoMM lat)
+  uartStream = sampleC def{timeoutAfter = 10_000_000} (dutNoMM lat)
 
-  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df System (BitVector 8))
+  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df Slow (BitVector 8))
   dutNoMM latency = circuit $ do
     mm <- ignoreMM
     uartTx <-
@@ -136,11 +144,11 @@ simAlignedRingbuffer = putStr $ simResultAlignedRingbuffer d0
 
 simResultAlignedRingbuffer ::
   forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
-simResultAlignedRingbuffer lat = chr . fromIntegral <$> catMaybes uartStream
+simResultAlignedRingbuffer lat = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
  where
   uartStream = sampleC def{timeoutAfter = 250_000} (dutNoMM lat)
 
-  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df System (BitVector 8))
+  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df Slow (BitVector 8))
   dutNoMM latency = circuit $ do
     mm <- ignoreMM
     uartTx <-
