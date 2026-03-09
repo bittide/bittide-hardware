@@ -218,31 +218,36 @@ fn main() -> ! {
                 }
                 let now = to_smoltcp_instant(INSTANCES.timer.now());
                 let mut sockets = socket_set(&mut sockets_storage[..]);
+                {
+                    let socket = sockets.get::<tcp::Socket>(socket_handle);
+                    trace!(
+                        "manager link {} socket open {} active {} can_send {} can_recv {} state {:?}",
+                        link,
+                        socket.is_open(),
+                        socket.is_active(),
+                        socket.can_send(),
+                        socket.can_recv(),
+                        socket.state()
+                    );
+                }
+                {
+                    let mut smoltcp_link = SmoltcpLink::new(
+                        &mut ifaces[link],
+                        &mut sockets,
+                        socket_handle,
+                        link,
+                        true,
+                        false,
+                    );
+                    trace!(
+                        "manager link {} step from state {:?}",
+                        link,
+                        manager.state()
+                    );
+                    manager.step(&mut smoltcp_link);
+                }
                 let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
                 trace!("manager link {} poll result {:?}", link, poll_result);
-                let socket = sockets.get::<tcp::Socket>(socket_handle);
-                trace!(
-                    "manager link {} socket open {} active {} can_send {} can_recv {}",
-                    link,
-                    socket.is_open(),
-                    socket.is_active(),
-                    socket.can_send(),
-                    socket.can_recv()
-                );
-                let mut smoltcp_link = SmoltcpLink::new(
-                    &mut ifaces[link],
-                    &mut sockets,
-                    socket_handle,
-                    link,
-                    true,
-                    false,
-                );
-                trace!(
-                    "manager link {} step from state {:?}",
-                    link,
-                    manager.state()
-                );
-                manager.step(&mut smoltcp_link);
                 let state = manager.state();
                 if state != last_state {
                     info!(
@@ -316,31 +321,36 @@ fn main() -> ! {
             let now = to_smoltcp_instant(INSTANCES.timer.now());
             for link in 0..LINK_COUNT {
                 let mut sockets = socket_set(&mut sockets_storage[link][..]);
+                {
+                    let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
+                    trace!(
+                        "subordinate link {} socket open {} active {} can_send {} can_recv {} state {:?}",
+                        link,
+                        socket.is_open(),
+                        socket.is_active(),
+                        socket.can_send(),
+                        socket.can_recv(),
+                        socket.state()
+                    );
+                }
+                {
+                    let mut smoltcp_link = SmoltcpLink::new(
+                        &mut ifaces[link],
+                        &mut sockets,
+                        socket_handles[link],
+                        link,
+                        true,
+                        false,
+                    );
+                    trace!(
+                        "subordinate link {} step from state {:?}",
+                        link,
+                        subordinates[link].state()
+                    );
+                    subordinates[link].step(&mut smoltcp_link);
+                }
                 let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
                 trace!("subordinate link {} poll result {:?}", link, poll_result);
-                let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
-                trace!(
-                    "subordinate link {} socket open {} active {} can_send {} can_recv {}",
-                    link,
-                    socket.is_open(),
-                    socket.is_active(),
-                    socket.can_send(),
-                    socket.can_recv()
-                );
-                let mut smoltcp_link = SmoltcpLink::new(
-                    &mut ifaces[link],
-                    &mut sockets,
-                    socket_handles[link],
-                    link,
-                    true,
-                    false,
-                );
-                trace!(
-                    "subordinate link {} step from state {:?}",
-                    link,
-                    subordinates[link].state()
-                );
-                subordinates[link].step(&mut smoltcp_link);
                 let state = subordinates[link].state();
                 if state != last_states[link] {
                     info!(
