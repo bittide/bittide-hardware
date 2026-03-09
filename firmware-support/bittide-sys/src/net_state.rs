@@ -158,37 +158,92 @@ impl<'a, 'b> SmoltcpLink<'a, 'b> {
                 let _ = addrs.push(ip);
             }
         });
+        trace!(
+            "link {} role {:?} ip addrs {:?}",
+            self.link,
+            role,
+            self.iface.ip_addrs()
+        );
     }
 
     pub fn connect(&mut self, peer_ip: [u8; 4]) -> bool {
         let socket = self.sockets.get_mut::<tcp::Socket>(self.socket_handle);
         if !socket.is_open() && !socket.is_active() {
             let cx = self.iface.context();
-            let _ = socket.connect(
+            match socket.connect(
                 cx,
                 (
                     IpAddress::v4(peer_ip[0], peer_ip[1], peer_ip[2], peer_ip[3]),
                     TCP_SERVER_PORT,
                 ),
                 TCP_CLIENT_PORT,
-            );
+            ) {
+                Ok(()) => {
+                    debug!(
+                        "link {} connect requested to {:?}:{} from {}",
+                        self.link, peer_ip, TCP_SERVER_PORT, TCP_CLIENT_PORT
+                    );
+                }
+                Err(err) => {
+                    debug!("link {} connect error: {:?}", self.link, err);
+                }
+            }
         }
+        trace!(
+            "link {} connect state open {} active {} can_send {} can_recv {} may_recv {}",
+            self.link,
+            socket.is_open(),
+            socket.is_active(),
+            socket.can_send(),
+            socket.can_recv(),
+            socket.may_recv()
+        );
         socket.is_active()
     }
 
     pub fn listen(&mut self) -> bool {
         let socket = self.sockets.get_mut::<tcp::Socket>(self.socket_handle);
         if !socket.is_open() {
-            let _ = socket.listen(TCP_SERVER_PORT);
+            match socket.listen(TCP_SERVER_PORT) {
+                Ok(()) => {
+                    debug!("link {} listen on port {}", self.link, TCP_SERVER_PORT);
+                }
+                Err(err) => {
+                    debug!("link {} listen error: {:?}", self.link, err);
+                }
+            }
         }
+        trace!(
+            "link {} listen state open {} active {} can_send {} can_recv {} may_recv {}",
+            self.link,
+            socket.is_open(),
+            socket.is_active(),
+            socket.can_send(),
+            socket.can_recv(),
+            socket.may_recv()
+        );
         socket.is_open()
     }
 
     pub fn send(&mut self, data: &[u8]) -> bool {
         let socket = self.sockets.get_mut::<tcp::Socket>(self.socket_handle);
         if socket.can_send() {
-            let _ = socket.send_slice(data);
-            return true;
+            match socket.send_slice(data) {
+                Ok(len) => {
+                    trace!("link {} sent {} bytes", self.link, len);
+                    return true;
+                }
+                Err(err) => {
+                    debug!("link {} send error: {:?}", self.link, err);
+                }
+            }
+        } else {
+            trace!(
+                "link {} send blocked open {} active {}",
+                self.link,
+                socket.is_open(),
+                socket.is_active()
+            );
         }
         false
     }
@@ -196,9 +251,22 @@ impl<'a, 'b> SmoltcpLink<'a, 'b> {
     pub fn recv(&mut self, buf: &mut [u8]) -> Option<usize> {
         let socket = self.sockets.get_mut::<tcp::Socket>(self.socket_handle);
         if socket.can_recv() {
-            if let Ok(len) = socket.recv_slice(buf) {
-                return Some(len);
+            match socket.recv_slice(buf) {
+                Ok(len) => {
+                    trace!("link {} recv {} bytes", self.link, len);
+                    return Some(len);
+                }
+                Err(err) => {
+                    debug!("link {} recv error: {:?}", self.link, err);
+                }
             }
+        } else {
+            trace!(
+                "link {} recv blocked open {} active {}",
+                self.link,
+                socket.is_open(),
+                socket.is_active()
+            );
         }
         None
     }
@@ -243,6 +311,7 @@ impl Manager {
         let prev_state = self.state;
         let next_state = match self.state {
             ManagerState::WaitForPhy => {
+                trace!("Checking phy ready on link {}", link.link());
                 if link.phy_ready() {
                     debug!("manager phy ready on link {}", link.link());
                     ManagerState::SetupInterface
@@ -257,6 +326,11 @@ impl Manager {
             }
             ManagerState::WaitForSession => {
                 let peer_ip = ip_for_link(NodeRole::Subordinate, link.link());
+                trace!(
+                    "manager attempting connect to peer {:?} on link {}",
+                    peer_ip,
+                    link.link()
+                );
                 if link.connect(peer_ip) {
                     debug!("manager connected link {} peer {:?}", link.link(), peer_ip);
                     self.identifying_sent = false;
@@ -269,6 +343,7 @@ impl Manager {
                 }
             }
             ManagerState::Identifying => {
+                trace!("manager identifying link {}", link.link());
                 if !self.identifying_sent {
                     self.nonce = self.next_nonce();
                     let msg = encode_who_are_you(self.nonce);
@@ -300,6 +375,7 @@ impl Manager {
                 }
             }
             ManagerState::ReceivingUgns => {
+                trace!("manager receiving ugns on link {}", link.link());
                 if !self.ugn_dump_sent {
                     let msg = [MSG_UGN_DUMP];
                     if link.send(&msg) {
@@ -456,6 +532,11 @@ impl Subordinate {
         let prev_state = self.state;
         let next_state = match self.state {
             SubordinateState::WaitForPhy => {
+                trace!(
+                    "subordinate state {:?} checking phy ready on link {}",
+                    self.state,
+                    link.link()
+                );
                 if link.phy_ready() {
                     debug!("subordinate phy ready on link {}", link.link());
                     SubordinateState::SetupInterface
@@ -469,6 +550,11 @@ impl Subordinate {
                 SubordinateState::WaitForSession
             }
             SubordinateState::WaitForSession => {
+                trace!(
+                    "subordinate state {:?} attempting listen on link {}",
+                    self.state,
+                    link.link()
+                );
                 if link.listen() {
                     debug!("subordinate listening on link {}", link.link());
                     self.reset_handshake();
@@ -480,6 +566,11 @@ impl Subordinate {
                 }
             }
             SubordinateState::SendingUgns => {
+                trace!(
+                    "subordinate state {:?} checking for manager connection on link {}",
+                    self.state,
+                    link.link()
+                );
                 if link.timed_out() && !self.ugn_dump_received {
                     self.reset_handshake();
                     self.bump_retry_or_fail(SubordinateState::SendingUgns)

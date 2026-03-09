@@ -10,7 +10,9 @@ use bittide_hal::hals::soft_ugn_demo_mu::devices::{ReceiveRingbuffer, TransmitRi
 use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_sys::link_startup::LinkStartup;
-use bittide_sys::net_state::{Manager, SmoltcpLink, Subordinate, UgnEdge, UgnReport};
+use bittide_sys::net_state::{
+    Manager, ManagerState, SmoltcpLink, Subordinate, SubordinateState, UgnEdge, UgnReport,
+};
 use bittide_sys::smoltcp::soft_ugn_ringbuffer::{AlignedReceiveBuffer, RingbufferDevice};
 use bittide_sys::stability_detector::Stability;
 use core::fmt::Write;
@@ -24,6 +26,7 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 const LINK_COUNT: usize = 7;
 const TCP_BUF_SIZE: usize = 256;
 const MANAGER_DNA: [u8; 12] = [133, 129, 48, 4, 64, 192, 105, 1, 1, 0, 2, 64];
+const LOG_TICK_EVERY: u32 = 500;
 
 static mut TCP_RX_BUFS: [[u8; TCP_BUF_SIZE]; LINK_COUNT] = [[0; TCP_BUF_SIZE]; LINK_COUNT];
 static mut TCP_TX_BUFS: [[u8; TCP_BUF_SIZE]; LINK_COUNT] = [[0; TCP_BUF_SIZE]; LINK_COUNT];
@@ -204,12 +207,31 @@ fn main() -> ! {
         info!("Starting manager state machines...");
         let mut managers: [Manager; LINK_COUNT] = core::array::from_fn(|_| Manager::new());
         let mut done = [false; LINK_COUNT];
+        let mut last_states: [ManagerState; LINK_COUNT] =
+            core::array::from_fn(|_| ManagerState::WaitForPhy);
+        let mut tick: u32 = 0;
 
+        trace!("Starting main event loop...");
         loop {
+            tick = tick.wrapping_add(1);
+            if tick % LOG_TICK_EVERY == 0 {
+                info!("manager loop tick {}", tick);
+            }
             let now = to_smoltcp_instant(INSTANCES.timer.now());
             for link in 0..LINK_COUNT {
+                trace!("Polling link {}...", link);
                 let mut sockets = socket_set(&mut sockets_storage[link][..]);
-                let _ = ifaces[link].poll(now, &mut devices[link], &mut sockets);
+                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
+                trace!("manager link {} poll result {:?}", link, poll_result);
+                let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
+                trace!(
+                    "manager link {} socket open {} active {} can_send {} can_recv {}",
+                    link,
+                    socket.is_open(),
+                    socket.is_active(),
+                    socket.can_send(),
+                    socket.can_recv()
+                );
                 let mut smoltcp_link = SmoltcpLink::new(
                     &mut ifaces[link],
                     &mut sockets,
@@ -218,13 +240,28 @@ fn main() -> ! {
                     true,
                     false,
                 );
+                trace!(
+                    "manager link {} step from state {:?}",
+                    link,
+                    managers[link].state()
+                );
                 managers[link].step(&mut smoltcp_link);
+                let state = managers[link].state();
+                if state != last_states[link] {
+                    info!(
+                        "manager link {} state {:?} -> {:?}",
+                        link, last_states[link], state
+                    );
+                    last_states[link] = state;
+                }
                 if managers[link].is_done() {
+                    trace!("manager link {} is done", link);
                     done[link] = true;
                 }
             }
 
             if done.iter().all(|v| *v) {
+                info!("All manager links done");
                 break;
             }
         }
@@ -259,15 +296,32 @@ fn main() -> ! {
         info!("Starting subordinate state machines...");
         let mut subordinates: [Subordinate; LINK_COUNT] =
             core::array::from_fn(|_| Subordinate::new());
+        let mut last_states: [SubordinateState; LINK_COUNT] =
+            core::array::from_fn(|_| SubordinateState::WaitForPhy);
+        let mut tick: u32 = 0;
         for link in 0..LINK_COUNT {
             subordinates[link].set_report(build_report_for_link(link, &capture_ugns[link], &dna));
         }
 
         loop {
+            tick = tick.wrapping_add(1);
+            if tick % LOG_TICK_EVERY == 0 {
+                info!("subordinate loop tick {}", tick);
+            }
             let now = to_smoltcp_instant(INSTANCES.timer.now());
             for link in 0..LINK_COUNT {
                 let mut sockets = socket_set(&mut sockets_storage[link][..]);
-                let _ = ifaces[link].poll(now, &mut devices[link], &mut sockets);
+                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
+                trace!("subordinate link {} poll result {:?}", link, poll_result);
+                let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
+                trace!(
+                    "subordinate link {} socket open {} active {} can_send {} can_recv {}",
+                    link,
+                    socket.is_open(),
+                    socket.is_active(),
+                    socket.can_send(),
+                    socket.can_recv()
+                );
                 let mut smoltcp_link = SmoltcpLink::new(
                     &mut ifaces[link],
                     &mut sockets,
@@ -276,7 +330,20 @@ fn main() -> ! {
                     true,
                     false,
                 );
+                trace!(
+                    "subordinate link {} step from state {:?}",
+                    link,
+                    subordinates[link].state()
+                );
                 subordinates[link].step(&mut smoltcp_link);
+                let state = subordinates[link].state();
+                if state != last_states[link] {
+                    info!(
+                        "subordinate link {} state {:?} -> {:?}",
+                        link, last_states[link], state
+                    );
+                    last_states[link] = state;
+                }
             }
         }
     }

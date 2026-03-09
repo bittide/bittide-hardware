@@ -33,6 +33,7 @@ impl AlignedReceiveBuffer {
     }
 
     pub fn align(&mut self, tx: &TransmitRingbuffer) {
+        trace!("ringbuffer align start");
         let announce_pattern = [ALIGNMENT_ANNOUNCE.to_le_bytes()];
         tx.write_slice(&announce_pattern, 0);
 
@@ -48,6 +49,7 @@ impl AlignedReceiveBuffer {
                 let value = u64::from_le_bytes(data_buf[0]);
 
                 if value == ALIGNMENT_ANNOUNCE || value == ALIGNMENT_ACKNOWLEDGE {
+                    trace!("ringbuffer align saw marker at rx_idx {}", rx_idx);
                     break 'outer rx_idx;
                 }
             }
@@ -67,6 +69,11 @@ impl AlignedReceiveBuffer {
 
         self.rx_alignment_offset = Some(rx_offset);
         self.tx_reference = tx.0 as *const _ as usize;
+        trace!(
+            "ringbuffer align done offset {} tx_ref 0x{:X}",
+            rx_offset,
+            self.tx_reference
+        );
     }
 
     pub fn is_aligned(&self) -> bool {
@@ -171,17 +178,25 @@ impl Device for RingbufferDevice {
         let seq_num = unsafe { (header_ptr.add(4) as *const u16).read_unaligned() };
         let packet_len = unsafe { (header_ptr.add(6) as *const u16).read_unaligned() } as usize;
 
+        trace!(
+            "ringbuffer rx header seq {} len {} last {}",
+            seq_num,
+            packet_len,
+            self.last_rx_seq
+        );
+
         if seq_num == self.last_rx_seq {
-            trace!("Detected repeated packet with seq {}", seq_num);
+            trace!("ringbuffer rx repeated seq {}", seq_num);
             return None;
         }
 
         if packet_len < MIN_IP_PACKET_SIZE || packet_len > self.mtu {
             trace!(
-                "Invalid packet length: {} (must be {}-{})",
+                "ringbuffer rx invalid len {} (must be {}-{}) seq {}",
                 packet_len,
                 MIN_IP_PACKET_SIZE,
-                self.mtu
+                self.mtu,
+                seq_num
             );
             return None;
         }
@@ -197,12 +212,12 @@ impl Device for RingbufferDevice {
         self.rx_buffer.read_slice(word_slice, 0);
 
         if !is_valid(&packet_buffer[..total_len]) {
-            trace!("CRC validation failed for packet seq {}", seq_num);
+            trace!("ringbuffer rx crc fail seq {}", seq_num);
             return None;
         }
 
         trace!(
-            "Valid packet: seq {}, payload {} bytes",
+            "ringbuffer rx valid seq {}, payload {} bytes",
             seq_num,
             packet_len
         );
@@ -225,6 +240,7 @@ impl Device for RingbufferDevice {
     }
 
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+        trace!("ringbuffer tx token seq {}", self.tx_seq_num);
         Some(TxToken {
             tx_buffer: &mut self.tx_buffer,
             mtu: self.mtu,
