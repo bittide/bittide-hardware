@@ -23,7 +23,7 @@ use ufmt::uwriteln;
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 const LINK_COUNT: usize = 7;
 const TCP_BUF_SIZE: usize = 256;
-const MANAGER_DNA: [u8; 12] = [0; 12];
+const MANAGER_DNA: [u8; 12] = [133, 129, 48, 4, 64, 192, 105, 1, 1, 0, 2, 64];
 
 static mut TCP_RX_BUFS: [[u8; TCP_BUF_SIZE]; LINK_COUNT] = [[0; TCP_BUF_SIZE]; LINK_COUNT];
 static mut TCP_TX_BUFS: [[u8; TCP_BUF_SIZE]; LINK_COUNT] = [[0; TCP_BUF_SIZE]; LINK_COUNT];
