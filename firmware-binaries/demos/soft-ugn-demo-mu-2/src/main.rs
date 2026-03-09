@@ -13,7 +13,7 @@ use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::net_state::{Manager, SmoltcpLink, Subordinate, UgnEdge, UgnReport};
 use bittide_sys::smoltcp::soft_ugn_ringbuffer::{AlignedReceiveBuffer, RingbufferDevice};
 use bittide_sys::stability_detector::Stability;
-use core::panic::PanicInfo;
+use core::fmt::Write;
 use log::{info, trace, warn, LevelFilter};
 use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
@@ -288,7 +288,9 @@ fn main() -> ! {
 }
 
 #[panic_handler]
-fn panic_handler(_: &PanicInfo) -> ! {
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    let mut uart = INSTANCES.uart;
+    writeln!(uart, "Panicked! #{info}").unwrap();
     loop {
         continue;
     }
