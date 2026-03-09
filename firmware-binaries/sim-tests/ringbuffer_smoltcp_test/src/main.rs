@@ -8,13 +8,13 @@
 use bittide_hal::manual_additions::ringbuffer_test::ringbuffers::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::ringbuffer_test::DeviceInstances;
-use bittide_sys::net_state::{Manager, NetMedium, Subordinate, UgnEdge, UgnReport};
+use bittide_sys::net_state::{Manager, SmoltcpLink, Subordinate, UgnEdge, UgnReport};
 use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
 use core::fmt::Write;
 use log::{info, trace, LevelFilter};
-use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage};
+use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
-use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
+use smoltcp::wire::HardwareAddress;
 use ufmt::uwriteln;
 
 #[cfg(not(test))]
@@ -22,165 +22,8 @@ use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
-const SERVER_PORT: u16 = 8080;
-const CLIENT_PORT: u16 = 49152;
-
 fn to_smoltcp_instant(instant: Instant) -> smoltcp::time::Instant {
     smoltcp::time::Instant::from_micros(instant.micros() as i64)
-}
-
-struct SmoltcpManagerMedium<'a, 'b> {
-    iface: &'a mut Interface,
-    sockets: &'a mut SocketSet<'b>,
-    client_handle: SocketHandle,
-}
-
-impl<'a, 'b> SmoltcpManagerMedium<'a, 'b> {
-    fn new(
-        iface: &'a mut Interface,
-        sockets: &'a mut SocketSet<'b>,
-        client_handle: SocketHandle,
-    ) -> Self {
-        Self {
-            iface,
-            sockets,
-            client_handle,
-        }
-    }
-}
-
-impl NetMedium for SmoltcpManagerMedium<'_, '_> {
-    fn phy_ready(&self, _link: usize) -> bool {
-        true
-    }
-
-    fn setup_interface(&mut self, _link: usize, local_ip: [u8; 4]) {
-        let ip = IpCidr::new(
-            IpAddress::v4(local_ip[0], local_ip[1], local_ip[2], local_ip[3]),
-            24,
-        );
-        self.iface.update_ip_addrs(|addrs| {
-            if !addrs.contains(&ip) {
-                let _ = addrs.push(ip);
-            }
-        });
-    }
-
-    fn connect(&mut self, _link: usize, peer_ip: [u8; 4]) -> bool {
-        let client = self.sockets.get_mut::<tcp::Socket>(self.client_handle);
-        if !client.is_open() && !client.is_active() {
-            let cx = self.iface.context();
-            let _ = client.connect(
-                cx,
-                (
-                    IpAddress::v4(peer_ip[0], peer_ip[1], peer_ip[2], peer_ip[3]),
-                    SERVER_PORT,
-                ),
-                CLIENT_PORT,
-            );
-        }
-        client.is_active()
-    }
-
-    fn listen(&mut self, _link: usize) -> bool {
-        false
-    }
-
-    fn send(&mut self, _link: usize, data: &[u8]) -> bool {
-        let client = self.sockets.get_mut::<tcp::Socket>(self.client_handle);
-        if client.can_send() {
-            let _ = client.send_slice(data);
-            return true;
-        }
-        false
-    }
-
-    fn recv(&mut self, _link: usize, buf: &mut [u8]) -> Option<usize> {
-        let client = self.sockets.get_mut::<tcp::Socket>(self.client_handle);
-        if client.can_recv() {
-            if let Ok(len) = client.recv_slice(buf) {
-                return Some(len);
-            }
-        }
-        None
-    }
-
-    fn timed_out(&self, _link: usize) -> bool {
-        false
-    }
-}
-
-struct SmoltcpSubordinateMedium<'a, 'b> {
-    iface: &'a mut Interface,
-    sockets: &'a mut SocketSet<'b>,
-    server_handle: SocketHandle,
-}
-
-impl<'a, 'b> SmoltcpSubordinateMedium<'a, 'b> {
-    fn new(
-        iface: &'a mut Interface,
-        sockets: &'a mut SocketSet<'b>,
-        server_handle: SocketHandle,
-    ) -> Self {
-        Self {
-            iface,
-            sockets,
-            server_handle,
-        }
-    }
-}
-
-impl NetMedium for SmoltcpSubordinateMedium<'_, '_> {
-    fn phy_ready(&self, _link: usize) -> bool {
-        true
-    }
-
-    fn setup_interface(&mut self, _link: usize, local_ip: [u8; 4]) {
-        let ip = IpCidr::new(
-            IpAddress::v4(local_ip[0], local_ip[1], local_ip[2], local_ip[3]),
-            24,
-        );
-        self.iface.update_ip_addrs(|addrs| {
-            if !addrs.contains(&ip) {
-                let _ = addrs.push(ip);
-            }
-        });
-    }
-
-    fn connect(&mut self, _link: usize, _peer_ip: [u8; 4]) -> bool {
-        false
-    }
-
-    fn listen(&mut self, _link: usize) -> bool {
-        let server = self.sockets.get_mut::<tcp::Socket>(self.server_handle);
-        if !server.is_open() {
-            let _ = server.listen(SERVER_PORT);
-        }
-        server.is_open()
-    }
-
-    fn send(&mut self, _link: usize, data: &[u8]) -> bool {
-        let server = self.sockets.get_mut::<tcp::Socket>(self.server_handle);
-        if server.can_send() {
-            let _ = server.send_slice(data);
-            return true;
-        }
-        false
-    }
-
-    fn recv(&mut self, _link: usize, buf: &mut [u8]) -> Option<usize> {
-        let server = self.sockets.get_mut::<tcp::Socket>(self.server_handle);
-        if server.can_recv() {
-            if let Ok(len) = server.recv_slice(buf) {
-                return Some(len);
-            }
-        }
-        None
-    }
-
-    fn timed_out(&self, _link: usize) -> bool {
-        false
-    }
 }
 
 #[cfg_attr(not(test), entry)]
@@ -196,7 +39,7 @@ fn main() -> ! {
         logger.set_timer(INSTANCES.timer);
         logger.display_source = LevelFilter::Warn;
         log::set_logger_racy(logger).ok();
-        log::set_max_level_racy(LevelFilter::Trace);
+        log::set_max_level_racy(LevelFilter::Info);
     }
 
     info!("=== Ringbuffer smoltcp Loopback Test ===");
@@ -265,12 +108,16 @@ fn main() -> ! {
         let timestamp = to_smoltcp_instant(timer.now());
         iface.poll(timestamp, &mut device, &mut sockets);
 
-        let mut manager_medium = SmoltcpManagerMedium::new(&mut iface, &mut sockets, client_handle);
-        manager.step(&mut manager_medium, 0);
-
-        let mut subordinate_medium =
-            SmoltcpSubordinateMedium::new(&mut iface, &mut sockets, server_handle);
-        subordinate.step(&mut subordinate_medium, 0);
+        {
+            let mut link =
+                SmoltcpLink::new(&mut iface, &mut sockets, client_handle, 0, true, false);
+            manager.step(&mut link);
+        }
+        {
+            let mut link =
+                SmoltcpLink::new(&mut iface, &mut sockets, server_handle, 0, true, false);
+            subordinate.step(&mut link);
+        }
 
         if manager.is_done() && subordinate.is_done() && !done_logged {
             info!("  Manager collected UGN report");
@@ -290,16 +137,14 @@ fn main() -> ! {
             if idx >= report.count as usize {
                 break;
             }
-            info!(
-                "  Edge {}: {}:{} -> {}:{}, ugn={}, valid={}",
-                idx,
-                edge.src_node,
-                edge.src_port,
-                edge.dst_node,
-                edge.dst_port,
-                edge.ugn,
-                edge.is_valid
-            );
+            if let Some(edge) = edge {
+                info!(
+                    "  Edge {}: {}:{} -> {}:{}, ugn={}",
+                    idx, edge.src_node, edge.src_port, edge.dst_node, edge.dst_port, edge.ugn
+                );
+            } else {
+                info!("  Edge {}: missing", idx);
+            }
         }
     } else {
         info!("  FAILURE: Missing UGN report data!");
@@ -313,28 +158,17 @@ fn main() -> ! {
 }
 
 fn build_placeholder_report() -> UgnReport {
-    let mut report = UgnReport {
-        count: 2,
-        ..Default::default()
-    };
-    report.edges[0] = UgnEdge {
-        src_node: 1,
-        src_port: 0,
-        dst_node: 0,
-        dst_port: 0,
-        ugn: 123,
-        is_valid: 1,
-        _padding: [0; 7],
-    };
-    report.edges[1] = UgnEdge {
-        src_node: 1,
-        src_port: 1,
-        dst_node: 0,
-        dst_port: 1,
-        ugn: 456,
-        is_valid: 1,
-        _padding: [0; 7],
-    };
+    let mut report = UgnReport::new();
+    report.count = 8;
+    for idx in 0..8 {
+        report.edges[idx] = Some(UgnEdge {
+            src_node: idx as u32,
+            src_port: idx as u32,
+            dst_node: (idx as u32).saturating_add(1),
+            dst_port: idx as u32,
+            ugn: 100 + idx as i64,
+        });
+    }
     report
 }
 
