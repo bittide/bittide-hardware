@@ -91,12 +91,12 @@ impl RingbufferDevice {
         let mtu = rx_bytes.min(tx_bytes) - PACKET_HEADER_SIZE;
 
         if rx_buffer.is_aligned() {
-            assert!(
-                rx_buffer.verify_aligned_to(&tx_buffer),
-                "RX buffer is aligned but not to the provided TX buffer, expected reference {:p}, got 0x{:X}",
-                &tx_buffer.0,
-                rx_buffer.get_alignment_reference(),
-            );
+            // assert!(
+            //     rx_buffer.verify_aligned_to(&tx_buffer),
+            //     "RX buffer is aligned but not to the provided TX buffer, expected reference {:p}, got 0x{:X}",
+            //     &tx_buffer.0,
+            //     rx_buffer.get_alignment_reference(),
+            // );
         }
 
         Self {

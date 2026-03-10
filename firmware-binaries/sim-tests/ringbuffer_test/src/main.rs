@@ -24,8 +24,8 @@ fn main() -> ! {
 
     uwriteln!(uart, "=== Ringbuffer Loopback Test (Byte-Level) ===").unwrap();
 
-    let tx_ringbuffer = INSTANCES.transmit_ringbuffer;
-    let rx_ringbuffer = INSTANCES.receive_ringbuffer;
+    let tx_ringbuffer = INSTANCES.transmit_ringbuffer_0;
+    let rx_ringbuffer = INSTANCES.receive_ringbuffer_0;
 
     // Create pattern: 4 MSBs = frame number, 4 LSBs = byte index in frame
     // Frame 0: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]

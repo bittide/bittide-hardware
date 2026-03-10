@@ -10,16 +10,14 @@ use bittide_hal::hals::soft_ugn_demo_mu::devices::{ReceiveRingbuffer, TransmitRi
 use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_sys::link_startup::LinkStartup;
-use bittide_sys::net_state::{
-    Manager, SmoltcpLink, Subordinate, SubordinateState, UgnEdge, UgnReport,
-};
+use bittide_sys::net_state::{Manager, Subordinate, UgnEdge, UgnReport};
 use bittide_sys::smoltcp::soft_ugn_ringbuffer::{AlignedReceiveBuffer, RingbufferDevice};
 use bittide_sys::stability_detector::Stability;
 use core::fmt::Write;
 use log::{info, trace, warn, LevelFilter};
 use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
-use smoltcp::wire::HardwareAddress;
+use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
@@ -27,15 +25,26 @@ const LINK_COUNT: usize = 7;
 const TCP_BUF_SIZE: usize = 256;
 const MANAGER_DNA: [u8; 12] = [133, 129, 48, 4, 64, 192, 105, 1, 1, 0, 2, 64];
 const LOG_TICK_EVERY: u32 = 500;
+const CLIENT_IP: [u8; 4] = [100, 100, 100, 100];
+const SERVER_IP: [u8; 4] = [100, 100, 100, 101];
 
-static mut TCP_RX_BUFS: [[u8; TCP_BUF_SIZE]; LINK_COUNT] = [[0; TCP_BUF_SIZE]; LINK_COUNT];
-static mut TCP_TX_BUFS: [[u8; TCP_BUF_SIZE]; LINK_COUNT] = [[0; TCP_BUF_SIZE]; LINK_COUNT];
+static mut TCP_RX_BUFS: [u8; TCP_BUF_SIZE] = [0; TCP_BUF_SIZE];
+static mut TCP_TX_BUFS: [u8; TCP_BUF_SIZE] = [0; TCP_BUF_SIZE];
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
 fn to_smoltcp_instant(instant: Instant) -> smoltcp::time::Instant {
     smoltcp::time::Instant::from_micros(instant.micros() as i64)
+}
+
+fn set_iface_ip(iface: &mut Interface, ip: [u8; 4]) {
+    iface.update_ip_addrs(|addrs| {
+        addrs.clear();
+        addrs
+            .push(IpCidr::new(IpAddress::v4(ip[0], ip[1], ip[2], ip[3]), 24))
+            .unwrap();
+    });
 }
 
 fn socket_set<'a>(storage: &'a mut [SocketStorage<'static>]) -> SocketSet<'a> {
@@ -85,7 +94,6 @@ fn main() -> ! {
         INSTANCES.capture_ugn_5,
         INSTANCES.capture_ugn_6,
     ];
-
     // Pseudocode setup:
     // 1) Initialize MU peripherals and scatter/gather calendars for ringbuffers.
     // 2) Align ringbuffers on all ports (two-phase protocol).
@@ -144,44 +152,43 @@ fn main() -> ! {
         );
     }
 
-    let mut devices: [RingbufferDevice; LINK_COUNT] = [
-        make_device(
-            INSTANCES.receive_ringbuffer_0,
-            INSTANCES.transmit_ringbuffer_0,
-        ),
-        make_device(
-            INSTANCES.receive_ringbuffer_1,
-            INSTANCES.transmit_ringbuffer_1,
-        ),
-        make_device(
-            INSTANCES.receive_ringbuffer_2,
-            INSTANCES.transmit_ringbuffer_2,
-        ),
-        make_device(
-            INSTANCES.receive_ringbuffer_3,
-            INSTANCES.transmit_ringbuffer_3,
-        ),
-        make_device(
-            INSTANCES.receive_ringbuffer_4,
-            INSTANCES.transmit_ringbuffer_4,
-        ),
-        make_device(
-            INSTANCES.receive_ringbuffer_5,
-            INSTANCES.transmit_ringbuffer_5,
-        ),
-        make_device(
-            INSTANCES.receive_ringbuffer_6,
-            INSTANCES.transmit_ringbuffer_6,
-        ),
+    let receive_ringbuffers = [
+        INSTANCES.receive_ringbuffer_0,
+        INSTANCES.receive_ringbuffer_1,
+        INSTANCES.receive_ringbuffer_2,
+        INSTANCES.receive_ringbuffer_3,
+        INSTANCES.receive_ringbuffer_4,
+        INSTANCES.receive_ringbuffer_5,
+        INSTANCES.receive_ringbuffer_6,
     ];
-    let mut ifaces: [Interface; LINK_COUNT] = core::array::from_fn(|idx| {
-        let now = to_smoltcp_instant(INSTANCES.timer.now());
-        let mut iface = Interface::new(Config::new(HardwareAddress::Ip), &mut devices[idx], now);
-        iface.update_ip_addrs(|addrs| {
-            addrs.clear();
-        });
-        iface
+    let transmit_ringbuffers = [
+        INSTANCES.transmit_ringbuffer_0,
+        INSTANCES.transmit_ringbuffer_1,
+        INSTANCES.transmit_ringbuffer_2,
+        INSTANCES.transmit_ringbuffer_3,
+        INSTANCES.transmit_ringbuffer_4,
+        INSTANCES.transmit_ringbuffer_5,
+        INSTANCES.transmit_ringbuffer_6,
+    ];
+    let mut receive_iter = receive_ringbuffers.into_iter();
+    let mut transmit_iter = transmit_ringbuffers.into_iter();
+    let mut devices: [RingbufferDevice; LINK_COUNT] = core::array::from_fn(|_| {
+        let rx = receive_iter.next().expect("missing receive ringbuffer");
+        let tx = transmit_iter.next().expect("missing transmit ringbuffer");
+        make_device(rx, tx)
     });
+
+    let rx_buf = unsafe { &mut TCP_RX_BUFS[..] };
+    let tx_buf = unsafe { &mut TCP_TX_BUFS[..] };
+    let socket = tcp::Socket::new(
+        tcp::SocketBuffer::new(rx_buf),
+        tcp::SocketBuffer::new(tx_buf),
+    );
+    let mut sockets_storage: [SocketStorage<'static>; 1] = Default::default();
+    let socket_handle = {
+        let mut sockets = socket_set(&mut sockets_storage[..]);
+        sockets.add(socket)
+    };
     let dna = INSTANCES.dna.dna();
     info!("My dna: {:?}", dna);
     let is_manager = dna == MANAGER_DNA;
@@ -195,78 +202,24 @@ fn main() -> ! {
         let mut reports: [Option<UgnReport>; LINK_COUNT] = [None; LINK_COUNT];
         for link in 0..LINK_COUNT {
             info!("Starting manager for link {}", link);
-            let rx_buf = unsafe { &mut TCP_RX_BUFS[link][..] };
-            let tx_buf = unsafe { &mut TCP_TX_BUFS[link][..] };
-            let socket = tcp::Socket::new(
-                tcp::SocketBuffer::new(rx_buf),
-                tcp::SocketBuffer::new(tx_buf),
-            );
-            let mut sockets_storage: [SocketStorage<'static>; 1] = Default::default();
-            let socket_handle = {
-                let mut sockets = socket_set(&mut sockets_storage[..]);
-                sockets.add(socket)
-            };
-            let mut manager = Manager::new();
-            let mut last_state = manager.state();
-            let mut tick: u32 = 0;
+            let now = to_smoltcp_instant(INSTANCES.timer.now());
+            let mut iface =
+                Interface::new(Config::new(HardwareAddress::Ip), &mut devices[link], now);
+            set_iface_ip(&mut iface, CLIENT_IP);
+            let mut manager = Manager::new(iface, socket_handle, link, SERVER_IP);
 
             trace!("Starting manager loop for link {}", link);
             loop {
-                tick = tick.wrapping_add(1);
-                if tick % LOG_TICK_EVERY == 0 {
-                    info!("manager link {} tick {}", link, tick);
-                }
                 let now = to_smoltcp_instant(INSTANCES.timer.now());
                 let mut sockets = socket_set(&mut sockets_storage[..]);
-                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
-                trace!("manager link {} poll result {:?}", link, poll_result);
-                {
-                    let socket = sockets.get::<tcp::Socket>(socket_handle);
-                    trace!(
-                        "manager link {} socket open {} active {} can_send {} can_recv {} state {:?}",
-                        link,
-                        socket.is_open(),
-                        socket.is_active(),
-                        socket.can_send(),
-                        socket.can_recv(),
-                        socket.state()
-                    );
-                }
-                trace!(
-                    "manager link {} ip addrs {:?}",
-                    link,
-                    ifaces[link].ip_addrs()
-                );
-                {
-                    let mut smoltcp_link = SmoltcpLink::new(
-                        &mut ifaces[link],
-                        &mut sockets,
-                        socket_handle,
-                        link,
-                        true,
-                        false,
-                    );
-                    trace!(
-                        "manager link {} step from state {:?}",
-                        link,
-                        manager.state()
-                    );
-                    manager.step(&mut smoltcp_link);
-                }
-                let state = manager.state();
-                if state != last_state {
-                    info!(
-                        "manager link {} state {:?} -> {:?}",
-                        link, last_state, state
-                    );
-                    last_state = state;
-                }
+                manager.poll(now, &mut devices[link], &mut sockets);
+                trace!("manager link {} state {:?}", link, manager.state());
                 if manager.is_done() {
                     trace!("manager link {} is done", link);
                     break;
                 }
             }
-            reports[link] = manager.report();
+            reports[link] = Some(manager.report());
         }
 
         info!("UGN reports from subordinates:");
@@ -297,21 +250,24 @@ fn main() -> ! {
         }
     } else {
         info!("Starting subordinate state machines...");
-        let mut subordinates: [Subordinate; LINK_COUNT] =
-            core::array::from_fn(|_| Subordinate::new());
-        let mut last_states: [SubordinateState; LINK_COUNT] =
-            core::array::from_fn(|_| SubordinateState::WaitForPhy);
         let mut sockets_storage: [[SocketStorage<'static>; 1]; LINK_COUNT] =
             core::array::from_fn(|_| Default::default());
         let socket_handles: [SocketHandle; LINK_COUNT] = core::array::from_fn(|idx| {
-            let rx_buf = unsafe { &mut TCP_RX_BUFS[idx][..] };
-            let tx_buf = unsafe { &mut TCP_TX_BUFS[idx][..] };
+            let rx_buf = unsafe { &mut TCP_RX_BUFS[..] };
+            let tx_buf = unsafe { &mut TCP_TX_BUFS[..] };
             let socket = tcp::Socket::new(
                 tcp::SocketBuffer::new(rx_buf),
                 tcp::SocketBuffer::new(tx_buf),
             );
             let mut sockets = socket_set(&mut sockets_storage[idx][..]);
             sockets.add(socket)
+        });
+        let mut subordinates: [Subordinate; LINK_COUNT] = core::array::from_fn(|idx| {
+            let now = to_smoltcp_instant(INSTANCES.timer.now());
+            let mut iface =
+                Interface::new(Config::new(HardwareAddress::Ip), &mut devices[idx], now);
+            set_iface_ip(&mut iface, SERVER_IP);
+            Subordinate::new(iface, socket_handles[idx], idx, dna)
         });
         let mut tick: u32 = 0;
         for link in 0..LINK_COUNT {
@@ -326,8 +282,7 @@ fn main() -> ! {
             let now = to_smoltcp_instant(INSTANCES.timer.now());
             for link in 0..LINK_COUNT {
                 let mut sockets = socket_set(&mut sockets_storage[link][..]);
-                let poll_result = ifaces[link].poll(now, &mut devices[link], &mut sockets);
-                trace!("subordinate link {} poll result {:?}", link, poll_result);
+                subordinates[link].poll(now, &mut devices[link], &mut sockets);
                 {
                     let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
                     trace!(
@@ -343,32 +298,13 @@ fn main() -> ! {
                 trace!(
                     "subordinate link {} ip addrs {:?}",
                     link,
-                    ifaces[link].ip_addrs()
+                    subordinates[link].iface().ip_addrs()
                 );
-                {
-                    let mut smoltcp_link = SmoltcpLink::new(
-                        &mut ifaces[link],
-                        &mut sockets,
-                        socket_handles[link],
-                        link,
-                        true,
-                        false,
-                    );
-                    trace!(
-                        "subordinate link {} step from state {:?}",
-                        link,
-                        subordinates[link].state()
-                    );
-                    subordinates[link].step(&mut smoltcp_link);
-                }
-                let state = subordinates[link].state();
-                if state != last_states[link] {
-                    info!(
-                        "subordinate link {} state {:?} -> {:?}",
-                        link, last_states[link], state
-                    );
-                    last_states[link] = state;
-                }
+                trace!(
+                    "subordinate link {} state {:?}",
+                    link,
+                    subordinates[link].state()
+                );
             }
         }
     }

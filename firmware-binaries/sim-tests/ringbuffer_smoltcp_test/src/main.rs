@@ -8,7 +8,7 @@
 use bittide_hal::manual_additions::ringbuffer_test::ringbuffers::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::ringbuffer_test::DeviceInstances;
-use bittide_sys::net_state::{Manager, SmoltcpLink, Subordinate, UgnEdge, UgnReport};
+use bittide_sys::net_state::{Manager, Subordinate, UgnEdge, UgnReport};
 use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
 use core::fmt::Write;
 use log::{info, trace, LevelFilter};
@@ -46,39 +46,79 @@ fn main() -> ! {
 
     // Set up ringbuffers
     info!("Step 1: Finding ringbuffer alignment...");
-    let tx_buffer = INSTANCES.transmit_ringbuffer;
-    let rx_buffer = INSTANCES.receive_ringbuffer;
-    let mut rx_aligned = AlignedReceiveBuffer::new(rx_buffer);
-    rx_aligned.align(&tx_buffer);
-    let rx_offset = rx_aligned
+    let tx_buffer0 = INSTANCES.transmit_ringbuffer_0;
+    let rx_buffer0 = INSTANCES.receive_ringbuffer_0;
+
+    let tx_buffer1 = INSTANCES.transmit_ringbuffer_1;
+    let rx_buffer1 = INSTANCES.receive_ringbuffer_1;
+    let mut rx_aligned0 = AlignedReceiveBuffer::new(rx_buffer0);
+    let mut rx_aligned1 = AlignedReceiveBuffer::new(rx_buffer1);
+
+    rx_aligned0.align(&tx_buffer0);
+    rx_aligned1.align(&tx_buffer1);
+
+    let rx_offset0 = rx_aligned0
         .get_alignment_offset()
         .expect("Failed to find RX buffer alignment");
-    trace!("  Alignment offset: {}", rx_offset);
+    let rx_offset1 = rx_aligned1
+        .get_alignment_offset()
+        .expect("Failed to find RX buffer alignment");
+    trace!("  Alignment offset 0: {}", rx_offset0);
+    trace!("  Alignment offset 1: {}", rx_offset1);
 
     // Step 2: Create smoltcp device
     info!("Step 2: Creating RingbufferDevice...");
-    let mut device = RingbufferDevice::new(rx_aligned, tx_buffer);
-    let mtu = device.mtu();
+    let mut device0 = RingbufferDevice::new(rx_aligned0, tx_buffer1);
+    let mut device1 = RingbufferDevice::new(rx_aligned1, tx_buffer0);
+    let mtu = device0.mtu();
     trace!("  MTU: {} bytes", mtu);
 
     // Step 3: Configure network interface
-    info!("Step 3: Configuring network interface...");
+    info!("Step 3: Configuring network interfaces...");
     let hw_addr = HardwareAddress::Ip;
-    let config = Config::new(hw_addr);
+    let config0 = Config::new(hw_addr);
+    let config1 = Config::new(hw_addr);
     let now = to_smoltcp_instant(timer.now());
-    let mut iface = Interface::new(config, &mut device, now);
-    iface.update_ip_addrs(|addrs| {
-        addrs.clear();
+    let mut iface0 = Interface::new(config0, &mut device0, now);
+    let mut iface1 = Interface::new(config1, &mut device1, now);
+    let server_ip = [100, 100, 100, 100];
+    let client_ip = [100, 100, 100, 101];
+    iface0.update_ip_addrs(|addrs| {
+        addrs
+            .push(smoltcp::wire::IpCidr::new(
+                smoltcp::wire::IpAddress::v4(
+                    client_ip[0],
+                    client_ip[1],
+                    client_ip[2],
+                    client_ip[3],
+                ),
+                24,
+            ))
+            .unwrap();
+    });
+    iface1.update_ip_addrs(|addrs| {
+        addrs
+            .push(smoltcp::wire::IpCidr::new(
+                smoltcp::wire::IpAddress::v4(
+                    server_ip[0],
+                    server_ip[1],
+                    server_ip[2],
+                    server_ip[3],
+                ),
+                24,
+            ))
+            .unwrap();
     });
 
     // Step 4: Create TCP sockets
     info!("Step 4: Creating TCP sockets...");
 
     // Server socket - reduced buffer sizes to fit in memory
-    static mut SERVER_RX_BUF: [u8; 256] = [0; 256];
-    static mut SERVER_TX_BUF: [u8; 256] = [0; 256];
-    let server_rx_buffer = tcp::SocketBuffer::new(unsafe { &mut SERVER_RX_BUF[..] });
-    let server_tx_buffer = tcp::SocketBuffer::new(unsafe { &mut SERVER_TX_BUF[..] });
+    static mut SERVER_RX_BUF0: [u8; 256] = [0; 256];
+    static mut SERVER_TX_BUF0: [u8; 256] = [0; 256];
+
+    let server_rx_buffer = tcp::SocketBuffer::new(unsafe { &mut SERVER_RX_BUF0[..] });
+    let server_tx_buffer = tcp::SocketBuffer::new(unsafe { &mut SERVER_TX_BUF0[..] });
     let server_socket = tcp::Socket::new(server_rx_buffer, server_tx_buffer);
 
     // Client socket - reduced buffer sizes to fit in memory
@@ -88,10 +128,13 @@ fn main() -> ! {
     let client_tx_buffer = tcp::SocketBuffer::new(unsafe { &mut CLIENT_TX_BUF[..] });
     let client_socket = tcp::Socket::new(client_rx_buffer, client_tx_buffer);
 
-    let mut sockets_storage: [SocketStorage; 2] = Default::default();
-    let mut sockets = SocketSet::new(&mut sockets_storage[..]);
-    let server_handle = sockets.add(server_socket);
-    let client_handle = sockets.add(client_socket);
+    let mut server_sockets_storage: [SocketStorage; 1] = Default::default();
+    let mut client_sockets_storage: [SocketStorage; 1] = Default::default();
+    let mut server_sockets = SocketSet::new(&mut server_sockets_storage[..]);
+    let mut client_sockets = SocketSet::new(&mut client_sockets_storage[..]);
+
+    let server_handle = server_sockets.add(server_socket);
+    let client_handle = client_sockets.add(client_socket);
 
     // Step 5: Initialize link state machines
     info!("Step 5: Initializing link state machines...");
@@ -100,24 +143,15 @@ fn main() -> ! {
     info!("Step 7: Running main event loop...");
     let mut done_logged = false;
 
-    let mut manager = Manager::new();
-    let mut subordinate = Subordinate::new();
+    let mut manager = Manager::new(iface0, client_handle, 0, server_ip);
+    let dna: [u8; 12] = core::array::from_fn(|i| i as u8);
+    let mut subordinate = Subordinate::new(iface1, server_handle, 0, dna);
     subordinate.set_report(build_placeholder_report());
 
     for _ in 0..1000 {
         let timestamp = to_smoltcp_instant(timer.now());
-        iface.poll(timestamp, &mut device, &mut sockets);
-
-        {
-            let mut link =
-                SmoltcpLink::new(&mut iface, &mut sockets, client_handle, 0, true, false);
-            manager.step(&mut link);
-        }
-        {
-            let mut link =
-                SmoltcpLink::new(&mut iface, &mut sockets, server_handle, 0, true, false);
-            subordinate.step(&mut link);
-        }
+        manager.poll(timestamp, &mut device0, &mut client_sockets);
+        subordinate.poll(timestamp, &mut device1, &mut server_sockets);
 
         if manager.is_done() && subordinate.is_done() && !done_logged {
             info!("  Manager collected UGN report");
@@ -131,7 +165,8 @@ fn main() -> ! {
 
     if !done_logged {
         info!("  FAILURE: UGN report timeout!");
-    } else if let Some(report) = manager.report() {
+    } else {
+        let report = manager.report();
         info!("  SUCCESS: Manager received {} UGN edges", report.count);
         for (idx, edge) in report.edges.iter().enumerate() {
             if idx >= report.count as usize {
@@ -146,8 +181,6 @@ fn main() -> ! {
                 info!("  Edge {}: missing", idx);
             }
         }
-    } else {
-        info!("  FAILURE: Missing UGN report data!");
     }
 
     uwriteln!(uart, "=== Test Complete ===").unwrap();

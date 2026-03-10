@@ -21,8 +21,8 @@ fn main() -> ! {
 
     writeln!(uart, "=== Aligned Ringbuffer Test ===").unwrap();
 
-    let tx_ringbuffer = INSTANCES.transmit_ringbuffer;
-    let rx_ringbuffer = INSTANCES.receive_ringbuffer;
+    let tx_ringbuffer = INSTANCES.transmit_ringbuffer_0;
+    let rx_ringbuffer = INSTANCES.receive_ringbuffer_0;
 
     // Step 1: Perform alignment procedure
     writeln!(uart, "\n--- Step 1: Alignment Discovery ---").unwrap();
