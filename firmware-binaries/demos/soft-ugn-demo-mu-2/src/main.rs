@@ -81,7 +81,7 @@ fn main() -> ! {
         logger.set_timer(INSTANCES.timer);
         logger.display_source = LevelFilter::Warn;
         log::set_logger_racy(logger).ok();
-        log::set_max_level_racy(LevelFilter::Trace);
+        log::set_max_level_racy(LevelFilter::Info);
     }
 
     info!("=== Soft UGN Demo MU2 ===");
@@ -213,6 +213,9 @@ fn main() -> ! {
         "Role: {}",
         if is_manager { "manager" } else { "subordinate" }
     );
+    unsafe {
+        log::set_max_level_racy(LevelFilter::Trace);
+    }
 
     if is_manager {
         info!("Starting manager state machines...");
