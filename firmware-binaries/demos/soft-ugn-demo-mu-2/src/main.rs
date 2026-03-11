@@ -64,6 +64,10 @@ fn make_device(
 ) -> RingbufferDevice<ReceiveRingbuffer, TransmitRingbuffer> {
     let mut rx_aligned = AlignedReceiveBuffer::new(rx);
     rx_aligned.align(&tx);
+    info!(
+        "Aligned RX buffer with offset {}",
+        rx_aligned.get_alignment_offset().unwrap()
+    );
     RingbufferDevice::new(rx_aligned, tx)
 }
 
