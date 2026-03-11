@@ -227,8 +227,8 @@ impl Manager {
         device: &mut impl smoltcp::phy::Device,
         sockets: &mut SocketSet,
     ) {
-        self.iface.poll(timestamp, device, sockets);
         self.step(sockets);
+        self.iface.poll(timestamp, device, sockets);
     }
 
     pub fn is_done(&self) -> bool {
