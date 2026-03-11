@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::hals::soft_ugn_demo_mu::devices::{ReceiveRingbuffer, TransmitRingbuffer};
-use log::{debug, trace, warn};
+use log::{debug, warn};
 
 /// Alignment protocol marker values
 const ALIGNMENT_EMPTY: u64 = 0;
@@ -17,11 +17,6 @@ impl TransmitRingbuffer {
     /// The source memory size must be smaller or equal to the memory size of
     /// the `TransmitRingbuffer` memory.
     pub fn write_slice(&self, src: &[[u8; 8]], offset: usize) {
-        trace!(
-            "TransmitRingbuffer::write_slice: len={}, offset={}",
-            src.len(),
-            offset
-        );
         assert!(src.len() + offset <= Self::DATA_LEN);
         unsafe {
             self.write_slice_unchecked(src, offset);
@@ -36,7 +31,6 @@ impl TransmitRingbuffer {
     /// This function is unsafe because it can cause out-of-bounds memory access if the caller
     /// does not ensure that `src.len() + offset` is within the bounds of the transmit buffer.
     pub unsafe fn write_slice_unchecked(&self, src: &[[u8; 8]], offset: usize) {
-        trace!("TransmitRingbuffer::write_slice_unchecked: about to write {} bytes starting at offset {}", src.len(), offset);
         let dst_ptr = self.0 as *mut [u8; 8];
         unsafe {
             core::ptr::copy_nonoverlapping(src.as_ptr(), dst_ptr.add(offset), src.len());
@@ -64,12 +58,6 @@ impl TransmitRingbuffer {
     /// does not ensure that `src.len()` is smaller or equal to the buffer size.
     pub unsafe fn write_slice_with_wrap_unchecked(&self, src: &[[u8; 8]], offset: usize) {
         if src.len() + offset <= Self::DATA_LEN {
-            // No wrapping needed
-            trace!(
-                "TransmitRingbuffer::write_slice_with_wrap: no wrap needed, len={}, offset={}",
-                src.len(),
-                offset
-            );
             self.write_slice(src, offset);
         } else {
             // Wrapping needed - split into two writes
@@ -104,11 +92,6 @@ impl ReceiveRingbuffer {
     /// The destination memory size must be smaller or equal to the memory size
     ///  of the `ReceiveRingbuffer`.
     pub fn read_slice(&self, dst: &mut [[u8; 8]], offset: usize) {
-        trace!(
-            "ReceiveRingbuffer::read_slice: len={}, offset={}",
-            dst.len(),
-            offset
-        );
         assert!(dst.len() + offset <= Self::DATA_LEN);
         unsafe {
             self.read_slice_unchecked(dst, offset);
@@ -123,11 +106,6 @@ impl ReceiveRingbuffer {
     /// This function is unsafe because it can cause out-of-bounds memory access if the caller
     /// does not ensure that `dst.len() + offset` is within the bounds of the receive buffer.
     pub unsafe fn read_slice_unchecked(&self, dst: &mut [[u8; 8]], offset: usize) {
-        trace!(
-            "ReceiveRingbuffer::read_slice_unchecked: about to read {} bytes starting at offset {}",
-            dst.len(),
-            offset
-        );
         let dst_ptr = dst.as_mut_ptr();
         let src_ptr = self.0 as *const [u8; 8];
         unsafe {
@@ -156,12 +134,6 @@ impl ReceiveRingbuffer {
     /// does not ensure that `dst.len()` is smaller or equal to the buffer size.
     pub unsafe fn read_slice_with_wrap_unchecked(&self, dst: &mut [[u8; 8]], offset: usize) {
         if dst.len() + offset <= Self::DATA_LEN {
-            // No wrapping needed
-            trace!(
-                "ReceiveRingbuffer::read_slice_with_wrap: no wrap needed, len={}, offset={}",
-                dst.len(),
-                offset
-            );
             self.read_slice(dst, offset);
         } else {
             // Wrapping needed - split into two reads
@@ -231,11 +203,6 @@ impl AlignedReceiveBuffer {
         let rx_offset = 'outer: loop {
             for rx_idx in 0..ReceiveRingbuffer::DATA_LEN {
                 let mut data_buf = [[0u8; 8]; 1];
-                // Read directly from physical index by using scatter's read_slice
-                trace!(
-                    "AlignedReceiveBuffer::align: about to read RX at index {}",
-                    rx_idx
-                );
                 self.rx.read_slice(&mut data_buf, rx_idx);
                 let value = u64::from_le_bytes(data_buf[0]);
 
@@ -258,11 +225,6 @@ impl AlignedReceiveBuffer {
 
         loop {
             let mut data_buf = [[0u8; 8]; 1];
-            // Read directly from physical index
-            trace!(
-                "AlignedReceiveBuffer::align: polling RX at offset {} for ACKNOWLEDGE confirmation",
-                rx_offset
-            );
             self.rx.read_slice(&mut data_buf, rx_offset);
             let value = u64::from_le_bytes(data_buf[0]);
 
@@ -310,11 +272,6 @@ impl AlignedReceiveBuffer {
     /// This function will also panic if the caller tries to read beyond the end of the buffer.
     /// This function will also panic if `align()` has not been called yet to discover the alignment offset.
     pub fn read_slice(&self, dst: &mut [[u8; 8]], offset: usize) {
-        trace!(
-            "AlignedReceiveBuffer::read_slice: len={}, offset={}",
-            dst.len(),
-            offset
-        );
         assert!(dst.len() + offset <= ReceiveRingbuffer::DATA_LEN);
         let rx_offset = self
             .rx_alignment_offset
@@ -323,11 +280,6 @@ impl AlignedReceiveBuffer {
         if aligned_offset >= ReceiveRingbuffer::DATA_LEN {
             aligned_offset -= ReceiveRingbuffer::DATA_LEN;
         }
-        trace!(
-            "AlignedReceiveBuffer::read_slice: using aligned_offset={}",
-            aligned_offset
-        );
-        trace!("AlignedReceiveBuffer::read_slice: about to call read_slice_with_wrap");
         self.rx.read_slice_with_wrap(dst, aligned_offset)
     }
 }
