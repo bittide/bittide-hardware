@@ -37,12 +37,9 @@ impl TransmitRingbuffer {
     /// does not ensure that `src.len() + offset` is within the bounds of the transmit buffer.
     pub unsafe fn write_slice_unchecked(&self, src: &[[u8; 8]], offset: usize) {
         trace!("TransmitRingbuffer::write_slice_unchecked: about to write {} bytes starting at offset {}", src.len(), offset);
-        let mut off = offset;
-        for &val in src {
-            unsafe {
-                self.set_data_unchecked(off, val);
-            }
-            off += 1;
+        let dst_ptr = self.0 as *mut [u8; 8];
+        unsafe {
+            core::ptr::copy_nonoverlapping(src.as_ptr(), dst_ptr.add(offset), src.len());
         }
     }
 
@@ -131,12 +128,10 @@ impl ReceiveRingbuffer {
             dst.len(),
             offset
         );
-        let mut off = offset;
-        for val in dst {
-            unsafe {
-                *val = self.data_unchecked(off);
-            }
-            off += 1;
+        let dst_ptr = dst.as_mut_ptr();
+        let src_ptr = self.0 as *const [u8; 8];
+        unsafe {
+            core::ptr::copy_nonoverlapping(src_ptr.add(offset), dst_ptr, dst.len());
         }
     }
 
@@ -215,20 +210,20 @@ impl AlignedReceiveBuffer {
     /// field will be set with the discovered offset, and the RX buffer will be aligned to the neighbor's TX buffer.
     pub fn align(&mut self, tx: &TransmitRingbuffer) {
         debug!("AlignedReceiveBuffer::align: starting alignment protocol");
-        // Initialize TX buffer: write ANNOUNCE at index 0, clear the rest
+
+        // Clear TX buffer completely first to remove any stale patterns
+        debug!("AlignedReceiveBuffer::align: about to clear entire TX buffer");
+        let empty_pattern: [[u8; 8]; 1] = [ALIGNMENT_EMPTY.to_le_bytes()];
+        for i in 0..TransmitRingbuffer::DATA_LEN {
+            tx.write_slice(&empty_pattern, i);
+        }
+        debug!("AlignedReceiveBuffer::align: cleared entire TX buffer");
+
+        // Write ANNOUNCE at index 0
         debug!("AlignedReceiveBuffer::align: about to write ANNOUNCE pattern to TX");
         let announce_pattern = [ALIGNMENT_ANNOUNCE.to_le_bytes()];
         tx.write_slice(&announce_pattern, 0);
         debug!("AlignedReceiveBuffer::align: sent ANNOUNCE pattern");
-
-        debug!("AlignedReceiveBuffer::align: about to clear rest of TX buffer");
-        let empty_pattern: [[u8; 8]; 1] = [ALIGNMENT_EMPTY.to_le_bytes()];
-        for i in 1..TransmitRingbuffer::DATA_LEN {
-            tx.write_slice(&empty_pattern, i);
-        }
-        debug!("AlignedReceiveBuffer::align: cleared rest of TX buffer");
-
-        debug!("AlignedReceiveBuffer::align: cleared rest of TX buffer");
 
         // Phase 1: Scan RX buffer to find ANNOUNCE or ACKNOWLEDGE
         // Read directly from scatter memory using read_slice with offset 0
