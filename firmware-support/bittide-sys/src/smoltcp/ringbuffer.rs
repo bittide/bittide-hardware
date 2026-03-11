@@ -33,7 +33,7 @@ use bittide_hal::manual_additions::ringbuffer::{
 };
 
 use crc::{Crc, CRC_32_ISCSI};
-use log::{trace, warn};
+use log::{debug, trace, warn};
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
@@ -98,6 +98,12 @@ where
         // Reserve space for packet header (CRC is part of header)
         let mtu = (Rx::DATA_LEN * 8).min(1500).min(Tx::DATA_LEN * 8) - PACKET_HEADER_SIZE;
         assert!(rx_buffer.is_aligned(), "RX buffer is not aligned ");
+        debug!(
+            "ringbuffer device init rx_words {} tx_words {} mtu {}",
+            Rx::DATA_LEN,
+            Tx::DATA_LEN,
+            mtu
+        );
 
         Self {
             rx_buffer,
@@ -153,7 +159,7 @@ where
 
         // Check if this is the same packet we saw before (based on sequence number)
         if seq_num == self.last_rx_seq {
-            // trace!("Detected repeated packet with seq {}", seq_num);
+            trace!("Detected repeated packet with seq {}", seq_num);
             return None;
         }
 
@@ -169,6 +175,13 @@ where
         // Calculate total packet size: header + payload
         let total_len = PACKET_HEADER_SIZE + packet_len;
         let num_words = total_len.div_ceil(8);
+        trace!(
+            "rx packet seq {} len {} total {} words {}",
+            seq_num,
+            packet_len,
+            total_len,
+            num_words
+        );
 
         // Read remaining words if any (we already read the first word)
         if num_words > 1 {
@@ -208,6 +221,7 @@ where
             buffer: payload,
             length: packet_len,
         };
+        trace!("rx token ready len {}", packet_len);
         let tx = TxToken {
             tx_buffer: &mut self.tx_buffer,
             mtu: self.mtu,
@@ -268,6 +282,7 @@ where
             len,
             self.mtu
         );
+        trace!("tx consume len {} mtu {}", len, self.mtu);
 
         // Prepare aligned buffer: header + payload
         let mut buffer = Aligned::new([[0u8; 8]; TX_WORDS]);
@@ -296,6 +311,12 @@ where
 
         // Calculate number of words needed
         let num_words = total_len.div_ceil(8);
+        trace!(
+            "tx packet len {} total {} words {}",
+            len,
+            total_len,
+            num_words
+        );
 
         // Write to ringbuffer starting at offset 0
         self.tx_buffer.write_slice(&buffer.get()[..num_words], 0);
