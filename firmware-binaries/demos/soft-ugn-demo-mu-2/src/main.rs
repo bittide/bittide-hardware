@@ -170,6 +170,9 @@ fn main() -> ! {
         INSTANCES.transmit_ringbuffer_5,
         INSTANCES.transmit_ringbuffer_6,
     ];
+    for tx in transmit_ringbuffers.iter() {
+        tx.clear();
+    }
     let mut receive_iter = receive_ringbuffers.into_iter();
     let mut transmit_iter = transmit_ringbuffers.into_iter();
     let mut devices: [RingbufferDevice; LINK_COUNT] = core::array::from_fn(|_| {
