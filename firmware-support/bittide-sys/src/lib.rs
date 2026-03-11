@@ -4,6 +4,8 @@
 
 #![no_std]
 #![feature(sync_unsafe_cell)]
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
 
 pub mod axi;
 pub mod callisto;

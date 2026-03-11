@@ -5,7 +5,10 @@
 #![cfg_attr(not(test), no_main)]
 
 use bittide_hal::{
-    manual_additions::{ringbuffer_test::ringbuffers::AlignedReceiveBuffer, timer::Duration},
+    manual_additions::{
+        ringbuffer::{AlignedReceiveBuffer, TransmitRingbufferInterface},
+        timer::Duration,
+    },
     ringbuffer_test::{devices::TransmitRingbuffer, DeviceInstances},
 };
 use core::fmt::Write;

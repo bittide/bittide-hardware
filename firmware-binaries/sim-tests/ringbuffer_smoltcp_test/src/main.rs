@@ -5,8 +5,9 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(sync_unsafe_cell)]
 
-use bittide_hal::manual_additions::ringbuffer_test::ringbuffers::AlignedReceiveBuffer;
+use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Instant;
+use bittide_hal::ringbuffer_test::devices::{ReceiveRingbuffer, TransmitRingbuffer};
 use bittide_hal::ringbuffer_test::DeviceInstances;
 use bittide_sys::net_state::{Manager, Subordinate, UgnEdge, UgnReport};
 use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
@@ -68,8 +69,10 @@ fn main() -> ! {
 
     // Step 2: Create smoltcp device
     info!("Step 2: Creating RingbufferDevice...");
-    let mut device0 = RingbufferDevice::new(rx_aligned0, tx_buffer1);
-    let mut device1 = RingbufferDevice::new(rx_aligned1, tx_buffer0);
+    let mut device0: RingbufferDevice<ReceiveRingbuffer, TransmitRingbuffer> =
+        RingbufferDevice::new(rx_aligned0, tx_buffer1);
+    let mut device1: RingbufferDevice<ReceiveRingbuffer, TransmitRingbuffer> =
+        RingbufferDevice::new(rx_aligned1, tx_buffer0);
     let mtu = device0.mtu();
     trace!("  MTU: {} bytes", mtu);
 

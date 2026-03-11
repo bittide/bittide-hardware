@@ -8,10 +8,13 @@
 
 use bittide_hal::hals::soft_ugn_demo_mu::devices::{ReceiveRingbuffer, TransmitRingbuffer};
 use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
+use bittide_hal::manual_additions::ringbuffer::{
+    AlignedReceiveBuffer, TransmitRingbufferInterface,
+};
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::net_state::{Manager, Subordinate, UgnEdge, UgnReport};
-use bittide_sys::smoltcp::soft_ugn_ringbuffer::{AlignedReceiveBuffer, RingbufferDevice};
+use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
 use bittide_sys::stability_detector::Stability;
 use core::fmt::Write;
 use log::{info, trace, warn, LevelFilter};
@@ -54,7 +57,10 @@ fn socket_set<'a>(storage: &'a mut [SocketStorage<'static>]) -> SocketSet<'a> {
     SocketSet::new(storage)
 }
 
-fn make_device(rx: ReceiveRingbuffer, tx: TransmitRingbuffer) -> RingbufferDevice {
+fn make_device(
+    rx: ReceiveRingbuffer,
+    tx: TransmitRingbuffer,
+) -> RingbufferDevice<ReceiveRingbuffer, TransmitRingbuffer> {
     let mut rx_aligned = AlignedReceiveBuffer::new(rx);
     rx_aligned.align(&tx);
     RingbufferDevice::new(rx_aligned, tx)
@@ -175,13 +181,14 @@ fn main() -> ! {
     }
     let mut receive_iter = receive_ringbuffers.into_iter();
     let mut transmit_iter = transmit_ringbuffers.into_iter();
-    let mut devices: [RingbufferDevice; LINK_COUNT] = core::array::from_fn(|i| {
-        let rx = receive_iter.next().expect("missing receive ringbuffer");
-        let tx = transmit_iter.next().expect("missing transmit ringbuffer");
-        let device = make_device(rx, tx);
-        trace!("Made device for link {}, with MTU {}", i, device.mtu());
-        device
-    });
+    let mut devices: [RingbufferDevice<ReceiveRingbuffer, TransmitRingbuffer>; LINK_COUNT] =
+        core::array::from_fn(|i| {
+            let rx = receive_iter.next().expect("missing receive ringbuffer");
+            let tx = transmit_iter.next().expect("missing transmit ringbuffer");
+            let device = make_device(rx, tx);
+            trace!("Made device for link {}, with MTU {}", i, device.mtu());
+            device
+        });
 
     let rx_buf = unsafe { &mut TCP_RX_BUFS[..] };
     let tx_buf = unsafe { &mut TCP_TX_BUFS[..] };

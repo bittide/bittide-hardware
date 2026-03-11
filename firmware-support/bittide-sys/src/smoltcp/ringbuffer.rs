@@ -27,12 +27,11 @@
 //! 3. Verify the CRC32 over sequence + length + payload
 //! 4. If CRC validates, extract payload and consume packet
 //! 5. Track sequence numbers to detect repeated packets
-
 use bittide_hal::manual_additions::addressable_buffer::Aligned;
 use bittide_hal::manual_additions::ringbuffer::{
     AlignedReceiveBuffer, ReceiveRingbufferInterface, TransmitRingbufferInterface,
 };
-use bittide_hal::ringbuffer_test::devices::{ReceiveRingbuffer, TransmitRingbuffer};
+
 use crc::{Crc, CRC_32_ISCSI};
 use log::{trace, warn};
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
@@ -71,14 +70,8 @@ fn is_valid(buffer: &[u8]) -> bool {
 ///
 /// The MTU is automatically calculated from the minimum of the scatter and gather
 /// buffer sizes (in bytes), minus space for packet header (which includes CRC32).
-pub struct RingbufferDeviceImpl<
-    Rx,
-    Tx,
-    const RX_WORDS: usize,
-    const TX_WORDS: usize,
-    const RX_BYTES: usize,
-    const TX_BYTES: usize,
-> where
+pub struct RingbufferDevice<Rx, Tx>
+where
     Rx: ReceiveRingbufferInterface,
     Tx: TransmitRingbufferInterface,
 {
@@ -91,14 +84,7 @@ pub struct RingbufferDeviceImpl<
     tx_seq_num: u16,
 }
 
-impl<
-        Rx,
-        Tx,
-        const RX_WORDS: usize,
-        const TX_WORDS: usize,
-        const RX_BYTES: usize,
-        const TX_BYTES: usize,
-    > RingbufferDeviceImpl<Rx, Tx, RX_WORDS, TX_WORDS, RX_BYTES, TX_BYTES>
+impl<Rx, Tx> RingbufferDevice<Rx, Tx>
 where
     Rx: ReceiveRingbufferInterface + 'static,
     Tx: TransmitRingbufferInterface + 'static,
@@ -110,7 +96,7 @@ where
     pub fn new(rx_buffer: AlignedReceiveBuffer<Rx, Tx>, tx_buffer: Tx) -> Self {
         // Calculate MTU from buffer sizes (each word is 8 bytes)
         // Reserve space for packet header (CRC is part of header)
-        let mtu = RX_BYTES.min(TX_BYTES) - PACKET_HEADER_SIZE;
+        let mtu = (Rx::DATA_LEN * 8).min(Tx::DATA_LEN * 8) - PACKET_HEADER_SIZE;
         assert!(rx_buffer.is_aligned(), "RX buffer is not aligned ");
 
         Self {
@@ -128,20 +114,21 @@ where
     }
 }
 
-impl<
-        Rx,
-        Tx,
-        const RX_WORDS: usize,
-        const TX_WORDS: usize,
-        const RX_BYTES: usize,
-        const TX_BYTES: usize,
-    > Device for RingbufferDeviceImpl<Rx, Tx, RX_WORDS, TX_WORDS, RX_BYTES, TX_BYTES>
+impl<Rx, Tx> Device for RingbufferDevice<Rx, Tx>
 where
     Rx: ReceiveRingbufferInterface + 'static,
     Tx: TransmitRingbufferInterface + 'static,
+    [(); Rx::DATA_LEN * 8]:,
+    [(); Tx::DATA_LEN * 8]:,
 {
-    type RxToken<'a> = RxToken<RX_BYTES>;
-    type TxToken<'a> = TxToken<'a, Tx, TX_WORDS>;
+    type RxToken<'a>
+        = RxToken<{ Rx::DATA_LEN * 8 }>
+    where
+        [(); Rx::DATA_LEN * 8]:;
+    type TxToken<'a>
+        = TxToken<'a, Tx, { Tx::DATA_LEN * 8 }>
+    where
+        [(); Tx::DATA_LEN * 8]:;
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();
@@ -152,7 +139,7 @@ where
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // Allocate aligned buffer for reading from ringbuffer
-        let mut packet_buffer = Aligned::new([[0u8; 8]; RX_WORDS]);
+        let mut packet_buffer = Aligned::new([[0u8; 8]; Rx::DATA_LEN]);
 
         // Read first word containing the header: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)
         self.rx_buffer
@@ -208,7 +195,7 @@ where
         self.last_rx_seq = seq_num;
 
         // Extract payload (skip header)
-        let mut payload = Aligned::new([0u8; RX_BYTES]);
+        let mut payload = Aligned::new([0u8; Rx::DATA_LEN * 8]);
         let payload_bytes = unsafe {
             core::slice::from_raw_parts(
                 (packet_buffer.get().as_ptr() as *const u8).add(PACKET_HEADER_SIZE),
@@ -323,23 +310,4 @@ where
 
         result
     }
-}
-
-macro_rules! define_ringbuffer_device {
-    (name: $name:ident, rx: $rx:ty, tx: $tx:ty) => {
-        pub type $name = RingbufferDeviceImpl<
-            $rx,
-            $tx,
-            { <$rx as ReceiveRingbufferInterface>::DATA_LEN },
-            { <$tx as TransmitRingbufferInterface>::DATA_LEN },
-            { <$rx as ReceiveRingbufferInterface>::DATA_LEN * 8 },
-            { <$tx as TransmitRingbufferInterface>::DATA_LEN * 8 },
-        >;
-    };
-}
-
-define_ringbuffer_device! {
-    name: RingbufferDevice,
-    rx: ReceiveRingbuffer,
-    tx: TransmitRingbuffer
 }

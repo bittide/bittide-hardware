@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use log::warn;
+
 const ALIGNMENT_ANNOUNCE: u64 = 0xBADC0FFEE;
 const ALIGNMENT_ACKNOWLEDGE: u64 = 0xDEADABBA;
 
@@ -26,7 +28,15 @@ pub trait TransmitRingbufferInterface {
     /// does not ensure that `src.len() + offset` is within the bounds of the transmit buffer.
     unsafe fn write_slice_unchecked(&self, src: &[[u8; 8]], offset: usize) {
         let dst_ptr = self.base_ptr().add(offset);
-        core::ptr::copy_nonoverlapping(src.as_ptr(), dst_ptr, src.len());
+        let src_ptr = src.as_ptr();
+        if (src_ptr as usize) % 4 != 0 || (dst_ptr as usize) % 4 != 0 {
+            warn!(
+                "ringbuffer tx write_slice_unchecked unaligned: src {:p} dst {:p}",
+                src_ptr, dst_ptr
+            );
+        }
+
+        core::ptr::copy_nonoverlapping(src_ptr, dst_ptr, src.len());
     }
 
     /// Write a slice to the transmit buffer wrapping if `src.len() + offset`exceeds the length
@@ -84,6 +94,12 @@ pub trait ReceiveRingbufferInterface {
     unsafe fn read_slice_unchecked(&self, dst: &mut [[u8; 8]], offset: usize) {
         let dst_ptr = dst.as_mut_ptr();
         let src_ptr = self.base_ptr().add(offset);
+        if (src_ptr as usize) % 4 != 0 || (dst_ptr as usize) % 4 != 0 {
+            warn!(
+                "ringbuffer rx read_slice_unchecked unaligned: src {:p} dst {:p}",
+                src_ptr, dst_ptr
+            );
+        }
         core::ptr::copy_nonoverlapping(src_ptr, dst_ptr, dst.len());
     }
 

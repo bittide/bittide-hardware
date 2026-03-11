@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-pub mod axi;
-pub mod ringbuffer;
-pub mod soft_ugn_ringbuffer;
 
 use smoltcp::wire::EthernetAddress;
 
