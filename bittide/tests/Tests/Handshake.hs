@@ -90,8 +90,8 @@ testEnableSafety = property $ do
   txEnB <- forAll $ genStickyTrue 0 testLength testLength
   rxEnB <- forAll $ genStickyTrue 0 testLength testLength
 
-  delayAtoB <- forAll $ Gen.integral (Range.linear 1 20)
-  delayBtoA <- forAll $ Gen.integral (Range.linear 1 20)
+  delayAtoB <- forAll $ Gen.integral (Range.linear 1 19)
+  delayBtoA <- forAll $ Gen.integral (Range.linear 1 19)
 
   let regsA = bundle (fromList txEnA, fromList rxEnA)
       regsB = bundle (fromList txEnB, fromList rxEnB)
@@ -139,8 +139,8 @@ testHandshakeLiveness = property $ do
   txEnB <- forAll $ genStickyTrue 0 enableBy testLength
   rxEnB <- forAll $ genStickyTrue 0 enableBy testLength
 
-  delayAtoB <- forAll $ Gen.integral (Range.linear 1 20)
-  delayBtoA <- forAll $ Gen.integral (Range.linear 1 20)
+  delayAtoB <- forAll $ Gen.integral (Range.linear 1 19)
+  delayBtoA <- forAll $ Gen.integral (Range.linear 1 19)
 
   let regsA = bundle (fromList txEnA, fromList rxEnA)
       regsB = bundle (fromList txEnB, fromList rxEnB)

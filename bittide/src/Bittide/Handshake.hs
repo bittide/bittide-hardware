@@ -119,7 +119,7 @@ handshakeStateMachine neighborState regs = state
 
   initState = (Meta False False False, False)
 
-  updateState state _neighborState@Nothing _regs = state
+  updateState hState _neighborState@Nothing _regs = hState
   updateState
     -- \| Current state
     (Meta txReady rxReady txLast, rxLast)
