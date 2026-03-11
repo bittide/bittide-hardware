@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use log::warn;
+use log::{debug, trace, warn};
 
 const ALIGNMENT_ANNOUNCE: u64 = 0xBADC0FFEE;
 const ALIGNMENT_ACKNOWLEDGE: u64 = 0xDEADABBA;
@@ -16,6 +16,11 @@ pub trait TransmitRingbufferInterface {
     /// Write a slice to the transmit buffer at the given offset. The slice must not exceed the buffer length when combined with the offset.
     fn write_slice(&self, src: &[[u8; 8]], offset: usize) {
         assert!(src.len() + offset <= Self::DATA_LEN);
+        trace!(
+            "ringbuffer tx write_slice len {} offset {}",
+            src.len(),
+            offset
+        );
         unsafe {
             self.write_slice_unchecked(src, offset);
         }
@@ -62,12 +67,19 @@ pub trait TransmitRingbufferInterface {
         } else {
             let first_part_len = Self::DATA_LEN - offset;
             let (first, second) = src.split_at(first_part_len);
+            debug!(
+                "ringbuffer tx write_slice_with_wrap offset {} first {} second {}",
+                offset,
+                first.len(),
+                second.len()
+            );
             self.write_slice(first, offset);
             self.write_slice(second, 0);
         }
     }
 
     fn clear(&self) {
+        debug!("ringbuffer tx clear len {}", Self::DATA_LEN);
         let zero = [[0u8; 8]; 1];
         for i in 0..Self::DATA_LEN {
             self.write_slice(&zero, i);
@@ -82,6 +94,11 @@ pub trait ReceiveRingbufferInterface {
 
     fn read_slice(&self, dst: &mut [[u8; 8]], offset: usize) {
         assert!(dst.len() + offset <= Self::DATA_LEN);
+        trace!(
+            "ringbuffer rx read_slice len {} offset {}",
+            dst.len(),
+            offset
+        );
         unsafe {
             self.read_slice_unchecked(dst, offset);
         }
@@ -125,6 +142,12 @@ pub trait ReceiveRingbufferInterface {
         } else {
             let first_part_len = Self::DATA_LEN - offset;
             let (first, second) = dst.split_at_mut(first_part_len);
+            debug!(
+                "ringbuffer rx read_slice_with_wrap offset {} first {} second {}",
+                offset,
+                first.len(),
+                second.len()
+            );
             self.read_slice(first, offset);
             self.read_slice(second, 0);
         }
@@ -189,6 +212,7 @@ where
     Tx: TransmitRingbufferInterface,
 {
     pub fn new(rx: Rx) -> Self {
+        debug!("ringbuffer aligned receive buffer new");
         Self {
             rx,
             rx_alignment_offset: None,
@@ -206,6 +230,7 @@ where
     }
 
     pub fn align(&mut self, tx: &Tx) {
+        debug!("ringbuffer align start");
         tx.clear();
         let announce_pattern = [ALIGNMENT_ANNOUNCE.to_le_bytes()];
         tx.write_slice(&announce_pattern, 0);
@@ -217,6 +242,7 @@ where
                 let value = u64::from_le_bytes(data_buf[0]);
 
                 if value == ALIGNMENT_ANNOUNCE || value == ALIGNMENT_ACKNOWLEDGE {
+                    debug!("ringbuffer align marker at rx_idx {}", rx_idx);
                     break 'outer rx_idx;
                 }
             }
@@ -231,20 +257,33 @@ where
             let value = u64::from_le_bytes(data_buf[0]);
 
             if value == ALIGNMENT_ACKNOWLEDGE {
+                debug!("ringbuffer align ack at rx_idx {}", rx_offset);
                 break;
             }
         }
         self.rx_alignment_offset = Some(rx_offset);
         self.tx_reference = tx.base_ptr() as *const _ as usize;
+        debug!("ringbuffer align complete offset {}", rx_offset);
     }
 
     pub fn clear_alignment(&mut self) {
+        debug!("ringbuffer clear alignment");
         self.rx_alignment_offset = None;
         self.tx_reference = 0;
     }
 
     pub fn verify_aligned_to(&self, tx: &Tx) -> bool {
-        self.is_aligned() && self.tx_reference == (tx.base_ptr() as *const _ as usize)
+        let tx_addr = tx.base_ptr() as *const _ as usize;
+        let aligned = self.is_aligned() && self.tx_reference == tx_addr;
+        if !aligned {
+            warn!(
+                "ringbuffer verify aligned failed: aligned {} tx_ref 0x{:x} tx_addr 0x{:x}",
+                self.is_aligned(),
+                self.tx_reference,
+                tx_addr
+            );
+        }
+        aligned
     }
 
     pub fn get_alignment_reference(&self) -> usize {
@@ -260,6 +299,12 @@ where
         if aligned_offset >= Rx::DATA_LEN {
             aligned_offset -= Rx::DATA_LEN;
         }
+        trace!(
+            "ringbuffer aligned read len {} offset {} aligned_offset {}",
+            dst.len(),
+            offset,
+            aligned_offset
+        );
         self.rx.read_slice_with_wrap(dst, aligned_offset)
     }
 }
