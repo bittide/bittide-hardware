@@ -215,6 +215,7 @@ fn main() -> ! {
             loop {
                 let now = to_smoltcp_instant(INSTANCES.timer.now());
                 let mut sockets = socket_set(&mut sockets_storage[..]);
+                trace!("Polling manager link {}", link);
                 manager.poll(now, &mut devices[link], &mut sockets);
                 trace!("manager link {} state {:?}", link, manager.state());
                 if manager.is_done() {
@@ -285,6 +286,7 @@ fn main() -> ! {
             let now = to_smoltcp_instant(INSTANCES.timer.now());
             for link in 0..LINK_COUNT {
                 let mut sockets = socket_set(&mut sockets_storage[link][..]);
+                trace!("Polling subordinate link {}", link);
                 subordinates[link].poll(now, &mut devices[link], &mut sockets);
                 {
                     let socket = sockets.get::<tcp::Socket>(socket_handles[link]);
