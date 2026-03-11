@@ -145,13 +145,16 @@ where
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // Allocate aligned buffer for reading from ringbuffer
+        trace!("Creating packet_buffer");
         let mut packet_buffer = Aligned::new([[0u8; 8]; Rx::DATA_LEN]);
 
+        trace!("Reading packet header from RX buffer");
         // Read first word containing the header: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)
         self.rx_buffer
             .read_slice(&mut packet_buffer.get_mut()[0..1], 0);
 
         // Extract CRC, sequence number, and length from header using direct pointer reads
+        trace!("Extracting header fields");
         let header_ptr = packet_buffer.get()[0].as_ptr();
         let _stored_crc = unsafe { (header_ptr as *const u32).read_unaligned() };
         let seq_num = unsafe { (header_ptr.add(4) as *const u16).read_unaligned() };
@@ -185,11 +188,13 @@ where
 
         // Read remaining words if any (we already read the first word)
         if num_words > 1 {
+            trace!("Reading packet payload from RX buffer");
             self.rx_buffer
                 .read_slice(&mut packet_buffer.get_mut()[1..num_words], 1);
         }
 
         // Flatten to bytes for CRC validation
+        trace!("Flattening packet buffer to byte slice for CRC validation");
         let packet_bytes = unsafe {
             core::slice::from_raw_parts(packet_buffer.get().as_ptr() as *const u8, total_len)
         };
@@ -208,6 +213,7 @@ where
         self.last_rx_seq = seq_num;
 
         // Extract payload (skip header)
+        trace!("Creating slice of payload bytes");
         let mut payload = Aligned::new([0u8; Rx::DATA_LEN * 8]);
         let payload_bytes = unsafe {
             core::slice::from_raw_parts(
@@ -215,6 +221,8 @@ where
                 packet_len,
             )
         };
+
+        trace!("Copying payload to local buffer");
         payload.get_mut()[..packet_len].copy_from_slice(payload_bytes);
 
         let rx = RxToken {
@@ -289,6 +297,7 @@ where
 
         // Write header fields using direct pointer writes
         // Header format: CRC32 (4 bytes) + sequence (2 bytes) + length (2 bytes)
+        trace!("Writing header fields to buffer");
         let header_ptr = buffer.get_mut().as_mut_ptr() as *mut u8;
         unsafe {
             // Write sequence and length (CRC written later after payload)
@@ -297,14 +306,19 @@ where
         }
 
         // Let smoltcp fill the packet data
+        trace!("Creating payload slice for smoltcp");
         let payload_slice =
             unsafe { core::slice::from_raw_parts_mut(header_ptr.add(PACKET_HEADER_SIZE), len) };
+        trace!("Filling payload using provided closure");
         let result = f(payload_slice);
 
         // Calculate total length and seal packet with CRC in header
+        trace!("Calculating CRC for packet");
         let total_len = PACKET_HEADER_SIZE + len;
         let crc_data = unsafe { core::slice::from_raw_parts(header_ptr.add(4), total_len - 4) };
         let crc = CRC.checksum(crc_data);
+
+        trace!("Writing CRC to header");
         unsafe {
             (header_ptr as *mut u32).write_unaligned(crc.to_le());
         }
