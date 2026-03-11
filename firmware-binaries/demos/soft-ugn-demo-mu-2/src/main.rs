@@ -175,10 +175,12 @@ fn main() -> ! {
     }
     let mut receive_iter = receive_ringbuffers.into_iter();
     let mut transmit_iter = transmit_ringbuffers.into_iter();
-    let mut devices: [RingbufferDevice; LINK_COUNT] = core::array::from_fn(|_| {
+    let mut devices: [RingbufferDevice; LINK_COUNT] = core::array::from_fn(|i| {
         let rx = receive_iter.next().expect("missing receive ringbuffer");
         let tx = transmit_iter.next().expect("missing transmit ringbuffer");
-        make_device(rx, tx)
+        let device = make_device(rx, tx);
+        trace!("Made device for link {}, with MTU {}", i, device.mtu());
+        device
     });
 
     let rx_buf = unsafe { &mut TCP_RX_BUFS[..] };
