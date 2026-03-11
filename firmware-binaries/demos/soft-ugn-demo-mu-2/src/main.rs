@@ -18,6 +18,7 @@ use bittide_sys::smoltcp::ringbuffer::RingbufferDevice;
 use bittide_sys::stability_detector::Stability;
 use core::fmt::Write;
 use log::{info, trace, warn, LevelFilter};
+use riscv::register::{mcause, mepc, mtval};
 use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
 use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr};
@@ -333,6 +334,20 @@ fn main() -> ! {
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let mut uart = INSTANCES.uart;
     writeln!(uart, "Panicked! #{info}").unwrap();
+    loop {
+        continue;
+    }
+}
+
+#[export_name = "ExceptionHandler"]
+fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
+    let mut uart = INSTANCES.uart;
+    riscv::interrupt::free(|| {
+        uwriteln!(uart, "... caught an exception. Looping forever now.\n").unwrap();
+        info!("mcause: {:?}\n", mcause::read());
+        info!("mepc: {:?}\n", mepc::read());
+        info!("mtval: {:?}\n", mtval::read());
+    });
     loop {
         continue;
     }

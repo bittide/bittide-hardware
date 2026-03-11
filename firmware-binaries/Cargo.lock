@@ -758,6 +758,7 @@ dependencies = [
  "bittide-sys",
  "log",
  "memmap-generate",
+ "riscv 0.10.1",
  "riscv-rt 0.11.0",
  "smoltcp 0.12.0",
  "ufmt",
