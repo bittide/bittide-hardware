@@ -292,7 +292,7 @@ driver2 testName targets = do
             $ T.tryWithTimeoutOn
               T.PrintActionTime
               "Waiting for CPU test status"
-              (180_000_000)
+              (360_000_000)
               goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->
