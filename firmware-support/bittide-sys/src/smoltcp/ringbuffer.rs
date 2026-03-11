@@ -96,7 +96,7 @@ where
     pub fn new(rx_buffer: AlignedReceiveBuffer<Rx, Tx>, tx_buffer: Tx) -> Self {
         // Calculate MTU from buffer sizes (each word is 8 bytes)
         // Reserve space for packet header (CRC is part of header)
-        let mtu = (Rx::DATA_LEN * 8).min(Tx::DATA_LEN * 8) - PACKET_HEADER_SIZE;
+        let mtu = (Rx::DATA_LEN * 8).min(1500).min(Tx::DATA_LEN * 8) - PACKET_HEADER_SIZE;
         assert!(rx_buffer.is_aligned(), "RX buffer is not aligned ");
 
         Self {
