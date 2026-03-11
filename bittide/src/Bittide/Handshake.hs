@@ -3,9 +3,16 @@
 -- SPDX-License-Identifier: Apache-2.0
 module Bittide.Handshake where
 
+import Clash.Prelude
+import Protocols
+
 import Clash.Annotations.BitRepresentation
 import Clash.Annotations.BitRepresentation.Deriving
-import Clash.Prelude
+import Clash.Class.BitPackC (ByteOrder)
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (Mm)
+import Protocols.MemoryMap.Registers.WishboneStandard (deviceWb, registerConfig, registerWbI)
+import Protocols.Wishbone
 
 type BittideWord = Vec 8 (BitVector 8)
 
@@ -133,3 +140,44 @@ handshakeStateMachine neighborState regs = state
       newRxReady = rxReady || ((rxEn && txEn) && neighborTxReady)
       newTxLast = (neighborRxReady && rxEn) || txLast
       newRxLast = neighborTxLast || rxLast
+
+handshakeWb ::
+  forall dom addrW nBytes.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , KnownNat addrW
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Circuit
+    ( (ToConstBwd Mm, Wishbone dom 'Standard addrW nBytes)
+    , -- \| Link from transceiver
+      CSignal dom (BitVector 64)
+    , -- \| Link from UGN capture
+      CSignal dom (BitVector 64)
+    )
+    ( -- \| Link to transceiver
+      CSignal dom (BitVector 64)
+    , -- \| Link to UGN capture
+      CSignal dom (BitVector 64)
+    , -- \| 'txLast' and 'rxLast' signals for the UGN send/receive(?)
+      CSignal dom (Bool, Bool)
+    )
+handshakeWb = circuit $ \(bus, rxLinkIn, txLinkIn) -> do
+  [rxLastBus, txLastBus] <- deviceWb "Handshake" -< bus
+
+  -- Add registerWbI's for the 2 control registers. Don't forget to add access control and
+  -- a description, see other usages of 'registerWb' as examples.
+  (Fwd rxLast, _rxLastActivity) <-
+    registerWbI (registerConfig "rx_last") False -< (rxLastBus, Fwd (pure Nothing))
+  (Fwd txLast, _txLastActivity) <-
+    registerWbI (registerConfig "tx_last") False -< (txLastBus, Fwd (pure Nothing))
+
+  -- We deconstructed these 2 signals above with the pattern match so we can treat them
+  -- as normal signals. We then need to reconstruct it either here, or as I did it in the
+  -- 'idC' below.
+  let out = bundle (rxLast, txLast)
+
+  idC -< (txLinkIn, rxLinkIn, Fwd out)
