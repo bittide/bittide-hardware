@@ -43,7 +43,7 @@ jobs: $ncpus
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 5ec337c04139f74dd706db77ccb25f92ad5dc3dc
+  tag: 3aacf5ac121f8406cde81500228c9ae18ef51f27
   subdir:
     clash-prelude
     clash-ghc
@@ -79,7 +79,17 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/clash-lang/ghc-typelits-natnormalise.git
-  tag: 043fa655347e999ff8b61620b2569d330b1a5546
+  tag: c12c1b4405f466af4972ddc8f516c528c4f3ebc7
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/ghc-typelits-extra.git
+  tag: 365a1f7b74ac2b1fa097bdba3fc2334cc81c5b22
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/ghc-typelits-knownnat.git
+  tag: dd44df6872232a62bfb6488f3fd9509d966b3e4e
 
 allow-newer:
   clash-protocols:tasty,

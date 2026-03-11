@@ -18,7 +18,7 @@ module Data.Constraint.Nat.Lemmas where
 
 import Data.Constraint (Dict (..))
 import Data.Type.Equality ((:~:) (Refl))
-import GHC.TypeLits.Extra (CLog, DivRU, Max, Min)
+import GHC.TypeLits.Extra (CLog, CLogWZ, DivRU, Max, Min)
 import GHC.TypeNats (Div, type (*), type (+), type (-), type (<=))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -31,6 +31,9 @@ constants, which we might relax in the future.
 -}
 clogProductRule :: (1 <= n) => CLog 2 (n * 2) :~: (CLog 2 n + 1)
 clogProductRule = unsafeCoerce Refl
+
+clogWzProductRule :: (1 <= n) => CLogWZ 2 (n * 2) 0 :~: (CLogWZ 2 n 0 + 1)
+clogWzProductRule = unsafeCoerce Refl
 
 {- | Postulates that multiplying some number /a/ by some constant /b/, and
 subsequently dividing that result by /b/ equals /a/.
