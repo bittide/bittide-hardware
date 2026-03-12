@@ -5,10 +5,10 @@
 #include "hals/soft_ugn_demo_mu/device_instances.h"
 
 #include "bittide_dna.h"
-#include "bittide_gather.h"  // Linter says we dont need this include, but we do
-#include "bittide_scatter.h" // Linter says we dont need this include, but we do
+#include "bittide_ring_receive.h"
+#include "bittide_ring_transmit.h"
 #include "bittide_timer.h"
-#include "bittide_ugn.h" // Requires the `bittide_scatter.h` and `bittide_gather.h`
+#include "bittide_ugn.h"
 
 #include "messages.h"
 #include "priority_queue.h"
@@ -21,7 +21,6 @@
 // Application Configuration
 // ============================================================================
 
-ScatterUnit su;
 // Number of event loop iterations
 #define NUM_PERIODS 1000
 #define NUM_PORTS 7
@@ -57,15 +56,17 @@ int c_main(void) {
   // Initialize all peripherals
 
   Uart uart = hal.uart;
-  ScatterUnit scatter_units[NUM_PORTS] = {
-      hal.scatter_unit_0, hal.scatter_unit_1, hal.scatter_unit_2,
-      hal.scatter_unit_3, hal.scatter_unit_4, hal.scatter_unit_5,
-      hal.scatter_unit_6};
+  ReceiveRingbuffer receive_ringbuffers[NUM_PORTS] = {
+      hal.receive_ringbuffer_0, hal.receive_ringbuffer_1,
+      hal.receive_ringbuffer_2, hal.receive_ringbuffer_3,
+      hal.receive_ringbuffer_4, hal.receive_ringbuffer_5,
+      hal.receive_ringbuffer_6};
 
-  GatherUnit gather_units[NUM_PORTS] = {hal.gather_unit_0, hal.gather_unit_1,
-                                        hal.gather_unit_2, hal.gather_unit_3,
-                                        hal.gather_unit_4, hal.gather_unit_5,
-                                        hal.gather_unit_6};
+  TransmitRingbuffer transmit_ringbuffers[NUM_PORTS] = {
+      hal.transmit_ringbuffer_0, hal.transmit_ringbuffer_1,
+      hal.transmit_ringbuffer_2, hal.transmit_ringbuffer_3,
+      hal.transmit_ringbuffer_4, hal.transmit_ringbuffer_5,
+      hal.transmit_ringbuffer_6};
   Timer timer = hal.timer;
   dna_t dna;
   dna_read(hal.dna, dna);
@@ -84,8 +85,9 @@ int c_main(void) {
   UgnEdge outgoing_link_ugn_list[NUM_PORTS];
 
   UgnContext ugn_ctx;
-  ugn_context_init(&ugn_ctx, scatter_units, gather_units, NUM_PORTS, node_id,
-                   incoming_link_ugn_list, outgoing_link_ugn_list, NUM_PORTS);
+  ugn_context_init(&ugn_ctx, receive_ringbuffers, transmit_ringbuffers,
+                   NUM_PORTS, node_id, incoming_link_ugn_list,
+                   outgoing_link_ugn_list, NUM_PORTS);
 
   // Print consolidated initialization information
   PRINT_INIT_INFO(uart, &ugn_ctx, BUFFER_SIZE, SEND_PERIOD, RECEIVE_PERIOD,

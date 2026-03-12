@@ -15,32 +15,33 @@
 #include <stdint.h>
 
 // ============================================================================
-// Gather Unit Functions (TX/Outgoing)
+// Transmit Ringbuffer Functions (TX/Outgoing)
 // ============================================================================
 
 /**
- * @brief Set a gather unit's first address to a specific alignment state.
+ * @brief Set a transmit ringbuffer's first address to a specific alignment
+ * state.
  *
- * This writes the encoded alignment state value to index 0 of the gather unit's
- * memory, which is the first address that will be transmitted.
+ * This writes the encoded alignment state value to index 0 of the transmit
+ * ringbuffer's memory, which is the first address that will be transmitted.
  *
- * @param gather The gather unit to configure
+ * @param tx_ring The transmit ringbuffer to configure
  * @param state The alignment state to write at the first address
  */
-void ringbuffer_set_alignment(GatherUnit gather,
+void ringbuffer_set_alignment(TransmitRingbuffer tx_ring,
                               enum RingbufferAlignState state);
 
 // ============================================================================
-// Scatter Unit Functions (RX/Incoming)
+// Receive Ringbuffer Functions (RX/Incoming)
 // ============================================================================
 
 /**
- * @brief Scan a scatter unit's ringbuffer for alignment state messages.
+ * @brief Scan a receive ringbuffer for alignment state messages.
  *
- * This function scans the entire scatter unit memory looking for
+ * This function scans the entire receive ringbuffer memory looking for
  * RINGBUFFER_ALIGN_ANNOUNCE or RINGBUFFER_ALIGN_ACKNOWLEDGE messages.
  *
- * @param scatter The scatter unit to scan
+ * @param rx_ring The receive ringbuffer to scan
  * @param buffer_size The size of the ringbuffer to scan
  * @param found_offset Pointer to store the offset where a message was found
  *                     (set to -1 if not found)
@@ -48,19 +49,19 @@ void ringbuffer_set_alignment(GatherUnit gather,
  *                    (only valid if found_offset >= 0)
  * @return bool True if an alignment message was found, false otherwise
  */
-bool ringbuffer_find_alignment(ScatterUnit scatter, int16_t buffer_size,
+bool ringbuffer_find_alignment(ReceiveRingbuffer rx_ring, int16_t buffer_size,
                                int16_t *found_offset,
                                enum RingbufferAlignState *found_state);
 
 /**
- * @brief Read the alignment state at a specific offset in a scatter unit.
+ * @brief Read the alignment state at a specific offset in a receive ringbuffer.
  *
- * @param scatter The scatter unit to read from
+ * @param rx_ring The receive ringbuffer to read from
  * @param offset The offset to read from
  * @return enum RingbufferAlignState The alignment state found at that offset
  */
 enum RingbufferAlignState
-ringbuffer_get_alignment_at_offset(ScatterUnit scatter, int16_t offset);
+ringbuffer_get_alignment_at_offset(ReceiveRingbuffer rx_ring, int16_t offset);
 
 // ============================================================================
 // Ringbuffer Alignment Protocol
@@ -70,7 +71,7 @@ ringbuffer_get_alignment_at_offset(ScatterUnit scatter, int16_t offset);
  * @brief Align ringbuffers across all ports using a two-phase protocol.
  *
  * This function implements a distributed alignment protocol that discovers
- * the offset of incoming messages on each port's scatter unit.
+ * the offset of incoming messages on each port's receive ringbuffer.
  *
  * Phase 1: Discovery
  * - Each node writes RINGBUFFER_ALIGN_ANNOUNCE to TX index 0
@@ -81,7 +82,7 @@ ringbuffer_get_alignment_at_offset(ScatterUnit scatter, int16_t offset);
  * - Each node changes TX message to RINGBUFFER_ALIGN_ACKNOWLEDGE
  * - Each node waits for all partners to send ACKNOWLEDGE at known positions
  *
- * @param ugn_ctx The UGN context containing scatter and gather units
+ * @param ugn_ctx The UGN context containing receive and transmit ringbuffers
  * @param incoming_offsets Array to store discovered offsets for each port
  * @param uart UART for debug output
  */
