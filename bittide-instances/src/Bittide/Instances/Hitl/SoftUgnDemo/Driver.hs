@@ -275,11 +275,25 @@ driver2 testName targets = do
               <> ", but got: "
               <> show (L.length <$> allTapInfos)
 
-    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+      gdbStarts = liftIO <$> fmap (const Gdb.start) targets
+      gdbCleanupAction gdb = do
+        putStrLn "Retrieving final CPU state"
+        Gdb.interruptCommand gdb
+        Gdb.runCommand gdb
+          . unlines
+          $ [ "printf \"Final CPU state\\n\""
+            , "i r"
+            , "bt"
+            ]
+        Gdb.stop gdb
+
+    brackets gdbStarts (liftIO . gdbCleanupAction) $ \ccGdbs -> do
+      -- Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control" Release) ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
-      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+      brackets gdbStarts (liftIO . gdbCleanupAction) $ \muGdbs -> do
+        -- Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO
           $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-demo-mu-2" Release) muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
