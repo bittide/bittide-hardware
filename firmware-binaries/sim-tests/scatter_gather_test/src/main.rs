@@ -63,6 +63,7 @@ fn main() -> ! {
         writeln!(uart, "Read from scatter memory:").unwrap();
         writeln!(uart, "{:?}", destination).unwrap();
     }
+    writeln!(uart, "Test done").unwrap();
     loop {
         continue;
     }

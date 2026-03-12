@@ -70,7 +70,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot" Release) bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -101,17 +101,17 @@ driver testName targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control" Release) ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo2-mu") muGdbs muTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo2-mu" Release) muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
           liftIO
-            $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo2-gppe") gppeGdbs gppeTapInfos targets
+            $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo2-gppe" Release) gppeGdbs gppeTapInfos targets
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gppeGdbs
 
           brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do

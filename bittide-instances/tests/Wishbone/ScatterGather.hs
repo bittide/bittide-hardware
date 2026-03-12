@@ -1,6 +1,8 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+-- Don't warn about orphan instances, caused by `createDomain`.
+{-# OPTIONS_GHC -Wno-orphans #-}
 -- Don't warn about partial functions: this is a test, so we'll see it fail.
 {-# OPTIONS_GHC -Wno-x-partial #-}
 
@@ -22,6 +24,9 @@ import Bittide.Instances.Tests.ScatterGather (dutWithBinary)
 
 import qualified Prelude as P
 
+createDomain vSystem{vName = "Slow", vPeriod = hzToPeriod 1000000}
+
+-- Simple
 sim :: IO ()
 sim = putStr simResult
 

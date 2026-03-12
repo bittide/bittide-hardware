@@ -25,7 +25,7 @@ module Protocols.ReqResp (
   fromBlockRamWithMask,
 
   -- * Other utilities
-  partitionEithers,
+  partition,
   forceResetSanity,
 ) where
 
@@ -38,6 +38,8 @@ import Protocols.BiDf (BiDf)
 import Protocols.Idle
 
 import qualified Clash.Prelude as C
+import qualified Data.List as L
+import qualified Protocols as Df
 import qualified Protocols.BiDf as BiDf
 
 {- |
@@ -66,6 +68,32 @@ instance IdleCircuit (ReqResp dom req resp) where
   idleFwd _ = pure Nothing
   idleBwd _ = pure Nothing
 
+instance
+  ( C.KnownDomain dom
+  , C.NFDataX req
+  , C.NFDataX resp
+  , Show req
+  , Show resp
+  , ShowX req
+  , ShowX resp
+  ) =>
+  Simulate (ReqResp dom req resp)
+  where
+  type SimulateFwdType (ReqResp dom req resp) = [Maybe req]
+  type SimulateBwdType (ReqResp dom req resp) = [Maybe resp]
+  type SimulateChannels (ReqResp dom req resp) = 1
+  simToSigFwd _ = C.fromList_lazy
+  simToSigBwd _ = C.fromList_lazy
+  sigToSimFwd _ = C.sample_lazy
+  sigToSimBwd _ = C.sample_lazy
+  stallC conf stalls =
+    let rst = unsafeFromActiveHigh (fromList (L.replicate conf.resetCycles True <> L.repeat False))
+     in C.withClockResetEnable clockGen rst enableGen $ circuit $ \rr0 -> do
+          reqs0 <- toDfs -< (rr0, resps)
+          reqs1 <- Df.stallC conf stalls -< reqs0
+          (rr1, resps) <- fromDfs -< reqs1
+          idC -< rr1
+
 leftToMaybe :: Either a b -> Maybe a
 leftToMaybe (Left x) = Just x
 leftToMaybe (Right _) = Nothing
@@ -73,20 +101,21 @@ rightToMaybe :: Either a b -> Maybe b
 rightToMaybe (Left _) = Nothing
 rightToMaybe (Right y) = Just y
 
--- | Partition a `ReqResp` with an `Either` request type into two `ReqResp`s, one for each side of the `Either`.
-partitionEithers ::
-  forall dom a b c. Circuit (ReqResp dom (Either a b) c) (ReqResp dom a c, ReqResp dom b c)
-partitionEithers = Circuit goS
+-- | Partitions an incoming `ReqResp` bus into two busses based on a function.
+partition ::
+  (req -> Either a b) ->
+  Circuit (ReqResp dom req resp) (ReqResp dom a resp, ReqResp dom b resp)
+partition f = Circuit goS
  where
-  goS (eitherFwd, (leftBwd, rightBwd)) = (eitherBwd, (leftFwd, rightFwd))
+  goS ((fmap (fmap f) -> eitherFwd), (leftBwdS, rightBwdS)) = (eitherBwd, (leftFwd, rightFwd))
    where
     leftFwd = fmap (>>= leftToMaybe) eitherFwd
     rightFwd = fmap (>>= rightToMaybe) eitherFwd
 
-    eitherBwd = selectBwd <$> eitherFwd <*> leftBwd <*> rightBwd
-  selectBwd (Just (Left _)) leftBwd _ = leftBwd
-  selectBwd (Just (Right _)) _ rightBwd = rightBwd
-  selectBwd Nothing _ _ = Nothing
+    eitherBwd = selectBwd <$> eitherFwd <*> leftBwdS <*> rightBwdS
+    selectBwd (Just (Left _)) leftBwd _ = leftBwd
+    selectBwd (Just (Right _)) _ rightBwd = rightBwd
+    selectBwd Nothing _ _ = Nothing
 
 {- | Given a 'blockRam' primitive, create a circuit that offers a 'ReqResp' interface to access
 the primitive using 'ReqResp' for the read channel and 'Df' for the write channel.

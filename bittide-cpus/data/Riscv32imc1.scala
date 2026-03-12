@@ -44,7 +44,7 @@ object Riscv32imc1 extends App {
         ),
 
         new CsrPlugin(
-            CsrPluginConfig.smallest.copy(
+            CsrPluginConfig.all.copy(
               ebreakGen = true,
               mtvecAccess = CsrAccess.READ_WRITE,
               withPrivilegedDebug = true
