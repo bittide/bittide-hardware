@@ -25,7 +25,7 @@ module Protocols.ReqResp (
   fromBlockRamWithMask,
 
   -- * Other utilities
-  partitionEithers,
+  partition,
   forceResetSanity,
 ) where
 
@@ -101,20 +101,21 @@ rightToMaybe :: Either a b -> Maybe b
 rightToMaybe (Left _) = Nothing
 rightToMaybe (Right y) = Just y
 
--- | Partition a `ReqResp` with an `Either` request type into two `ReqResp`s, one for each side of the `Either`.
-partitionEithers ::
-  forall dom a b c. Circuit (ReqResp dom (Either a b) c) (ReqResp dom a c, ReqResp dom b c)
-partitionEithers = Circuit goS
+-- | Partitions an incoming `ReqResp` bus into two busses based on a function.
+partition ::
+  (req -> Either a b) ->
+  Circuit (ReqResp dom req resp) (ReqResp dom a resp, ReqResp dom b resp)
+partition f = Circuit goS
  where
-  goS (eitherFwd, (leftBwd, rightBwd)) = (eitherBwd, (leftFwd, rightFwd))
+  goS ((fmap (fmap f) -> eitherFwd), (leftBwdS, rightBwdS)) = (eitherBwd, (leftFwd, rightFwd))
    where
     leftFwd = fmap (>>= leftToMaybe) eitherFwd
     rightFwd = fmap (>>= rightToMaybe) eitherFwd
 
-    eitherBwd = selectBwd <$> eitherFwd <*> leftBwd <*> rightBwd
-  selectBwd (Just (Left _)) leftBwd _ = leftBwd
-  selectBwd (Just (Right _)) _ rightBwd = rightBwd
-  selectBwd Nothing _ _ = Nothing
+    eitherBwd = selectBwd <$> eitherFwd <*> leftBwdS <*> rightBwdS
+    selectBwd (Just (Left _)) leftBwd _ = leftBwd
+    selectBwd (Just (Right _)) _ rightBwd = rightBwd
+    selectBwd Nothing _ _ = Nothing
 
 {- | Given a 'blockRam' primitive, create a circuit that offers a 'ReqResp' interface to access
 the primitive using 'ReqResp' for the read channel and 'Df' for the write channel.
