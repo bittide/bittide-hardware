@@ -286,6 +286,15 @@ driver2 testName targets = do
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+
+          _ <- liftIO $ do
+            mapConcurrently
+              ( \gdb -> do
+                  Gdb.setBreakpoints gdb ["_start_trap_rust"]
+                  Gdb.setBreakpointHook gdb
+              )
+              muGdbs
+
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
 
