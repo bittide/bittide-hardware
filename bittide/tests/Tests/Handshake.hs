@@ -93,6 +93,10 @@ handshakesWithDelays delayAtoB delayBtoA regsA wordA regsB wordB = (wordA', regs
   wordToBDelayed = registerN delayAtoB initValue wordToB
   initValue = unpack 0
 
+{- A simple state machine that starts by sending dummy data. When it receives a
+lastTx to be True, it sends out the @ugn@ value next cycle, then continuously
+sends out user data values.
+-}
 ugnSender ::
   forall dom n.
   (KnownNat n) =>
@@ -272,7 +276,8 @@ testHandshakeUgnCapture = property $ do
       ugnCapturedB = countNumAssertTrue $ finiteTest $ sample capturedUgnB
       ugnCapturedB' = countNumAssertTrue $ finiteTest $ sample capturedUgnB'
 
-  -- Assertions
+  -- Assert that the UGN and lastRx (delayed one cycle) are both only True once,
+  -- and that they are True on the same cycle.
   ugnCapturedA === 1
   ugnCapturedA' === 1
   ugnCapturedB === 1
@@ -286,8 +291,10 @@ testMetadataParsing = do
 
   assertEqual "Parsing regular word returns Nothing" Nothing (wordToMetadata regularWord)
   assertEqual "Parsing metadata word returns Just xxx" (Just metadata) (wordToMetadata metadataWord)
-
--- assertEqual "id ~ fromWord . toWord" (Just metadata) (wordToMetadata $ metadataToWord metadata)
+  assertEqual
+    "id ~ fromWord . toWord"
+    (Just metadata)
+    (wordToMetadata $ metadataToWord @BittideWordSizeAdj metadata)
 
 tests :: TestTree
 tests =

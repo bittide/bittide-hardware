@@ -37,19 +37,6 @@ wordToMetadata word =
         then Just $ unpack meta
         else Nothing
 
-{-
-wordToMetadata' ::
-  forall n.
-  (KnownNat n, 2 <= n) =>
-  BitVector (n*8) ->
-  Maybe Meta
-wordToMetadata' word =
-  let (header, meta) = (leToPlus @1 @n split) word in
-  if (header == magicConstant)
-    then Just $ unpack meta
-    else Nothing
--}
-
 {- | Given a @Meta@, convert it to a @BitVector n@, where @n@ is a positive
 multiple of @8@.
 -}
