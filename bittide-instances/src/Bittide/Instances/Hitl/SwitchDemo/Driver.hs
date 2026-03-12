@@ -115,15 +115,16 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
 initGdb ::
   FilePath ->
   String ->
+  CargoBuildType ->
   Gdb ->
   Ocd.TapInfo ->
   (HwTarget, DeviceInfo) ->
   IO ()
-initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
+initGdb hitlDir binName buildType gdb tapInfo (hwT, _d) = do
   Gdb.setLogging gdb
     $ hitlDir
     </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
-  Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
+  Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" buildType </> binName
   Gdb.setTarget gdb tapInfo.gdbPort
   Gdb.setTimeout gdb Nothing
   Gdb.runCommand gdb "echo connected to target device"
@@ -376,7 +377,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot" Release) bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -407,12 +408,12 @@ driver testName targets = do
                 <> show (L.length <$> allTapInfos)
 
       Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control" Release) ccGdbs ccTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
         Gdb.withGdbs (L.length targets) $ \muGdbs -> do
           liftIO
-            $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muTapInfos targets
+            $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu" Release) muGdbs muTapInfos targets
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs

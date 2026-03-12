@@ -68,7 +68,7 @@ driverFunc _name targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \gdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-board") gdbs peTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-board" Release) gdbs peTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gdbs
 
       let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]

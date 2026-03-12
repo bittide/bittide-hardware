@@ -71,7 +71,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot" Release) bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -102,11 +102,11 @@ driver testName targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control" Release) ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu" Release) muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
@@ -245,7 +245,7 @@ driver2 testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot" Release) bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -276,11 +276,12 @@ driver2 testName targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control" Release) ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-demo-mu-2") muGdbs muTapInfos targets
+        liftIO
+          $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-demo-mu-2" Release) muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
