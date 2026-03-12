@@ -83,6 +83,7 @@ import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
 import Bittide.ElasticBuffer (sticky)
+import Bittide.Handshake (Meta (..))
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
 import Data.Maybe (fromMaybe, isNothing)
@@ -95,21 +96,6 @@ import qualified Bittide.Transceiver.Prbs as Prbs
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
 import qualified Clash.Cores.Xilinx.Gth as Gth
-
-{- | Meta information send along with the PRBS and alignment symbols. See module
-documentation for more information.
--}
-data Meta = Meta
-  { readyToReceive :: Bool
-  -- ^ Ready to receive user data
-  , readyToTransmit :: Bool
-  -- ^ Ready to transmit user data
-  , lastPrbsWord :: Bool
-  -- ^ Next word will be user data
-  , padding :: Unsigned 5
-  -- ^ Padding up to 1 byte
-  }
-  deriving (Generic, NFDataX, BitPack)
 
 data Config dom = Config
   { resetManagerConfig :: ResetManager.Config
