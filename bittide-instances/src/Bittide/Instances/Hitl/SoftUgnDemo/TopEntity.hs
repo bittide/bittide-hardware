@@ -109,11 +109,11 @@ tests =
     , externalHdl = []
     , testCases =
         [ HitlTestCase
-            { name = "Bittide_Demo_DUT"
+            { name = "Bittide_Demo_DUT_mu2"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just Driver.driver
+    , mDriverProc = Just Driver.driver2
     , mPostProc = Nothing
     }

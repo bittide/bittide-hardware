@@ -4,13 +4,11 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-use bittide_hal::{
-    manual_additions::timer::Duration,
-    ringbuffer_test::{devices::TransmitRingbuffer, DeviceInstances},
-};
+use bittide_hal::{manual_additions::timer::Duration, ringbuffer_test::DeviceInstances};
 use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
+use ufmt::{uwrite, uwriteln};
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
@@ -24,10 +22,10 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let timer = INSTANCES.timer;
 
-    writeln!(uart, "=== Ringbuffer Loopback Test (Byte-Level) ===").unwrap();
+    uwriteln!(uart, "=== Ringbuffer Loopback Test (Byte-Level) ===").unwrap();
 
-    let tx_ringbuffer = INSTANCES.transmit_ringbuffer;
-    let rx_ringbuffer = INSTANCES.receive_ringbuffer;
+    let tx_ringbuffer = INSTANCES.transmit_ringbuffer_0;
+    let rx_ringbuffer = INSTANCES.receive_ringbuffer_0;
 
     // Create pattern: 4 MSBs = frame number, 4 LSBs = byte index in frame
     // Frame 0: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
@@ -47,10 +45,13 @@ fn main() -> ! {
     }
 
     // Wait for data to propagate through the loopback
-    timer.wait(Duration::from_cycles(
-        TransmitRingbuffer::DATA_LEN as u32,
-        timer.frequency(),
-    ));
+    // Need to wait long enough for:
+    // - TX to cycle through entire buffer (DATA_LEN cycles)
+    // - Propagation delay through configurable latency (0-100 cycles)
+    // - Pipeline delays in TX/RX logic
+    // - RX to write all frames
+    // Wait for 2000 cycles to definitively rule out timing issues
+    timer.wait(Duration::from_cycles(2000, timer.frequency()));
 
     // Read RX buffer byte by byte
     let mut rx_bytes = [0u8; TOTAL_BYTES];
@@ -94,30 +95,33 @@ fn main() -> ! {
         }
 
         if all_match {
-            writeln!(uart, "*** TEST PASSED: All data matches! ***").unwrap();
+            uwriteln!(uart, "*** TEST PASSED: All data matches! ***").unwrap();
         } else {
-            writeln!(uart, "\n*** TEST FAILED: Data corruption detected ***").unwrap();
+            uwriteln!(uart, "\n*** TEST FAILED: Data corruption detected ***").unwrap();
 
             if let Some((frame, byte_idx, expected, actual)) = first_mismatch {
-                writeln!(
+                uwriteln!(
                     uart,
                     "First mismatch at RX frame {}, byte {}: expected 0x{:02x}, got 0x{:02x}",
-                    frame, byte_idx, expected, actual
+                    frame,
+                    byte_idx,
+                    expected,
+                    actual
                 )
                 .unwrap();
             }
 
-            writeln!(uart, "\nTX pattern written (byte-by-byte):").unwrap();
+            uwriteln!(uart, "\nTX pattern written (byte-by-byte):").unwrap();
             for frame in 0..RINGBUFFER_SIZE {
                 let start = frame * 8;
-                write!(uart, "  TX[{:2}]: ", frame).unwrap();
+                uwrite!(uart, "  TX[{}]: ", frame).unwrap();
                 for byte_idx in 0..8 {
-                    write!(uart, "{:02x} ", tx_pattern[start + byte_idx]).unwrap();
+                    uwrite!(uart, "{:02x} ", tx_pattern[start + byte_idx]).unwrap();
                 }
-                writeln!(uart).unwrap();
+                uwriteln!(uart, "").unwrap();
             }
 
-            writeln!(
+            uwriteln!(
                 uart,
                 "\nRX pattern received (starting at frame {}):",
                 offset
@@ -128,45 +132,47 @@ fn main() -> ! {
                 let tx_start = frame * 8;
                 let rx_start = rx_frame * 8;
 
-                write!(uart, "  RX[{:2}]: ", rx_frame).unwrap();
+                uwrite!(uart, "  RX[{:02x}]: ", rx_frame).unwrap();
                 let mut frame_matches = true;
                 for byte_idx in 0..8 {
                     let expected = tx_pattern[tx_start + byte_idx];
                     let actual = rx_bytes[rx_start + byte_idx];
-                    write!(uart, "{:02x} ", actual).unwrap();
+                    uwrite!(uart, "{:02x} ", actual).unwrap();
                     if actual != expected {
                         frame_matches = false;
                     }
                 }
-                writeln!(uart, "{}", if frame_matches { "✓" } else { "✗" }).unwrap();
+                uwriteln!(uart, "{}", if frame_matches { "✓" } else { "✗" }).unwrap();
             }
+            uwriteln!(uart, "Test done").unwrap();
         }
     } else {
-        writeln!(
+        uwriteln!(
             uart,
             "\n*** TEST FAILED: First frame not found in RX buffer ***"
         )
         .unwrap();
 
-        writeln!(uart, "\nTX pattern written (byte-by-byte):").unwrap();
+        uwriteln!(uart, "\nTX pattern written (byte-by-byte):").unwrap();
         for frame in 0..RINGBUFFER_SIZE {
             let start = frame * 8;
-            write!(uart, "  TX[{:2}]: ", frame).unwrap();
+            uwrite!(uart, "  TX[{}]: ", frame).unwrap();
             for byte_idx in 0..8 {
-                write!(uart, "{:02x} ", tx_pattern[start + byte_idx]).unwrap();
+                uwrite!(uart, "{:02x} ", tx_pattern[start + byte_idx]).unwrap();
             }
-            writeln!(uart).unwrap();
+            uwriteln!(uart, "").unwrap();
         }
 
-        writeln!(uart, "\nRX buffer contents (byte-by-byte):").unwrap();
+        uwriteln!(uart, "\nRX buffer contents (byte-by-byte):").unwrap();
         for frame in 0..RINGBUFFER_SIZE {
             let start = frame * 8;
-            write!(uart, "  RX[{:2}]: ", frame).unwrap();
+            uwrite!(uart, "  RX[{:02x}]: ", frame).unwrap();
             for byte_idx in 0..8 {
-                write!(uart, "{:02x} ", rx_bytes[start + byte_idx]).unwrap();
+                uwrite!(uart, "{:02x} ", rx_bytes[start + byte_idx]).unwrap();
             }
-            writeln!(uart).unwrap();
+            uwriteln!(uart, "").unwrap();
         }
+        uwriteln!(uart, "Test done").unwrap();
     }
 
     loop {

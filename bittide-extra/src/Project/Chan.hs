@@ -5,6 +5,7 @@ module Project.Chan where
 
 import Prelude hiding (filter)
 
+import Control.Concurrent.Async (async, waitAnyCancel)
 import Control.Concurrent.Chan
 import Data.ByteString (ByteString)
 import Debug.Trace
@@ -46,3 +47,15 @@ Do not use on Handles that might return non-ASCII characters.
 -}
 readUntilLine :: Chan ByteString -> String -> IO [String]
 readUntilLine h = readUntilLineWith h readChan
+
+{- | Wait for a line to appear on any channel and return its index.
+Only use in combination with sensible timeouts.
+-}
+waitForLineAny :: (HasCallStack) => [Chan ByteString] -> String -> IO Int
+waitForLineAny chans expected = do
+  asyncs <-
+    mapM
+      (\(idx, chan) -> async $ waitForLine chan expected >> pure idx)
+      (zip [0 :: Int ..] chans)
+  (_, idx) <- waitAnyCancel asyncs
+  pure idx

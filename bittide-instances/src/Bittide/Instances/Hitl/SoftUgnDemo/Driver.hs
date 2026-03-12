@@ -71,7 +71,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot" Release) bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -102,11 +102,11 @@ driver testName targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control" Release) ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu" Release) muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
@@ -131,17 +131,6 @@ driver testName targets = do
             hardwareRoundtrips = calculateRoundtripLatencies $ L.concat hardwareUgns
           _ <- liftIO $ do
             putStrLn "\n=== Hardware UGN Roundtrip Latencies ==="
-            mapM print hardwareRoundtrips
-          liftIO
-            $ T.tryWithTimeoutOn
-              T.PrintActionTime
-              "Waiting for calendar initialization"
-              (30_000_000)
-              goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico "[MU] All calendars initialized"
-
           softwareUgnsPerNode <-
             liftIO
               $ T.tryWithTimeoutOn
@@ -218,6 +207,120 @@ driver testName targets = do
               $ forConcurrently_ picocoms
               $ \pico ->
                 waitForLine pico "[MU] Test status: Success"
+
+          liftIO goDumpCcSamples
+
+          pure ExitSuccess
+
+driver2 ::
+  (HasCallStack) =>
+  String ->
+  [(HwTarget, DeviceInfo)] ->
+  VivadoM ExitCode
+driver2 testName targets = do
+  liftIO
+    . putStrLn
+    $ "Running driver function for targets "
+    <> show ((\(_, info) -> info.deviceId) <$> targets)
+
+  projectDir <- liftIO $ findParentContaining "cabal.project"
+  let hitlDir = projectDir </> "_build/hitl" </> testName
+
+  forM_ targets (assertProbe "probe_test_start")
+
+  let
+    -- BOOT / MU / CC IDs
+    expectedJtagIds = [0x0514C001, 0x1514C001, 0x2514C001]
+    toInitArgs (_, deviceInfo) targetIndex =
+      Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
+    initArgs = L.zipWith toInitArgs targets [0 ..]
+    optionalBootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
+    openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalBootInitArgs
+
+  let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
+  brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+    -- Start OpenOCD that will program the boot CPU
+    brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+      let bootTapInfos = parseBootTapInfo <$> initOcdsData
+
+      Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
+        liftIO
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot" Release) bootGdbs bootTapInfos targets
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
+        liftIO $ mapConcurrently_ Gdb.continue bootGdbs
+        liftIO
+          $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
+          $ forConcurrently_ picocoms
+          $ \pico ->
+            waitForLine pico "[BT] Going into infinite loop.."
+
+  let
+    optionalInitArgs = L.repeat def
+    openOcdStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalInitArgs
+
+  -- Start OpenOCD instances for all CPUs
+  brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+    let
+      allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
+
+      _bootTapInfos, muTapInfos, ccTapInfos :: [Ocd.TapInfo]
+      (_bootTapInfos, muTapInfos, ccTapInfos)
+        | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
+        , [boots, mus, ccs] <- L.transpose allTapInfos =
+            (boots, mus, ccs)
+        | otherwise =
+            error
+              $ "Unexpected number of OpenOCD taps initialized. Expected: "
+              <> show (L.length expectedJtagIds)
+              <> ", but got: "
+              <> show (L.length <$> allTapInfos)
+
+      gdbStarts = liftIO <$> fmap (const Gdb.start) targets
+      gdbCleanupAction gdb = do
+        putStrLn "Retrieving final CPU state"
+        Gdb.interruptCommand gdb
+        Gdb.runCommand gdb
+          . unlines
+          $ [ "printf \"Final CPU state\\n\""
+            , "i r"
+            , "bt"
+            ]
+        Gdb.stop gdb
+
+    brackets gdbStarts (liftIO . gdbCleanupAction) $ \ccGdbs -> do
+      -- Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control" Release) ccGdbs ccTapInfos targets
+      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
+
+      brackets gdbStarts (liftIO . gdbCleanupAction) $ \muGdbs -> do
+        -- Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+        liftIO
+          $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-demo-mu-2" Release) muGdbs muTapInfos targets
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
+
+        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+
+          _ <- liftIO $ do
+            mapConcurrently
+              ( \gdb -> do
+                  Gdb.setBreakpoints gdb ["_start_trap_rust"]
+                  Gdb.setBreakpointHook gdb
+              )
+              muGdbs
+
+          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue muGdbs
+
+          liftIO
+            $ T.tryWithTimeoutOn
+              T.PrintActionTime
+              "Waiting for CPU test status"
+              (360_000_000)
+              goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico "[MU] Demo complete."
 
           liftIO goDumpCcSamples
 
