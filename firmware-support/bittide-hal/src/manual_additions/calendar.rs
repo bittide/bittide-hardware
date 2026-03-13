@@ -7,23 +7,22 @@ The `calendar` module provides a hardware abstraction layer over based on the ge
 peripheral access code for the `Calendar` device.
  */
 
-use crate::manual_additions::{FromAs, IntoAs};
+use crate::manual_additions::{
+    index::{Index, IndexInner, IndexInterface, IndexSizeCheck},
+    unsigned::{Unsigned, UnsignedInterface, UnsignedSizeCheck},
+    FromAs, IntoAs,
+};
+use bittide_macros::{Index, Unsigned};
 
 pub trait ValidEntryType {
     type Inner;
     type Repeat;
-
-    const REPEAT_MASK: Self::Repeat;
 
     fn new(entry: Self::Inner, repeat: Self::Repeat) -> Self;
 }
 
 pub type ValidEntryInner<T> = <T as ValidEntryType>::Inner;
 pub type ValidEntryRepeat<T> = <T as ValidEntryType>::Repeat;
-
-pub const fn valid_entry_repeat_mask<T: ValidEntryType>() -> ValidEntryRepeat<T> {
-    <T as ValidEntryType>::REPEAT_MASK
-}
 
 macro_rules! impl_valid_entry_type {
     (
@@ -35,10 +34,8 @@ macro_rules! impl_valid_entry_type {
             type Inner = T;
             type Repeat = $repeat;
 
-            const REPEAT_MASK: Self::Repeat = $mask as $repeat;
-
+            #[inline]
             fn new(entry: Self::Inner, repeat: Self::Repeat) -> Self {
-                let repeat = repeat & Self::REPEAT_MASK;
                 Self {
                     ve_entry: entry,
                     ve_repeat: repeat,
@@ -50,36 +47,28 @@ macro_rules! impl_valid_entry_type {
 
 impl_valid_entry_type! {
     type: [crate::types::ValidEntry_12],
-    repeat: u16,
+    repeat: Unsigned!(16),
     mask: 12,
 }
 
 impl_valid_entry_type! {
     type: [crate::types::ValidEntry_16],
-    repeat: u16,
+    repeat: Unsigned!(16),
     mask: 16,
 }
 
 /// Abstraction trait over all the methods that a calendar type should provide
 pub trait CalendarInterface {
     type EntryType: Copy + ValidEntryType;
-    type MetacycleCount;
+    type MetacycleCount: UnsignedInterface;
+    type Index: IndexInterface<Inner: FromAs<usize> + PartialOrd> + IntoAs<usize>;
 
-    type ShadowIndex: Ord + FromAs<usize> + IntoAs<usize> + IntoAs<u128>;
-    const SHADOW_INDEX_MAX: Self::ShadowIndex;
-
-    type WriteIndex: Ord + FromAs<usize> + IntoAs<u128>;
-    const WRITE_ADDR_MAX: Self::WriteIndex;
-
-    type ReadIndex: Ord + FromAs<usize> + IntoAs<u128>;
-    const READ_ADDR_MAX: Self::ReadIndex;
-
-    fn calint_shadow_depth_index(&self) -> Self::ShadowIndex;
+    fn calint_shadow_depth_index(&self) -> Self::Index;
     fn calint_shadow_entry(&self) -> Self::EntryType;
-    fn calint_metacycle_count(&self) -> u32;
-    fn calint_set_shadow_depth_index(&self, val: Self::ShadowIndex);
-    fn calint_set_write_addr(&self, val: Self::WriteIndex);
-    fn calint_set_read_addr(&self, val: Self::ReadIndex);
+    fn calint_metacycle_count(&self) -> Self::MetacycleCount;
+    fn calint_set_shadow_depth_index(&self, val: Self::Index);
+    fn calint_set_write_addr(&self, val: Self::Index);
+    fn calint_set_read_addr(&self, val: Self::Index);
     fn calint_set_shadow_entry(&self, val: Self::EntryType);
     fn calint_set_swap_active(&self, val: bool);
     fn calint_set_end_of_metacycle(&self, val: bool);
@@ -91,22 +80,14 @@ pub type CalendarEntryType<T> = <T as CalendarInterface>::EntryType;
 /// Type alias for retrieving the metacycle count type of a calendar type.
 pub type CalendarMetacycleCount<T> = <T as CalendarInterface>::MetacycleCount;
 
-/// Type alias for retrieving the shadow index type of a calendar type.
-pub type CalendarShadowIndex<T> = <T as CalendarInterface>::ShadowIndex;
-
-/// Type alias for retrieving the write index type of a calendar type.
-pub type CalendarWriteIndex<T> = <T as CalendarInterface>::WriteIndex;
-
-/// Type alias for retrieving the read index type of a calendar type.
-pub type CalendarReadIndex<T> = <T as CalendarInterface>::ReadIndex;
+/// Type alias for retrieving the index type of a calendar type.
+pub type CalendarIndex<T> = <T as CalendarInterface>::Index;
 
 macro_rules! impl_calendar_interface {
     (
         cal: $cty:ty,
         metacycle: $mc:ty,
-        shadow: $si:ty,
-        write: $wi:ty,
-        read: $ri:ty,
+        index: $ix:ty,
         entry: $et:ty,
     ) => {
         // Assertions that must be met for the implementation to be valid
@@ -124,7 +105,7 @@ macro_rules! impl_calendar_interface {
                 );
             }
             // Assert that the shadow index type can hold the maximum shadow depth index
-            if (<$cty>::SHADOW_DEPTH_INDEX_SIZE as u128 - 1) > (<$si>::MAX as u128) {
+            if (<$cty>::SHADOW_DEPTH_INDEX_SIZE as u128 - 1) > (<$ix>::MAX as u128) {
                 const_panic::concat_panic!(
                     "Shadow index type ",
                     stringify!($si),
@@ -132,70 +113,53 @@ macro_rules! impl_calendar_interface {
                     <$cty>::SHADOW_DEPTH_INDEX_SIZE as u128 - 1,
                 );
             }
-            // Assert that the write index type can hold the maximum write address
-            if <$cty>::WRITE_ADDR_SIZE as u128 - 1 > <$wi>::MAX as u128 {
-                const_panic::concat_panic!(
-                    "Write index type ",
-                    stringify!($wi),
-                    " cannot fit the maximum value ",
-                    <$cty>::WRITE_ADDR_SIZE as u128 - 1,
-                );
-            }
-            // Assert that the read index type can hold the maximum read address
-            if <$cty>::READ_ADDR_SIZE as u128 - 1 > <$ri>::MAX as u128 {
-                const_panic::concat_panic!(
-                    "Read index type ",
-                    stringify!($ri),
-                    " cannot fit the maximum value ",
-                    <$cty>::READ_ADDR_SIZE as u128 - 1,
-                );
-            }
         };
         impl CalendarInterface for $cty {
             type EntryType = $et;
             type MetacycleCount = $mc;
+            type Index = $ix;
 
-            type ShadowIndex = $si;
-            const SHADOW_INDEX_MAX: $si = (<$cty>::SHADOW_DEPTH_INDEX_SIZE - 1) as $si;
-
-            type WriteIndex = $wi;
-            const WRITE_ADDR_MAX: $wi = (<$cty>::WRITE_ADDR_SIZE - 1) as $wi;
-
-            type ReadIndex = $ri;
-            const READ_ADDR_MAX: $ri = (<$cty>::READ_ADDR_SIZE - 1) as $ri;
-
-            fn calint_shadow_depth_index(&self) -> Self::ShadowIndex {
+            #[inline]
+            fn calint_shadow_depth_index(&self) -> Self::Index {
                 self.shadow_depth_index()
             }
 
+            #[inline]
             fn calint_shadow_entry(&self) -> Self::EntryType {
                 self.shadow_entry()
             }
 
+            #[inline]
             fn calint_metacycle_count(&self) -> Self::MetacycleCount {
                 self.metacycle_count()
             }
 
-            fn calint_set_shadow_depth_index(&self, val: Self::ShadowIndex) {
+            #[inline]
+            fn calint_set_shadow_depth_index(&self, val: Self::Index) {
                 self.set_shadow_depth_index(val)
             }
 
-            fn calint_set_write_addr(&self, val: Self::WriteIndex) {
+            #[inline]
+            fn calint_set_write_addr(&self, val: Self::Index) {
                 self.set_write_addr(val)
             }
 
-            fn calint_set_read_addr(&self, val: Self::ReadIndex) {
+            #[inline]
+            fn calint_set_read_addr(&self, val: Self::Index) {
                 self.set_read_addr(val)
             }
 
+            #[inline]
             fn calint_set_shadow_entry(&self, val: Self::EntryType) {
                 self.set_shadow_entry(val)
             }
 
+            #[inline]
             fn calint_set_swap_active(&self, val: bool) {
                 self.set_swap_active(val)
             }
 
+            #[inline]
             fn calint_set_end_of_metacycle(&self, val: bool) {
                 self.set_end_of_metacycle(val)
             }
@@ -211,11 +175,12 @@ pub trait CalendarType: CalendarInterface {
     ///
     /// Panics if `n` is an invalid value for a `Self::ReadIndex` type instance.
     fn read_shadow_entry(&self, n: usize) -> Self::EntryType {
+        let n_inner = n.into_as();
         assert!(
-            n as u128 <= Self::READ_ADDR_MAX.into_as(),
+            n_inner <= Self::Index::MAX,
             "Shadow entry read index is out of bounds."
         );
-        self.calint_set_read_addr(Self::ReadIndex::from_as(n));
+        self.calint_set_read_addr(unsafe { Self::Index::idx_new_unchecked(n_inner) });
         self.calint_shadow_entry()
     }
 
@@ -225,12 +190,13 @@ pub trait CalendarType: CalendarInterface {
     ///
     /// Panics if `n` is an invalid value for a `Self::WriteIndex` type instance.
     fn write_shadow_entry(&self, n: usize, entry: Self::EntryType) {
+        let n_inner = n.into_as();
         assert!(
-            n as u128 <= Self::WRITE_ADDR_MAX.into_as(),
+            n_inner <= Self::Index::MAX,
             "Shadow entry write index is out of bounds."
         );
         self.calint_set_shadow_entry(entry);
-        self.calint_set_write_addr(Self::WriteIndex::from_as(n));
+        self.calint_set_write_addr(unsafe { Self::Index::idx_new_unchecked(n_inner) });
     }
 
     /// Swaps the active and shadow calendar at the end of the metacycle.
@@ -245,13 +211,13 @@ pub trait CalendarType: CalendarInterface {
 
     /// Returns the number of entries in the shadow calendar.
     fn shadow_depth(&self) -> usize {
-        <Self::ShadowIndex as IntoAs<usize>>::into_as(self.calint_shadow_depth_index()) + 1
+        self.calint_shadow_depth_index().into_as() + 1
     }
 
     /// Returns an iterator over the shadow calendar entries.
     fn read_shadow_calendar<'a>(&'a self) -> impl Iterator<Item = Self::EntryType> + 'a {
         (0..self.shadow_depth()).map(|n| {
-            self.calint_set_read_addr(Self::ReadIndex::from_as(n));
+            self.calint_set_read_addr(unsafe { Self::Index::idx_new_unchecked(n.into_as()) });
             self.calint_shadow_entry()
         })
     }
@@ -267,63 +233,56 @@ pub trait CalendarType: CalendarInterface {
             return;
         }
         assert!(
-            entries.len() as u128
-                <= <Self::ShadowIndex as IntoAs<u128>>::into_as(Self::SHADOW_INDEX_MAX),
-            "Entries exceed shadow calendar size"
+            entries.len() <= Self::Index::IMAX.into_as(),
+            "Input slice (length {}) is too long for calendar of size {}",
+            entries.len(),
+            Self::Index::N_,
         );
         for (n, entry) in entries.iter().enumerate() {
             self.calint_set_shadow_entry(*entry);
-            self.calint_set_write_addr(Self::WriteIndex::from_as(n));
+            self.calint_set_write_addr(unsafe { Self::Index::idx_new_unchecked(n.into_as()) });
         }
-        self.calint_set_shadow_depth_index(Self::ShadowIndex::from_as(entries.len() - 1));
+        self.calint_set_shadow_depth_index(unsafe {
+            Self::Index::idx_new_unchecked((entries.len() - 1).into_as())
+        });
     }
 }
 
-impl<T: CalendarInterface> CalendarType for T {}
+impl<T> CalendarType for T where T: CalendarInterface {}
 
 impl_calendar_interface! {
     cal: crate::hals::switch_c::devices::Calendar,
-    metacycle: u32,
-    shadow: u8,
-    write: u8,
-    read: u8,
-    entry: crate::types::ValidEntry_12<[u8; 16]>,
+    metacycle: Unsigned!(32),
+    index: Index!(256),
+    entry: crate::types::ValidEntry_12<[Index!(17); 16]>,
 }
 
 impl_calendar_interface! {
     cal: crate::hals::switch_demo_mu::devices::Calendar,
-    metacycle: u32,
-    shadow: u8,
-    write: u8,
-    read: u8,
-    entry: crate::types::ValidEntry_12<[u8; 8]>,
+    metacycle: Unsigned!(32),
+    index: Index!(7),
+    entry: crate::types::ValidEntry_12<[Index!(9); 8]>,
 }
 
 impl_calendar_interface! {
     cal: crate::hals::switch_demo_gppe_mu::devices::Calendar,
-    metacycle: u32,
-    shadow: u16,
-    write: u16,
-    read: u16,
-    entry: crate::types::ValidEntry_12<u16>,
+    metacycle: Unsigned!(32),
+    index: Index!(1024),
+    entry: crate::types::ValidEntry_12<Index!(1024)>,
 }
 
 impl_calendar_interface! {
     cal: crate::hals::scatter_gather_pe::devices::Calendar,
-    metacycle: u32,
-    shadow: u8,
-    write: u8,
-    read: u8,
-    entry: crate::types::ValidEntry_12<u8>,
+    metacycle: Unsigned!(32),
+    index: Index!(32),
+    entry: crate::types::ValidEntry_12<Index!(16)>,
 }
 
 impl_calendar_interface! {
     cal: crate::hals::soft_ugn_demo_mu::devices::Calendar,
-    metacycle: u32,
-    shadow: u16,
-    write: u16,
-    read: u16,
-    entry: crate::types::ValidEntry_16<u16>,
+    metacycle: Unsigned!(32),
+    index: Index!(4000),
+    entry: crate::types::ValidEntry_16<Index!(4000)>,
 }
 
 pub trait RingbufferCalendar {
@@ -333,7 +292,8 @@ pub trait RingbufferCalendar {
 impl<T> RingbufferCalendar for T
 where
     T: CalendarType,
-    ValidEntryInner<CalendarEntryType<T>>: FromAs<usize>,
+    core::ops::Range<IndexInner<T::Index>>: IntoIterator<Item = IndexInner<T::Index>>,
+    ValidEntryInner<CalendarEntryType<T>>: From<T::Index>,
     ValidEntryRepeat<CalendarEntryType<T>>: FromAs<u8>,
 {
     /// Initializes a calendar type which contains entries derivable from `usize` and repeats
@@ -347,18 +307,19 @@ where
     ///   calendar (compared against [`Self::SHADOW_INDEX_MAX`])
     fn initialize_as_ringbuffer(&self, size: usize) {
         assert!(size > 0, "Cannot have a ringbuffer of size 0!");
-        let size_max_index: CalendarShadowIndex<T> = (size - 1).into_as();
-        if size_max_index > Self::SHADOW_INDEX_MAX {
-            panic!(
-                "Size ({size}) exceeds calendar size ({})",
-                <CalendarShadowIndex<T> as IntoAs<u128>>::into_as(Self::SHADOW_INDEX_MAX)
-            );
+        let size_max_index: IndexInner<T::Index> = (size - 1).into_as();
+        if <usize as IntoAs<IndexInner<T::Index>>>::into_as(size) > T::Index::N_AS_INNER {
+            panic!("Size ({size}) exceeds calendar size ({})", T::Index::N_);
         }
-        for n in 0..size {
-            let entry = CalendarEntryType::<Self>::new(n.into_as(), 0.into_as());
+        for (n, idx) in (IndexInner::<T::Index>::from_as(0usize)..T::Index::N_AS_INNER)
+            .into_iter()
+            .map(|n| unsafe { T::Index::idx_new_unchecked(n) })
+            .enumerate()
+        {
+            let entry = CalendarEntryType::<Self>::new(idx.into(), 0.into_as());
             self.write_shadow_entry(n, entry);
         }
-        self.calint_set_shadow_depth_index(size_max_index);
+        self.calint_set_shadow_depth_index(unsafe { T::Index::idx_new_unchecked(size_max_index) });
         self.calint_set_swap_active(true);
     }
 }

@@ -5,11 +5,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
-use bittide_hal::manual_additions::calendar::RingbufferCalendar;
-use bittide_hal::shared_devices::Uart;
-use bittide_sys::link_startup::LinkStartup;
-use bittide_sys::stability_detector::Stability;
+use bittide_hal::{
+    hals::soft_ugn_demo_mu::DeviceInstances, manual_additions::calendar::RingbufferCalendar,
+    shared_devices::Uart,
+};
+use bittide_sys::{link_startup::LinkStartup, stability_detector::Stability};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 

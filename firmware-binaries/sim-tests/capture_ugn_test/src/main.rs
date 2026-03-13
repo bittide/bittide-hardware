@@ -26,9 +26,9 @@ fn main() -> ! {
     }
     uwriteln!(
         uart,
-        "(0x{:16X},0x{:16X})",
+        "({},{})",
         capture_ugn.local_counter(),
-        capture_ugn.remote_counter()
+        capture_ugn.remote_counter(),
     )
     .unwrap();
     loop {

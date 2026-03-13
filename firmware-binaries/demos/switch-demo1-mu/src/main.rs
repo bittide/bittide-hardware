@@ -6,8 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::hals::switch_demo_mu::DeviceInstances;
-use bittide_sys::link_startup::LinkStartup;
-use bittide_sys::stability_detector::Stability;
+use bittide_sys::{link_startup::LinkStartup, stability_detector::Stability};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 

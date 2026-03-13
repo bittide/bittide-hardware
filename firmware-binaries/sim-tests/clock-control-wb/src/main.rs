@@ -74,7 +74,7 @@ fn main() -> ! {
     writeln!(uart, "]").unwrap();
 
     // Mark end of transmission - should hopefully be unique enough?
-    for _ in 0..cc.link_mask_pop_count() {
+    for _ in 0..cc.link_mask_pop_count().into_inner() {
         cc.set_change_speed(SpeedChange::NoChange);
     }
 
