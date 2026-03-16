@@ -11,7 +11,7 @@ import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access),
+  RegisterConfig (..),
   deviceWb,
   registerConfig,
   registerWbI,
@@ -96,10 +96,11 @@ handshake rxWordIn txWordIn regs = (rxWordOut, txWordOut, bundle (txLast, rxLast
 
   (metadata, rxLastS) = handshakeStateMachine neighborMetadata regs
 
-  txLast = isRising False $ sticky $ metadata.lastMetadataWord
+  lastMetadataWordSticky = sticky $ metadata.lastMetadataWord
+  txLast = isRising False lastMetadataWordSticky
   rxLast = isRising False $ sticky $ rxLastS
 
-  handshakeFinished = not <$> (sticky txLast)
+  handshakeFinished = not <$> lastMetadataWordSticky
 
   -- Words out
   txWordOut =
