@@ -8,8 +8,13 @@ import Protocols
 
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (Mm)
-import Protocols.MemoryMap.Registers.WishboneStandard (deviceWb, registerConfig, registerWbI)
+import Protocols.MemoryMap (Access (..), Mm)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (access),
+  deviceWb,
+  registerConfig,
+  registerWbI,
+ )
 import Protocols.Wishbone
 
 magicConstant :: (KnownNat n) => BitVector (n * 8)
@@ -155,9 +160,11 @@ handshakeWb = circuit $ \(bus, (Fwd rxLinkIn), (Fwd txLinkIn)) -> do
   [txLastBus, rxLastBus] <- deviceWb "Handshake" -< bus
 
   (Fwd txLast, _txLastActivity) <-
-    registerWbI (registerConfig "tx_last") False -< (txLastBus, Fwd (pure Nothing))
+    registerWbI ((registerConfig "tx_last"){access = WriteOnly}) False
+      -< (txLastBus, Fwd (pure Nothing))
   (Fwd rxLast, _rxLastActivity) <-
-    registerWbI (registerConfig "rx_last") False -< (rxLastBus, Fwd (pure Nothing))
+    registerWbI ((registerConfig "rx_last"){access = WriteOnly}) False
+      -< (rxLastBus, Fwd (pure Nothing))
 
   let txRxRegs = bundle (txLast, rxLast)
   let (txLinkOut, rxLinkOut, txRxLast) = handshake rxLinkIn txLinkIn txRxRegs
