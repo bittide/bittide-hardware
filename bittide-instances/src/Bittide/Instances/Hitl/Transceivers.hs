@@ -23,7 +23,7 @@ import Clash.Prelude (withClockResetEnable)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
-import Bittide.ElasticBuffer (sticky)
+import Bittide.ElasticBuffer (stickyE)
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
@@ -68,7 +68,7 @@ expectCounter ::
   Signal dom (Maybe (BitVector 64)) ->
   -- | Error
   Signal dom Bool
-expectCounter clk rst = sticky clk rst . mealy clk rst enableGen go counterStart
+expectCounter clk rst = stickyE clk rst . mealy clk rst enableGen go counterStart
  where
   go c (Just e) = (c + 1, c /= e)
   go c Nothing = (c, False)
@@ -199,7 +199,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
     goTransceiversUpTest refClk sysClk testRst rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allUp
-  failAfterUpSticky = sticky sysClk testRst failAfterUp
+  failAfterUpSticky = stickyE sysClk testRst failAfterUp
 
   startTest = isJust <$> maybeFpgaIndex
 
