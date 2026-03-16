@@ -91,18 +91,24 @@ type Underflow = Bool
 type Overflow = Bool
 type Stable = Bool
 
-{-# OPAQUE sticky #-}
+{-# OPAQUE stickyE #-}
 
 -- | Create a sticky version of a boolean signal.
-sticky ::
+stickyE ::
   (KnownDomain dom) =>
   Clock dom ->
   Reset dom ->
   Signal dom Bool ->
   Signal dom Bool
-sticky clk rst a = stickyA
+stickyE clk rst a = stickyA
  where
   stickyA = E.register clk rst enableGen False (stickyA .||. a)
+
+sticky ::
+  (HiddenClockResetEnable dom) =>
+  Signal dom Bool ->
+  Signal dom Bool
+sticky s = stickyE hasClock hasReset s
 
 data ElasticBufferData a
   = -- | No valid data present, because FIFO was empty
@@ -404,7 +410,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
 
     let
       isFirstRising :: Signal readDom Bool -> Signal readDom Bool
-      isFirstRising = E.isRising clkRead flagsReset enableGen False . sticky clkRead flagsReset
+      isFirstRising = E.isRising clkRead flagsReset enableGen False . stickyE clkRead flagsReset
 
       flagsReset :: Reset readDom
       flagsReset = E.orReset rstRead (unsafeFromActiveHigh (clearStatusRegisters .== Just (BusWrite True)))

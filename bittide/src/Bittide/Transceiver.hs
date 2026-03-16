@@ -82,7 +82,7 @@ import Clash.Explicit.Prelude
 import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
-import Bittide.ElasticBuffer (sticky)
+import Bittide.ElasticBuffer (stickyE)
 import Bittide.Handshake (Meta (..))
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
@@ -742,13 +742,13 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
   txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
 
-  rxUserData = sticky rxClock rxReset rxLast
-  txUserData = sticky txClock txReset txLast
+  rxUserData = stickyE rxClock rxReset rxLast
+  txUserData = stickyE txClock txReset txLast
 
-  indicateRxReady = withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
+  indicateRxReady = withLockRxTx (prbsOkDelayed .&&. stickyE rxClock rxReset args.rxReady)
 
-  rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
-  txReadyNeighborSticky = sticky rxClock rxReset txReadyNeighbor
+  rxReadyNeighborSticky = stickyE rxClock rxReset rxReadyNeighbor
+  txReadyNeighborSticky = stickyE rxClock rxReset txReadyNeighbor
   txLast = indicateRxReady .&&. args.txStart .&&. withLockRxTx rxReadyNeighborSticky
 
   metaTx :: Signal tx Meta

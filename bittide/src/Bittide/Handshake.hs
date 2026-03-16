@@ -6,6 +6,7 @@ module Bittide.Handshake where
 import Clash.Prelude
 import Protocols
 
+import Bittide.ElasticBuffer (sticky)
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (..), Mm)
@@ -22,7 +23,7 @@ in bit form. The representation itself is only relevant to `wordToMetadata` and
 `metadataToWord`. Currently, we just prepend a magicConstant to the metadata byte
 to make it easy to read, but in practice it could be anything.
 -}
-magicConstant :: (KnownNat n) => BitVector (n * 8)
+magicConstant :: (KnownNat n) => BitVector n
 magicConstant = 0xdeadbeef
 
 {- | Meta information send along with the PRBS and alignment symbols. See
@@ -45,11 +46,12 @@ convert it to a @Just metadata@ (or @Nothing@ if the BitVector does
 not fit the metadata format).
 -}
 wordToMetadata ::
-  (KnownNat n) =>
-  BitVector ((n + 1) * 8) ->
+  forall n.
+  (KnownNat n, BitSize Meta <= n) =>
+  BitVector n ->
   Maybe Meta
 wordToMetadata word =
-  let (header, meta) = split word
+  let (header, meta) = split @_ @(n - 8) word
    in if (header == magicConstant)
         then Just $ unpack meta
         else Nothing
@@ -58,32 +60,33 @@ wordToMetadata word =
 multiple of @8@.
 -}
 metadataToWord ::
-  (KnownNat n) =>
+  forall n.
+  (KnownNat n, BitSize Meta <= n) =>
   Meta ->
-  BitVector ((n + 1) * 8)
-metadataToWord meta = magicConstant ++# (pack meta)
+  BitVector n
+metadataToWord meta = magicConstant @(n - 8) ++# (pack meta)
 
+{-
 stickyTrue ::
   (HiddenClockResetEnable dom) =>
   Signal dom Bool ->
   Signal dom Bool
-stickyTrue s = s'
- where
-  s' = (register False s') .||. s
+stickyTrue s = sticky hasClock hasReset s
+-}
 
 handshake ::
-  (KnownNat n) =>
+  (KnownNat n, BitSize Meta <= n) =>
   (HiddenClockResetEnable dom) =>
   -- | From transceiver
-  Signal dom (BitVector ((n + 1) * 8)) ->
+  Signal dom (BitVector n) ->
   -- | From ugn capture
-  Signal dom (BitVector ((n + 1) * 8)) ->
+  Signal dom (BitVector n) ->
   -- | Read, Write enable regs
   Signal dom (Bool, Bool) ->
   ( -- \| To UGN capture
-    Signal dom (BitVector ((n + 1) * 8))
+    Signal dom (BitVector n)
   , -- \| To transceiver
-    Signal dom (BitVector ((n + 1) * 8))
+    Signal dom (BitVector n)
   , -- \| Tuple of (txLast, rxLast), which indicates to ugnCapture when to send/receive the UGN.
     Signal dom (Bool, Bool)
   )
@@ -93,10 +96,10 @@ handshake rxWordIn txWordIn regs = (rxWordOut, txWordOut, bundle (txLast, rxLast
 
   (metadata, rxLastS) = handshakeStateMachine neighborMetadata regs
 
-  txLast = isRising False $ stickyTrue $ metadata.lastMetadataWord
-  rxLast = isRising False $ stickyTrue $ rxLastS
+  txLast = isRising False $ sticky $ metadata.lastMetadataWord
+  rxLast = isRising False $ sticky $ rxLastS
 
-  handshakeFinished = not <$> (stickyTrue txLast)
+  handshakeFinished = not <$> (sticky txLast)
 
   -- Words out
   txWordOut =
@@ -164,10 +167,22 @@ handshakeWb = circuit $ \(bus, (Fwd rxLinkIn), (Fwd txLinkIn)) -> do
   [txLastBus, rxLastBus] <- deviceWb "Handshake" -< bus
 
   (Fwd txLast, _txLastActivity) <-
-    registerWbI ((registerConfig "tx_last"){access = WriteOnly}) False
+    registerWbI
+      ( (registerConfig "tx_en")
+          { access = WriteOnly
+          , description = "The CPU should write True once it has paused Elastic Buffer centering"
+          }
+      )
+      False
       -< (txLastBus, Fwd (pure Nothing))
   (Fwd rxLast, _rxLastActivity) <-
-    registerWbI ((registerConfig "rx_last"){access = WriteOnly}) False
+    registerWbI
+      ( (registerConfig "rx_en")
+          { access = WriteOnly
+          , description = "The CPU should write True once it is ready to receive UGN"
+          }
+      )
+      False
       -< (rxLastBus, Fwd (pure Nothing))
 
   let txRxRegs = bundle (txLast, rxLast)

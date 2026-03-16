@@ -6,7 +6,7 @@ module Tests.Handshake where
 import Clash.Prelude
 import Hedgehog
 
-import Bittide.Handshake hiding (stickyTrue)
+import Bittide.Handshake
 import qualified Data.List as List
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
@@ -18,12 +18,7 @@ import Tests.Shared (SomeSNat (..), someSNat)
 {- | Number of bytes in a BittideWord. Meant to be adjustable based on expected
 workload size
 -}
-type BittideWordSize = 8
-
-{- | To work around Clash's constraint solver, we declare all functions to work on
-@n+1@, so we must declare the size to be the actual word size - 1.
--}
-type BittideWordSizeAdj = BittideWordSize - 1
+type BittideWordSize = 64
 
 {- Generate a finite list that starts False, switches to True after a random
 number of cycles in range @[minK, maxK]@, and stays True.
@@ -72,16 +67,16 @@ handshakesWithDelays ::
   forall dom n delayAB delayBA.
   (HiddenClockResetEnable dom) =>
   (KnownNat delayAB, KnownNat delayBA) =>
-  (KnownNat n) =>
+  (KnownNat n, BitSize Meta <= n) =>
   SNat delayAB ->
   SNat delayBA ->
   Signal dom (Bool, Bool) ->
-  Signal dom (BitVector ((n + 1) * 8)) ->
+  Signal dom (BitVector n) ->
   Signal dom (Bool, Bool) ->
-  Signal dom (BitVector ((n + 1) * 8)) ->
-  ( Signal dom (BitVector ((n + 1) * 8))
+  Signal dom (BitVector n) ->
+  ( Signal dom (BitVector n)
   , Signal dom (Bool, Bool)
-  , Signal dom (BitVector ((n + 1) * 8))
+  , Signal dom (BitVector n)
   , Signal dom (Bool, Bool)
   )
 handshakesWithDelays delayAtoB delayBtoA regsA wordA regsB wordB = (wordA', regsA', wordB', regsB')
@@ -99,15 +94,15 @@ sends out user data values.
 -}
 ugnSender ::
   forall dom n.
-  (KnownNat n) =>
+  (KnownNat n, BitSize Meta <= n) =>
   (HiddenClockResetEnable dom) =>
   Signal dom Bool ->
-  Signal dom (BitVector ((n + 1) * 8))
+  Signal dom (BitVector n)
 ugnSender = moore updateState outputUserData initState
  where
-  dummyWord = 0x00 :: BitVector ((n + 1) * 8)
-  ugnWord = 0xaa :: BitVector ((n + 1) * 8)
-  userDataWord = 0xff :: BitVector ((n + 1) * 8)
+  dummyWord = 0x00 :: BitVector n
+  ugnWord = 0xaa :: BitVector n
+  userDataWord = 0xff :: BitVector n
 
   initState = (False, False)
 
@@ -141,7 +136,7 @@ testEnableSafety = property $ do
         case (someSNat delayAtoB, someSNat delayBtoA) of
           (SomeSNat (_a@SNat :: SNat delayAtoB), SomeSNat (_b@SNat :: SNat delayBtoA)) ->
             withClockResetEnable clockGen resetGen enableGen
-              $ handshakesWithDelays @System @BittideWordSizeAdj
+              $ handshakesWithDelays @System @BittideWordSize
                 (SNat @delayAtoB)
                 (SNat @delayBtoA)
                 regsA
@@ -196,7 +191,7 @@ testHandshakeLiveness = property $ do
         case (someSNat delayAtoB, someSNat delayBtoA) of
           (SomeSNat (_a@SNat :: SNat delayAtoB), SomeSNat (_b@SNat :: SNat delayBtoA)) ->
             withClockResetEnable clockGen resetGen enableGen
-              $ handshakesWithDelays @System @BittideWordSizeAdj
+              $ handshakesWithDelays @System @BittideWordSize
                 (SNat @delayAtoB)
                 (SNat @delayBtoA)
                 regsA
@@ -244,7 +239,7 @@ testHandshakeUgnCapture = property $ do
         case (someSNat delayAtoB, someSNat delayBtoA) of
           (SomeSNat (_a@SNat :: SNat delayAtoB), SomeSNat (_b@SNat :: SNat delayBtoA)) ->
             withClockResetEnable clockGen resetGen enableGen
-              $ handshakesWithDelays @System @BittideWordSizeAdj
+              $ handshakesWithDelays @System @BittideWordSize
                 (SNat @delayAtoB)
                 (SNat @delayBtoA)
                 regsA
@@ -286,7 +281,7 @@ testHandshakeUgnCapture = property $ do
 testMetadataParsing :: Assertion
 testMetadataParsing = do
   let regularWord = unpack 0 :: (BitVector 64)
-  let metadataWord = unpack $ magicConstant @BittideWordSizeAdj ++# (0b1110_0000 :: BitVector 8)
+  let metadataWord = unpack $ magicConstant @BittideWordSize ++# (0b1110_0000 :: BitVector 8)
   let metadata = Meta True True True 0
 
   assertEqual "Parsing regular word returns Nothing" Nothing (wordToMetadata regularWord)
@@ -294,7 +289,7 @@ testMetadataParsing = do
   assertEqual
     "id ~ fromWord . toWord"
     (Just metadata)
-    (wordToMetadata $ metadataToWord @BittideWordSizeAdj metadata)
+    (wordToMetadata $ metadataToWord @BittideWordSize metadata)
 
 tests :: TestTree
 tests =
