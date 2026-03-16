@@ -17,6 +17,11 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.Wishbone
 
+{- The handshake itself is independent of the representation of a metadata word
+in bit form. The representation itself is only relevant to `wordToMetadata` and
+`metadataToWord`. Currently, we just prepend a magicConstant to the metadata byte
+to make it easy to read, but in practice it could be anything.
+-}
 magicConstant :: (KnownNat n) => BitVector (n * 8)
 magicConstant = 0xdeadbeef
 
@@ -28,7 +33,7 @@ data Meta = Meta
   -- ^ Ready to receive user data
   , readyToReceive :: Bool
   -- ^ Ready to transmit user data
-  , lastPrbsWord :: Bool
+  , lastMetadataWord :: Bool
   -- ^ Next word will be user data
   , padding :: Unsigned 5
   -- ^ Padding up to 1 byte
@@ -75,8 +80,8 @@ handshake ::
   Signal dom (BitVector ((n + 1) * 8)) ->
   -- | Read, Write enable regs
   Signal dom (Bool, Bool) ->
-  -- | To UGN capture
-  ( Signal dom (BitVector ((n + 1) * 8))
+  ( -- \| To UGN capture
+    Signal dom (BitVector ((n + 1) * 8))
   , -- \| To transceiver
     Signal dom (BitVector ((n + 1) * 8))
   , -- \| Tuple of (txLast, rxLast), which indicates to ugnCapture when to send/receive the UGN.
@@ -86,9 +91,9 @@ handshake rxWordIn txWordIn regs = (rxWordOut, txWordOut, bundle (txLast, rxLast
  where
   neighborMetadata = wordToMetadata <$> rxWordIn
 
-  (metadata, rxLastS) = unbundle $ handshakeStateMachine neighborMetadata regs
+  (metadata, rxLastS) = handshakeStateMachine neighborMetadata regs
 
-  txLast = isRising False $ stickyTrue $ metadata.lastPrbsWord
+  txLast = isRising False $ stickyTrue $ metadata.lastMetadataWord
   rxLast = isRising False $ stickyTrue $ rxLastS
 
   handshakeFinished = not <$> (stickyTrue txLast)
@@ -111,26 +116,25 @@ handshakeStateMachine ::
   -- | txEn, rxEn regs
   Signal dom (Bool, Bool) ->
   -- | New state of node
-  Signal dom (Meta, Bool)
-handshakeStateMachine neighborState regs = moore updateState id initState $ bundle (neighborState, regs)
+  ( Signal dom Meta
+  , Signal dom Bool
+  )
+handshakeStateMachine neighborState enableRegs = mooreB updateState id initState (neighborState, enableRegs)
  where
   initState = (Meta False False False 0, False)
 
   updateState hState (Nothing, _) = hState
   updateState
     -- \| Current state
-    (Meta txReady rxReady txLast pad, rxLast)
+    (meta, rxLast)
     -- \| Neighbor state
-    ( (Just (Meta neighborTxReady neighborRxReady neighborTxLast _))
-      , -- \| Local registers
-        (txEn, rxEn)
-      ) =
-      ((Meta newTxReady newRxReady newTxLast pad), newRxLast)
+    (Just neighborMeta, (txEn, rxEn)) =
+      ((Meta newTxReady newRxReady newTxLast 0), newRxLast)
      where
-      newTxReady = txReady || txEn
-      newRxReady = rxReady || ((rxEn && txEn) && neighborTxReady)
-      newTxLast = (neighborRxReady && rxEn) || txLast
-      newRxLast = neighborTxLast || rxLast
+      newTxReady = meta.readyToTransmit || txEn
+      newRxReady = meta.readyToReceive || ((rxEn && txEn) && neighborMeta.readyToTransmit)
+      newTxLast = (neighborMeta.readyToReceive && rxEn) || meta.lastMetadataWord
+      newRxLast = neighborMeta.lastMetadataWord || rxLast
 
 handshakeWb ::
   forall dom addrW nBytes.

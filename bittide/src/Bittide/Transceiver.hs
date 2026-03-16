@@ -738,7 +738,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   validMeta = mux rxUserData (pure False) prbsOkDelayed
 
   rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
-  rxLast = maybe False (.lastPrbsWord) <$> rxMeta
+  rxLast = maybe False (.lastMetadataWord) <$> rxMeta
   rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
   txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
 
