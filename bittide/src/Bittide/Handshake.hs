@@ -24,9 +24,9 @@ magicConstant = 0xdeadbeef
 "Bittide.Transceiver" documentation for more information.
 -}
 data Meta = Meta
-  { readyToReceive :: Bool
+  { readyToTransmit :: Bool
   -- ^ Ready to receive user data
-  , readyToTransmit :: Bool
+  , readyToReceive :: Bool
   -- ^ Ready to transmit user data
   , lastPrbsWord :: Bool
   -- ^ Next word will be user data
