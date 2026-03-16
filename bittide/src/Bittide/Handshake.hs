@@ -4,6 +4,13 @@
 module Bittide.Handshake where
 
 import Clash.Prelude
+import Protocols
+
+import Clash.Class.BitPackC (ByteOrder)
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (Mm)
+import Protocols.MemoryMap.Registers.WishboneStandard (deviceWb, registerConfig, registerWbI)
+import Protocols.Wishbone
 
 magicConstant :: (KnownNat n) => BitVector (n * 8)
 magicConstant = 0xdeadbeef
@@ -119,3 +126,40 @@ handshakeStateMachine neighborState regs = moore updateState id initState $ bund
       newRxReady = rxReady || ((rxEn && txEn) && neighborTxReady)
       newTxLast = (neighborRxReady && rxEn) || txLast
       newRxLast = neighborTxLast || rxLast
+
+handshakeWb ::
+  forall dom addrW nBytes.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , KnownNat addrW
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Circuit
+    ( (ToConstBwd Mm, Wishbone dom 'Standard addrW nBytes)
+    , -- \| Link from transceiver
+      CSignal dom (BitVector 64)
+    , -- \| Link from UGN capture
+      CSignal dom (BitVector 64)
+    )
+    ( -- \| Link to transceiver
+      CSignal dom (BitVector 64)
+    , -- \| Link to UGN capture
+      CSignal dom (BitVector 64)
+    , -- \| `txLast` and `rxLast` signal for the UGN send/receive(?)
+      CSignal dom (Bool, Bool)
+    )
+handshakeWb = circuit $ \(bus, (Fwd rxLinkIn), (Fwd txLinkIn)) -> do
+  [txLastBus, rxLastBus] <- deviceWb "Handshake" -< bus
+
+  (Fwd txLast, _txLastActivity) <-
+    registerWbI (registerConfig "tx_last") False -< (txLastBus, Fwd (pure Nothing))
+  (Fwd rxLast, _rxLastActivity) <-
+    registerWbI (registerConfig "rx_last") False -< (rxLastBus, Fwd (pure Nothing))
+
+  let txRxRegs = bundle (txLast, rxLast)
+  let (txLinkOut, rxLinkOut, txRxLast) = handshake rxLinkIn txLinkIn txRxRegs
+
+  idC -< (Fwd txLinkOut, Fwd rxLinkOut, Fwd txRxLast)
