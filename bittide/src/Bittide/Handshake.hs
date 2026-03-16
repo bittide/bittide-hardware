@@ -75,8 +75,10 @@ stickyTrue s = sticky hasClock hasReset s
 -}
 
 handshake ::
-  (KnownNat n, BitSize Meta <= n) =>
-  (HiddenClockResetEnable dom) =>
+  ( KnownNat n
+  , BitSize Meta <= n
+  , HiddenClockResetEnable dom
+  ) =>
   -- | From transceiver
   Signal dom (BitVector n) ->
   -- | From ugn capture
