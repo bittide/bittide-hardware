@@ -30,9 +30,9 @@ magicConstant = 0xdeadbeef
 "Bittide.Transceiver" documentation for more information.
 -}
 data Meta = Meta
-  { readyToTransmit :: Bool
+  { readyToReceive :: Bool
   -- ^ Ready to receive user data
-  , readyToReceive :: Bool
+  , readyToTransmit :: Bool
   -- ^ Ready to transmit user data
   , lastMetadataWord :: Bool
   -- ^ Next word will be user data
@@ -135,7 +135,7 @@ handshakeStateMachine neighborState enableRegs = mooreB updateState id initState
     (meta, rxLast)
     -- \| Neighbor state
     (Just neighborMeta, (txEn, rxEn)) =
-      ((Meta newTxReady newRxReady newTxLast 0), newRxLast)
+      ((Meta newRxReady newTxReady newTxLast 0), newRxLast)
      where
       newTxReady = meta.readyToTransmit || txEn
       newRxReady = meta.readyToReceive || ((rxEn && txEn) && neighborMeta.readyToTransmit)
