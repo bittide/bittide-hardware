@@ -45,7 +45,7 @@ data Meta = Meta
   , lastMetadataWord :: Bool
   -- ^ Next word will be user data
   , padding :: Unsigned 5
-  -- ^ Padding up to 1 byte
+  -- ^ Padding up to 1 byte (due to Meta still being used by transceiver for now)
   }
   deriving (Generic, NFDataX, BitPack, Eq, Show)
 
