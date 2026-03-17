@@ -18,13 +18,21 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.Wishbone
 
+nextLfsr :: BitVector 8 -> BitVector 8
+nextLfsr 0 = 1
+nextLfsr current
+  | lsb current == 1 = (current `shiftR` 1) `xor` 0xB8
+  | otherwise = current `shiftR` 1
+
 {- The handshake itself is independent of the representation of a metadata word
 in bit form. The representation itself is only relevant to `wordToMetadata` and
-`metadataToWord`. Currently, we just prepend a magicConstant to the metadata byte
-to make it easy to read, but in practice it could be anything.
+`metadataToWord`. Currently, we just generate a magic constant based on a shift
+register.
 -}
-magicConstant :: (KnownNat n) => BitVector n
-magicConstant = 0xdeadbeef
+magicConstant :: forall n. (KnownNat n) => BitVector n
+magicConstant = resize $ pack num
+ where
+  num = iterateI nextLfsr 0xAB :: Vec (n `DivRU` 8) (BitVector 8)
 
 {- | Meta information send along with the PRBS and alignment symbols. See
 "Bittide.Transceiver" documentation for more information.
@@ -65,14 +73,6 @@ metadataToWord ::
   Meta ->
   BitVector n
 metadataToWord meta = magicConstant @(n - 8) ++# (pack meta)
-
-{-
-stickyTrue ::
-  (HiddenClockResetEnable dom) =>
-  Signal dom Bool ->
-  Signal dom Bool
-stickyTrue s = sticky hasClock hasReset s
--}
 
 handshake ::
   ( KnownNat n
