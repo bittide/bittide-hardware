@@ -27,7 +27,7 @@ import Protocols.Axi4.WriteAddress
 import Protocols.Axi4.WriteData
 import Protocols.Axi4.WriteResponse
 
-import Bittide.ElasticBuffer (sticky)
+import Bittide.ElasticBuffer (stickyE)
 import Bittide.Hitl (
   HitlTestGroup (..),
   HwTargetRef (HwTargetByIndex),
@@ -250,7 +250,7 @@ readDataFsm SNat clk rst = Circuit go
         (False, False) -> Success
         (True, _) -> Busy
 
-    failed = sticky clk rst $ wrong .||. fmap isError s2m
+    failed = stickyE clk rst $ wrong .||. fmap isError s2m
     wrong = fmap isError s2m .||. fmap not (dataOkay <$> s2m <*> i0)
 
     dataOkay S2M_NoReadData _ = True
@@ -363,8 +363,8 @@ ddr4Test refClkDiff c0_ddr4_dm_dbi_n c0_ddr4_dq c0_ddr4_dqs_t c0_ddr4_dqs_c =
   testInput :: Signal Ddr200 (Maybe TestChunk)
   testInput = hitlVio Bottom clkUi testDone testSuccess
 
-  testDone = sticky clkUi testStartRst $ testStart .&&. fmap isDone testResult
-  testSuccess = sticky clkUi testStartRst $ testStart .&&. fmap isSuccess testResult
+  testDone = stickyE clkUi testStartRst $ testStart .&&. fmap isDone testResult
+  testSuccess = stickyE clkUi testStartRst $ testStart .&&. fmap isSuccess testResult
 
   isDone :: TestState -> Bool
   isDone Busy = False
