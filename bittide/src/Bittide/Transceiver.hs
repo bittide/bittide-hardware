@@ -82,7 +82,8 @@ import Clash.Explicit.Prelude
 import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
-import Bittide.ElasticBuffer (sticky)
+import Bittide.ElasticBuffer (stickyE)
+import Bittide.Handshake (Meta (..))
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
 import Data.Maybe (fromMaybe, isNothing)
@@ -95,21 +96,6 @@ import qualified Bittide.Transceiver.Prbs as Prbs
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
 import qualified Clash.Cores.Xilinx.Gth as Gth
-
-{- | Meta information send along with the PRBS and alignment symbols. See module
-documentation for more information.
--}
-data Meta = Meta
-  { readyToReceive :: Bool
-  -- ^ Ready to receive user data
-  , readyToTransmit :: Bool
-  -- ^ Ready to transmit user data
-  , lastPrbsWord :: Bool
-  -- ^ Next word will be user data
-  , padding :: Unsigned 5
-  -- ^ Padding up to 1 byte
-  }
-  deriving (Generic, NFDataX, BitPack)
 
 data Config dom = Config
   { resetManagerConfig :: ResetManager.Config
@@ -752,17 +738,17 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   validMeta = mux rxUserData (pure False) prbsOkDelayed
 
   rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
-  rxLast = maybe False (.lastPrbsWord) <$> rxMeta
+  rxLast = maybe False (.lastMetadataWord) <$> rxMeta
   rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
   txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
 
-  rxUserData = sticky rxClock rxReset rxLast
-  txUserData = sticky txClock txReset txLast
+  rxUserData = stickyE rxClock rxReset rxLast
+  txUserData = stickyE txClock txReset txLast
 
-  indicateRxReady = withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
+  indicateRxReady = withLockRxTx (prbsOkDelayed .&&. stickyE rxClock rxReset args.rxReady)
 
-  rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
-  txReadyNeighborSticky = sticky rxClock rxReset txReadyNeighbor
+  rxReadyNeighborSticky = stickyE rxClock rxReset rxReadyNeighbor
+  txReadyNeighborSticky = stickyE rxClock rxReset txReadyNeighbor
   txLast = indicateRxReady .&&. args.txStart .&&. withLockRxTx rxReadyNeighborSticky
 
   metaTx :: Signal tx Meta

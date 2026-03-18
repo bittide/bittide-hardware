@@ -22,6 +22,7 @@ import qualified Tests.Df
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
 import qualified Tests.GeneralPurposeProcessingElement.Calculator
+import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ScatterGather
 import qualified Tests.Switch
@@ -50,6 +51,7 @@ tests =
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests
     , Tests.GeneralPurposeProcessingElement.Calculator.tests
+    , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ScatterGather.tests
     , Tests.Switch.tests

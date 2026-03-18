@@ -21,7 +21,7 @@ import Clash.Prelude (withClockResetEnable)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
-import Bittide.ElasticBuffer (sticky)
+import Bittide.ElasticBuffer (stickyE)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
 
@@ -245,7 +245,7 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
     transceiversStartAndObserve refClk sysClk testRst myIndex rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allReady
-  failAfterUpSticky = sticky sysClk testRst failAfterUp
+  failAfterUpSticky = stickyE sysClk testRst failAfterUp
 
   -- Consider the test done if links have been up consistently for 40
   -- seconds. This is just below the test timeout of 60 seconds, so
