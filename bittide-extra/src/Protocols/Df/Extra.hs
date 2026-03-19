@@ -164,7 +164,9 @@ trace msg =
  where
   go cnt ~(m2s, s2m) = (cnt + 1, (s2m', m2s))
    where
-    s2m' = Debug.trace [i| Df.Trace #{msg} | #{cnt}: #{showX m2s}, #{showX s2m}|] s2m
+    s2m'
+      | isJust m2s = Debug.trace [i| Df.Trace #{msg} | #{cnt}: #{showX m2s}, #{showX s2m}|] s2m
+      | otherwise = s2m
 
 -- | `Df` version of `Clash.Debug.traceSignal`. names forward signal (name_fwd) and backward signal (name_bwd)
 traceSignal ::

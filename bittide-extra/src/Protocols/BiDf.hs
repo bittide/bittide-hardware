@@ -44,6 +44,7 @@ import Data.Maybe (isJust, isNothing)
 import Data.Typeable (Typeable)
 import Protocols
 
+import qualified Debug.Trace as Trace
 import qualified Protocols.Df as Df
 import qualified Protocols.Df.Extra as Df
 
@@ -133,8 +134,6 @@ prefetchDropSpecific ::
   Circuit () (Df dom (Maybe req))
 prefetchDropSpecific req = prefetchDrop (fmap (fmap Just) req)
 
-class DeepBundle
-
 {- | Speculatively prefetches the successor of the last request for requests that are not `maxBound`.
 
 When there is no pending user request, this circuit speculatively issues a request
@@ -160,6 +159,8 @@ prefetch ::
   , Bounded req
   , NFDataX req
   , NFDataX resp
+  , ShowX req
+  , ShowX resp
   ) =>
   --      (((req, ack), mreq), (ack, resp)) -> (((ack, resp), ack), (req, ack))
   Circuit (BiDf dom req resp, Df dom (Maybe req)) (BiDf dom req resp)
@@ -179,9 +180,9 @@ prefetch =
     emptyReg = storedReq0 == Empty
     (clear, invalidateDone) = case (invalidate, storedReq0) of
       (Just _, Empty) -> (False, True) -- No request to invalidate
-      (Just Nothing, WaitingForResponse _) -> (isJust reqLeft, True) -- Unconditional invalidation
+      (Just Nothing, WaitingForResponse _) -> (isJust respRight, isJust respRight) -- Unconditional invalidation
       (Just (Just reqA), OfferingRequest reqB) -> (False, reqA /= reqB) -- Prematurely ack invalidation if the prefetched request is different from the invalidation request
-      (Just (Just reqA), WaitingForResponse reqB) -> (isJust reqLeft && reqA == reqB, True)
+      (Just (Just reqA), WaitingForResponse reqB) -> (isJust respRight && reqA == reqB, True)
       _ -> (False, False)
 
     (hit, miss) = case (storedReq0, reqLeft) of
@@ -191,7 +192,7 @@ prefetch =
     requestAccepted = isJust reqRight && reqRightAck
     responseAccepted = isJust respLeft && respLeftAck0
 
-    respRightAck = if miss then True else responseAccepted -- Discard prefetched response on miss
+    respRightAck = if (miss || clear) then True else responseAccepted -- Only ack response when forwarding it
     reqLeftAck = isJust reqLeft && responseAccepted
 
     -- Determine what request to issue
@@ -199,7 +200,7 @@ prefetch =
       Empty -> reqLeft -- No prefetched request, just forward user request
       (OfferingRequest stored) -> Just stored -- Keep offering prefetched request until it's accepted
       (WaitingForResponse stored) | responseAccepted && stored /= maxBound -> Just $ succ stored
-      -- (WaitingForResponse _) | miss             -> reqLeft -- Cache miss, drop prefetched request and forward user request
+      (WaitingForResponse _) | miss -> reqLeft -- Cache miss, issue new user request (abandon prefetch)
       _ -> Nothing
 
     -- Output response handling
@@ -211,10 +212,10 @@ prefetch =
     -- Update prefetched request
     storedReq1
       | clear = Empty -- Invalidate prefetched request
+      -- \| miss = Empty -- Cache miss, abandon prefetch
       | requestAccepted = WaitingForResponse (fromJustX reqRight) -- Some request has been accepted
       | responseAccepted = maybe Empty OfferingRequest reqRight -- Cache hit, but request not accepted. Keep offering the same request until it is accepted.
       | emptyReg = maybe Empty OfferingRequest reqLeft -- No pending request, wait for user request
-      | miss = Empty -- Cache miss, drop stored request
       | otherwise = storedReq0 -- Keep current request
 
 -- | Ignore all requests, never providing responses.

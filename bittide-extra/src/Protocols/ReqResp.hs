@@ -19,7 +19,6 @@ module Protocols.ReqResp where
 
 import qualified Clash.Prelude as C
 
-import Clash.Explicit.Prelude (NFDataX)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Kind (Type)
 import Data.Maybe
@@ -28,6 +27,8 @@ import Protocols.BiDf (BiDf)
 import qualified Protocols.BiDf as BiDf
 import Protocols.Idle
 import Prelude as P
+
+import qualified Protocols.Df as Df
 
 {- |
 Simplest possible protocol for request-response communication.
@@ -183,3 +184,128 @@ requests ::
 requests = Circuit (C.unbundle . fmap go . C.bundle)
  where
   go ~(request, Ack ack) = (if ack then Just () else Nothing, request)
+
+data PrefetchState req = Empty | OfferingRequest req | WaitingForResponse req
+  deriving (C.Generic, C.NFDataX, C.BitPack, C.Show, C.ShowX, C.Eq)
+
+{- | Terminate a `ReqResp` protocol by turning the requests into responses based on a supplied
+function.
+-}
+loopback ::
+  (req -> resp) ->
+  Circuit (ReqResp dom req resp) ()
+loopback f = Circuit go
+ where
+  go (req, _) = (fmap (fmap f) req, ())
+
+{- | Component that handles invalidating a prefetched requests.
+Can be used to invalidate any request, or a specific request without having to
+worry about backpressure.
+-}
+prefetchDrop ::
+  forall dom req.
+  (C.HiddenClockResetEnable dom, C.NFDataX req) =>
+  C.Signal dom (Maybe (Maybe req)) ->
+  Circuit () (Df dom (Maybe req))
+prefetchDrop req = circuit $ do
+  Df.compressor Nothing (\s i -> (i, Just s)) -< Fwd req
+
+-- | Component to invalidate any prefetched request without having to worry about backpressure.
+prefetchDropAny ::
+  forall dom req.
+  (C.HiddenClockResetEnable dom, C.NFDataX req) =>
+  C.Signal dom Bool ->
+  Circuit () (Df dom (Maybe req))
+prefetchDropAny dropReq = prefetchDrop (C.mux dropReq (pure (Just Nothing)) (pure Nothing))
+
+-- | Component to invalidate a specific prefetched request without having to worry about backpressure.
+prefetchDropSpecific ::
+  forall dom req.
+  ( C.HiddenClockResetEnable dom
+  , Eq req
+  , C.NFDataX req
+  ) =>
+  C.Signal dom (Maybe req) ->
+  Circuit () (Df dom (Maybe req))
+prefetchDropSpecific req = prefetchDrop (fmap (fmap Just) req)
+
+{- | Speculatively prefetches the successor of the last request for requests that are not `maxBound`.
+
+When there is no pending user request, this circuit speculatively issues a request
+for @succ lastRequest@ to hide memory latency. When a real user request arrives,
+it checks if the prefetched request matches - if so, it's a cache hit and the
+response is immediately available. Otherwise, it drops the prefetch and issues
+the new request.
+
+The second `Df` input can be used to clear the cached request. If the payload of the second `Df`
+is `Just req`, the circuit will drop the cached request if it matches `req`. If the payload
+is `Nothing`, the circuit will drop the cached request unconditionally.
+
+State: (prefetchedReq, prefetchedResp, lastUserReq)
+- prefetchedReq: the request we speculatively sent
+- prefetchedResp: the response we received (if any)
+- lastUserReq: the last user request, used to derive next prefetch
+-}
+prefetch ::
+  forall dom req resp.
+  ( C.HiddenClockResetEnable dom
+  , Eq req
+  , Enum req
+  , Bounded req
+  , C.NFDataX req
+  , C.NFDataX resp
+  ) =>
+  --      (((req, ack), mreq), (ack, resp)) -> (((ack, resp), ack), (req, ack))
+  Circuit (ReqResp dom req resp, Df dom (Maybe req)) (BiDf dom req resp)
+prefetch =
+  Circuit
+    ( bimap (first C.unbundle . C.unbundle) C.unbundle
+        . C.unbundle
+        . C.mealy go Empty
+        . C.bundle
+        . bimap (C.bundle . first C.bundle) C.bundle
+    )
+ where
+  go storedReq0 ~(~(reqLeft, invalidate), ~(Ack reqRightAck, respRight)) =
+    (storedReq1, ((respLeft, Ack invalidateDone), (reqRight, Ack respRightAck)))
+   where
+    -- Check if we have a cache hit: user request matches prefetched request
+    emptyReg = storedReq0 == Empty
+    (clear, invalidateDone) = case (invalidate, storedReq0) of
+      (Just _, Empty) -> (False, True) -- No request to invalidate
+      (Just Nothing, WaitingForResponse _) -> (isJust reqLeft, True) -- Unconditional invalidation
+      (Just (Just reqA), OfferingRequest reqB) -> (False, reqA /= reqB) -- Prematurely ack invalidation if the prefetched request is different from the invalidation request
+      (Just (Just reqA), WaitingForResponse reqB) -> (isJust reqLeft && reqA == reqB, True)
+      _ -> (False, False)
+
+    (hit, miss) = case (storedReq0, reqLeft) of
+      (WaitingForResponse stored, Just req) | isJust respRight -> (req == stored, req /= stored)
+      _ -> (False, False)
+
+    requestAccepted = isJust reqRight && reqRightAck
+    responseAccepted = isJust respLeft
+
+    respRightAck = if miss then True else responseAccepted -- Discard prefetched response on miss
+
+    -- Determine what request to issue
+    reqRight = case storedReq0 of
+      Empty -> reqLeft -- No prefetched request, just forward user request
+      (OfferingRequest stored) -> Just stored -- Keep offering prefetched request until it's accepted
+      (WaitingForResponse stored) | responseAccepted && stored /= maxBound -> Just $ succ stored
+      -- (WaitingForResponse _) | miss             -> reqLeft -- Cache miss, drop prefetched request and forward user request
+      _ -> Nothing
+
+    -- Output response handling
+    respLeft
+      | clear = Nothing -- Dont forward invalidated response
+      | hit = respRight -- Cache hit: forward response
+      | otherwise = Nothing
+
+    -- Update prefetched request
+    storedReq1
+      | clear = Empty -- Invalidate prefetched request
+      | requestAccepted = WaitingForResponse (C.fromJustX reqRight) -- Some request has been accepted
+      | responseAccepted = maybe Empty OfferingRequest reqRight -- Cache hit, but request not accepted. Keep offering the same request until it is accepted.
+      | emptyReg = maybe Empty OfferingRequest reqLeft -- No pending request, wait for user request
+      | miss = Empty -- Cache miss, drop stored request
+      | otherwise = storedReq0 -- Keep current request

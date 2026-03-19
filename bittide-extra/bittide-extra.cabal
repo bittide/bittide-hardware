@@ -192,6 +192,7 @@ test-suite unittests
     Tests.Numeric.Extra
     Tests.Protocols.BiDf
     Tests.Protocols.Df.Extra
+    Tests.Protocols.ReqResp
 
   build-depends:
     base,
@@ -204,6 +205,7 @@ test-suite unittests
     string-interpolate,
     tasty,
     tasty-hedgehog,
+    tasty-hunit,
     tasty-th,
 
 test-suite doctests
