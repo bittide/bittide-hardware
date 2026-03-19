@@ -25,6 +25,7 @@ import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfigurati
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as SwitchDemoGppe
+import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as WireDemo
 import qualified Bittide.Instances.Tests.AddressableBytesWb as AddressableBytesWb
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.NestedInterconnect as NestedInterconnect
@@ -65,6 +66,9 @@ $( do
           , ("SwitchDemoGppeGppe", SwitchDemoGppe.gppe)
           , ("TimeWb", TimeWb.timeWbMm)
           , ("WbToDfTest", WbToDf.dutMM)
+          , ("WireDemoBoot", WireDemo.boot)
+          , ("WireDemoMu", WireDemo.mu)
+          , ("WireDemoCc", WireDemo.cc)
           , ("VexRiscv", vexRiscvTestMM)
           ]
 

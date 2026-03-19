@@ -211,6 +211,11 @@ library
     Bittide.Instances.Hitl.Utils.Ugn
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
+    Bittide.Instances.Hitl.WireDemo.BringUp
+    Bittide.Instances.Hitl.WireDemo.Core
+    Bittide.Instances.Hitl.WireDemo.Driver
+    Bittide.Instances.Hitl.WireDemo.MemoryMaps
+    Bittide.Instances.Hitl.WireDemo.TopEntity
     Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.AsciiDebugMux
     Bittide.Instances.Pnr.Counter
