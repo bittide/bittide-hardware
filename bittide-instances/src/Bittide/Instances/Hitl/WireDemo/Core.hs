@@ -6,7 +6,7 @@
 module Bittide.Instances.Hitl.WireDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, withClock, withClockResetEnable)
 import Protocols
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
@@ -25,9 +25,11 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
+import Bittide.ProgrammableMux (programmableMux)
 import Bittide.ScatterGather
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
+import Bittide.WireDemoProcessingElement (wireDemoPe, wireDemoPeConfig)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
@@ -68,8 +70,10 @@ type PeripheralsPerLink = 6
 {- External busses:
     - Transceivers
     - Callisto
+    - Programmable mux
+    - PE config
 -}
-type NmuExternalBusses = 2 + (LinkCount * PeripheralsPerLink)
+type NmuExternalBusses = 4 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
 
 muConfig ::
@@ -178,7 +182,12 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (scatterBusses, scatterCalendarBusses, muWbs3) <- Vec.split3 -< muWbs2
     (gatherBusses, gatherCalendarBusses, muWbs4) <- Vec.split3 -< muWbs3
-    [muTransceiverBus, muCallistoBus] <- idC -< muWbs4
+    [ muTransceiverBus
+      , muCallistoBus
+      , muProgrammableMuxBus
+      , peConfigBus
+      ] <-
+      idC -< muWbs4
     -- Stop management unit
 
     -- Start internal links
@@ -221,11 +230,30 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs2)
       <| Vec.zip
       -< (scatterBusses, scatterCalendarBussesDelayed)
-    Fwd txs <-
+    Fwd txsMu <-
       repeatC (withBittideClockResetEnable (gatherUnitWbC gatherConfig))
         <| Vec.zip
         -< (gatherBusses, gatherCalendarBussesDelayed)
     -- Stop ringbuffers
+
+    -- Start business logic
+    (readLinkI, writeLinkI) <-
+      withBittideClockResetEnable wireDemoPeConfig -< (peConfigBus, peWrittenData)
+    (Fwd txsBl, peWrittenData) <-
+      withClock bitClk
+        $ wireDemoPe businessLogicReset maybeDna
+        -< (Fwd rxs2, readLinkI, writeLinkI)
+    -- Stop business logic
+
+    -- Start programmable mux
+    (Fwd businessLogicReset, Fwd txs) <-
+      withBittideClockResetEnable
+        $ programmableMux localCounter
+        -< ( muProgrammableMuxBus
+           , (Fwd (bundle txsMu))
+           , (Fwd (bundle txsBl))
+           )
+    -- Stop programmable mux
 
     -- Start clock control
     ( sync
@@ -275,7 +303,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     idC
       -< ( Fwd swCcOut1
          , Fwd localCounter
-         , Fwd (dflipflop bitClk <$> txs)
+         , Fwd (dflipflop bitClk <$> (unbundle txs))
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
