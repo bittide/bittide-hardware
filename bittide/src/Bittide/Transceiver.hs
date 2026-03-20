@@ -608,7 +608,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   Output
     { txSampling = txUserData
     , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
-    , txReady = withLockRxTx rxReadyNeighborSticky
+    , txReady = neighborReceiveReadyTx -- From handshake
+    -- Note the following 3 handshake variables are prbsHandshake, NOT userdata handshake
     , handshakeDoneTx = withLockRxTx prbsOkDelayed
     , handshakeDone = prbsOkDelayed
     , handshakeDoneFree = withLockRxFree prbsOkDelayed
@@ -619,19 +620,13 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     , txOutClock
     , rxOutClock
     , rxReset
-    , debugLinkUp
-    , debugLinkReady
-    , neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
-    , neighborTransmitReady = withLockRxFree txReadyNeighborSticky
+    , debugLinkUp -- From handshake
+    , debugLinkReady -- From handshake
+    , neighborReceiveReady -- From handshake
+    , neighborTransmitReady -- From handshake
     , stats
     }
  where
-  debugLinkUp =
-    withLockTxFree txUserData
-      .&&. withLockRxFree rxUserData
-
-  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
-
   Gth.CoreOutput
     { gthtxOut = txSim
     , gthtxnOut = txN
@@ -705,7 +700,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   (alignedAlignBits, alignedRxData1) =
     unbundle (WordAlign.splitMsbs @8 @8 <$> alignedRxData0)
 
-  (alignedMetaBits, alignedRxData2) =
+  (_, alignedRxData2) =
     unbundle (WordAlign.splitMsbs @8 @7 <$> alignedRxData1)
 
   prbsErrors = Prbs.checker rxClock rxReset enableGen prbsConfig alignedRxData2
@@ -736,14 +731,23 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       `mul` opts.resetManagerConfig.rxTimeoutMs
   prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
 
-  (metaTx, rxLast, rxUserData, txUserData, txReadyNeighborSticky, rxReadyNeighborSticky) =
-    handshake
-      (rxClock, rxReset)
-      (txClock, txReset)
-      withLockRxTx
-      prbsOkDelayed
-      alignedMetaBits
-      (args.txStart, args.rxReady)
+  ( metaTx
+    , rxLast
+    , rxUserData
+    , txUserData
+    , debugLinkUp
+    , debugLinkReady
+    , neighborReceiveReady
+    , neighborReceiveReadyTx
+    , neighborTransmitReady
+    ) =
+      handshake
+        (rxClock, rxReset)
+        (txClock, txReset)
+        (clock, reset, reset_rx_done, reset_tx_done)
+        prbsOkDelayed
+        alignedRxData0
+        (args.txStart, args.rxReady)
 
   errorAfterRxUserData :: Signal rx Bool
   errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
@@ -781,19 +785,27 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
   withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
 
+wordToMetadata ::
+  BitVector 64 ->
+  Meta
+wordToMetadata word = unpack alignedMetaBits
+ where
+  (_alignData, payload) = WordAlign.splitMsbs @8 @8 word
+  (alignedMetaBits, _) = WordAlign.splitMsbs @8 @7 payload
+
 handshake ::
-  forall rx tx.
-  (KnownDomain rx, KnownDomain tx) =>
+  forall rx tx free.
+  (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
   -- | Rx domain
   (Clock rx, Reset rx) ->
   -- | Tx domain
   (Clock tx, Reset tx) ->
-  -- | withLockRxTx
-  (Signal rx Bool -> Signal tx Bool) ->
+  -- | Everything needed for cdc crossing
+  (Clock free, Reset free, Signal rx (BitVector 1), Signal tx (BitVector 1)) ->
   -- | prbsOkDelayed
   Signal rx Bool ->
   -- | alignedMetaBits
-  Signal rx (BitVector 8) ->
+  Signal rx (BitVector 64) ->
   -- | (txStart, rxReady)
   (Signal tx Bool, Signal rx Bool) ->
   -- | (metaTx, txLast)
@@ -801,14 +813,28 @@ handshake ::
   , Signal rx Bool
   , Signal rx Bool
   , Signal tx Bool
-  , Signal rx Bool
-  , Signal rx Bool
+  , Signal free Bool
+  , Signal free Bool
+  , Signal free Bool
+  , Signal tx Bool
+  , Signal free Bool
   )
-handshake (rxClock, rxReset) (txClock, txReset) withLockRxTx prbsOkDelayed alignedMetaBits (txStart, rxReady) = (metaTx, rxLast, rxUserData, txUserData, txReadyNeighborSticky, rxReadyNeighborSticky)
+handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, reset_tx_done) linkHealthy wordFromTransceiver (txStart, rxReady) =
+  ( metaTx
+  , rxLast
+  , rxUserData
+  , txUserData
+  , debugLinkUp
+  , debugLinkReady
+  , neighborReceiveReady
+  , neighborReceiveReadyTx
+  , neighborTransmitReady
+  )
  where
-  validMeta = mux rxUserData (pure False) prbsOkDelayed
+  metadata = wordToMetadata <$> wordFromTransceiver
+  validMeta = mux rxUserData (pure False) linkHealthy
 
-  rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
+  rxMeta = mux validMeta (Just <$> metadata) (pure Nothing)
   rxLast = maybe False (.lastMetadataWord) <$> rxMeta
   rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
   txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
@@ -816,7 +842,7 @@ handshake (rxClock, rxReset) (txClock, txReset) withLockRxTx prbsOkDelayed align
   rxUserData = stickyE rxClock rxReset rxLast
   txUserData = stickyE txClock txReset txLast
 
-  indicateRxReady = withLockRxTx (prbsOkDelayed .&&. stickyE rxClock rxReset rxReady)
+  indicateRxReady = withLockRxTx (linkHealthy .&&. stickyE rxClock rxReset rxReady)
 
   rxReadyNeighborSticky = stickyE rxClock rxReset rxReadyNeighbor
   txReadyNeighborSticky = stickyE rxClock rxReset txReadyNeighbor
@@ -826,7 +852,24 @@ handshake (rxClock, rxReset) (txClock, txReset) withLockRxTx prbsOkDelayed align
   metaTx =
     Meta
       <$> indicateRxReady
-      <*> (withLockRxTx prbsOkDelayed .&&. txStart)
+      <*> (withLockRxTx linkHealthy .&&. txStart)
       <*> txLast
       -- Padding
       <*> pure 0
+
+  debugLinkUp =
+    withLockTxFree txUserData
+      .&&. withLockRxFree rxUserData
+
+  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
+
+  neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
+  neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
+  neighborTransmitReady = withLockRxFree txReadyNeighborSticky
+
+  -- Both the TX and RX domain may sometimes be disabled entirely. To prevent
+  -- seeing stale signals, 'withLock' is employed. This means that constructs
+  -- such as @withLockRxFree (pure True)@ are actually doing something!
+  withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
+  withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
+  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
