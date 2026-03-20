@@ -491,7 +491,7 @@ jobs:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
       volumes:
         - /opt/tools:/opt/tools
-      options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=15g
+      options: --init --mac-address="28:87:ba:f3:e0:77" --memory=15g
 
     steps:
       - name: Checkout

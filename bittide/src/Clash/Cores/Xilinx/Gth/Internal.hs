@@ -304,7 +304,7 @@ xilinxGthUserClockNetworkTx clkIn rstIn = (usrclk_out, usrclk2_out, pack <$> tx_
     , unPort @(Port "gtwiz_userclk_tx_active_out" user2 Bit) -> tx_active_out
     ) =
       inst
-        (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_tx")
+        (instConfig "gtwizard_ultrascale_v1_7_22_gtwiz_userclk_tx")
         (Param @"P_FREQ_RATIO_USRCLK_TO_USRCLK2" (2 :: Integer))
         (ClockPort @"gtwiz_userclk_tx_srcclk_in" clkIn)
         (ResetPort @"gtwiz_userclk_tx_reset_in" @ActiveHigh rstIn)
@@ -323,7 +323,7 @@ xilinxGthUserClockNetworkRx clkIn rstIn = (usrclk_out, usrclk2_out, pack <$> rx_
     , unPort @(Port "gtwiz_userclk_rx_active_out" user2 Bit) -> rx_active_out
     ) =
       inst
-        (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_rx")
+        (instConfig "gtwizard_ultrascale_v1_7_22_gtwiz_userclk_rx")
         (Param @"P_FREQ_RATIO_USRCLK_TO_USRCLK2" (2 :: Integer))
         (ClockPort @"gtwiz_userclk_rx_srcclk_in" clkIn)
         (ResetPort @"gtwiz_userclk_rx_reset_in" @ActiveHigh rstIn)
