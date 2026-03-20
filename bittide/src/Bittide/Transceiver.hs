@@ -610,16 +610,7 @@ transceiverPrbsWithNew core config input = output
       }
 
   (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith core config input transceiverInputFromHandshake
-  (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput
-
-  {-  handshakeInputFromTransceiver = HandshakeInputFromTransceiver
-        transceiver.txReset
-        transceiver.reset_tx_done
-        transceiver.rxReset
-        transceiver.reset_rx_done
-        transceiver.prbsOkDelayed
-        transceiver.alignedRxData0
-  -}
+  (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput handshakeInputFromTransceiver
 
   handshakeInput =
     HandshakeInput
@@ -921,6 +912,7 @@ userDataHandshake ::
   forall rx tx free.
   (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
   HandshakeInput rx tx free ->
+  HandshakeInputFromTransceiver tx rx ->
   (HandshakeOutput rx tx free, TransceiverInputFromHandshake tx rx free)
 userDataHandshake
   ( HandshakeInput
@@ -937,7 +929,9 @@ userDataHandshake
       wordFromUser
       txStart
       rxReady
-    ) = (output, transceiverInputFromHandshake)
+    )
+  {-(HandshakeInputFromTransceiver _ _ _ _ _ _)-} _ =
+    (output, transceiverInputFromHandshake)
    where
     output =
       HandshakeOutput
