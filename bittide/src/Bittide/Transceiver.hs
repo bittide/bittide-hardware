@@ -604,15 +604,15 @@ transceiverPrbsWith ::
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
-transceiverPrbsWith gthCore opts args@Input{clock, reset} =
+transceiverPrbsWith gthCore opts input =
   Output
     { txSampling = txUserData -- From handshake
     , rxData = wordToUser -- From handshake
-    , txReady = neighborReceiveReadyTx -- From handshake (personally I find this one a bit odd, but copying over from existing setup)
+    , txReady = neighborReceiveReadyTx -- From handshake
     -- Note the following 3 handshake variables are prbsHandshake, NOT userdata handshake
-    , handshakeDoneTx = withLockRxTx prbsOkDelayed
-    , handshakeDone = prbsOkDelayed
-    , handshakeDoneFree = withLockRxFree prbsOkDelayed
+    , handshakeDoneTx = withLockRxTx prbsOkDelayed -- ironically NOT from handshake
+    , handshakeDone = prbsOkDelayed -- ironically NOT from handshake
+    , handshakeDoneFree = withLockRxFree prbsOkDelayed -- ironically NOT from handshake
     , txSim
     , txN = txN
     , txP = txP
@@ -645,11 +645,11 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     } =
       gthCore
         Gth.CoreInput
-          { channel = args.channelName
-          , refClkSpec = args.clockPath
-          , gthrxIn = args.rxSim
-          , gthrxnIn = args.rxN
-          , gthrxpIn = args.rxP
+          { channel = input.channelName
+          , refClkSpec = input.clockPath
+          , gthrxIn = input.rxSim
+          , gthrxnIn = input.rxN
+          , gthrxpIn = input.rxP
           , gtwizResetClkFreerunIn = clock -- gtwiz_reset_clk_freerun_in
           -- We insert 'delayReset' to filter out glitches in the reset signals. That
           -- is, a synchronous reset may glitch/stabilize outside of the setup and
@@ -662,24 +662,34 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
           , gtwizResetRxDatapathIn = delayReset Asserted clock resets.rxDatapath
           , gtwizUserdataTxIn = gtwiz_userdata_tx_in
           , txctrl2In = txctrl
-          , gtrefclk0In = args.refClock -- gtrefclk0_in
-          , txusrclkIn = args.clockTx1
-          , txusrclk2In = args.clockTx2
-          , gtwizUserclkTxActiveIn = args.txActive
-          , rxusrclkIn = args.clockRx1
-          , rxusrclk2In = args.clockRx2
-          , gtwizUserclkRxActiveIn = args.rxActive
+          , gtrefclk0In = input.refClock -- gtrefclk0_in
+          , txusrclkIn = input.clockTx1
+          , txusrclk2In = input.clockTx2
+          , gtwizUserclkTxActiveIn = input.txActive
+          , rxusrclkIn = input.clockRx1
+          , rxusrclk2In = input.clockRx2
+          , gtwizUserclkRxActiveIn = input.rxActive
           }
 
   prbsConfig = Prbs.conf31 @48
 
-  txClock = args.clockTx2
-  rxClock = args.clockRx2
+  clock = input.clock
+  reset = input.reset
+  txClock = input.clockTx2
+  rxClock = input.clockRx2
 
   (commas, txctrl) = Comma.generator d1 txClock txReset
   commasDone = isNothing <$> commas
   prbs = Prbs.generator txClock (unsafeFromActiveLow commasDone) enableGen prbsConfig
-  -- The line below is a hack (kinda)
+  -- Ideally, the transceiver would just receive a word from the handshake and send it out.
+  -- This word could be a metadata word or a user word. However, since metadata words are
+  -- padded with prbs data, we have two options: 1) setup handshake to do prbs, so that the
+  -- metadata words can be sent directly by the transceiver, or 2) take the metadata word
+  -- from handshake and have the transceiver write in the prbs info into the word. We choose
+  -- option 2, because that better decouples the handshake from the transceiver logic.
+  --
+  -- The logic below simply takes the handshake word and, if the handshake signals it's
+  -- sending metadata, rewrites the metadata word with prbs data inserted
   metaTx = wordToMetadata <$> wordToTransceiver
   prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
   prbsWithMetaAndAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbsWithMeta
@@ -744,14 +754,14 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     , neighborReceiveReadyTx
     , neighborTransmitReady
     ) =
-      handshake
+      userDataHandshake
         (rxClock, rxReset)
         (txClock, txReset)
         (clock, reset, reset_rx_done, reset_tx_done)
         prbsOkDelayed
         alignedRxData0
-        args.txData
-        (args.txStart, args.rxReady)
+        input.txData
+        (input.txStart, input.rxReady)
 
   errorAfterRxUserData :: Signal rx Bool
   errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
@@ -762,7 +772,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       clock
       reset
       ResetManager.Input
-        { channelReset = args.channelReset
+        { channelReset = input.channelReset
         , txInitDone = withLockTxFree (pure True) -- See note @ withLockRxFree
         , rxInitDone = withLockRxFree (pure True) -- See note @ withLockRxFree
         , rxDataGood = withLockRxFree (prbsOk .||. rxUserData)
@@ -789,6 +799,9 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
   withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
 
+{- | Given a bittide word, extract the metadata. This function does not check that
+the input is a metadata word, and will produce garbage if used on a user word.
+-}
 wordToMetadata ::
   BitVector 64 ->
   Meta
@@ -797,6 +810,10 @@ wordToMetadata word = unpack alignedMetaBits
   (_alignData, payload) = WordAlign.splitMsbs @8 @8 word
   (alignedMetaBits, _) = WordAlign.splitMsbs @8 @7 payload
 
+{- | Given a metadata, output it formatted into a bittide word. The word is
+simply the metadata padded with 0s, such that one can later re-extract the
+metadata with `wordToMetadata`.
+-}
 metadataToWord ::
   Meta ->
   BitVector 64
@@ -806,7 +823,10 @@ metadataToWord meta = word
   metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
   word = WordAlign.joinMsbs @8 0 metaWithPadding
 
-handshake ::
+{- | Perform the metadata handshake with neighbor link so both sides switch over to
+  user data when ready.
+-}
+userDataHandshake ::
   forall rx tx free.
   (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
   -- | Rx domain
@@ -823,19 +843,28 @@ handshake ::
   Signal tx (BitVector 64) ->
   -- | (txStart, rxReady)
   (Signal tx Bool, Signal rx Bool) ->
-  -- | (metaTx, txLast)
-  ( Signal tx (BitVector 64)
-  , Signal rx (Maybe (BitVector 64))
-  , Signal rx Bool
-  , Signal rx Bool
-  , Signal tx Bool
-  , Signal free Bool
-  , Signal free Bool
-  , Signal free Bool
-  , Signal tx Bool
-  , Signal free Bool
+  ( -- \| wordToTransceiver
+    Signal tx (BitVector 64)
+  , -- \| wordToUser
+    Signal rx (Maybe (BitVector 64))
+  , -- \| rxLast
+    Signal rx Bool
+  , -- \| rxUserData
+    Signal rx Bool
+  , -- \| txUserData
+    Signal tx Bool
+  , -- \| debugLinkUp
+    Signal free Bool
+  , -- \| debugLinkReady
+    Signal free Bool
+  , -- \| neighborReceiveReady
+    Signal free Bool
+  , -- \| neighborReceiveReadyTx
+    Signal tx Bool
+  , -- \| neighborTransmitReady
+    Signal free Bool
   )
-handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, reset_tx_done) linkHealthy wordFromTransceiver wordFromUser (txStart, rxReady) =
+userDataHandshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, reset_tx_done) linkHealthy wordFromTransceiver wordFromUser (txStart, rxReady) =
   ( wordToTransceiver
   , wordToUser
   , rxLast
@@ -891,9 +920,7 @@ handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, re
   neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
   neighborTransmitReady = withLockRxFree txReadyNeighborSticky
 
-  -- Both the TX and RX domain may sometimes be disabled entirely. To prevent
-  -- seeing stale signals, 'withLock' is employed. This means that constructs
-  -- such as @withLockRxFree (pure True)@ are actually doing something!
+  -- Clock domain crossing functions
   withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
   withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
