@@ -10,7 +10,7 @@ import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam hiding (registerWb)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Project.FilePath
 
@@ -41,7 +41,7 @@ timeWbMm = mm
 dutCpu ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
-dutCpu = withBittideByteOrder $ circuit $ \mm -> do
+dutCpu = withLittleEndian $ circuit $ \mm -> do
   (uartRx, jtag) <- idleSource
   [uartBus, (mmTime, timeBus)] <-
     processingElement NoDumpVcd peConfig -< (mm, jtag)

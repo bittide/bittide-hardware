@@ -154,7 +154,6 @@ si539xSpiWb ::
   , KnownNat aw
   , 4 <= aw
   , HasCallStack
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Minimum period of the SPI clock frequency for the SPI clock divider.

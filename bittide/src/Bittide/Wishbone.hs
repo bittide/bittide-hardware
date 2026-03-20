@@ -684,7 +684,6 @@ capabilities.
 timeWb ::
   forall dom addrW.
   ( HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , HasCallStack
   , KnownNat addrW
@@ -836,7 +835,6 @@ readDnaPortE2Wb ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Simulation DNA value
@@ -866,7 +864,6 @@ readDnaPortE2WbWorker ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | DNA value

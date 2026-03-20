@@ -41,7 +41,7 @@ import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Driver.VexRiscv
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Cores.UART.Extra
 
@@ -96,7 +96,6 @@ statusRegister ::
   , HiddenReset dom
   , KnownNat aw
   , 1 <= aw
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
@@ -131,7 +130,7 @@ vexRiscvTestC ::
     (ToConstBwd Mm, (Jtag dom, CSignal dom UartRx))
     (CSignal dom TestStatus, CSignal dom UartTx)
 vexRiscvTestC =
-  withBittideByteOrder
+  withLittleEndian
     $ circuit
     $ \(mm, (jtag, uartRx)) -> do
       [ timeBus

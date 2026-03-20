@@ -11,7 +11,7 @@ import Bittide.ElasticBuffer (ElasticBufferData (Data))
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Tests.NestedInterconnect (nestedInterconnectMm)
 import Bittide.ProcessingElement
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Control.Monad (forM_)
 import Data.String.Interpolate (i)
 import Protocols
@@ -33,7 +33,7 @@ exampleDevice ::
   Circuit (ToConstBwd Mm) ()
 exampleDevice =
   withClockResetEnable @System clockGen resetGen enableGen
-    $ withBittideByteOrder
+    $ withLittleEndian
     $ circuit
     $ \mm -> do
       jtag <- idleSource

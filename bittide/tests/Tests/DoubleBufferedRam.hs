@@ -11,7 +11,6 @@ module Tests.DoubleBufferedRam (tests) where
 
 import Clash.Prelude
 
-import Clash.Class.BitPackC (ByteOrder (..))
 import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
@@ -549,9 +548,8 @@ wbStorageSpecCompliance = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go depth@SNat = do
-    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-    let ?busByteOrder = BigEndian
-     in wcre
+     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
+     wcre
           $ wishbonePropWithModel @System
             defExpectOptions
             (\_ _ () -> Right ())
@@ -594,8 +592,7 @@ wbStorageBehavior = property $ do
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
       slave =
-        let ?busByteOrder = BigEndian
-         in wcre $ unMemmap (wbStorage @System @_ @30 "" depth (Just (Vec content)))
+         wcre $ unMemmap (wbStorage @System @_ @30 "" depth (Just (Vec content)))
       simTransactions = exposeWbTransactions (Just 1000) master slave
       goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
@@ -649,9 +646,8 @@ wbStorageRangeErrors = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go depth@SNat = do
-    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-    let ?busByteOrder = BigEndian
-     in wcre
+     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
+     wcre
           $ wishbonePropWithModel @System @30
             defExpectOptions
             model
@@ -713,9 +709,8 @@ wbStorageProtocolsModel = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go depth@SNat = do
-    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-    let ?busByteOrder = BigEndian
-     in wcre
+     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
+     wcre
           $ wishbonePropWithModel @System @30
             defExpectOptions
             model

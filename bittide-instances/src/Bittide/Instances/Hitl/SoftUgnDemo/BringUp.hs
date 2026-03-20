@@ -32,7 +32,7 @@ import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, core)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..))
-import Bittide.SharedTypes (Byte, withBittideByteOrder)
+import Bittide.SharedTypes (Byte, withLittleEndian)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
@@ -97,7 +97,7 @@ bringUp ::
     , "UART_TX" ::: CSignal Basic125 Bit
     , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
-bringUp refClk refRst = withBittideByteOrder $ circuit $ \(memoryMaps, jtag, gths) -> do
+bringUp refClk refRst = withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -> do
   ([bootMm], coreMemoryMaps) <- Vec.split -< memoryMaps
 
   [bootJtag, otherJtag] <- jtagChain -< jtag

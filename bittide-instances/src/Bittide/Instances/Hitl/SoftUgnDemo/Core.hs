@@ -107,7 +107,6 @@ ccConfig =
 managementUnit ::
   forall dom.
   ( HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
@@ -140,8 +139,7 @@ managementUnit externalCounter maybeDna =
     idC -< (uartOut, restBusses)
 
 core ::
-  ( ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  ( ?regByteOrder :: ByteOrder
   ) =>
   (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->

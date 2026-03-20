@@ -25,7 +25,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Project.FilePath
 
@@ -48,7 +48,7 @@ vexRiscvUartHelloC ::
   Circuit
     (ToConstBwd Mm, (CSignal dom Bit, Jtag dom))
     (CSignal dom Bit)
-vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jtag)) -> do
+vexRiscvUartHelloC baudSnat = withLittleEndian $ circuit $ \(mm, (uartRx, jtag)) -> do
   [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d16 (uartDf baudSnat) -< (uartBus, uartRx)
   _localCounter <- timeWb Nothing -< timeBus

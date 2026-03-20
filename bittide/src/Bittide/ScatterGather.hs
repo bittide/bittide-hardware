@@ -62,7 +62,6 @@ scatterUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
@@ -102,7 +101,6 @@ gatherUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
@@ -205,7 +203,6 @@ scatterUnitWbC ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
@@ -298,7 +295,6 @@ scatterUnitWb ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
@@ -339,7 +335,6 @@ gatherUnitWbC ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
@@ -447,7 +442,6 @@ gatherUnitWb ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.

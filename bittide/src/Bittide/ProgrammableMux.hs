@@ -38,7 +38,6 @@ programmableMux ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Local counter

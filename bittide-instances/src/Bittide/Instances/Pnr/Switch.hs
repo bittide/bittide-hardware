@@ -29,7 +29,7 @@ switchExample ::
     , CSignal Basic200 (Vec 16 (Index 17))
     )
 switchExample clk rst =
-  withBittideByteOrder
+  withLittleEndian
     $ withClockResetEnable clk syncRst enableGen
     {- The 12s here and below are so that the generated Rust code works. At time
     of writing, the generator makes two separate device-specific types for 'ValidEntry'

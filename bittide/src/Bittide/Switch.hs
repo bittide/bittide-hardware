@@ -30,7 +30,6 @@ switchC ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->
@@ -71,7 +70,6 @@ switch ::
   , KnownNat links
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->

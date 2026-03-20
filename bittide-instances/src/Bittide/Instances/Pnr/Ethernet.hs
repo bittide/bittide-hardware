@@ -30,7 +30,7 @@ import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 
@@ -126,8 +126,8 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
 
     idC -< (uartRx, gmiiTx, gpioOut)
  where
-  time = withBittideByteOrder $ wcre $ timeWb Nothing
-  dnaC = withBittideByteOrder $ wcre readDnaPortE2Wb simDna2
+  time = withLittleEndian $ wcre $ timeWb Nothing
+  dnaC = withLittleEndian $ wcre readDnaPortE2Wb simDna2
   mac =
     ethMac1GFifoC
       (SNat @1500)
@@ -143,7 +143,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       rxClkEna
   macStatIf = wcre $ macStatusInterfaceWb d16
   uart = wcre $ uartInterfaceWb d32 d2 (uartDf baud)
-  pe = withBittideByteOrder $ wcre processingElement NoDumpVcd peConfig
+  pe = withLittleEndian $ wcre processingElement NoDumpVcd peConfig
   wbToAxi4StreamTx' = wcre wbToAxi4StreamTx
   wbAxiRxBuffer = wcre wbAxisRxBufferCircuit (SNat @2048)
   axiTxPipe = wcre (axiUserMapC (const False) <| axiStreamToByteStream)

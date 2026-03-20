@@ -275,7 +275,6 @@ xilinxElasticBufferWb ::
   , 4 <= n
   , n <= 17
   , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   Clock readDom ->

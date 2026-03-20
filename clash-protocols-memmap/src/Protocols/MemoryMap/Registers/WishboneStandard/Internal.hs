@@ -96,7 +96,6 @@ type RegisterWbConstraints (a :: Type) (dom :: Domain) (wordSize :: Nat) (aw :: 
   , KnownNat wordSize
   , KnownNat aw
   , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   )
 
@@ -368,8 +367,6 @@ addressableBytesWb ::
   , KnownNat aw
   , 1 <= nWords
   , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration values
   RegisterConfig ->
@@ -427,8 +424,6 @@ wishboneToRequestResponse ::
   , 1 <= nWords
   , KnownNat wordSize
   , KnownNat aw
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Access permissions
   Access ->
@@ -486,11 +481,8 @@ You can tie registers created using this function together with 'deviceWb'. If
 you're looking to create a device with arbitrary offsets, use
 'registerWithOffsetWbDf' instead.
 
-The register is configurable in its byte order, both on the bus and internally
-using '?busByteOrder' and '?regByteOrder' respectively. For VexRiscV, you'd want
-to configure @?busByteOrder = BigEndian@ and @?regByteOrder = LittleEndian@. Also
-see 'withBittideByteOrder'. Note that the bus byte order is a hack more than
-anything else and only affects the data and byte enable fields.
+The register is configurable in its byte order using '?regByteOrder'. Also
+see 'withLittleEndian'.
 -}
 registerWbDf ::
   forall a dom wordSize aw.
@@ -535,8 +527,6 @@ registerWbDf clk rst regConfig resetValue =
               , (pure resetValue, busActivity)
               )
  where
-  needReverse = ?busByteOrder /= ?regByteOrder
-
   unpackC :: Vec (SizeInWordsC wordSize a) (Bytes wordSize) -> a
   unpackC packed = fromMaybe err . maybeUnpackWordC ?regByteOrder $ packed
    where
@@ -677,11 +667,7 @@ registerWbDf clk rst regConfig resetValue =
     setReadData s2m ma req =
       case (ma, req) of
         (Just a, Just (Left relOffset)) ->
-          let
-            packed = packWordC @wordSize ?regByteOrder a !! relOffset
-            readData = if needReverse then reverseBytes packed else packed
-           in
-            s2m{readData}
+          s2m{readData = packWordC @wordSize ?regByteOrder a !! relOffset}
         _ -> s2m
 
     goRelativeOffset :: BitVector aw -> Index (SizeInWordsC wordSize a)
@@ -694,54 +680,12 @@ registerWbDf clk rst regConfig resetValue =
     goResponse _ Nothing = (Nothing, Nothing)
     goResponse packedFromReg (Just (Right (addr, mask, dataIn))) = (response, wbWrite)
      where
-      maskedWriteData =
-        maskWriteData
-          addr
-          (if needReverse then reverseBits mask else mask)
-          (if needReverse then reverseBytes dataIn else dataIn)
-          packedFromReg
+      maskedWriteData = maskWriteData addr mask dataIn packedFromReg
       wbWrite = Just maskedWriteData
       response = Just (deepErrorX "readData not defined on write")
     goResponse packedFromReg (Just (Left addr)) = (response, Nothing)
      where
-      readData = (if needReverse then reverseBytes else id) (packedFromReg !! addr)
-      response = Just readData
-
-reverseBytes ::
-  forall wordSize.
-  (KnownNat wordSize) =>
-  BitVector (wordSize * 8) ->
-  BitVector (wordSize * 8)
-reverseBytes = pack . reverse . unpack @(Vec wordSize (Bytes 1))
-
-reverseBits ::
-  forall n.
-  (KnownNat n) =>
-  BitVector n ->
-  BitVector n
-reverseBits = pack . reverse . unpack @(Vec n Bit)
-
-{- | If `busByteOrder` and `regByteOrder` match, this is a no-op. If they don't, this will
-reverse the byte order of the data and byte enables in both directions. Note that this
-only affects the data and byte enables.
--}
-matchEndianness ::
-  forall dom mode aw wordSize.
-  ( KnownNat wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
-  Circuit
-    (Wishbone dom mode aw wordSize)
-    (Wishbone dom mode aw wordSize)
-matchEndianness
-  | needReverse = applyC (fmap reverseWrite) (fmap reverseRead)
-  | otherwise = idC
- where
-  reverseWrite m2s = m2s{writeData = reverseBytes m2s.writeData, busSelect = reverseBits m2s.busSelect}
-  reverseRead s2m = s2m{readData = reverseBytes s2m.readData}
-
-  needReverse = ?busByteOrder /= ?regByteOrder
+      response = Just (packedFromReg !! addr)
 
 {- | Takes the data from the bus and the register and combines them based on the
 byte enables and word index we're writing to.

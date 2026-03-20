@@ -12,7 +12,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Project.FilePath
 
@@ -62,7 +62,7 @@ case_time_rust_self_test =
 Runs the `hello` binary from `firmware-binaries`.
 -}
 dut :: Circuit () (Df Basic50 (BitVector 8))
-dut = withBittideByteOrder
+dut = withLittleEndian
   $ withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do
@@ -146,7 +146,7 @@ case_time_c_test = do
 Runs the `c_timer_wb` binary from `firmware-binaries/test-cases`.
 -}
 dutC :: Circuit () (Df Basic50 (BitVector 8))
-dutC = withBittideByteOrder
+dutC = withLittleEndian
   $ withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do

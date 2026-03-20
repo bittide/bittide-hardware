@@ -28,7 +28,7 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
@@ -60,7 +60,7 @@ dut ::
   forall dom.
   (HiddenClockResetEnable dom) =>
   Circuit () (Df dom (BitVector 8))
-dut = withBittideByteOrder $ circuit $ \_unit -> do
+dut = withLittleEndian $ circuit $ \_unit -> do
   (uartRx, jtag) <- idleSource
   [uartBus, dnaBus] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)

@@ -124,7 +124,6 @@ gppeConfig =
 managementUnit ::
   forall dom.
   ( HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
@@ -159,7 +158,6 @@ managementUnit externalCounter maybeDna =
 gppe ::
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | External counter
@@ -234,8 +232,7 @@ calendarConfig =
 {- FOURMOLU_ENABLE -}
 
 core ::
-  ( ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  ( ?regByteOrder :: ByteOrder
   ) =>
   (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->

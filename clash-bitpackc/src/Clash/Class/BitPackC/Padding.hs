@@ -29,7 +29,10 @@ import Data.Typeable (Typeable)
 type SizeInWords wordSize nBytes = nBytes `DivRU` wordSize
 type SizeInWordsC wordSize a = SizeInWords wordSize (ByteSizeC a)
 
--- | Like 'packC', but pads the input to a multiple of a given word size.
+{- | Like 'packC', but pads the input to a multiple of a given word size. Note that the
+resulting 'BitVector' is packed in such a way that the least significant bits contain
+the byte corresponding to the lowest byte address.
+-}
 packWordC ::
   forall wordSize a.
   ( BitPackC a
@@ -70,7 +73,10 @@ unpackWordOrErrorC ::
 unpackWordOrErrorC endian bytes =
   unpackOrErrorC endian (unpad bytes)
 
--- | Pack bytes into a bunch of words. Pad with zero-bytes if necessary.
+{- | Pack bytes into a bunch of words. Pad with zero-bytes if necessary. Note that the
+resulting 'BitVector' is packed in such a way that the byte with the lowest index in the
+input vector is packed into the least significant bits.
+-}
 pad ::
   forall nBytes wordSize.
   ( KnownNat nBytes
@@ -81,7 +87,7 @@ pad ::
   Vec (SizeInWords wordSize nBytes) (Bytes wordSize)
 pad v =
   case compareSNat (SNat @nBytes) (SNat @(SizeInWords wordSize nBytes * wordSize)) of
-    SNatLE -> map pack (unconcatI (padVec 0 v))
+    SNatLE -> map (pack . reverse) . unconcatI . padVec 0 $ v
     _ -> clashCompileError "Impossible: nBytes > SizeInWords wordSize nBytes"
 
 {- | Unpack words into a vector of bytes, in such a way that the padding bytes
@@ -97,7 +103,7 @@ unpad ::
   Vec nBytes (Bytes 1)
 unpad v =
   case compareSNat (SNat @nBytes) (SNat @(SizeInWords wordSize nBytes * wordSize)) of
-    SNatLE -> unpadVec (concat (map unpack v))
+    SNatLE -> unpadVec . concat . map (reverse . unpack) $ v
     _ -> clashCompileError "Impossible: nBytes > SizeInWords wordSize nBytes"
 
 -- | Extend a vector with supplied default value to a given length

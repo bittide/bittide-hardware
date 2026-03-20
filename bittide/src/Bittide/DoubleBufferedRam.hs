@@ -13,7 +13,6 @@ import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
-import Clash.Class.BitPackC (ByteOrder (..))
 import Data.Typeable
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (unMemmap)
@@ -21,7 +20,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   addressableBytesWb,
   deviceConfig,
   deviceWb,
-  matchEndianness,
   registerConfig,
  )
 
@@ -86,22 +84,19 @@ wbStorage ::
   , HiddenClockResetEnable dom
   , KnownNat aw
   , 1 <= depth
-  , ?busByteOrder :: ByteOrder
   ) =>
   String ->
   SNat depth ->
   Maybe (ContentType depth (Bytes 4)) ->
   Circuit (BitboneMm dom aw) ()
 wbStorage memoryName SNat initContent =
-  let ?regByteOrder = BigEndian
-   in circuit $ \(mm, wbMaster0) -> do
-        wbMaster1 <- matchEndianness -< wbMaster0
-        [wb0] <- deviceWb (deviceConfig memoryName) -< (mm, wbMaster1)
-        reqresp <- addressableBytesWb regConfig -< wb0
-        (reads, writes0) <- ReqResp.partitionEithers -< reqresp
-        writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
-        _vecUnit <- ram -< (reads, writes1)
-        idC -< ()
+  circuit $ \wbMm -> do
+    [wb0] <- deviceWb (deviceConfig memoryName) -< wbMm
+    reqresp <- addressableBytesWb regConfig -< wb0
+    (reads, writes0) <- ReqResp.partitionEithers -< reqresp
+    writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
+    _vecUnit <- ram -< (reads, writes1)
+    idC -< ()
  where
   regConfig = registerConfig "data"
   ram = ReqResp.fromBlockRamWithMask
@@ -125,8 +120,7 @@ wbStorage' ::
   Signal dom (WishboneM2S aw 4) ->
   Signal dom (WishboneS2M 4)
 wbStorage' depth initContent wbIn =
-  let ?busByteOrder = BigEndian
-   in fst $ toSignals (unMemmap $ wbStorage "" depth initContent) (wbIn, ())
+  fst $ toSignals (unMemmap $ wbStorage "" depth initContent) (wbIn, ())
 
 {- | Blockram similar to 'blockRam' with the addition that it takes a byte select signal
 that controls which nBytes at the write address are updated.

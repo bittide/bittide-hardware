@@ -33,7 +33,6 @@ freeze ::
   , KnownNat nLinks
   , HasCallStack
   , 4 <= aw
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   Clock dom ->

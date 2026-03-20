@@ -134,7 +134,6 @@ deviceExample ::
   , KnownNat aw
   , 1 <= wordSize
   , ?regByteOrder :: ByteOrder
-  , ?busByteOrder :: ByteOrder
   ) =>
   Trace ->
   Clock dom ->

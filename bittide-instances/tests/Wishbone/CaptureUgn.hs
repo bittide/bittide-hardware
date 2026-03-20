@@ -33,7 +33,7 @@ import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
 {- | Test whether we can read the local and remote sequence counters from the captureUgn
@@ -93,7 +93,7 @@ dut ::
   -- | Local sequence counter
   Signal dom (Unsigned 64) ->
   Circuit () (Df dom (BitVector 8))
-dut eb localCounter = withBittideByteOrder $ circuit $ do
+dut eb localCounter = withLittleEndian $ circuit $ do
   (uartRx, jtagIdle) <- idleSource
   [uartBus, ugnBus] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)

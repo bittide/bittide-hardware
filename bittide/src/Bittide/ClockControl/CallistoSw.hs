@@ -55,7 +55,6 @@ callistoSwClockControlC ::
   , HasDefinedInitialValues dom
   , PrefixWidth (otherWb + SwcccInternalBusses) <= 30
   , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , 4 <= SwcccRemBusWidth otherWb
   ) =>

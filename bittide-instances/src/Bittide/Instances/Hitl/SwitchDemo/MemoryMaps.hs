@@ -8,7 +8,7 @@ import Clash.Explicit.Prelude
 import Protocols
 
 import Bittide.Instances.Hitl.SwitchDemo.BringUp (bringUp)
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Protocols.MemoryMap (MemoryMap)
 import VexRiscv (JtagIn (..))
@@ -18,7 +18,7 @@ import qualified Protocols.Spi as Spi
 boot, mu, cc :: MemoryMap
 (boot, mu, cc) = (bootMm, muMm, ccMm)
  where
-  Circuit circuitFn = withBittideByteOrder $ bringUp clockGen noReset
+  Circuit circuitFn = withLittleEndian $ bringUp clockGen noReset
 
   (SimOnly bootMm, SimOnly muMm, SimOnly ccMm) = vecToTuple memoryMaps
 

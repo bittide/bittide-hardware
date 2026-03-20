@@ -154,7 +154,6 @@ wbToDf ::
   , NFDataX a
   , BitPack a
   , BitPackC a
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , HasCallStack
   ) =>

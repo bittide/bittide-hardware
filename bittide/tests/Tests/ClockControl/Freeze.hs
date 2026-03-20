@@ -6,7 +6,7 @@
 module Tests.ClockControl.Freeze where
 
 import Bittide.ClockControl.Freeze (counter, freeze)
-import Bittide.SharedTypes (withByteOrderings)
+import Bittide.SharedTypes (withByteOrder)
 import Clash.Class.BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
@@ -134,7 +134,7 @@ prop_wb = property $ do
 
   dutMm ::
     Circuit (ToConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth 4) ()
-  dutMm = withByteOrderings endian endian $ circuit $ \(mm, wb) -> do
+  dutMm = withByteOrder endian $ circuit $ \(mm, wb) -> do
     freeze @4 @32 clk rst
       -< ( (mm, wb)
          , Fwd ebCounters

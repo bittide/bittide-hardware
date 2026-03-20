@@ -63,7 +63,6 @@ node ::
   forall dom linkCount gppes metaPeBufferWidth.
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   Config linkCount gppes metaPeBufferWidth ->
@@ -168,7 +167,6 @@ gppeC ::
   ( HasCallStack
   , KnownNat nmuRemBusWidth
   , HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configures all local parameters
@@ -266,7 +264,6 @@ managementUnitC ::
   forall dom linkCount gppes.
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   ManagementConfig linkCount gppes ->

@@ -11,7 +11,7 @@ import Bittide.DoubleBufferedRam (ContentType (Vec))
 import Bittide.ElasticBuffer
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Class.BitPackC
 import GHC.Stack (HasCallStack)
@@ -45,7 +45,7 @@ dut ::
     (ToConstBwd Mm)
     ( Df XilinxSystem (BitVector 8) -- UART output
     )
-dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do
+dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [ebWbBus, uartBus, (mmTime, timeBus)] <-
     processingElement @_ dumpVcd peConfig -< (mm, jtagIdle)

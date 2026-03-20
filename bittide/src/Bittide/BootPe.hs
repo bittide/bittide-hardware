@@ -28,7 +28,6 @@ bootPe ::
   ( HasCallStack
   , HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   PeConfig BootPeBusses ->

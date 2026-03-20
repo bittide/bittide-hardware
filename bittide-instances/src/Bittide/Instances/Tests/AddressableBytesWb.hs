@@ -21,7 +21,7 @@ import Bittide.ProcessingElement.Util (
   vecFromElfData,
   vecFromElfInstr,
  )
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withByteOrder)
 import Bittide.Wishbone (uartBytes, uartInterfaceWb)
 import Project.FilePath (
   CargoBuildType (Release),
@@ -29,7 +29,7 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
+import Clash.Class.BitPackC (ByteOrder (LittleEndian, BigEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols
@@ -68,7 +68,7 @@ dutWithBinary ::
   String ->
   Circuit (ToConstBwd Mm) (Df Basic50 (BitVector 8))
 dutWithBinary binaryName =
-  withBittideByteOrder
+  withByteOrder LittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \mm -> do

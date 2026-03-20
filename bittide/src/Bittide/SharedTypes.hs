@@ -201,33 +201,14 @@ forceReset force = unsafeFromActiveHigh (unsafeToActiveHigh hasReset .||. force)
 divRU :: (Integral a) => a -> a -> a
 divRU b a = (b + a - 1) `div` a
 
-{- | Makes the implicit byte ordering parameters explicit, similar to
-'withClockResetEnable'. Argument ordering is bus byte order followed by register
-byte order.
--}
-withByteOrderings ::
-  ByteOrder ->
-  ByteOrder ->
-  ((?busByteOrder :: ByteOrder, ?regByteOrder :: ByteOrder) => r) ->
-  r
-withByteOrderings busByteOrder regByteOrder f =
-  let
-    ?busByteOrder = busByteOrder
-    ?regByteOrder = regByteOrder
-   in
-    f
-
--- | Use the byte ordering for Bittide systems: big-endian bus, little-endian registers.
-withBittideByteOrder ::
-  ((?busByteOrder :: ByteOrder, ?regByteOrder :: ByteOrder) => r) -> r
-withBittideByteOrder = withByteOrderings BigEndian LittleEndian
+-- | Use given byte order for both busses and registers.
+withByteOrder :: ByteOrder -> ((?regByteOrder :: ByteOrder) => r) -> r
+withByteOrder byteOrder r = let ?regByteOrder = byteOrder in r
 
 -- | Use big-endian ordering for both busses and registers.
-withBigEndian ::
-  ((?busByteOrder :: ByteOrder, ?regByteOrder :: ByteOrder) => r) -> r
-withBigEndian = withByteOrderings BigEndian BigEndian
+withBigEndian :: ((?regByteOrder :: ByteOrder) => r) -> r
+withBigEndian = withByteOrder BigEndian
 
 -- | Use little-endian ordering for both busses and registers.
-withLittleEndian ::
-  ((?busByteOrder :: ByteOrder, ?regByteOrder :: ByteOrder) => r) -> r
-withLittleEndian = withByteOrderings LittleEndian LittleEndian
+withLittleEndian :: ((?regByteOrder :: ByteOrder) => r) -> r
+withLittleEndian = withByteOrder LittleEndian

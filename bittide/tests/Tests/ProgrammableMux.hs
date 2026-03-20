@@ -9,7 +9,7 @@ import Clash.Prelude
 import Protocols
 
 import Bittide.ProgrammableMux (programmableMux)
-import Bittide.SharedTypes (withByteOrderings)
+import Bittide.SharedTypes (withByteOrder)
 import Clash.Class.BitPackC (ByteOrder (..))
 import Clash.Class.BitPackC.Padding (packWordC)
 import Data.Maybe (fromJust)
@@ -52,11 +52,7 @@ prop_ProgrammableMux = H.property $ do
   -- The minimum of 100 cycles is to make sure the registers are written to before that
   -- the counter reaches 'firstBCycle'.
   firstBCycle <- H.forAll $ genUnsigned @64 (Range.linear 100 (fromIntegral simLength - 20))
-  -- XXX: Only support both byte orders being the same for now, because of a bug in
-  -- registerWb. Ideally this behaviour is already tested in the unittests for registerWb.
-  -- The byte ordering here will be updated when the bug in registerWb is fixed.
-  busByteOrder <- H.forAll $ Gen.element [BigEndian, LittleEndian]
-  let regByteOrder = busByteOrder
+  byteOrder <- H.forAll $ Gen.element [BigEndian, LittleEndian]
   let
     -- Notice that the data width is 8 bytes, which is larger than the usual 4 bytes in
     -- bittide. We do this so we can write the full 64 bits of 'firstBCycle' in one
@@ -66,7 +62,7 @@ prop_ProgrammableMux = H.property $ do
         (ToConstBwd Mm, Wishbone System 'Standard 32 8)
         (CSignal System Bool, CSignal System LinkData)
     dut =
-      withByteOrderings busByteOrder regByteOrder
+      withByteOrder byteOrder
         $ withClockResetEnable @System clockGen resetGen enableGen
         $ circuit
         $ \wb -> do
@@ -86,8 +82,8 @@ prop_ProgrammableMux = H.property $ do
     firstBCycleAddr = fromIntegral (fromJust firstBCycleLoc).value.address `div` 8
     armAddr = fromIntegral (fromJust armLoc).value.address `div` 8
 
-    firstBCycleBv = pack $ packWordC @8 busByteOrder firstBCycle
-    armBv = pack $ packWordC @8 busByteOrder True
+    firstBCycleBv = pack $ packWordC @8 byteOrder firstBCycle
+    armBv = pack $ packWordC @8 byteOrder True
     requests = fmap (,0) [Write firstBCycleAddr maxBound firstBCycleBv, Write armAddr maxBound armBv]
 
     (resets, outLink) =
