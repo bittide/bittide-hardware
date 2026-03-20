@@ -21,7 +21,6 @@ import Clash.Class.BitPackC (
   ByteSizeC,
   Bytes,
   maybeUnpackC,
-  msbResize,
   packC,
   unpackOrErrorC,
  )
@@ -80,7 +79,10 @@ pad ::
   ) =>
   Vec nBytes (Bytes 1) ->
   Vec (SizeInWords wordSize nBytes) (Bytes wordSize)
-pad = unpack . msbResize . pack
+pad v =
+  case compareSNat (SNat @nBytes) (SNat @(SizeInWords wordSize nBytes * wordSize)) of
+    SNatLE -> map pack (unconcatI (padVec 0 v))
+    _ -> clashCompileError "Impossible: nBytes > SizeInWords wordSize nBytes"
 
 {- | Unpack words into a vector of bytes, in such a way that the padding bytes
 introduced by 'pad' are removed again.
@@ -93,4 +95,30 @@ unpad ::
   ) =>
   Vec (SizeInWords wordSize nBytes) (Bytes wordSize) ->
   Vec nBytes (Bytes 1)
-unpad = unpack . msbResize . pack
+unpad v =
+  case compareSNat (SNat @nBytes) (SNat @(SizeInWords wordSize nBytes * wordSize)) of
+    SNatLE -> unpadVec (concat (map unpack v))
+    _ -> clashCompileError "Impossible: nBytes > SizeInWords wordSize nBytes"
+
+-- | Extend a vector with supplied default value to a given length
+padVec ::
+  forall n m a.
+  ( KnownNat n
+  , KnownNat m
+  , n <= m
+  ) =>
+  a ->
+  Vec n a ->
+  Vec m a
+padVec a vec = leToPlusKN @n @m (vec ++ repeat a)
+
+-- | Truncate a vector to a given length
+unpadVec ::
+  forall n m a.
+  ( KnownNat n
+  , KnownNat m
+  , n <= m
+  ) =>
+  Vec m a ->
+  Vec n a
+unpadVec vec = leToPlusKN @n @m (takeI @n vec)
