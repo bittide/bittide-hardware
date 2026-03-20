@@ -5,8 +5,6 @@
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 -- It's a test, we'll see it :-)
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
--- Needed for `ShowX (RamOp n a)`
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Tests.Protocols.MemoryMap.Registers.WishboneStandard where
 
@@ -439,17 +437,6 @@ case_memoryMap = do
   regDelayed.value.address @?= 32
   regDelayedError.value.address @?= 36
 
-partitionRamOp ::
-  (NFDataX mask, NFDataX bv) =>
-  RamOp n (mask, bv) ->
-  Either (Index n) (Index n, mask, bv)
-partitionRamOp = \case
-  RamRead addr -> Left addr
-  RamWrite addr (mask, bv) -> Right (addr, mask, bv)
-  RamNoOp -> deepErrorX "RamNoOp should not be in a ReqResp stream"
-
-deriving instance (ShowX a) => ShowX (RamOp n a)
-
 -- | Test the addressableBytesWb circuit using wishbonePropWithModel
 prop_addressableBytesWb :: Property
 prop_addressableBytesWb = property $ do
@@ -465,7 +452,7 @@ prop_addressableBytesWb = property $ do
           mm <- ignoreMM
           [wb0] <- deviceWb "test" -< (mm, wb)
           reqresp <- CP.withReset rst ReqResp.forceResetSanity <| addressableBytesWb memConf -< wb0
-          (reads, writes0) <- ReqResp.partition partitionRamOp <| stallC def stalls -< reqresp
+          (reads, writes0) <- ReqResp.partitionEithers <| stallC def stalls -< reqresp
           writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
           _vecUnit <- ram -< (reads, writes1)
           idC -< ()

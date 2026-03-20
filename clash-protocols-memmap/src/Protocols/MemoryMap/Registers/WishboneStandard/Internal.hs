@@ -358,7 +358,10 @@ addressableBytesWb ::
     (RegisterWb dom aw wordSize)
     ( ReqResp
         dom
-        (RamOp nWords (BitVector wordSize, Bytes wordSize))
+        ( Either
+            (Index nWords)
+            (Index nWords, BitVector wordSize, Bytes wordSize) -- Write (index, mask, data)
+        )
         (Bytes wordSize)
     )
 addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
@@ -387,13 +390,11 @@ addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
     ( ((), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
     , Signal
         dom
-        (Maybe (RamOp nWords (BitVector wordSize, Bytes wordSize)))
+        ( Maybe (Either (Index nWords) (Index nWords, BitVector wordSize, Bytes wordSize))
+        )
     )
-  go ((offset, _, wbM2S0), respData) = (((), meta, wbS2M), fmap maybeRamOp req)
+  go ((offset, _, wbM2S0), respData) = (((), meta, wbS2M), req)
    where
-    maybeRamOp RamNoOp = Nothing
-    maybeRamOp op = Just op
-
     (wbS2M, req) = unbundle $ wishboneToRequestResponse regConfig.access <$> wbM2S1 <*> respData
     wbM2S1 = fmap (\wb -> wb{addr = wb.addr - offset}) wbM2S0
 
@@ -401,10 +402,10 @@ addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
 ReqResp read/write operations, handling byte order conversion and access control.
 -}
 wishboneToRequestResponse ::
-  forall n wordSize aw.
+  forall nWords wordSize aw.
   ( HasCallStack
-  , KnownNat n
-  , 1 <= n
+  , KnownNat nWords
+  , 1 <= nWords
   , KnownNat wordSize
   , KnownNat aw
   , ?busByteOrder :: ByteOrder
@@ -418,7 +419,7 @@ wishboneToRequestResponse ::
   Maybe (Bytes wordSize) ->
   -- | (Wishbone slave-to-master, Request to ReqResp)
   ( WishboneS2M wordSize
-  , RamOp n (BitVector wordSize, Bytes wordSize)
+  , Maybe (Either (Index nWords) (Index nWords, BitVector wordSize, Bytes wordSize))
   )
 wishboneToRequestResponse access wbM2S respData
   | addrMaxInteger < indexMaxInteger =
@@ -429,7 +430,7 @@ wishboneToRequestResponse access wbM2S respData
   | otherwise = (wbS2M, req)
  where
   addrMaxInteger = toInteger (maxBound :: BitVector aw)
-  indexMaxInteger = toInteger (maxBound :: Index n)
+  indexMaxInteger = toInteger (maxBound :: Index nWords)
   -- Wishbone
   wbS2M =
     (emptyWishboneS2M @0)
@@ -446,7 +447,7 @@ wishboneToRequestResponse access wbM2S respData
   writeFault = access == WriteOnly && not wbM2S.writeEnable
 
   -- Address calculation: compute index within addressable range
-  inRange = wbM2S.addr <= resize (bitCoerce (maxBound :: Index n))
+  inRange = wbM2S.addr <= resize (bitCoerce (maxBound :: Index nWords))
   wbAddr = unpack $ resize wbM2S.addr
 
   -- Request Response
@@ -454,9 +455,9 @@ wishboneToRequestResponse access wbM2S respData
   validWrite = masterActive && wbM2S.writeEnable && inRange && not writeFault
 
   req
-    | validRead = RamRead wbAddr
-    | validWrite = RamWrite wbAddr (wbM2S.busSelect, wbM2S.writeData)
-    | otherwise = RamNoOp
+    | validRead = Just $ Left wbAddr
+    | validWrite = Just $ Right (wbAddr, wbM2S.busSelect, wbM2S.writeData)
+    | otherwise = Nothing
 
 {- | Circuit writes always take priority over bus writes. Bus writes rejected with
 an error if access rights are set to 'ReadOnly'. Similarly, bus reads are rejected
@@ -635,7 +636,7 @@ registerWbDf clk rst regConfig resetValue =
 
     setReadData s2m ma req =
       case (ma, req) of
-        (Just a, RamRead relOffset) ->
+        (Just a, Just (Left relOffset)) ->
           let
             packed = packWordC @wordSize ?regByteOrder a !! relOffset
             readData = if needReverse then reverseBytes packed else packed
@@ -650,8 +651,8 @@ registerWbDf clk rst regConfig resetValue =
       offsetLsbs = resize offset :: BitVector (BitSize (Index nWords))
       addrLsbs = resize addr
 
-    goResponse _ RamNoOp = (Nothing, Nothing)
-    goResponse packedFromReg (RamWrite addr (mask, dataIn)) = (response, wbWrite)
+    goResponse _ Nothing = (Nothing, Nothing)
+    goResponse packedFromReg (Just (Right (addr, mask, dataIn))) = (response, wbWrite)
      where
       maskedWriteData =
         maskWriteData
@@ -661,7 +662,7 @@ registerWbDf clk rst regConfig resetValue =
           packedFromReg
       wbWrite = Just maskedWriteData
       response = Just (deepErrorX "readData not defined on write")
-    goResponse packedFromReg (RamRead addr) = (response, Nothing)
+    goResponse packedFromReg (Just (Left addr)) = (response, Nothing)
      where
       readData = (if needReverse then reverseBytes else id) (packedFromReg !! addr)
       response = Just readData

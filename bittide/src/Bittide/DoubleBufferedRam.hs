@@ -97,7 +97,7 @@ wbStorage memoryName SNat initContent =
         wbMaster1 <- matchEndianness -< wbMaster0
         [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
         reqresp <- addressableBytesWb regConfig -< wb0
-        (reads, writes0) <- ReqResp.partition partitionRamOp -< reqresp
+        (reads, writes0) <- ReqResp.partitionEithers -< reqresp
         writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
         _vecUnit <- ram -< (reads, writes1)
         idC -< ()
@@ -109,11 +109,6 @@ wbStorage memoryName SNat initContent =
         blockRamByteAddressableU
       Just content ->
         blockRamByteAddressable @_ @depth content
-
-  partitionRamOp = \case
-    RamRead addr -> Left addr
-    RamWrite addr (mask, bv) -> Right (addr, mask, bv)
-    RamNoOp -> deepErrorX "RamNoOp should not be in a ReqResp stream"
 {-# OPAQUE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
