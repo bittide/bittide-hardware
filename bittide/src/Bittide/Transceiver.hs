@@ -583,16 +583,9 @@ transceiverPrbs ::
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
-transceiverPrbs config input = output
- where
-  output = transceiverOutputAndHandshakeOutputToOutput transceiver handshake
+transceiverPrbs = connectedTransceiverAndHandshake Gth.gthCore
 
-  transceiverInput = inputToTransceiverInput input
-  handshakeInput = inputToHandshakeInput input
-  (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith Gth.gthCore config transceiverInput transceiverInputFromHandshake
-  (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput handshakeInputFromTransceiver
-
-testingShimWith core config input = output
+connectedTransceiverAndHandshake core config input = output
  where
   output = transceiverOutputAndHandshakeOutputToOutput transceiver handshake
 
