@@ -737,8 +737,8 @@ data HandshakeInputFromTransceiver tx rx = HandshakeInputFromTransceiver
   , reset_tx_done :: Signal tx (BitVector 1)
   , rxReset :: Reset rx
   , reset_rx_done :: Signal rx (BitVector 1)
-  , prbsOkDelayed :: Signal rx Bool -- link is healthy
-  , alignedRxData0 :: Signal rx (BitVector 64) -- Word from transceiver
+  , linkHealthy :: Signal rx Bool -- link is healthy
+  , wordFromTransceiver :: Signal rx (BitVector 64) -- Word from transceiver
   }
 
 data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake
@@ -979,96 +979,80 @@ userDataHandshake ::
   HandshakeInput tx rx free ->
   HandshakeInputFromTransceiver tx rx ->
   (HandshakeOutput tx rx free, TransceiverInputFromHandshake tx rx free)
-userDataHandshake
-  ( HandshakeInput
-      clock
-      reset
-      txClock
-      -- txReset
-      -- reset_tx_done
-      rxClock
-      -- rxReset
-      -- reset_rx_done
-      -- linkHealthy
-      -- wordFromTransceiver
-      wordFromUser
-      txStart
-      rxReady
-    )
-  ( HandshakeInputFromTransceiver
-      txReset
-      reset_tx_done
-      rxReset
-      reset_rx_done
-      linkHealthy
-      wordFromTransceiver
-    ) = (output, transceiverInputFromHandshake)
-   where
-    output =
-      HandshakeOutput
-        { wordToTransceiver
-        , wordToUser
-        , rxLast
-        , rxUserData
-        , txUserData
-        , debugLinkUp
-        , debugLinkReady
-        , neighborReceiveReady
-        , neighborReceiveReadyTx
-        , neighborTransmitReady
-        }
+userDataHandshake input fromTransceiver = (output, transceiverInputFromHandshake)
+ where
+  output =
+    HandshakeOutput
+      { wordToTransceiver
+      , wordToUser
+      , rxLast
+      , rxUserData
+      , txUserData
+      , debugLinkUp
+      , debugLinkReady
+      , neighborReceiveReady
+      , neighborReceiveReadyTx
+      , neighborTransmitReady
+      }
 
-    transceiverInputFromHandshake =
-      TransceiverInputFromHandshake
-        wordToTransceiver
-        rxLast
-        rxUserData
-        txUserData
+  transceiverInputFromHandshake =
+    TransceiverInputFromHandshake
+      wordToTransceiver
+      rxLast
+      rxUserData
+      txUserData
 
-    metadata = wordToMetadata <$> wordFromTransceiver
-    validMeta = mux rxUserData (pure False) linkHealthy
+  metadata = wordToMetadata <$> fromTransceiver.wordFromTransceiver
+  validMeta = mux rxUserData (pure False) fromTransceiver.linkHealthy
 
-    rxMeta = mux validMeta (Just <$> metadata) (pure Nothing)
-    rxLast = maybe False (.lastMetadataWord) <$> rxMeta
-    rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
-    txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
+  rxMeta = mux validMeta (Just <$> metadata) (pure Nothing)
+  rxLast = maybe False (.lastMetadataWord) <$> rxMeta
+  rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
+  txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
 
-    rxUserData = stickyE rxClock rxReset rxLast
-    txUserData = stickyE txClock txReset txLast
+  rxUserData = stickyE input.rxClock fromTransceiver.rxReset rxLast
+  txUserData = stickyE input.txClock fromTransceiver.txReset txLast
 
-    indicateRxReady = withLockRxTx (linkHealthy .&&. stickyE rxClock rxReset rxReady)
+  indicateRxReady =
+    withLockRxTx
+      (fromTransceiver.linkHealthy .&&. stickyE input.rxClock fromTransceiver.rxReset input.rxReady)
 
-    rxReadyNeighborSticky = stickyE rxClock rxReset rxReadyNeighbor
-    txReadyNeighborSticky = stickyE rxClock rxReset txReadyNeighbor
-    txLast = indicateRxReady .&&. txStart .&&. withLockRxTx rxReadyNeighborSticky
+  rxReadyNeighborSticky = stickyE input.rxClock fromTransceiver.rxReset rxReadyNeighbor
+  txReadyNeighborSticky = stickyE input.rxClock fromTransceiver.rxReset txReadyNeighbor
+  txLast = indicateRxReady .&&. input.txStart .&&. withLockRxTx rxReadyNeighborSticky
 
-    metaTx :: Signal tx Meta
-    metaTx =
-      Meta
-        <$> indicateRxReady
-        <*> (withLockRxTx linkHealthy .&&. txStart)
-        <*> txLast
-        -- Padding
-        <*> pure 0
+  metaTx :: Signal tx Meta
+  metaTx =
+    Meta
+      <$> indicateRxReady
+      <*> (withLockRxTx fromTransceiver.linkHealthy .&&. input.txStart)
+      <*> txLast
+      -- Padding
+      <*> pure 0
 
-    wordToTransceiver =
-      mux
-        txUserData
-        wordFromUser
-        (metadataToWord <$> metaTx)
-    wordToUser = mux rxUserData (Just <$> wordFromTransceiver) (pure Nothing)
+  wordToTransceiver =
+    mux
+      txUserData
+      input.wordFromUser
+      (metadataToWord <$> metaTx)
+  wordToUser = mux rxUserData (Just <$> fromTransceiver.wordFromTransceiver) (pure Nothing)
 
-    debugLinkUp =
-      withLockTxFree txUserData
-        .&&. withLockRxFree rxUserData
+  debugLinkUp =
+    withLockTxFree txUserData
+      .&&. withLockRxFree rxUserData
 
-    debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
+  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
 
-    neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
-    neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
-    neighborTransmitReady = withLockRxFree txReadyNeighborSticky
+  neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
+  neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
+  neighborTransmitReady = withLockRxFree txReadyNeighborSticky
 
-    -- Clock domain crossing functions
-    withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
-    withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
-    withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
+  -- Clock domain crossing functions
+  withLockRxFree = Cdc.withLock input.rxClock (unpack <$> fromTransceiver.reset_rx_done) input.clock input.reset
+  withLockRxTx =
+    Cdc.withLock
+      input.rxClock
+      (unpack <$> fromTransceiver.reset_rx_done)
+      input.txClock
+      fromTransceiver.txReset
+  withLockTxFree = Cdc.withLock input.txClock (unpack <$> fromTransceiver.reset_tx_done) input.clock input.reset
