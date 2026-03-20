@@ -585,6 +585,24 @@ transceiverPrbs ::
   Output tx rx tx1 rx1 txS free
 transceiverPrbs = connectedTransceiverAndHandshake Gth.gthCore
 
+connectedTransceiverAndHandshake ::
+  ( HasSynchronousReset tx
+  , HasDefinedInitialValues tx
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
+  , KnownDomain rx1
+  , KnownDomain tx1
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
+  ) =>
+  Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
+  Config free ->
+  Input tx rx tx1 rx1 ref free rxS ->
+  Output tx rx tx1 rx1 txS free
 connectedTransceiverAndHandshake core config input = output
  where
   output = transceiverOutputAndHandshakeOutputToOutput transceiver handshake
@@ -594,6 +612,10 @@ connectedTransceiverAndHandshake core config input = output
   (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith core config transceiverInput transceiverInputFromHandshake
   (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput handshakeInputFromTransceiver
 
+transceiverOutputAndHandshakeOutputToOutput ::
+  TransceiverOutput tx rx tx1 rx1 txS free ->
+  HandshakeOutput tx rx free ->
+  Output tx rx tx1 rx1 txS free
 transceiverOutputAndHandshakeOutputToOutput transceiver handshake = output
  where
   output =
@@ -618,7 +640,8 @@ transceiverOutputAndHandshakeOutputToOutput transceiver handshake = output
       , stats = transceiver.stats
       }
 
--- inputToTransceiverInput :: Input tx rx tx1 rx1 ref free rxS -> TransceiverInput tx rx tx1 rx1 ref free rxS
+inputToTransceiverInput ::
+  Input tx rx tx1 rx1 ref free rxS -> TransceiverInput tx rx tx1 rx1 ref free rxS
 inputToTransceiverInput input = transceiverInput
  where
   transceiverInput =
@@ -640,7 +663,7 @@ inputToTransceiverInput input = transceiverInput
       input.rxN
       input.rxP
 
--- inputToHandshakeInput :: Input tx rx tx1 rx1 ref free rxS -> HandshakeInput tx rx free
+inputToHandshakeInput :: Input tx rx tx1 rx1 ref free rxS -> HandshakeInput tx rx free
 inputToHandshakeInput input = handshakeInput
  where
   handshakeInput =
