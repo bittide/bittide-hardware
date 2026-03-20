@@ -583,7 +583,9 @@ transceiverPrbs ::
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
-transceiverPrbs config input = output
+transceiverPrbs = transceiverPrbsWithNew Gth.gthCore
+
+transceiverPrbsWithNew core config input = output
  where
   output =
     Output
@@ -607,8 +609,8 @@ transceiverPrbs config input = output
       , stats = transceiver.stats
       }
 
-  (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith Gth.gthCore config input transceiverInputFromHandshake
-  handshake = userDataHandshake handshakeInput
+  (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith core config input transceiverInputFromHandshake
+  (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput
 
   {-  handshakeInputFromTransceiver = HandshakeInputFromTransceiver
         transceiver.txReset
@@ -618,13 +620,6 @@ transceiverPrbs config input = output
         transceiver.prbsOkDelayed
         transceiver.alignedRxData0
   -}
-
-  transceiverInputFromHandshake =
-    TransceiverInputFromHandshake
-      handshake.wordToTransceiver
-      handshake.rxLast
-      handshake.rxUserData
-      handshake.txUserData
 
   handshakeInput =
     HandshakeInput
@@ -926,7 +921,7 @@ userDataHandshake ::
   forall rx tx free.
   (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
   HandshakeInput rx tx free ->
-  HandshakeOutput rx tx free
+  (HandshakeOutput rx tx free, TransceiverInputFromHandshake tx rx free)
 userDataHandshake
   ( HandshakeInput
       clock
@@ -942,20 +937,28 @@ userDataHandshake
       wordFromUser
       txStart
       rxReady
-    ) =
-    HandshakeOutput
-      { wordToTransceiver
-      , wordToUser
-      , rxLast
-      , rxUserData
-      , txUserData
-      , debugLinkUp
-      , debugLinkReady
-      , neighborReceiveReady
-      , neighborReceiveReadyTx
-      , neighborTransmitReady
-      }
+    ) = (output, transceiverInputFromHandshake)
    where
+    output =
+      HandshakeOutput
+        { wordToTransceiver
+        , wordToUser
+        , rxLast
+        , rxUserData
+        , txUserData
+        , debugLinkUp
+        , debugLinkReady
+        , neighborReceiveReady
+        , neighborReceiveReadyTx
+        , neighborTransmitReady
+        }
+    transceiverInputFromHandshake =
+      TransceiverInputFromHandshake
+        wordToTransceiver
+        rxLast
+        rxUserData
+        txUserData
+
     metadata = wordToMetadata <$> wordFromTransceiver
     validMeta = mux rxUserData (pure False) linkHealthy
 

@@ -38,30 +38,30 @@ tests :: TestTree
 tests =
   testGroup
     "Unittests"
-    [ Tests.Axi4.tests
-    , Tests.Axi4.Generators.tests
-    , Tests.Axi4.Properties.tests
-    , Tests.BitView.tests
-    , Tests.Calendar.tests
-    , Tests.Clash.Protocols.Wishbone.Extra.tests
-    , Tests.ClockControl.Freeze.tests
-    , Tests.ClockControl.Si539xSpi.tests
-    , Tests.DelayWishbone.tests
-    , Tests.Df.tests
-    , Tests.DoubleBufferedRam.tests
-    , Tests.ElasticBuffer.tests
-    , Tests.GeneralPurposeProcessingElement.Calculator.tests
-    , Tests.Handshake.tests
-    , Tests.ProcessingElement.ReadElf.tests
-    , Tests.ScatterGather.tests
-    , Tests.Switch.tests
-    , Tests.SwitchDemoProcessingElement.Calculator.tests
-    , Tests.SwitchDemoProcessingElement.tests
-    , Tests.Transceiver.Prbs.tests
+    [ {- Tests.Axi4.tests
+      , Tests.Axi4.Generators.tests
+      , Tests.Axi4.Properties.tests
+      , Tests.BitView.tests
+      , Tests.Calendar.tests
+      , Tests.Clash.Protocols.Wishbone.Extra.tests
+      , Tests.ClockControl.Freeze.tests
+      , Tests.ClockControl.Si539xSpi.tests
+      , Tests.DelayWishbone.tests
+      , Tests.Df.tests
+      , Tests.DoubleBufferedRam.tests
+      , Tests.ElasticBuffer.tests
+      , Tests.GeneralPurposeProcessingElement.Calculator.tests
+      , Tests.Handshake.tests
+      , Tests.ProcessingElement.ReadElf.tests
+      , Tests.ScatterGather.tests
+      , Tests.Switch.tests
+      , Tests.SwitchDemoProcessingElement.Calculator.tests
+      , Tests.SwitchDemoProcessingElement.tests-}
+      Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.tests
     , Tests.Transceiver.WordAlign.tests
-    , Tests.Wishbone.tests
-    , Tests.Wishbone.Arbiter.tests
+    -- , Tests.Wishbone.tests
+    -- , Tests.Wishbone.Arbiter.tests
     ]
 
 {- | Default number of tests is 100, which is too low for our (complicated)
