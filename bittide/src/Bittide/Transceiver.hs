@@ -675,21 +675,14 @@ data TransceiverInput tx rx tx1 rx1 ref free rxS = TransceiverInput
 data TransceiverOutput tx rx tx1 rx1 txS free = TransceiverOutput
   { txOutClock :: Clock tx1
   , txReset :: Reset tx
-  , txReady :: Signal tx Bool
-  , txSampling :: Signal tx Bool
   , handshakeDoneTx :: Signal tx Bool
   , txP :: Gth.Wire txS
   , txN :: Gth.Wire txS
   , txSim :: Gth.SimWire tx
   , rxOutClock :: Clock rx1
   , rxReset :: Reset rx
-  , rxData :: Signal rx (Maybe (BitVector 64))
   , handshakeDone :: Signal rx Bool
-  , debugLinkUp :: Signal free Bool
-  , debugLinkReady :: Signal free Bool
   , handshakeDoneFree :: Signal free Bool
-  , neighborReceiveReady :: Signal free Bool
-  , neighborTransmitReady :: Signal free Bool
   , stats :: Signal free ResetManager.Statistics
   }
 
@@ -699,8 +692,8 @@ data HandshakeInput tx rx free = HandshakeInput
   , txClock :: Clock tx
   , rxClock :: Clock rx
   , wordFromUser :: Signal tx (BitVector 64)
-  , txStart :: Signal tx Bool
-  , rxReady :: Signal rx Bool
+  , txStart :: Signal tx Bool -- Should be wishbone
+  , rxReady :: Signal rx Bool -- Should be wishbone
   }
 
 data HandshakeOutput tx rx free = HandshakeOutput
@@ -721,8 +714,8 @@ data HandshakeInputFromTransceiver tx rx = HandshakeInputFromTransceiver
   , reset_tx_done :: Signal tx (BitVector 1)
   , rxReset :: Reset rx
   , reset_rx_done :: Signal rx (BitVector 1)
-  , prbsOkDelayed :: Signal rx Bool
-  , alignedRxData0 :: Signal rx (BitVector 64)
+  , prbsOkDelayed :: Signal rx Bool -- link is healthy
+  , alignedRxData0 :: Signal rx (BitVector 64) -- Word from transceiver
   }
 
 data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake
@@ -756,11 +749,7 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
  where
   output =
     TransceiverOutput
-      { txSampling = undefined -- txUserData -- From handshake
-      , rxData = undefined -- wordToUser -- From handshake
-      , txReady = undefined -- neighborReceiveReadyTx -- From handshake
-      -- Note the following 3 handshake variables are prbsHandshake, NOT userdata handshake
-      , handshakeDoneTx = withLockRxTx prbsOkDelayed -- ironically NOT from handshake
+      { handshakeDoneTx = withLockRxTx prbsOkDelayed -- ironically NOT from handshake
       , handshakeDone = prbsOkDelayed -- ironically NOT from handshake
       , handshakeDoneFree = withLockRxFree prbsOkDelayed -- ironically NOT from handshake
       , txSim
@@ -770,10 +759,6 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
       , txOutClock
       , rxOutClock
       , rxReset
-      , debugLinkUp = undefined -- From handshake
-      , debugLinkReady = undefined -- From handshake
-      , neighborReceiveReady = undefined -- From handshake
-      , neighborTransmitReady = undefined -- From handshake
       , stats
       }
 
