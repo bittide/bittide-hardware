@@ -583,7 +583,82 @@ transceiverPrbs ::
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
-transceiverPrbs = transceiverPrbsWith Gth.gthCore
+transceiverPrbs config input = output
+ where
+  output =
+    Output
+      { txSampling = handshake.txUserData
+      , rxData = handshake.wordToUser
+      , txReady = handshake.neighborReceiveReadyTx
+      , handshakeDoneTx = transceiver.handshakeDoneTx
+      , handshakeDone = transceiver.handshakeDone
+      , handshakeDoneFree = transceiver.handshakeDoneFree
+      , txSim = transceiver.txSim
+      , txN = transceiver.txN
+      , txP = transceiver.txP
+      , txReset = transceiver.txReset
+      , txOutClock = transceiver.txOutClock
+      , rxOutClock = transceiver.rxOutClock
+      , rxReset = transceiver.rxReset
+      , debugLinkUp = handshake.debugLinkUp
+      , debugLinkReady = handshake.debugLinkReady
+      , neighborReceiveReady = handshake.neighborReceiveReady
+      , neighborTransmitReady = handshake.neighborTransmitReady
+      , stats = transceiver.stats
+      }
+
+  (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith Gth.gthCore config input transceiverInputFromHandshake
+  handshake = userDataHandshake handshakeInput
+
+  {-  handshakeInputFromTransceiver = HandshakeInputFromTransceiver
+        transceiver.txReset
+        transceiver.reset_tx_done
+        transceiver.rxReset
+        transceiver.reset_rx_done
+        transceiver.prbsOkDelayed
+        transceiver.alignedRxData0
+  -}
+
+  transceiverInputFromHandshake =
+    TransceiverInputFromHandshake
+      handshake.wordToTransceiver
+      handshake.rxLast
+      handshake.rxUserData
+      handshake.txUserData
+
+  handshakeInput =
+    HandshakeInput
+      input.clock
+      input.reset
+      input.clockTx2
+      handshakeInputFromTransceiver.txReset
+      handshakeInputFromTransceiver.reset_tx_done
+      input.clockRx2
+      handshakeInputFromTransceiver.rxReset
+      handshakeInputFromTransceiver.reset_rx_done
+      handshakeInputFromTransceiver.prbsOkDelayed
+      handshakeInputFromTransceiver.alignedRxData0
+      input.txData
+      input.txStart
+      input.rxReady
+
+data HandshakeInputFromTransceiver tx rx = HandshakeInputFromTransceiver
+  { txReset :: Reset tx
+  , reset_tx_done :: Signal tx (BitVector 1)
+  , rxReset :: Reset rx
+  , reset_rx_done :: Signal rx (BitVector 1)
+  , prbsOkDelayed :: Signal rx Bool
+  , alignedRxData0 :: Signal rx (BitVector 64)
+  }
+  deriving (Generic)
+
+data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake
+  { wordToTransceiver :: Signal tx (BitVector 64)
+  , rxLast :: Signal rx Bool
+  , rxUserData :: Signal rx Bool
+  , txUserData :: Signal tx Bool
+  }
+  deriving (Generic)
 
 transceiverPrbsWith ::
   forall tx rx tx1 rx1 ref free txS rxS.
@@ -603,30 +678,42 @@ transceiverPrbsWith ::
   Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
-  Output tx rx tx1 rx1 txS free
-transceiverPrbsWith gthCore opts input =
-  Output
-    { txSampling = txUserData -- From handshake
-    , rxData = wordToUser -- From handshake
-    , txReady = neighborReceiveReadyTx -- From handshake
-    -- Note the following 3 handshake variables are prbsHandshake, NOT userdata handshake
-    , handshakeDoneTx = withLockRxTx prbsOkDelayed -- ironically NOT from handshake
-    , handshakeDone = prbsOkDelayed -- ironically NOT from handshake
-    , handshakeDoneFree = withLockRxFree prbsOkDelayed -- ironically NOT from handshake
-    , txSim
-    , txN = txN
-    , txP = txP
-    , txReset = txDomainReset
-    , txOutClock
-    , rxOutClock
-    , rxReset
-    , debugLinkUp -- From handshake
-    , debugLinkReady -- From handshake
-    , neighborReceiveReady -- From handshake
-    , neighborTransmitReady -- From handshake
-    , stats
-    }
+  TransceiverInputFromHandshake tx rx free ->
+  (Output tx rx tx1 rx1 txS free, HandshakeInputFromTransceiver tx rx)
+transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTransceiver rxLast rxUserData txUserData) = (output, handshakeInput)
  where
+  output =
+    Output
+      { txSampling = undefined -- txUserData -- From handshake
+      , rxData = undefined -- wordToUser -- From handshake
+      , txReady = undefined -- neighborReceiveReadyTx -- From handshake
+      -- Note the following 3 handshake variables are prbsHandshake, NOT userdata handshake
+      , handshakeDoneTx = withLockRxTx prbsOkDelayed -- ironically NOT from handshake
+      , handshakeDone = prbsOkDelayed -- ironically NOT from handshake
+      , handshakeDoneFree = withLockRxFree prbsOkDelayed -- ironically NOT from handshake
+      , txSim
+      , txN = txN
+      , txP = txP
+      , txReset = txDomainReset
+      , txOutClock
+      , rxOutClock
+      , rxReset
+      , debugLinkUp = undefined -- From handshake
+      , debugLinkReady = undefined -- From handshake
+      , neighborReceiveReady = undefined -- From handshake
+      , neighborTransmitReady = undefined -- From handshake
+      , stats
+      }
+
+  handshakeInput =
+    HandshakeInputFromTransceiver
+      txReset
+      reset_tx_done
+      rxReset
+      reset_rx_done
+      prbsOkDelayed
+      alignedRxData0
+
   Gth.CoreOutput
     { gthtxOut = txSim
     , gthtxnOut = txN
@@ -742,35 +829,6 @@ transceiverPrbsWith gthCore opts input =
     ((1 :: Index 2) `add` opts.resetManagerConfig.rxRetries)
       `mul` opts.resetManagerConfig.rxTimeoutMs
   prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
-
-  ( HandshakeOutput
-      wordToTransceiver
-      wordToUser
-      rxLast
-      rxUserData
-      txUserData
-      debugLinkUp
-      debugLinkReady
-      neighborReceiveReady
-      neighborReceiveReadyTx
-      neighborTransmitReady
-    ) =
-      userDataHandshake
-        ( HandshakeInput
-            clock
-            reset
-            txClock
-            txReset
-            reset_tx_done
-            rxClock
-            rxReset
-            reset_rx_done
-            prbsOkDelayed
-            alignedRxData0
-            input.txData
-            input.txStart
-            input.rxReady
-        )
 
   errorAfterRxUserData :: Signal rx Bool
   errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
