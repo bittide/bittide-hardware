@@ -743,25 +743,34 @@ transceiverPrbsWith gthCore opts input =
       `mul` opts.resetManagerConfig.rxTimeoutMs
   prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
 
-  ( wordToTransceiver
-    , wordToUser
-    , rxLast
-    , rxUserData
-    , txUserData
-    , debugLinkUp
-    , debugLinkReady
-    , neighborReceiveReady
-    , neighborReceiveReadyTx
-    , neighborTransmitReady
+  ( HandshakeOutput
+      wordToTransceiver
+      wordToUser
+      rxLast
+      rxUserData
+      txUserData
+      debugLinkUp
+      debugLinkReady
+      neighborReceiveReady
+      neighborReceiveReadyTx
+      neighborTransmitReady
     ) =
       userDataHandshake
-        (rxClock, rxReset)
-        (txClock, txReset)
-        (clock, reset, reset_rx_done, reset_tx_done)
-        prbsOkDelayed
-        alignedRxData0
-        input.txData
-        (input.txStart, input.rxReady)
+        ( HandshakeInput
+            clock
+            reset
+            txClock
+            txReset
+            reset_tx_done
+            rxClock
+            rxReset
+            reset_rx_done
+            prbsOkDelayed
+            alignedRxData0
+            input.txData
+            input.txStart
+            input.rxReady
+        )
 
   errorAfterRxUserData :: Signal rx Bool
   errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
@@ -823,104 +832,116 @@ metadataToWord meta = word
   metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
   word = WordAlign.joinMsbs @8 0 metaWithPadding
 
+data HandshakeInput rx tx free = HandshakeInput
+  { clock :: Clock free
+  , reset :: Reset free
+  , txClock :: Clock tx
+  , txReset :: Reset tx
+  , tx_reset_done :: Signal tx (BitVector 1)
+  , rxClock :: Clock rx
+  , rxReset :: Reset rx
+  , rx_reset_done :: Signal rx (BitVector 1)
+  , linkIsHealthy :: Signal rx Bool
+  , wordFromTransceiver :: Signal rx (BitVector 64)
+  , wordFromUser :: Signal tx (BitVector 64)
+  , txStart :: Signal tx Bool
+  , rxReady :: Signal rx Bool
+  }
+
+data HandshakeOutput rx tx free = HandshakeOutput
+  { wordToTransceiver :: Signal tx (BitVector 64)
+  , wordToUser :: Signal rx (Maybe (BitVector 64))
+  , rxLast :: Signal rx Bool
+  , rxUserData :: Signal rx Bool
+  , txUserData :: Signal tx Bool
+  , debugLinkUp :: Signal free Bool
+  , debugLinkReady :: Signal free Bool
+  , neighborReceiveReady :: Signal free Bool
+  , neighborReceiveReadyTx :: Signal tx Bool
+  , neighborTransmitReady :: Signal free Bool
+  }
+
 {- | Perform the metadata handshake with neighbor link so both sides switch over to
   user data when ready.
 -}
 userDataHandshake ::
   forall rx tx free.
   (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
-  -- | Rx domain
-  (Clock rx, Reset rx) ->
-  -- | Tx domain
-  (Clock tx, Reset tx) ->
-  -- | Everything needed for cdc crossing
-  (Clock free, Reset free, Signal rx (BitVector 1), Signal tx (BitVector 1)) ->
-  -- | prbsOkDelayed
-  Signal rx Bool ->
-  -- | word from transceiver
-  Signal rx (BitVector 64) ->
-  -- | word from user
-  Signal tx (BitVector 64) ->
-  -- | (txStart, rxReady)
-  (Signal tx Bool, Signal rx Bool) ->
-  ( -- \| wordToTransceiver
-    Signal tx (BitVector 64)
-  , -- \| wordToUser
-    Signal rx (Maybe (BitVector 64))
-  , -- \| rxLast
-    Signal rx Bool
-  , -- \| rxUserData
-    Signal rx Bool
-  , -- \| txUserData
-    Signal tx Bool
-  , -- \| debugLinkUp
-    Signal free Bool
-  , -- \| debugLinkReady
-    Signal free Bool
-  , -- \| neighborReceiveReady
-    Signal free Bool
-  , -- \| neighborReceiveReadyTx
-    Signal tx Bool
-  , -- \| neighborTransmitReady
-    Signal free Bool
-  )
-userDataHandshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, reset_tx_done) linkHealthy wordFromTransceiver wordFromUser (txStart, rxReady) =
-  ( wordToTransceiver
-  , wordToUser
-  , rxLast
-  , rxUserData
-  , txUserData
-  , debugLinkUp
-  , debugLinkReady
-  , neighborReceiveReady
-  , neighborReceiveReadyTx
-  , neighborTransmitReady
-  )
- where
-  metadata = wordToMetadata <$> wordFromTransceiver
-  validMeta = mux rxUserData (pure False) linkHealthy
-
-  rxMeta = mux validMeta (Just <$> metadata) (pure Nothing)
-  rxLast = maybe False (.lastMetadataWord) <$> rxMeta
-  rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
-  txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
-
-  rxUserData = stickyE rxClock rxReset rxLast
-  txUserData = stickyE txClock txReset txLast
-
-  indicateRxReady = withLockRxTx (linkHealthy .&&. stickyE rxClock rxReset rxReady)
-
-  rxReadyNeighborSticky = stickyE rxClock rxReset rxReadyNeighbor
-  txReadyNeighborSticky = stickyE rxClock rxReset txReadyNeighbor
-  txLast = indicateRxReady .&&. txStart .&&. withLockRxTx rxReadyNeighborSticky
-
-  metaTx :: Signal tx Meta
-  metaTx =
-    Meta
-      <$> indicateRxReady
-      <*> (withLockRxTx linkHealthy .&&. txStart)
-      <*> txLast
-      -- Padding
-      <*> pure 0
-
-  wordToTransceiver =
-    mux
-      txUserData
+  HandshakeInput rx tx free ->
+  HandshakeOutput rx tx free
+userDataHandshake
+  ( HandshakeInput
+      clock
+      reset
+      txClock
+      txReset
+      reset_tx_done
+      rxClock
+      rxReset
+      reset_rx_done
+      linkHealthy
+      wordFromTransceiver
       wordFromUser
-      (metadataToWord <$> metaTx)
-  wordToUser = mux rxUserData (Just <$> wordFromTransceiver) (pure Nothing)
+      txStart
+      rxReady
+    ) =
+    HandshakeOutput
+      { wordToTransceiver
+      , wordToUser
+      , rxLast
+      , rxUserData
+      , txUserData
+      , debugLinkUp
+      , debugLinkReady
+      , neighborReceiveReady
+      , neighborReceiveReadyTx
+      , neighborTransmitReady
+      }
+   where
+    metadata = wordToMetadata <$> wordFromTransceiver
+    validMeta = mux rxUserData (pure False) linkHealthy
 
-  debugLinkUp =
-    withLockTxFree txUserData
-      .&&. withLockRxFree rxUserData
+    rxMeta = mux validMeta (Just <$> metadata) (pure Nothing)
+    rxLast = maybe False (.lastMetadataWord) <$> rxMeta
+    rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
+    txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
 
-  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
+    rxUserData = stickyE rxClock rxReset rxLast
+    txUserData = stickyE txClock txReset txLast
 
-  neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
-  neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
-  neighborTransmitReady = withLockRxFree txReadyNeighborSticky
+    indicateRxReady = withLockRxTx (linkHealthy .&&. stickyE rxClock rxReset rxReady)
 
-  -- Clock domain crossing functions
-  withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
-  withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
-  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
+    rxReadyNeighborSticky = stickyE rxClock rxReset rxReadyNeighbor
+    txReadyNeighborSticky = stickyE rxClock rxReset txReadyNeighbor
+    txLast = indicateRxReady .&&. txStart .&&. withLockRxTx rxReadyNeighborSticky
+
+    metaTx :: Signal tx Meta
+    metaTx =
+      Meta
+        <$> indicateRxReady
+        <*> (withLockRxTx linkHealthy .&&. txStart)
+        <*> txLast
+        -- Padding
+        <*> pure 0
+
+    wordToTransceiver =
+      mux
+        txUserData
+        wordFromUser
+        (metadataToWord <$> metaTx)
+    wordToUser = mux rxUserData (Just <$> wordFromTransceiver) (pure Nothing)
+
+    debugLinkUp =
+      withLockTxFree txUserData
+        .&&. withLockRxFree rxUserData
+
+    debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
+
+    neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
+    neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
+    neighborTransmitReady = withLockRxFree txReadyNeighborSticky
+
+    -- Clock domain crossing functions
+    withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
+    withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
+    withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
