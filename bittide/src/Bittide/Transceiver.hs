@@ -606,8 +606,8 @@ transceiverPrbsWith ::
   Output tx rx tx1 rx1 txS free
 transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   Output
-    { txSampling = txUserData
-    , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
+    { txSampling = txUserData -- From handshake
+    , rxData = wordToUser -- From handshake
     , txReady = neighborReceiveReadyTx -- From handshake (personally I find this one a bit odd, but copying over from existing setup)
     -- Note the following 3 handshake variables are prbsHandshake, NOT userdata handshake
     , handshakeDoneTx = withLockRxTx prbsOkDelayed
@@ -734,6 +734,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
 
   ( wordToTransceiver
+    , wordToUser
     , rxLast
     , rxUserData
     , txUserData
@@ -824,6 +825,7 @@ handshake ::
   (Signal tx Bool, Signal rx Bool) ->
   -- | (metaTx, txLast)
   ( Signal tx (BitVector 64)
+  , Signal rx (Maybe (BitVector 64))
   , Signal rx Bool
   , Signal rx Bool
   , Signal tx Bool
@@ -835,6 +837,7 @@ handshake ::
   )
 handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, reset_tx_done) linkHealthy wordFromTransceiver wordFromUser (txStart, rxReady) =
   ( wordToTransceiver
+  , wordToUser
   , rxLast
   , rxUserData
   , txUserData
@@ -876,6 +879,7 @@ handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, re
       txUserData
       wordFromUser
       (metadataToWord <$> metaTx)
+  wordToUser = mux rxUserData (Just <$> wordFromTransceiver) (pure Nothing)
 
   debugLinkUp =
     withLockTxFree txUserData
