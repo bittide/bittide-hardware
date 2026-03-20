@@ -930,7 +930,7 @@ userDataHandshake
       txStart
       rxReady
     )
-  {-(HandshakeInputFromTransceiver _ _ _ _ _ _)-} _ =
+  (HandshakeInputFromTransceiver _ _ _ _ _ _) =
     (output, transceiverInputFromHandshake)
    where
     output =
