@@ -608,7 +608,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   Output
     { txSampling = txUserData
     , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
-    , txReady = neighborReceiveReadyTx -- From handshake
+    , txReady = neighborReceiveReadyTx -- From handshake (personally I find this one a bit odd, but copying over from existing setup)
     -- Note the following 3 handshake variables are prbsHandshake, NOT userdata handshake
     , handshakeDoneTx = withLockRxTx prbsOkDelayed
     , handshakeDone = prbsOkDelayed
@@ -679,12 +679,14 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   (commas, txctrl) = Comma.generator d1 txClock txReset
   commasDone = isNothing <$> commas
   prbs = Prbs.generator txClock (unsafeFromActiveLow commasDone) enableGen prbsConfig
+  -- The line below is a hack (kinda)
+  metaTx = wordToMetadata <$> wordToTransceiver
   prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
   prbsWithMetaAndAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbsWithMeta
   gtwiz_userdata_tx_in =
     mux
       txUserData
-      args.txData
+      wordToTransceiver
       (fromMaybe <$> prbsWithMetaAndAlign <*> commas)
 
   rxReset =
@@ -731,7 +733,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       `mul` opts.resetManagerConfig.rxTimeoutMs
   prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
 
-  ( metaTx
+  ( wordToTransceiver
     , rxLast
     , rxUserData
     , txUserData
@@ -747,6 +749,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         (clock, reset, reset_rx_done, reset_tx_done)
         prbsOkDelayed
         alignedRxData0
+        args.txData
         (args.txStart, args.rxReady)
 
   errorAfterRxUserData :: Signal rx Bool
@@ -793,6 +796,15 @@ wordToMetadata word = unpack alignedMetaBits
   (_alignData, payload) = WordAlign.splitMsbs @8 @8 word
   (alignedMetaBits, _) = WordAlign.splitMsbs @8 @7 payload
 
+metadataToWord ::
+  Meta ->
+  BitVector 64
+metadataToWord meta = word
+ where
+  padding = 0 :: BitVector 48
+  metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
+  word = WordAlign.joinMsbs @8 0 metaWithPadding
+
 handshake ::
   forall rx tx free.
   (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
@@ -804,12 +816,14 @@ handshake ::
   (Clock free, Reset free, Signal rx (BitVector 1), Signal tx (BitVector 1)) ->
   -- | prbsOkDelayed
   Signal rx Bool ->
-  -- | alignedMetaBits
+  -- | word from transceiver
   Signal rx (BitVector 64) ->
+  -- | word from user
+  Signal tx (BitVector 64) ->
   -- | (txStart, rxReady)
   (Signal tx Bool, Signal rx Bool) ->
   -- | (metaTx, txLast)
-  ( Signal tx Meta
+  ( Signal tx (BitVector 64)
   , Signal rx Bool
   , Signal rx Bool
   , Signal tx Bool
@@ -819,8 +833,8 @@ handshake ::
   , Signal tx Bool
   , Signal free Bool
   )
-handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, reset_tx_done) linkHealthy wordFromTransceiver (txStart, rxReady) =
-  ( metaTx
+handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, reset_tx_done) linkHealthy wordFromTransceiver wordFromUser (txStart, rxReady) =
+  ( wordToTransceiver
   , rxLast
   , rxUserData
   , txUserData
@@ -856,6 +870,12 @@ handshake (rxClock, rxReset) (txClock, txReset) (clock, reset, reset_rx_done, re
       <*> txLast
       -- Padding
       <*> pure 0
+
+  wordToTransceiver =
+    mux
+      txUserData
+      wordFromUser
+      (metadataToWord <$> metaTx)
 
   debugLinkUp =
     withLockTxFree txUserData
