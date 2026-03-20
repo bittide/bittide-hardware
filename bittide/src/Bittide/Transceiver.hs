@@ -608,36 +608,14 @@ transceiverPrbs config input = output
       }
 
   (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith Gth.gthCore config input transceiverInputFromHandshake
-  handshake = userDataHandshake handshakeInput
-
-  {-  handshakeInputFromTransceiver = HandshakeInputFromTransceiver
-        transceiver.txReset
-        transceiver.reset_tx_done
-        transceiver.rxReset
-        transceiver.reset_rx_done
-        transceiver.prbsOkDelayed
-        transceiver.alignedRxData0
-  -}
-
-  transceiverInputFromHandshake =
-    TransceiverInputFromHandshake
-      handshake.wordToTransceiver
-      handshake.rxLast
-      handshake.rxUserData
-      handshake.txUserData
+  (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput handshakeInputFromTransceiver
 
   handshakeInput =
     HandshakeInput
       input.clock
       input.reset
       input.clockTx2
-      handshakeInputFromTransceiver.txReset
-      handshakeInputFromTransceiver.reset_tx_done
       input.clockRx2
-      handshakeInputFromTransceiver.rxReset
-      handshakeInputFromTransceiver.reset_rx_done
-      handshakeInputFromTransceiver.prbsOkDelayed
-      handshakeInputFromTransceiver.alignedRxData0
       input.txData
       input.txStart
       input.rxReady
@@ -890,23 +868,17 @@ metadataToWord meta = word
   metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
   word = WordAlign.joinMsbs @8 0 metaWithPadding
 
-data HandshakeInput rx tx free = HandshakeInput
+data HandshakeInput tx rx free = HandshakeInput
   { clock :: Clock free
   , reset :: Reset free
   , txClock :: Clock tx
-  , txReset :: Reset tx
-  , tx_reset_done :: Signal tx (BitVector 1)
   , rxClock :: Clock rx
-  , rxReset :: Reset rx
-  , rx_reset_done :: Signal rx (BitVector 1)
-  , linkIsHealthy :: Signal rx Bool
-  , wordFromTransceiver :: Signal rx (BitVector 64)
   , wordFromUser :: Signal tx (BitVector 64)
   , txStart :: Signal tx Bool
   , rxReady :: Signal rx Bool
   }
 
-data HandshakeOutput rx tx free = HandshakeOutput
+data HandshakeOutput tx rx free = HandshakeOutput
   { wordToTransceiver :: Signal tx (BitVector 64)
   , wordToUser :: Signal rx (Maybe (BitVector 64))
   , rxLast :: Signal rx Bool
@@ -925,37 +897,55 @@ data HandshakeOutput rx tx free = HandshakeOutput
 userDataHandshake ::
   forall rx tx free.
   (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
-  HandshakeInput rx tx free ->
-  HandshakeOutput rx tx free
+  HandshakeInput tx rx free ->
+  HandshakeInputFromTransceiver tx rx ->
+  (HandshakeOutput tx rx free, TransceiverInputFromHandshake tx rx free)
 userDataHandshake
   ( HandshakeInput
       clock
       reset
       txClock
+      -- txReset
+      -- reset_tx_done
+      rxClock
+      -- rxReset
+      -- reset_rx_done
+      -- linkHealthy
+      -- wordFromTransceiver
+      wordFromUser
+      txStart
+      rxReady
+    )
+  ( HandshakeInputFromTransceiver
       txReset
       reset_tx_done
-      rxClock
       rxReset
       reset_rx_done
       linkHealthy
       wordFromTransceiver
-      wordFromUser
-      txStart
-      rxReady
-    ) =
-    HandshakeOutput
-      { wordToTransceiver
-      , wordToUser
-      , rxLast
-      , rxUserData
-      , txUserData
-      , debugLinkUp
-      , debugLinkReady
-      , neighborReceiveReady
-      , neighborReceiveReadyTx
-      , neighborTransmitReady
-      }
+    ) = (output, transceiverInputFromHandshake)
    where
+    output =
+      HandshakeOutput
+        { wordToTransceiver
+        , wordToUser
+        , rxLast
+        , rxUserData
+        , txUserData
+        , debugLinkUp
+        , debugLinkReady
+        , neighborReceiveReady
+        , neighborReceiveReadyTx
+        , neighborTransmitReady
+        }
+
+    transceiverInputFromHandshake =
+      TransceiverInputFromHandshake
+        wordToTransceiver
+        rxLast
+        rxUserData
+        txUserData
+
     metadata = wordToMetadata <$> wordFromTransceiver
     validMeta = mux rxUserData (pure False) linkHealthy
 
