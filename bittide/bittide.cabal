@@ -214,6 +214,7 @@ library
     Bittide.ElasticBuffer.AutoCenter
     Bittide.Ethernet.Mac
     Bittide.Handshake
+    Bittide.HandshakeOld
     Bittide.Jtag
     Bittide.MetaPeConfig
     Bittide.Node

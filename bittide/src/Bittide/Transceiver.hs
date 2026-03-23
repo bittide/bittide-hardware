@@ -82,8 +82,7 @@ import Clash.Explicit.Prelude
 import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
-import Bittide.ElasticBuffer (stickyE)
-import Bittide.Handshake (Meta (..))
+import Bittide.HandshakeOld
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
 import Data.Maybe (fromMaybe, isNothing)
@@ -711,45 +710,6 @@ data TransceiverOutput tx rx tx1 rx1 txS free = TransceiverOutput
   , stats :: Signal free ResetManager.Statistics
   }
 
-data HandshakeInput tx rx free = HandshakeInput
-  { clock :: Clock free
-  , reset :: Reset free
-  , txClock :: Clock tx
-  , rxClock :: Clock rx
-  , wordFromUser :: Signal tx (BitVector 64)
-  , txStart :: Signal tx Bool -- Set by CPU via wishbone
-  , rxReady :: Signal rx Bool -- Set by CPU via wishbone
-  }
-
-data HandshakeOutput tx rx free = HandshakeOutput
-  { wordToTransceiver :: Signal tx (BitVector 64)
-  , wordToUser :: Signal rx (Maybe (BitVector 64))
-  , rxLast :: Signal rx Bool
-  , rxIsUserData :: Signal rx Bool
-  , txIsUserData :: Signal tx Bool
-  , debugLinkUp :: Signal free Bool
-  , debugLinkReady :: Signal free Bool
-  , neighborReceiveReady :: Signal free Bool
-  , neighborReceiveReadyTx :: Signal tx Bool
-  , neighborTransmitReady :: Signal free Bool
-  }
-
-data HandshakeInputFromTransceiver tx rx = HandshakeInputFromTransceiver
-  { txReset :: Reset tx
-  , txResetDone :: Signal tx (BitVector 1)
-  , rxReset :: Reset rx
-  , rxResetDone :: Signal rx (BitVector 1)
-  , linkHealthy :: Signal rx Bool
-  , wordFromTransceiver :: Signal rx (BitVector 64)
-  }
-
-data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake
-  { wordToTransceiver :: Signal tx (BitVector 64)
-  , rxLast :: Signal rx Bool
-  , rxUserData :: Signal rx Bool
-  , txUserData :: Signal tx Bool
-  }
-
 transceiverPrbsWith ::
   forall tx rx tx1 rx1 ref free txS rxS.
   ( HasSynchronousReset tx
@@ -948,125 +908,3 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
   withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
   withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
-
-{- | Given a bittide word, extract the metadata. This function does not check that
-the input is a metadata word, and will produce garbage if used on a user word.
--}
-wordToMetadata ::
-  BitVector 64 ->
-  Meta
-wordToMetadata word = unpack alignedMetaBits
- where
-  (_alignData, payload) = WordAlign.splitMsbs @8 @8 word
-  (alignedMetaBits, _) = WordAlign.splitMsbs @8 @7 payload
-
-{- | Given a metadata, output it formatted into a bittide word. The word is
-simply the metadata padded with 0s, such that one can later re-extract the
-metadata with `wordToMetadata`.
--}
-metadataToWord ::
-  Meta ->
-  BitVector 64
-metadataToWord meta = word
- where
-  padding = 0 :: BitVector 48
-  metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
-  word = WordAlign.joinMsbs @8 0 metaWithPadding
-
-{- | Performs the handshake between two nodes to agree on when to switch over from
- - bittide metadata words to user data words. The handshake follows these steps:
- - 1) These two steps happen in parallel:
- -    1A) When the CPU says it is successfully booted, the handshake sends "Read Ready"
- -    metadata word to neighbor node.
- -    1B) The handshake waits to receive a "Read Ready" metadata word from the neighbor
- - 2) Once both 1A and 1B have been done, the handshake signals to the EB to pause centering.
- - 3) These two steps happen in parallel:
- -    3A) The handshake sends a "Write Ready" metadata word when the EB has paused
- -    3B) The handshake waits to receive a "Write Ready" metadata word from the neighbor
- - 4) Once both 3A and 3B have been done, the following two happen in parallel
- -    4A) The handshake sends a "Last Metadata Word" metadata word, and then switches to a pass-through mode.
- -    4B) The handshake waits for a "Last Metadat Word" metadata word, and then switches to a pass-through mode
--}
-userDataHandshake ::
-  forall rx tx free.
-  (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
-  HandshakeInput tx rx free ->
-  HandshakeInputFromTransceiver tx rx ->
-  (HandshakeOutput tx rx free, TransceiverInputFromHandshake tx rx free)
-userDataHandshake input fromTransceiver = (output, transceiverInputFromHandshake)
- where
-  output =
-    HandshakeOutput
-      { wordToTransceiver
-      , wordToUser
-      , rxLast
-      , rxIsUserData
-      , txIsUserData
-      , debugLinkUp
-      , debugLinkReady
-      , neighborReceiveReady
-      , neighborReceiveReadyTx
-      , neighborTransmitReady
-      }
-
-  transceiverInputFromHandshake =
-    TransceiverInputFromHandshake
-      wordToTransceiver
-      rxLast
-      rxIsUserData
-      txIsUserData
-
-  metadata = wordToMetadata <$> fromTransceiver.wordFromTransceiver
-  validMeta = mux rxIsUserData (pure False) fromTransceiver.linkHealthy
-
-  rxMeta = mux validMeta (Just <$> metadata) (pure Nothing)
-  rxLast = maybe False (.lastMetadataWord) <$> rxMeta
-  rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
-  txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
-
-  rxIsUserData = stickyE input.rxClock fromTransceiver.rxReset rxLast
-  txIsUserData = stickyE input.txClock fromTransceiver.txReset txLast
-
-  indicateRxReady =
-    withLockRxTx
-      (fromTransceiver.linkHealthy .&&. stickyE input.rxClock fromTransceiver.rxReset input.rxReady)
-
-  rxReadyNeighborSticky = stickyE input.rxClock fromTransceiver.rxReset rxReadyNeighbor
-  txReadyNeighborSticky = stickyE input.rxClock fromTransceiver.rxReset txReadyNeighbor
-  txLast = indicateRxReady .&&. input.txStart .&&. withLockRxTx rxReadyNeighborSticky
-
-  metaTx :: Signal tx Meta
-  metaTx =
-    Meta
-      <$> indicateRxReady
-      <*> (withLockRxTx fromTransceiver.linkHealthy .&&. input.txStart)
-      <*> txLast
-      -- Padding
-      <*> pure 0
-
-  wordToTransceiver =
-    mux
-      txIsUserData
-      input.wordFromUser
-      (metadataToWord <$> metaTx)
-  wordToUser = mux rxIsUserData (Just <$> fromTransceiver.wordFromTransceiver) (pure Nothing)
-
-  debugLinkUp =
-    withLockTxFree txIsUserData
-      .&&. withLockRxFree rxIsUserData
-
-  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
-
-  neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
-  neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
-  neighborTransmitReady = withLockRxFree txReadyNeighborSticky
-
-  -- Clock domain crossing functions
-  withLockRxFree = Cdc.withLock input.rxClock (unpack <$> fromTransceiver.rxResetDone) input.clock input.reset
-  withLockRxTx =
-    Cdc.withLock
-      input.rxClock
-      (unpack <$> fromTransceiver.rxResetDone)
-      input.txClock
-      fromTransceiver.txReset
-  withLockTxFree = Cdc.withLock input.txClock (unpack <$> fromTransceiver.txResetDone) input.clock input.reset
