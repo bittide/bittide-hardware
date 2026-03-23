@@ -516,46 +516,46 @@ transceiverPrbsN opts inputs = outputs
   txUsrClkRst = noReset @tx
   rxUsrClkRst = noReset @rx
 
-  txOutClk = (head outputVec).txOutClock
-  txReset = (head outputVec).txReset
+  txOutClk = (head tOutput).txOutClock
+  txReset = (head tOutput).txReset
 
   -- see [NOTE: duplicate tx/rx domain]
   (clockTx1, txClock, txActive) = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
 
   rxOutClks :: Vec n (Clock rx)
-  rxOutClks = map (.rxOutClock) outputVec
+  rxOutClks = map (.rxOutClock) tOutput
   -- see [NOTE: duplicate tx/rx domain]
 
   rxClockNws :: Vec n (Clock rx, Clock rx, Signal rx (BitVector 1))
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (clockRx1, rxClock, rxActive) = unzip3 rxClockNws
 
-  outputVec = (transceiverPrbs opts) <$> tInputVec <*> hInputVec
+  (tOutput, hOutput) = unzip $ (transceiverPrbs opts <$> tInputVec <*> hInputVec)
 
   outputs =
     Outputs
       { -- tx
         txClock
       , txReset
-      , txReadys = map (.txReady) outputVec
-      , txSamplings = map (.txSampling) outputVec
-      , handshakesDoneTx = map (.handshakeDoneTx) outputVec
-      , txSims = simOnlyHdlWorkaround (SimOnly (map (Gth.unSimOnly . (.txSim)) outputVec))
+      , txReadys = map (.neighborReceiveReadyTx) hOutput
+      , txSamplings = map (.txIsUserData) hOutput
+      , handshakesDoneTx = map (.prbsHandshakeDoneTx) tOutput
+      , txSims = simOnlyHdlWorkaround (SimOnly (map (Gth.unSimOnly . (.txSim)) tOutput))
       , -- rx
         rxClocks = rxClock
-      , rxResets = map (.rxReset) outputVec
-      , rxDatas = map (.rxData) outputVec
-      , handshakesDone = map (.handshakeDone) outputVec
+      , rxResets = map (.rxReset) tOutput
+      , rxDatas = map (.wordToUser) hOutput
+      , handshakesDone = map (.prbsHandshakeDone) tOutput
       , -- transceiver
-        txPs = pack <$> bundle (map (.txP) outputVec)
-      , txNs = pack <$> bundle (map (.txN) outputVec)
+        txPs = pack <$> bundle (map (.txP) tOutput)
+      , txNs = pack <$> bundle (map (.txN) tOutput)
       , -- free
-        debugLinkUps = map (.debugLinkUp) outputVec
-      , debugLinkReadys = map (.debugLinkReady) outputVec
-      , handshakesDoneFree = map (.handshakeDoneFree) outputVec
-      , neighborReceiveReadys = map (.neighborReceiveReady) outputVec
-      , neighborTransmitReadys = map (.neighborTransmitReady) outputVec
-      , stats = map (.stats) outputVec
+        debugLinkUps = map (.debugLinkUp) hOutput
+      , debugLinkReadys = map (.debugLinkReady) hOutput
+      , handshakesDoneFree = map (.prbsHandshakeDoneFree) tOutput
+      , neighborReceiveReadys = map (.neighborReceiveReady) hOutput
+      , neighborTransmitReadys = map (.neighborTransmitReady) hOutput
+      , stats = map (.stats) tOutput
       }
 
 transceiverPrbs ::
@@ -576,12 +576,11 @@ transceiverPrbs ::
   Config free ->
   TransceiverInput tx rx tx1 rx1 ref free rxS ->
   HandshakeInput tx rx free ->
-  Output tx rx tx1 rx1 txS free
-transceiverPrbs config transceiverInput handshakeInput = output
+  (TransceiverOutput tx rx tx1 rx1 txS free, HandshakeOutput tx rx free)
+transceiverPrbs config transceiverInput handshakeInput = (transceiver, handshake)
  where
   (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith Gth.gthCore config transceiverInput transceiverInputFromHandshake
   (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput handshakeInputFromTransceiver
-  output = transceiverOutputAndHandshakeOutputToOutput transceiver handshake
 
 transceiverAndHandshake ::
   ( HasSynchronousReset tx
