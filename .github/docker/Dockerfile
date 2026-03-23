@@ -6,6 +6,7 @@ FROM ubuntu:22.04
 RUN \
   apt-get update && \
   apt-get install -y curl xz-utils sudo git && \
+  apt-get install -y libc6-dev-i386 net-tools graphviz make unzip zip g++ libtinfo5 xvfb git libncurses5-dev libc6-dev-i386 libnss3-dev libgdk-pixbuf2.0-dev libgtk-3-dev libxss-dev libasound2 openssl fdisk  libsecret-1-dev ; \
   rm -rf /var/lib/apt/lists/*
 
 RUN \
