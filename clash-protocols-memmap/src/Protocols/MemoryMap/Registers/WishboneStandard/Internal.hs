@@ -59,6 +59,9 @@ auto-assigned offsets.
 type RegisterWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
   ( ToConst (Offset aw)
   , -- \^ Offset from the base address of the device, produced by 'deviceWb'
+    ToConst (SimOnly DeviceConfig)
+  , -- \^ Device configuration, produced by 'deviceWb'. Currently used to pass the device
+    -- name for debugging purposes.
     ToConstBwd (RegisterMeta aw)
   , -- \^ Meta information about the register, produced by the register
     Wishbone dom 'Standard aw wordSize
@@ -71,6 +74,9 @@ custom offsets.
 type RegisterWithOffsetWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
   ( ToConstBwd (Offset aw)
   , -- \^ Offset from the base address of the device, provided by the user
+    ToConst (SimOnly DeviceConfig)
+  , -- \^ Device configuration, produced by 'deviceWb'. Currently used to pass the device
+    -- name for debugging purposes.
     ToConstBwd (RegisterMeta aw)
   , -- \^ Meta information about the register, produced by the register
     Wishbone dom 'Standard aw wordSize
@@ -95,6 +101,9 @@ type RegisterWbConstraints (a :: Type) (dom :: Domain) (wordSize :: Nat) (aw :: 
 data DeviceConfig = DeviceConfig
   { name :: String
   }
+
+deviceConfig :: String -> DeviceConfig
+deviceConfig name = DeviceConfig{name}
 
 {- | Offset from the base address of a device. This really should be an 'Unsigned', but
 we use 'BitVector' to avoid unnecessary conversions.
@@ -208,14 +217,13 @@ either pass in the offsets manually or use 'registerWithOffsetWbDf'.
 deviceWithOffsetsWb ::
   forall n wordSize aw dom.
   (HasCallStack, KnownNat n, KnownNat aw, KnownNat wordSize) =>
-  -- | Device name
-  String ->
+  DeviceConfig ->
   Circuit
     ( ToConstBwd Mm
     , Wishbone dom 'Standard aw wordSize
     )
     (Vec n (RegisterWithOffsetWb dom aw wordSize))
-deviceWithOffsetsWb deviceName =
+deviceWithOffsetsWb config =
   case divWithRemainder @wordSize @8 @7 of
     Dict ->
       Circuit go
@@ -227,6 +235,7 @@ deviceWithOffsetsWb deviceName =
     , Vec
         n
         ( BitVector aw
+        , ()
         , RegisterMeta aw
         , Signal dom (WishboneS2M wordSize)
         )
@@ -237,12 +246,13 @@ deviceWithOffsetsWb deviceName =
     , Vec
         n
         ( ()
+        , SimOnly DeviceConfig
         , ()
         , Signal dom (WishboneM2S aw wordSize)
         )
     )
-  go ((_, wbM2S), unzip3 -> (offsets, metas, wbS2Ms)) =
-    ((SimOnly mm, wbS2M), ((),(),) <$> unbundle wbM2Ss)
+  go ((_, wbM2S), unzip4 -> (offsets, _, metas, wbS2Ms)) =
+    ((SimOnly mm, wbS2M), ((),SimOnly config,(),) <$> unbundle wbM2Ss)
    where
     unSimOnly :: SimOnly a -> a
     unSimOnly (SimOnly a) = a
@@ -262,14 +272,14 @@ deviceWithOffsetsWb deviceName =
     mm =
       MemoryMap
         { deviceDefs =
-            Map.singleton deviceName
+            Map.singleton config.name
               $ DeviceDefinition
-                { deviceName = Name{name = deviceName, description = ""}
+                { deviceName = Name{name = config.name, description = ""}
                 , registers = L.zipWith metaToRegister (toList offsets) (toList metas)
                 , definitionLoc = locN 0
                 , tags = []
                 }
-        , tree = DeviceInstance (locN 1) deviceName
+        , tree = DeviceInstance (locN 1) config.name
         }
 
     (wbS2M, wbM2Ss) =
@@ -384,16 +394,16 @@ addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
       }
 
   go ::
-    ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize))
+    ( (Offset aw, SimOnly DeviceConfig, (), Signal dom (WishboneM2S aw wordSize))
     , Signal dom (Maybe (Bytes wordSize))
     ) ->
-    ( ((), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
+    ( ((), (), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
     , Signal
         dom
         ( Maybe (Either (Index nWords) (Index nWords, BitVector wordSize, Bytes wordSize))
         )
     )
-  go ((offset, _, wbM2S0), respData) = (((), meta, wbS2M), req)
+  go ((offset, _config, _, wbM2S0), respData) = (((), (), meta, wbS2M), req)
    where
     (wbS2M, req) = unbundle $ wishboneToRequestResponse regConfig.access <$> wbM2S1 <*> respData
     wbM2S1 = fmap (\wb -> wb{addr = wb.addr - offset}) wbM2S0
@@ -500,7 +510,7 @@ registerWbDf clk rst regConfig resetValue =
               Circuit go
         SNatGT ->
           -- Zero-width register that only provides bus activity information
-          Circuit $ \(((_, _, m2s0), _), (_, ack)) ->
+          Circuit $ \(((_, _, _, m2s0), _), (_, ack)) ->
             let
               update m2s1 acknowledge
                 | not (m2s1.strobe && m2s1.busCycle) = (Nothing, emptyWishboneS2M)
@@ -512,7 +522,7 @@ registerWbDf clk rst regConfig resetValue =
 
               (unbundle -> (busActivity, s2m)) = update <$> m2s0 <*> coerce ack
              in
-              ( (((), zeroWidthRegisterMeta @a Proxy regConfig, s2m), ())
+              ( (((), (), zeroWidthRegisterMeta @a Proxy regConfig, s2m), ())
               , (pure resetValue, busActivity)
               )
  where
@@ -541,18 +551,18 @@ registerWbDf clk rst regConfig resetValue =
     , KnownNat nWords
     , 1 <= nWords
     ) =>
-    ( ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize))
+    ( ( (Offset aw, SimOnly DeviceConfig, (), Signal dom (WishboneM2S aw wordSize))
       , Signal dom (Maybe a)
       )
     , ((), Signal dom Ack)
     ) ->
-    ( ( ((), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
+    ( ( ((), (), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
       , ()
       )
     , (Signal dom a, Signal dom (Maybe (BusActivity a)))
     )
-  go (((offset, _, wbM2S0), aIn0), (_, coerce -> dfAck)) =
-    ((((), reg, wbS2M2), ()), (aOut, busActivity))
+  go (((offset, _config, _, wbM2S0), aIn0), (_, coerce -> dfAck)) =
+    ((((), (), reg, wbS2M2), ()), (aOut, busActivity))
    where
     aOut = unpackC <$> packedOut
     packedIn0 = fmap (packWordC @wordSize ?regByteOrder) <$> aIn0

@@ -15,6 +15,7 @@ import Protocols
 import Protocols.MemoryMap (Access (ReadOnly, ReadWrite))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWbI_,
@@ -61,7 +62,7 @@ captureUgn ::
     (CSignal dom (BitVector 64))
 captureUgn localCounter (C.dflipflop -> linkIn) = circuit $ \bus -> do
   [wbLocalCounter, wbRemoteCounter, wbEbDelta, wbHasCaptured] <-
-    deviceWb "CaptureUgn" -< bus
+    deviceWb (deviceConfig "CaptureUgn") -< bus
   let
     rawLinkIn = fromJust . fromData <$> linkIn
     trigger = C.mealy goTrigger HasNotCaptured linkIn

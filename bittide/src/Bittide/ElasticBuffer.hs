@@ -26,6 +26,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (..),
   busActivityWrite,
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWb,
@@ -152,11 +153,11 @@ xilinxElasticBuffer ::
   Clock readDom ->
   Clock writeDom ->
   -- | Operating mode of the elastic buffer. Must remain stable until an acknowledgement
-  -- is received. Negative values drain, positive values fill, zero is a no-op.
+  --   is received. Negative values drain, positive values fill, zero is a no-op.
   Signal readDom (Maybe EbAdjustment) ->
   -- | Data to write into the elastic buffer. Will be ignored for a single cycle
-  -- when it gets a drain adjustment (negative value). Which cycle this is depends on
-  -- clock domain crossing.
+  --   when it gets a drain adjustment (negative value). Which cycle this is depends on
+  --   clock domain crossing.
   Signal writeDom a ->
   ( Signal readDom (RelDataCount n)
   , Signal readDom Underflow
@@ -309,7 +310,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       , wbMinDataCountSeen
       , wbMaxDataCountSeen
       ] <-
-      deviceWb "ElasticBuffer" -< wb
+      deviceWb (deviceConfig "ElasticBuffer") -< wb
 
     (_ebAdjustmentAsync, ebAdjustmentAsyncDfActivity) <-
       registerWbDfI

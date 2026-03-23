@@ -20,6 +20,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWb,
@@ -124,7 +125,7 @@ domainDiffCountersWbC ::
     (BitboneMm dst addrW)
     (CSignal dst (Vec n (Signed 32, Active)))
 domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
-  [enableWb, countersWb, activesWb] <- deviceWb "DomainDiffCounters" -< bus
+  [enableWb, countersWb, activesWb] <- deviceWb (deviceConfig "DomainDiffCounters") -< bus
 
   (Fwd enables, _a) <-
     registerWb clk rst enableConfig (repeat False) -< (enableWb, Fwd noWrite)

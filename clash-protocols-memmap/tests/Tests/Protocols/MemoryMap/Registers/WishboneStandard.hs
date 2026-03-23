@@ -125,7 +125,7 @@ deviceExample ::
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
   [float, double, u32, readOnly, writeOnly, prio, prioPreferCircuit, delayed, delayedError] <-
-    deviceWb "example" -< (mm, wb)
+    deviceWb (deviceConfig "example") -< (mm, wb)
 
   registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
   registerWb_ clk rst (registerConfig "d") initDouble -< (double, Fwd noWrite)
@@ -450,7 +450,7 @@ prop_addressableBytesWb = property $ do
        in
         circuit $ \wb -> do
           mm <- ignoreMM
-          [wb0] <- deviceWb "test" -< (mm, wb)
+          [wb0] <- deviceWb (deviceConfig "test") -< (mm, wb)
           reqresp <- CP.withReset rst ReqResp.forceResetSanity <| addressableBytesWb memConf -< wb0
           (reads, writes0) <- ReqResp.partitionEithers <| stallC def stalls -< reqresp
           writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0

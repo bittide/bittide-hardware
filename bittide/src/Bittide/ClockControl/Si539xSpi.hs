@@ -19,6 +19,7 @@ import Protocols
 import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWbI,
@@ -105,10 +106,10 @@ spiCommandToBytes = \case
 -- | State of the configuration circuit in 'si539xSpi'.
 data ConfigState dom entries
   = -- | Continuously read from 'Address' 0xFE at any 'Page', if this operations returns
-    -- 0x0F twice in a row, the device is considered to be ready for operation.
+    --     0x0F twice in a row, the device is considered to be ready for operation.
     WaitForReady Bool
   | -- | Always after a @WaitForReady False@ state, we reset the SPI driver to make sure
-    -- it first sets the page and address again.
+    --     it first sets the page and address again.
     ResetDriver Bool
   | -- | Fetches the 'RegisterEntry' at the 'Index' to be written to the @Si539x@ chip.
     FetchReg (Index entries)
@@ -169,7 +170,7 @@ si539xSpiWb minTargetPs =
   circuit $ \(mm, wb) -> do
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
-    [wb0, wb1, wb2, wb3, wb4] <- deviceWb "Si539xSpi" -< (mm, wb)
+    [wb0, wb1, wb2, wb3, wb4] <- deviceWb (deviceConfig "Si539xSpi") -< (mm, wb)
 
     -- TODO: Don't accept new wishbone transations while busy. This can be achieved with
     -- `registerWbDf`. Should be applied to `regOp`, `commit` and `readData` registers.
@@ -249,8 +250,7 @@ si539xSpiC ::
   -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   Circuit
-    ( CSignal dom (Maybe RegisterOperation)
-    )
+    (CSignal dom (Maybe RegisterOperation))
     ( CSignal dom (Maybe Byte)
     , CSignal dom Busy
     , CSignal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
@@ -286,10 +286,10 @@ si539xSpi ::
   -- | SPI slave to master signals
   Signal dom Spi.S2M ->
   -- |
-  -- 1. Byte returned by read / write operation.
-  -- 2. The SPI interface is 'Busy' and does not accept new operations.
-  -- 3. ConfigState
-  -- 4. SPI master to slave signals
+  --   1. Byte returned by read / write operation.
+  --   2. The SPI interface is 'Busy' and does not accept new operations.
+  --   3. ConfigState
+  --   4. SPI master to slave signals
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
   , Signal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
@@ -379,8 +379,7 @@ si539xSpiDriverC ::
   (HiddenClockResetEnable dom) =>
   SNat minTargetPeriodPs ->
   Circuit
-    ( CSignal dom (Maybe RegisterOperation)
-    )
+    (CSignal dom (Maybe RegisterOperation))
     ( CSignal dom (Maybe Byte)
     , CSignal dom Busy
     , Spi dom
@@ -406,9 +405,9 @@ si539xSpiDriver ::
   -- | SPI slave to master signals
   Signal dom Spi.S2M ->
   -- |
-  -- 1. Byte returned by read / write operation.
-  -- 2. The SPI interface is 'Busy' and does not accept new operations.
-  -- 3. SPI master to slave signals
+  --   1. Byte returned by read / write operation.
+  --   2. The SPI interface is 'Busy' and does not accept new operations.
+  --   3. SPI master to slave signals
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
   , Signal dom Spi.M2S

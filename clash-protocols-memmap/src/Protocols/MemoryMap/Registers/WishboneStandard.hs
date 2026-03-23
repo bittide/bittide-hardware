@@ -28,13 +28,14 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   addressableBytesWb,
 
   -- * Supporting types and functions
-  registerConfig,
   busActivityWrite,
   matchEndianness,
   BusReadBehavior (..),
   BusActivity (..),
   DeviceConfig (..),
+  deviceConfig,
   RegisterConfig (..),
+  registerConfig,
 ) where
 
 import Clash.Explicit.Prelude
@@ -57,7 +58,7 @@ maximum byte address.
 Example usage:
 
 > deviceExample clk rst = circuit $ \(mm, wb) -> do
->   [reg1, reg2, reg3] <- deviceWb "example" -< (mm, wb)
+>   [reg1, reg2, reg3] <- deviceWb (deviceConfig "example") -< (mm, wb)
 >
 >   registerWb_ clk rst (registerConfig "float") (0.0 :: Float)     -< (reg1, Fwd noWrite)
 >   registerWb_ clk rst (registerConfig "u16")   (0 :: Unsigned 16) -< (reg2, Fwd noWrite)
@@ -74,18 +75,17 @@ deviceWb ::
   , KnownNat wordSize
   , KnownNat aw
   ) =>
-  -- | Device name
-  String ->
+  DeviceConfig ->
   Circuit
     ( ToConstBwd Mm
     , Wishbone dom 'Standard aw wordSize
     )
     (Vec n (RegisterWb dom aw wordSize))
-deviceWb deviceName = circuit $ \(mm, wb) -> do
-  (offsets0, metas0, wbs) <-
-    V.unzip3 <| withFrozenCallStack deviceWithOffsetsWb deviceName -< (mm, wb)
+deviceWb config = circuit $ \(mm, wb) -> do
+  (offsets0, configs, metas0, wbs) <-
+    V.unzip4 <| withFrozenCallStack deviceWithOffsetsWb config -< (mm, wb)
   (offsets1, metas1) <- genOffsets -< (offsets0, metas0)
-  V.zip3 -< (offsets1, metas1, wbs)
+  V.zip4 -< (offsets1, configs, metas1, wbs)
  where
   -- Generate offsets based on the sizes of the registers. The first address will be
   -- at offset 0, the next at the size of the first register, etc.
@@ -197,9 +197,9 @@ registerWithOffsetWbDf ::
     , Df dom (BusActivity a)
     )
 registerWithOffsetWbDf clk rst regConfig offset resetValue =
-  circuit $ \((offsetBwd, meta, wb), maybeA) -> do
+  circuit $ \((offsetBwd, devConfig, meta, wb), maybeA) -> do
     genOffset -< offsetBwd
-    registerWbDf clk rst regConfig resetValue -< ((Fwd offset, meta, wb), maybeA)
+    registerWbDf clk rst regConfig resetValue -< ((Fwd offset, devConfig, meta, wb), maybeA)
  where
   genOffset :: Circuit (ToConstBwd (BitVector aw)) ()
   genOffset = Circuit $ \_ -> (offset, ())
