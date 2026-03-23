@@ -5,7 +5,7 @@ Before=actions.runner.bittide-bittide-hardware.hoeve-1.service
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c "source /opt/tools/Xilinx/VivadoEnterprise/Vivado/2022.1/settings64.sh && hw_server"
+ExecStart=/bin/bash -c "source /opt/tools/Xilinx/VivadoEnterprise/Vivado/2025.2/settings64.sh && hw_server"
 Restart=always
 User=graaf
 # XXX: We actually want to run the hw_server as another user. However, it seems
