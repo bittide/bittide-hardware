@@ -480,8 +480,8 @@ transceiverPrbsN opts inputs = outputs
   -- But when the GTHs were changed to use external "user clock networks",
   -- this zipWithN became unusably slow when using more then ~4 transceivers.
   -- Unfortunately this means debugIla is broken now, when using more then 1 transceiver.
-  inputVec =
-    Input
+  tInputVec =
+    TransceiverInput
       <$> pure inputs.clock
       <*> pure inputs.reset
       <*> inputs.channelResets
@@ -498,6 +498,13 @@ transceiverPrbsN opts inputs = outputs
       <*> simOnlyHdlWorkaround (map SimOnly (Gth.unSimOnly inputs.rxSims))
       <*> unbundle (unpack <$> inputs.rxNs)
       <*> unbundle (unpack <$> inputs.rxPs)
+
+  hInputVec =
+    HandshakeInput
+      <$> pure inputs.clock
+      <*> pure inputs.reset
+      <*> pure txClock
+      <*> rxClock
       <*> inputs.txDatas
       <*> inputs.txStarts
       <*> inputs.rxReadys
@@ -523,7 +530,7 @@ transceiverPrbsN opts inputs = outputs
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (clockRx1, rxClock, rxActive) = unzip3 rxClockNws
 
-  outputVec = (transceiverPrbs opts) <$> inputVec
+  outputVec = (transceiverPrbs opts) <$> tInputVec <*> hInputVec
 
   outputs =
     Outputs
@@ -567,9 +574,14 @@ transceiverPrbs ::
   , KnownDomain free
   ) =>
   Config free ->
-  Input tx rx tx1 rx1 ref free rxS ->
+  TransceiverInput tx rx tx1 rx1 ref free rxS ->
+  HandshakeInput tx rx free ->
   Output tx rx tx1 rx1 txS free
-transceiverPrbs = transceiverAndHandshake Gth.gthCore
+transceiverPrbs config transceiverInput handshakeInput = output
+ where
+  (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith Gth.gthCore config transceiverInput transceiverInputFromHandshake
+  (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput handshakeInputFromTransceiver
+  output = transceiverOutputAndHandshakeOutputToOutput transceiver handshake
 
 transceiverAndHandshake ::
   ( HasSynchronousReset tx
@@ -625,6 +637,16 @@ transceiverOutputAndHandshakeOutputToOutput transceiver handshake = output
       , neighborTransmitReady = handshake.neighborTransmitReady
       , stats = transceiver.stats
       }
+
+inputToTransceiverHandshakeInput ::
+  Input tx rx tx1 rx1 ref free rxS ->
+  ( TransceiverInput tx rx tx1 rx1 ref free rxS
+  , HandshakeInput tx rx free
+  )
+inputToTransceiverHandshakeInput input = (transceiverInput, handshakeInput)
+ where
+  transceiverInput = inputToTransceiverInput input
+  handshakeInput = inputToHandshakeInput input
 
 inputToTransceiverInput ::
   Input tx rx tx1 rx1 ref free rxS -> TransceiverInput tx rx tx1 rx1 ref free rxS
