@@ -8,6 +8,11 @@ module Clash.Class.BitPackC.Padding (
   unpackWordOrErrorC,
   SizeInWordsC,
 
+  -- * Implicit byte order variants
+  packWordCI,
+  maybeUnpackWordCI,
+  unpackWordOrErrorCI,
+
   -- * Internal
   pad,
   unpad,
@@ -72,6 +77,44 @@ unpackWordOrErrorC ::
   a
 unpackWordOrErrorC endian bytes =
   unpackOrErrorC endian (unpad bytes)
+
+-- | Like 'packWordC', but takes byte order as an implicit parameter.
+packWordCI ::
+  forall wordSize a.
+  ( BitPackC a
+  , KnownNat wordSize
+  , 1 <= wordSize
+  , ?byteOrder :: ByteOrder
+  ) =>
+  a ->
+  Vec (SizeInWordsC wordSize a) (Bytes wordSize)
+packWordCI = packWordC ?byteOrder
+
+-- | Like 'maybeUnpackWordC', but takes byte order as an implicit parameter.
+maybeUnpackWordCI ::
+  forall wordSize a.
+  ( BitPackC a
+  , KnownNat wordSize
+  , 1 <= wordSize
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Vec (SizeInWordsC wordSize a) (Bytes wordSize) ->
+  Maybe a
+maybeUnpackWordCI = maybeUnpackWordC ?byteOrder
+
+-- | Like 'unpackOrErrorC', but takes byte order as an implicit parameter.
+unpackWordOrErrorCI ::
+  forall wordSize a.
+  ( BitPackC a
+  , Typeable a
+  , NFDataX a
+  , KnownNat wordSize
+  , 1 <= wordSize
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Vec (SizeInWordsC wordSize a) (Bytes wordSize) ->
+  a
+unpackWordOrErrorCI = unpackWordOrErrorC ?byteOrder
 
 {- | Pack bytes into a bunch of words. Pad with zero-bytes if necessary. Note that the
 resulting 'BitVector' is packed in such a way that the byte with the lowest index in the
