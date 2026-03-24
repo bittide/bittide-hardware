@@ -27,11 +27,7 @@ data HandshakeInput tx rx free = HandshakeInput
   , wordFromUser :: Signal tx (BitVector 64)
   , txStart :: Signal tx Bool -- Should be wishbone
   , rxReady :: Signal rx Bool -- Should be wishbone
-  }
-
-data HandshakeInputFromWishbone tx rx = HandshakeInputFromWishbone
-  { txStart :: Signal tx Bool
-  , rxReady :: Signal rx Bool
+  , fromTransceiver :: HandshakeInputFromTransceiver tx rx
   }
 
 data HandshakeOutput tx rx free = HandshakeOutput
@@ -44,6 +40,7 @@ data HandshakeOutput tx rx free = HandshakeOutput
   , neighborReceiveReady :: Signal free Bool
   , neighborReceiveReadyTx :: Signal tx Bool
   , neighborTransmitReady :: Signal free Bool
+  , toTransceiver :: TransceiverInputFromHandshake tx rx free
   }
 
 data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake
@@ -86,6 +83,24 @@ metadataToWord meta = word
   metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
   word = WordAlign.joinMsbs @8 0 metaWithPadding
 
+{-
+userDataHandshakeN ::
+  Inputs tx rx ref free rxS n ->
+  Outputs n tx rx txS free
+userDataHandshakeN inputs = outputs
+ where
+   hInputVec =
+    HandshakeInput
+      <$> pure inputs.clock
+      <*> pure inputs.reset
+      <*> pure txClock
+      <*> rxClock
+      <*> inputs.txDatas
+      <*> inputs.txStarts
+      <*> inputs.rxReadys
+      <*> pure undefined
+-}
+
 {- | Perform the metadata handshake with neighbor link so both sides switch over to
   user data when ready.
 -}
@@ -93,10 +108,10 @@ userDataHandshake ::
   forall rx tx free.
   (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
   HandshakeInput tx rx free ->
-  HandshakeInputFromTransceiver tx rx ->
-  (HandshakeOutput tx rx free, TransceiverInputFromHandshake tx rx free)
-userDataHandshake input fromTransceiver = (output, transceiverInputFromHandshake)
+  HandshakeOutput tx rx free
+userDataHandshake input = output
  where
+  fromTransceiver = input.fromTransceiver
   output =
     HandshakeOutput
       { wordToUser
@@ -108,6 +123,7 @@ userDataHandshake input fromTransceiver = (output, transceiverInputFromHandshake
       , neighborReceiveReady
       , neighborReceiveReadyTx
       , neighborTransmitReady
+      , toTransceiver = transceiverInputFromHandshake
       }
 
   transceiverInputFromHandshake =
