@@ -30,6 +30,22 @@ data HandshakeInput tx rx free = HandshakeInput
   , fromTransceiver :: HandshakeInputFromTransceiver tx rx
   }
 
+data HandshakeInputN tx rx free n = HandshakeInputs
+  { clock :: Clock free
+  -- ^ See 'Input.clock'
+  , reset :: Reset free
+  -- ^ See 'Input.reset'
+  , txClock :: Clock tx
+  , rxClock :: Clock rx
+  , txDatas :: Vec n (Signal tx (BitVector 64))
+  -- ^ See 'Input.txData'
+  , txStarts :: Vec n (Signal tx Bool)
+  -- ^ See 'Input.txStart'
+  , rxReadys :: Vec n (Signal rx Bool)
+  -- ^ See 'Input.rxReady'
+  , fromTransceivers :: Vec n (HandshakeInputFromTransceiver tx rx)
+  }
+
 data HandshakeOutput tx rx free = HandshakeOutput
   { wordToUser :: Signal rx (Maybe (BitVector 64))
   , rxLast :: Signal rx Bool
@@ -41,6 +57,24 @@ data HandshakeOutput tx rx free = HandshakeOutput
   , neighborReceiveReadyTx :: Signal tx Bool
   , neighborTransmitReady :: Signal free Bool
   , toTransceiver :: TransceiverInputFromHandshake tx rx free
+  }
+
+data HandshakeOutputN n tx rx free = HandshakeOutputN
+  { txReadys :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txReady'
+  , txSamplings :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txSampling'
+  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  -- ^ See 'Output.rxData'
+  , debugLinkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkUp'
+  , debugLinkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.debugLinkReady'
+  , neighborReceiveReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborReceiveReady'
+  , neighborTransmitReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborTransmitReady'
+  , toTransceivers :: Vec n (TransceiverInputFromHandshake tx rx free)
   }
 
 data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake

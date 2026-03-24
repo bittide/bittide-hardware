@@ -176,6 +176,28 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.rxReady'
   }
 
+data TransceiverInputs tx rx ref free rxS n = TransceiverInputs
+  { clock :: Clock free
+  -- ^ See 'Input.clock'
+  , reset :: Reset free
+  -- ^ See 'Input.reset'
+  , channelResets :: Vec n (Reset free)
+  -- ^ Resets for each individual link
+  , refClock :: Clock ref
+  -- ^ See 'Input.refClock'
+  , channelNames :: Vec n String
+  -- ^ See 'Input.channelName'
+  , clockPaths :: Vec n String
+  -- ^ See 'Input.clockPath'
+  , rxNs :: Gth.Wires rxS n
+  -- ^ See 'Input.rxN'
+  , rxPs :: Gth.Wires rxS n
+  -- ^ See 'Input.rxP'
+  , rxSims :: Gth.SimWires rx n
+  -- ^ See 'Input.rxSim'
+  , fromHandshakes :: Vec n (TransceiverInputFromHandshake tx rx free)
+  }
+
 data CInputs tx rx free n = CInputs
   { channelResets :: Vec n (Reset free)
   -- ^ Resets for each individual link
@@ -190,6 +212,41 @@ data CInputs tx rx free n = CInputs
 instance Protocol (CInputs tx rx free n) where
   type Fwd (CInputs tx rx free n) = CInputs tx rx free n
   type Bwd (CInputs tx rx free n) = ()
+
+data TransceiverInput tx rx tx1 rx1 ref free rxS = TransceiverInput
+  { clock :: Clock free
+  , reset :: Reset free
+  , channelReset :: Reset free
+  , refClock :: Clock ref
+  , clockTx1 :: Clock tx1
+  , clockTx2 :: Clock tx
+  , txActive :: Signal tx (BitVector 1)
+  , clockRx1 :: Clock rx1
+  , clockRx2 :: Clock rx
+  , rxActive :: Signal rx (BitVector 1)
+  , transceiverIndex :: Unsigned 3
+  , channelName :: String
+  , clockPath :: String
+  , rxSim :: Gth.SimWire rx
+  , rxN :: Gth.Wire rxS
+  , rxP :: Gth.Wire rxS
+  , fromHandshake :: TransceiverInputFromHandshake tx rx free
+  }
+
+data TransceiverOutput tx rx tx1 rx1 txS free = TransceiverOutput
+  { txOutClock :: Clock tx1
+  , txReset :: Reset tx
+  , prbsHandshakeDoneTx :: Signal tx Bool
+  , txP :: Gth.Wire txS
+  , txN :: Gth.Wire txS
+  , txSim :: Gth.SimWire tx
+  , rxOutClock :: Clock rx1
+  , rxReset :: Reset rx
+  , prbsHandshakeDone :: Signal rx Bool
+  , prbsHandshakeDoneFree :: Signal free Bool
+  , stats :: Signal free ResetManager.Statistics
+  , toHandshake :: HandshakeInputFromTransceiver tx rx
+  }
 
 data Output tx rx tx1 rx1 txS free = Output
   { txOutClock :: Clock tx1
@@ -236,6 +293,32 @@ data Output tx rx tx1 rx1 txS free = Output
   -- ^ Asserted when the neighbor has signalled it is ready to transmit user data.
   , stats :: Signal free ResetManager.Statistics
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
+  }
+
+data TransceiverOutputN n tx rx txS free = TransceiverOutputN
+  { txClock :: Clock tx
+  -- ^ Single transmit clock, shared by all links
+  , txReset :: Reset tx
+  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable.
+  , handshakesDoneTx :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.handshakeDoneTx'
+  , txPs :: Gth.Wires txS n
+  -- ^ See 'Output.txP'
+  , txNs :: Gth.Wires txS n
+  -- ^ See 'Output.txN'
+  , txSims :: Gth.SimWires tx n
+  -- ^ See 'Output.txSim'
+  , rxClocks :: Vec n (Clock rx)
+  -- ^ See 'Output.rxClock'
+  , rxResets :: Vec n (Reset rx)
+  -- ^ See 'Output.rxReset'
+  , handshakesDone :: Vec n (Signal rx Bool)
+  -- ^ See 'Output.handshakeDone'
+  , handshakesDoneFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.handshakeDoneFree'
+  , stats :: Vec n (Signal free ResetManager.Statistics)
+  -- ^ See 'Output.stats'
+  , toHandshakes :: Vec n (HandshakeInputFromTransceiver tx rx)
   }
 
 {- | Careful: the domains for the rx side of each transceiver are different, even if their
@@ -587,41 +670,6 @@ transceiverPrbs ::
 transceiverPrbs config transceiverInput = transceiverOutput
  where
   transceiverOutput = transceiverPrbsWith Gth.gthCore config transceiverInput
-
-data TransceiverInput tx rx tx1 rx1 ref free rxS = TransceiverInput
-  { clock :: Clock free
-  , reset :: Reset free
-  , channelReset :: Reset free
-  , refClock :: Clock ref
-  , clockTx1 :: Clock tx1
-  , clockTx2 :: Clock tx
-  , txActive :: Signal tx (BitVector 1)
-  , clockRx1 :: Clock rx1
-  , clockRx2 :: Clock rx
-  , rxActive :: Signal rx (BitVector 1)
-  , transceiverIndex :: Unsigned 3
-  , channelName :: String
-  , clockPath :: String
-  , rxSim :: Gth.SimWire rx
-  , rxN :: Gth.Wire rxS
-  , rxP :: Gth.Wire rxS
-  , fromHandshake :: TransceiverInputFromHandshake tx rx free
-  }
-
-data TransceiverOutput tx rx tx1 rx1 txS free = TransceiverOutput
-  { txOutClock :: Clock tx1
-  , txReset :: Reset tx
-  , prbsHandshakeDoneTx :: Signal tx Bool
-  , txP :: Gth.Wire txS
-  , txN :: Gth.Wire txS
-  , txSim :: Gth.SimWire tx
-  , rxOutClock :: Clock rx1
-  , rxReset :: Reset rx
-  , prbsHandshakeDone :: Signal rx Bool
-  , prbsHandshakeDoneFree :: Signal free Bool
-  , stats :: Signal free ResetManager.Statistics
-  , toHandshake :: HandshakeInputFromTransceiver tx rx
-  }
 
 transceiverPrbsWith ::
   forall tx rx tx1 rx1 ref free txS rxS.
