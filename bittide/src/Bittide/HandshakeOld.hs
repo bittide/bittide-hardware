@@ -4,11 +4,14 @@
 module Bittide.HandshakeOld (
   HandshakeInput (..),
   HandshakeOutput (..),
+  HandshakeInputs (..),
+  HandshakeOutputs (..),
   HandshakeInputFromTransceiver (..),
   TransceiverInputFromHandshake (..),
   wordToMetadata,
   metadataToWord,
   userDataHandshake,
+  userDataHandshakeN,
 ) where
 
 import Clash.Explicit.Prelude
@@ -30,13 +33,13 @@ data HandshakeInput tx rx free = HandshakeInput
   , fromTransceiver :: HandshakeInputFromTransceiver tx rx
   }
 
-data HandshakeInputN tx rx free n = HandshakeInputs
+data HandshakeInputs tx rx free n = HandshakeInputs
   { clock :: Clock free
   -- ^ See 'Input.clock'
   , reset :: Reset free
   -- ^ See 'Input.reset'
   , txClock :: Clock tx
-  , rxClock :: Clock rx
+  , rxClocks :: Vec n (Clock rx) -- Should this be Vec n?
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
   , txStarts :: Vec n (Signal tx Bool)
@@ -48,8 +51,6 @@ data HandshakeInputN tx rx free n = HandshakeInputs
 
 data HandshakeOutput tx rx free = HandshakeOutput
   { wordToUser :: Signal rx (Maybe (BitVector 64))
-  , rxLast :: Signal rx Bool
-  , rxIsUserData :: Signal rx Bool
   , txIsUserData :: Signal tx Bool
   , debugLinkUp :: Signal free Bool
   , debugLinkReady :: Signal free Bool
@@ -59,18 +60,21 @@ data HandshakeOutput tx rx free = HandshakeOutput
   , toTransceiver :: TransceiverInputFromHandshake tx rx free
   }
 
-data HandshakeOutputN n tx rx free = HandshakeOutputN
+data HandshakeOutputs n tx rx free = HandshakeOutputs
   { txReadys :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txReady'
-  , txSamplings :: Vec n (Signal tx Bool)
+  , txIsUserDatas :: Vec n (Signal tx Bool) -- txSamplings
+
   -- ^ See 'Output.txSampling'
-  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  , wordToUsers :: Vec n (Signal rx (Maybe (BitVector 64)))
   -- ^ See 'Output.rxData'
   , debugLinkUps :: Vec n (Signal free Bool)
   -- ^ See 'Output.debugLinkUp'
   , debugLinkReadys :: Vec n (Signal free Bool)
   -- ^ See 'Output.debugLinkReady'
   , neighborReceiveReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.neighborReceiveReady'
+  , neighborReceiveReadyTxs :: Vec n (Signal tx Bool)
   -- ^ See 'Output.neighborReceiveReady'
   , neighborTransmitReadys :: Vec n (Signal free Bool)
   -- ^ See 'Output.neighborTransmitReady'
@@ -117,23 +121,41 @@ metadataToWord meta = word
   metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
   word = WordAlign.joinMsbs @8 0 metaWithPadding
 
-{-
 userDataHandshakeN ::
-  Inputs tx rx ref free rxS n ->
-  Outputs n tx rx txS free
+  ( KnownDomain tx
+  , KnownDomain rx
+  , KnownDomain free
+  , KnownNat n
+  ) =>
+  HandshakeInputs tx rx free n ->
+  HandshakeOutputs n tx rx free
 userDataHandshakeN inputs = outputs
  where
-   hInputVec =
+  hInputVec =
     HandshakeInput
       <$> pure inputs.clock
       <*> pure inputs.reset
-      <*> pure txClock
-      <*> rxClock
+      <*> pure inputs.txClock
+      <*> inputs.rxClocks
       <*> inputs.txDatas
       <*> inputs.txStarts
       <*> inputs.rxReadys
       <*> pure undefined
--}
+
+  hOutputVec = userDataHandshake <$> hInputVec
+
+  outputs =
+    HandshakeOutputs
+      { wordToUsers = (.wordToUser) <$> hOutputVec
+      , txReadys = (.neighborReceiveReadyTx) <$> hOutputVec
+      , txIsUserDatas = (.txIsUserData) <$> hOutputVec
+      , debugLinkUps = (.debugLinkUp) <$> hOutputVec
+      , debugLinkReadys = (.debugLinkReady) <$> hOutputVec
+      , neighborReceiveReadys = (.neighborReceiveReady) <$> hOutputVec
+      , neighborReceiveReadyTxs = (.neighborReceiveReadyTx) <$> hOutputVec
+      , neighborTransmitReadys = (.neighborTransmitReady) <$> hOutputVec
+      , toTransceivers = (.toTransceiver) <$> hOutputVec
+      }
 
 {- | Perform the metadata handshake with neighbor link so both sides switch over to
   user data when ready.
@@ -149,8 +171,6 @@ userDataHandshake input = output
   output =
     HandshakeOutput
       { wordToUser
-      , rxLast
-      , rxIsUserData
       , txIsUserData
       , debugLinkUp
       , debugLinkReady
