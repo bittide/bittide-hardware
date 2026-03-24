@@ -23,6 +23,7 @@ import Test.Tasty (TestTree, adjustOption, testGroup)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyNamed)
 import "extra" Data.List.Extra (splitOn)
 
+import qualified Bittide.HandshakeOld as Handshake
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
@@ -170,6 +171,103 @@ data Input tx rx = Input
   , rxReady :: Signal rx Bool
   }
 
+transceiverAndHandshake ::
+  ( HasSynchronousReset tx
+  , HasDefinedInitialValues tx
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
+  , KnownDomain rx1
+  , KnownDomain tx1
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
+  ) =>
+  Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
+  Transceiver.Config free ->
+  Transceiver.Input tx rx tx1 rx1 ref free rxS ->
+  Transceiver.Output tx rx tx1 rx1 txS free
+transceiverAndHandshake core config input = output
+ where
+  (transceiverInput, handshakeInput) = inputToTransceiverHandshakeInput input
+  transceiverOutput =
+    Transceiver.transceiverPrbsWith
+      core
+      config
+      (transceiverInput{Transceiver.fromHandshake = handshakeOutput.toTransceiver})
+  handshakeOutput =
+    Handshake.userDataHandshake
+      (handshakeInput{Handshake.fromTransceiver = transceiverOutput.toHandshake})
+  output = transceiverOutputAndHandshakeOutputToOutput transceiverOutput handshakeOutput
+
+transceiverOutputAndHandshakeOutputToOutput ::
+  Transceiver.TransceiverOutput tx rx tx1 rx1 txS free ->
+  Handshake.HandshakeOutput tx rx free ->
+  Transceiver.Output tx rx tx1 rx1 txS free
+transceiverOutputAndHandshakeOutputToOutput transceiver handshake = output
+ where
+  output =
+    Transceiver.Output
+      { txSampling = handshake.txIsUserData
+      , rxData = handshake.wordToUser
+      , txReady = handshake.neighborReceiveReadyTx
+      , handshakeDoneTx = transceiver.prbsHandshakeDoneTx
+      , handshakeDone = transceiver.prbsHandshakeDone
+      , handshakeDoneFree = transceiver.prbsHandshakeDoneFree
+      , txSim = transceiver.txSim
+      , txN = transceiver.txN
+      , txP = transceiver.txP
+      , txReset = transceiver.txReset
+      , txOutClock = transceiver.txOutClock
+      , rxOutClock = transceiver.rxOutClock
+      , rxReset = transceiver.rxReset
+      , debugLinkUp = handshake.debugLinkUp
+      , debugLinkReady = handshake.debugLinkReady
+      , neighborReceiveReady = handshake.neighborReceiveReady
+      , neighborTransmitReady = handshake.neighborTransmitReady
+      , stats = transceiver.stats
+      }
+
+inputToTransceiverHandshakeInput ::
+  Transceiver.Input tx rx tx1 rx1 ref free rxS ->
+  ( Transceiver.TransceiverInput tx rx tx1 rx1 ref free rxS
+  , Handshake.HandshakeInput tx rx free
+  )
+inputToTransceiverHandshakeInput input = (transceiverInput, handshakeInput)
+ where
+  transceiverInput =
+    Transceiver.TransceiverInput
+      input.clock
+      input.reset
+      input.channelReset
+      input.refClock
+      input.clockTx1
+      input.clockTx2
+      input.txActive
+      input.clockRx1
+      input.clockRx2
+      input.rxActive
+      input.transceiverIndex
+      input.channelName
+      input.clockPath
+      input.rxSim
+      input.rxN
+      input.rxP
+      undefined
+
+  handshakeInput =
+    Handshake.HandshakeInput
+      input.clock
+      input.reset
+      input.clockTx2
+      input.clockRx2
+      input.txData
+      input.txStart
+      input.rxReady
+      undefined
+
 dut ::
   forall freeA freeB txA txB ref.
   ( KnownDomain ref
@@ -212,12 +310,13 @@ dut
   inputB = (outputA, outputB)
    where
     outputA =
-      Transceiver.transceiverAndHandshake
+      transceiverAndHandshake
         gthCoreA
         Transceiver.defConfig{Transceiver.resetManagerConfig}
         Transceiver.Input
           { clock = freeClkA
           , reset = freeRstA
+          , channelReset = noReset
           , refClock = error "A: refClock not used in simulation"
           , clockTx1 = clockGen
           , clockTx2 = clockGen
@@ -231,19 +330,19 @@ dut
           , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
           , rxN = error "A: rxN not used in simulation"
           , rxP = error "A: rxP not used in simulation"
-          , channelReset = noReset
           , txData = inputA.dat
           , txStart = inputA.txStart
           , rxReady = inputA.rxReady
           }
 
     outputB =
-      Transceiver.transceiverAndHandshake
+      transceiverAndHandshake
         gthCoreB
         Transceiver.defConfig{Transceiver.resetManagerConfig}
         Transceiver.Input
           { clock = freeClkB
           , reset = freeRstB
+          , channelReset = noReset
           , refClock = error "B: refClock not used in simulation"
           , clockTx1 = clockGen
           , clockTx2 = clockGen
@@ -257,7 +356,6 @@ dut
           , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
           , rxN = error "B: rxN not used in simulation"
           , rxP = error "B: rxP not used in simulation"
-          , channelReset = noReset
           , txData = inputB.dat
           , txStart = inputB.txStart
           , rxReady = inputB.rxReady
