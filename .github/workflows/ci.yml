@@ -332,7 +332,7 @@ jobs:
         if: ${{ matrix.with_vivado }}
         run: |
           # We need to run with '-j2', because Vivado takes up a lot of memory
-          .github/scripts/with_vivado.sh \
+          .github/scripts/with_vivado.sh --vivado_version 2025.2 \
             cabal run ${{ matrix.package }}:${{ matrix.test_suite }} -- -j2
 
       - name: Run ${{ matrix.test_suite }}
@@ -579,7 +579,7 @@ jobs:
           if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
             mkdir -p "${VIVADO_HS_LOG_DIR}"
           fi
-          .github/scripts/with_vivado.sh \
+          .github/scripts/with_vivado.sh --vivado_version 2025.2 \
             shake ${{ matrix.target.top }}:"${target}"
 
           # Pushing synthesis results to cache
@@ -696,7 +696,8 @@ jobs:
           if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
             mkdir -p "${VIVADO_HS_LOG_DIR}"
           fi
-          .github/scripts/with_vivado.sh \
+          # XXX: Run older version of Vivado, 2025.2's hw_server does not work 90% of the time.
+          .github/scripts/with_vivado.sh --vivado_version 2022.1 \
             shake ${{ matrix.target.top }}:test
 
       - name: Archive HITL data

@@ -6,11 +6,44 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+if [[ "$#" -eq 0 ]]; then
+  echo "Usage: $0 [options] <command>"
+  echo "Options:"
+  echo "  -v, --vivado_version <version>  Specify Vivado version (default: 2025.2)"
+  exit 1
+fi
+
+case "$1" in
+  -v|--vivado_version)
+    VERSION="$2"
+    shift 2
+    ;;
+
+  *)
+    VERSION=2025.2
+    echo "No Vivado version specified, defaulting to $VERSION"
+    ;;
+esac
+
+case "$VERSION" in
+  2022.*|2023.*)
+    VIVADO_PATH="/opt/tools/Xilinx/VivadoEnterprise/Vivado/$VERSION/settings64.sh"
+    ;;
+  2025.*)
+    VIVADO_PATH="/opt/tools/Xilinx/$VERSION/Vivado/settings64.sh"
+    ;;
+  *)
+    echo "Unsupported Vivado version: $VERSION"
+    exit 1
+    ;;
+esac
+
 # Get Vivado environment in scope
-source /opt/tools/Xilinx/2025.2/Vivado/settings64.sh
+echo "Sourcing Vivado environment for version $VERSION from $VIVADO_PATH"
+source "$VIVADO_PATH"
 
 # Work around https://support.xilinx.com/s/question/0D52E000079NURRSA4/synthesis-failed-abnormal-termination-tcmalloc-large-allocation?language=en_US
 export LD_PRELOAD=/lib/x86_64-linux-gnu/libudev.so.1
 
-# Run command given as argument
+# Run command given as argument without VERSION
 "$@"
