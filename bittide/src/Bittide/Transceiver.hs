@@ -583,9 +583,9 @@ transceiverPrbs ::
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
-transceiverPrbs = connectedTransceiverAndHandshake Gth.gthCore
+transceiverPrbs = transceiverAndHandshake Gth.gthCore
 
-connectedTransceiverAndHandshake ::
+transceiverAndHandshake ::
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
   , HasSynchronousReset rx
@@ -603,7 +603,7 @@ connectedTransceiverAndHandshake ::
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
-connectedTransceiverAndHandshake core config input = output
+transceiverAndHandshake core config input = output
  where
   output = transceiverOutputAndHandshakeOutputToOutput transceiver handshake
 
@@ -646,35 +646,37 @@ inputToTransceiverInput input = transceiverInput
  where
   transceiverInput =
     TransceiverInput
-      input.clock
-      input.reset
-      input.channelReset
-      input.refClock
-      input.clockTx1
-      input.clockTx2
-      input.txActive
-      input.clockRx1
-      input.clockRx2
-      input.rxActive
-      input.transceiverIndex
-      input.channelName
-      input.clockPath
-      input.rxSim
-      input.rxN
-      input.rxP
+      { clock = input.clock
+      , reset = input.reset
+      , channelReset = input.channelReset
+      , refClock = input.refClock
+      , clockTx1 = input.clockTx1
+      , clockTx2 = input.clockTx2
+      , txActive = input.txActive
+      , clockRx1 = input.clockRx1
+      , clockRx2 = input.clockRx2
+      , rxActive = input.rxActive
+      , transceiverIndex = input.transceiverIndex
+      , channelName = input.channelName
+      , clockPath = input.clockPath
+      , rxSim = input.rxSim
+      , rxN = input.rxN
+      , rxP = input.rxP
+      }
 
 inputToHandshakeInput :: Input tx rx tx1 rx1 ref free rxS -> HandshakeInput tx rx free
 inputToHandshakeInput input = handshakeInput
  where
   handshakeInput =
     HandshakeInput
-      input.clock
-      input.reset
-      input.clockTx2
-      input.clockRx2
-      input.txData
-      input.txStart
-      input.rxReady
+      { clock = input.clock
+      , reset = input.reset
+      , txClock = input.clockTx2
+      , rxClock = input.clockRx2
+      , wordFromUser = input.txData
+      , txStart = input.txStart
+      , rxReady = input.rxReady
+      }
 
 data TransceiverInput tx rx tx1 rx1 ref free rxS = TransceiverInput
   { clock :: Clock free
@@ -776,8 +778,8 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
       , prbsHandshakeDone = prbsOkDelayed
       , prbsHandshakeDoneFree = withLockRxFree prbsOkDelayed
       , txSim
-      , txN = txN
-      , txP = txP
+      , txN
+      , txP
       , txReset = txDomainReset
       , txOutClock
       , rxOutClock
@@ -787,12 +789,13 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
 
   handshakeInput =
     HandshakeInputFromTransceiver
-      txReset
-      reset_tx_done
-      rxReset
-      reset_rx_done
-      prbsOkDelayed
-      alignedRxData0
+      { txReset
+      , txResetDone = reset_tx_done
+      , rxReset
+      , rxResetDone = reset_rx_done
+      , linkHealthy = prbsOkDelayed
+      , wordFromTransceiver = alignedRxData0
+      }
 
   Gth.CoreOutput
     { gthtxOut = txSim
