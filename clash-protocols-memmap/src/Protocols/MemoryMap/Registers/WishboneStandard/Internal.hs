@@ -7,13 +7,15 @@ module Protocols.MemoryMap.Registers.WishboneStandard.Internal where
 import Clash.Explicit.Prelude
 import Protocols
 
+import Bittide.Wishbone.Orphans ()
 import Clash.Class.BitPackC (BitPackC (..), ByteOrder, Bytes)
 import Clash.Class.BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
+import Clash.Shockwaves.Waveform (Waveform)
 import Clash.Sized.Internal.BitVector (BitVector (unsafeToNatural))
 import Data.Coerce (coerce)
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
-import Data.Data (Proxy (Proxy))
+import Data.Data (Proxy (Proxy), Typeable)
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe, isJust)
 import GHC.Stack (HasCallStack, SrcLoc)
@@ -41,6 +43,7 @@ import Protocols.Wishbone (
   emptyWishboneS2M,
  )
 
+import qualified Clash.Shockwaves.Trace as Trace
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.String.Interpolate as I
@@ -100,10 +103,16 @@ type RegisterWbConstraints (a :: Type) (dom :: Domain) (wordSize :: Nat) (aw :: 
 -- | Configuration for a device -- currently only the name.
 data DeviceConfig = DeviceConfig
   { name :: String
+  , trace :: Bool
+  -- ^ Whether to add 'traceSignal' statements. Is set to 'False' by default, because it
+  --   causes whole signals to be kept alive which can cause memory issues for large
+  --   designs.
   }
 
 deviceConfig :: String -> DeviceConfig
-deviceConfig name = DeviceConfig{name}
+deviceConfig name = DeviceConfig{name, trace = False}
+
+type Shockwaves a = (BitPack a, NFDataX a, Typeable a, Waveform a)
 
 {- | Offset from the base address of a device. This really should be an 'Unsigned', but
 we use 'BitVector' to avoid unnecessary conversions.
@@ -561,9 +570,30 @@ registerWbDf clk rst regConfig resetValue =
       )
     , (Signal dom a, Signal dom (Maybe (BusActivity a)))
     )
-  go (((offset, _config, _, wbM2S0), aIn0), (_, coerce -> dfAck)) =
-    ((((), (), reg, wbS2M2), ()), (aOut, busActivity))
+  go (((offset, SimOnly config, _, wbM2S0), aIn0), (_, coerce -> dfAck)) =
+    ( (((), (), traced1 `seq` reg, wbS2M2), ())
+    , (aOut, busActivity)
+    )
    where
+    deviceName = config.name
+    registerName = regConfig.name
+
+    traceRegSignal :: forall z. (Shockwaves z) => String -> Signal dom z -> Signal dom z
+    traceRegSignal signalName =
+      Trace.traceSignal [I.i|#{deviceName}_#{registerName}_#{signalName}|]
+
+    traced1 = if config.trace then traced0 else ()
+    traced0 =
+      ()
+        `seq` traceRegSignal "offset" (pure offset :: Signal dom (Offset aw))
+        `seq` traceRegSignal "wbM2S" wbM2S0
+        `seq` traceRegSignal "wbS2M" wbS2M2
+        `seq` traceRegSignal "packedInFromBus0" packedInFromBus0
+        `seq` traceRegSignal "packedInFromBus1" packedInFromBus1
+        `seq` traceRegSignal "packedIn0" packedIn0
+        `seq` traceRegSignal "packedIn1" packedIn1
+        `seq` traceRegSignal "packedOut" packedOut
+        `seq` ()
     aOut = unpackC <$> packedOut
     packedIn0 = fmap (packWordC @wordSize ?regByteOrder) <$> aIn0
 
