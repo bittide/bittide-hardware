@@ -63,8 +63,7 @@ data HandshakeOutput tx rx free = HandshakeOutput
 data HandshakeOutputs n tx rx free = HandshakeOutputs
   { txReadys :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txReady'
-  , txIsUserDatas :: Vec n (Signal tx Bool) -- txSamplings
-
+  , txIsUserDatas :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txSampling'
   , wordToUsers :: Vec n (Signal rx (Maybe (BitVector 64)))
   -- ^ See 'Output.rxData'
@@ -84,8 +83,8 @@ data HandshakeOutputs n tx rx free = HandshakeOutputs
 data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake
   { wordToTransceiver :: Signal tx (BitVector 64)
   , rxLast :: Signal rx Bool
-  , rxUserData :: Signal rx Bool
-  , txUserData :: Signal tx Bool
+  , rxIsUserData :: Signal rx Bool
+  , txIsUserData :: Signal tx Bool
   }
 
 data HandshakeInputFromTransceiver tx rx = HandshakeInputFromTransceiver
@@ -182,10 +181,11 @@ userDataHandshake input = output
 
   transceiverInputFromHandshake =
     TransceiverInputFromHandshake
-      wordToTransceiver
-      rxLast
-      rxIsUserData
-      txIsUserData
+      { wordToTransceiver
+      , rxLast
+      , rxIsUserData
+      , txIsUserData
+      }
 
   metadata = wordToMetadata <$> fromTransceiver.wordFromTransceiver
   validMeta = mux rxIsUserData (pure False) fromTransceiver.linkHealthy

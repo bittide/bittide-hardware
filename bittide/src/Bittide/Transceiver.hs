@@ -705,7 +705,8 @@ transceiverPrbsWith ::
   (TransceiverOutput tx rx tx1 rx1 txS free)
 transceiverPrbsWith gthCore opts input = output
  where
-  (TransceiverInputFromHandshake wordToTransceiver rxLast rxUserData txUserData) = input.fromHandshake
+  inputH = input.fromHandshake
+  -- (TransceiverInputFromHandshake wordToTransceiver rxLast rxUserData txUserData) = input.fromHandshake
 
   output =
     TransceiverOutput
@@ -796,13 +797,13 @@ transceiverPrbsWith gthCore opts input = output
   --
   -- The logic below simply takes the handshake word and, if the handshake signals it's
   -- sending metadata, rewrites the metadata word with prbs data inserted
-  metaTx = wordToMetadata <$> wordToTransceiver
+  metaTx = wordToMetadata <$> inputH.wordToTransceiver
   prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
   prbsWithMetaAndAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbsWithMeta
   gtwiz_userdata_tx_in =
     mux
-      txUserData
-      wordToTransceiver
+      inputH.txIsUserData
+      inputH.wordToTransceiver
       (fromMaybe <$> prbsWithMetaAndAlign <*> commas)
 
   rxReset =
@@ -813,7 +814,10 @@ transceiverPrbsWith gthCore opts input = output
   alignedRxData0 :: Signal rx (BitVector 64)
   alignedRxData0 =
     withClock rxClock
-      $ WordAlign.alignBytesFromMsbs @8 WordAlign.alignLsbFirst (rxUserData .||. rxLast) rx_data0
+      $ WordAlign.alignBytesFromMsbs @8
+        WordAlign.alignLsbFirst
+        (inputH.rxIsUserData .||. inputH.rxLast)
+        rx_data0
 
   (alignedAlignBits, alignedRxData1) =
     unbundle (WordAlign.splitMsbs @8 @8 <$> alignedRxData0)
@@ -837,7 +841,7 @@ transceiverPrbsWith gthCore opts input = output
       .||. (rxCtrl3 ./=. pure 0)
 
   prbsOk =
-    rxUserData
+    inputH.rxIsUserData
       .||. Prbs.tracker rxClock rxReset (anyPrbsErrors .||. alignError .||. rxCtrlOrError)
 
   -- 'prbsWaitMs' is the number of milliseconds representing the worst case time
@@ -849,8 +853,7 @@ transceiverPrbsWith gthCore opts input = output
       `mul` opts.resetManagerConfig.rxTimeoutMs
   prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
 
-  errorAfterRxUserData :: Signal rx Bool
-  errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
+  errorAfterRxUserData = mux inputH.rxIsUserData rxCtrlOrError (pure False)
 
   (resets, stats) =
     ResetManager.resetManager
@@ -861,7 +864,7 @@ transceiverPrbsWith gthCore opts input = output
         { channelReset = input.channelReset
         , txInitDone = withLockTxFree (pure True) -- See note @ withLockRxFree
         , rxInitDone = withLockRxFree (pure True) -- See note @ withLockRxFree
-        , rxDataGood = withLockRxFree (prbsOk .||. rxUserData)
+        , rxDataGood = withLockRxFree (prbsOk .||. inputH.rxIsUserData)
         , errorAfterRxUser = withLockRxFree errorAfterRxUserData
         }
 
