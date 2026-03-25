@@ -156,8 +156,19 @@ userDataHandshakeN inputs = outputs
       , toTransceivers = (.toTransceiver) <$> hOutputVec
       }
 
-{- | Perform the metadata handshake with neighbor link so both sides switch over to
-  user data when ready.
+{- | Performs the handshake between two nodes to agree on when to switch over from
+ - bittide metadata words to user data words. The handshake follows these steps:
+ - 1) These two steps happen in parallel:
+ -    1A) When the CPU says it is successfully booted, the handshake sends "Read Ready"
+ -    metadata word to neighbor node.
+ -    1B) The handshake waits to receive a "Read Ready" metadata word from the neighbor
+ - 2) Once both 1A and 1B have been done, the handshake signals to the EB to pause centering.
+ - 3) These two steps happen in parallel:
+ -    3A) The handshake sends a "Write Ready" metadata word when the EB has paused
+ -    3B) The handshake waits to receive a "Write Ready" metadata word from the neighbor
+ - 4) Once both 3A and 3B have been done, the following two happen in parallel
+ -    4A) The handshake sends a "Last Metadata Word" metadata word, and then switches to a pass-through mode.
+ -    4B) The handshake waits for a "Last Metadat Word" metadata word, and then switches to a pass-through mode
 -}
 userDataHandshake ::
   forall rx tx free.

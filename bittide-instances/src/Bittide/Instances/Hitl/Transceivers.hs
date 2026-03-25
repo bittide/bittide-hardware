@@ -28,7 +28,6 @@ import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
-import Bittide.Transceiver.Handshake
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
@@ -36,6 +35,7 @@ import Clash.Xilinx.ClockGen
 import Data.Maybe (isJust)
 import System.FilePath ((</>))
 
+import qualified Bittide.Transceiver.Handshake as Handshake
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Clash.Explicit.Prelude as E
@@ -166,11 +166,11 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
         }
 
   handshakes =
-    userDataHandshakeN
+    Handshake.userDataHandshakeN
       @GthTx
       @GthRx
       @Basic125
-      HandshakeInputs
+      Handshake.HandshakeInputs
         { clock = sysClk
         , reset = gthAllReset
         , txClock = transceivers.txClock

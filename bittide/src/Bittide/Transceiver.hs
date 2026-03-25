@@ -706,7 +706,6 @@ transceiverPrbsWith ::
 transceiverPrbsWith gthCore opts input = output
  where
   inputH = input.fromHandshake
-  -- (TransceiverInputFromHandshake wordToTransceiver rxLast rxUserData txUserData) = input.fromHandshake
 
   output =
     TransceiverOutput

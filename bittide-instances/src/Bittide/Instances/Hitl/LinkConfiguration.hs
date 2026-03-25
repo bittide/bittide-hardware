@@ -24,7 +24,6 @@ import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (stickyE)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
-import Bittide.Transceiver.Handshake
 
 import Bittide.Hitl
 
@@ -37,6 +36,7 @@ import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
 import System.FilePath ((</>))
 
+import qualified Bittide.Transceiver.Handshake as Handshake
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Clash.Explicit.Prelude as E
@@ -156,32 +156,6 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
         spiS2M
 
   -- Transceiver setup
-  {-
-    transceivers =
-      transceiverPrbsN
-        @GthTx
-        @GthRx
-        @Ext200
-        @Basic125
-        @GthTxS
-        @GthRxS
-        Transceiver.defConfig
-        Transceiver.Inputs
-          { clock = sysClk
-          , reset = rst `orReset` unsafeFromActiveLow spiDone
-          , refClock = refClk
-          , channelNames
-          , clockPaths
-          , rxSims = rxs
-          , rxNs
-          , rxPs
-          , channelResets = repeat noReset
-          , txDatas = repeat myIndexTx
-          , rxReadys = repeat $ pure True
-          , txStarts = repeat $ pure True
-          }
-  -}
-
   transceivers =
     transceiverPrbsN
       @GthTx
@@ -205,11 +179,11 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
         }
 
   handshakes =
-    userDataHandshakeN
+    Handshake.userDataHandshakeN
       @GthTx
       @GthRx
       @Basic125
-      HandshakeInputs
+      Handshake.HandshakeInputs
         { clock = sysClk
         , reset = rst `orReset` unsafeFromActiveLow spiDone
         , txClock = transceivers.txClock
