@@ -7,7 +7,8 @@ module Tests.ClockControl.Freeze where
 
 import Bittide.ClockControl.Freeze (counter, freeze)
 import Bittide.SharedTypes (withByteOrder)
-import Clash.Class.BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
+import Clash.Class.BitPackC (ByteOrder (LittleEndian))
+import Clash.Class.BitPackC.Padding (unpackWordOrErrorC)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Hedgehog (Gen, Property)
@@ -79,7 +80,11 @@ prop_wb = property $ do
   rst = noReset
   ena = enableGen
 
-  endian = BigEndian
+  -- This can be freely switched to BigEndian, but:
+  --
+  --   1. LittleEndian is pretty much the only target in the CPU world
+  --   2. Byte ordering should be tested by the tests covering 'registerWb' and friends itself
+  endian = LittleEndian
 
   model ::
     WishboneMasterRequest AddressWidth 4 ->
@@ -102,20 +107,20 @@ prop_wb = property $ do
     | otherwise =
         Left $ "Freeze counter mismatch: expected " <> show n <> ", got " <> show readDataU
    where
-    readDataU = unpackOrErrorC endian (unpack readData)
+    readDataU = unpackWordOrErrorC endian (readData :> Nil)
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Nothing}
-    | a < 3 = Right s
+    | a < syncPulseAddress = Right s
     | otherwise =
         -- Record the value of the register that is being read. This can predict the
         -- value of all other registers (until a freeze is requested).
-        Right s{lastSeen = Just (unpackOrErrorC endian (unpack readData) - fromIntegral a)}
+        Right s{lastSeen = Just (unpackWordOrErrorC endian (readData :> Nil) - fromIntegral a)}
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Just l}
-    | a < 3 = Right s
+    | a < syncPulseAddress = Right s
     | readDataU - fromIntegral a == l = Right s
     | otherwise =
         Left $ "Read value mismatch: expected " <> show l <> ", got " <> show readDataU
    where
-    readDataU = unpackOrErrorC endian (unpack readData)
+    readDataU = unpackWordOrErrorC endian (readData :> Nil)
   model (Write _ _ _) _ s =
     -- Only one writeable register in this device: freeze. We can therefore safely
     -- ignore the address and assume that register is written to.
@@ -125,6 +130,11 @@ prop_wb = property $ do
         , lastSeen = Nothing
         , nFreezes = s.nFreezes + 1
         }
+
+  -- XXX: the local counter register is a 64-bit one, making it difficult to test in the
+  --      current infrastructure. Given that its structure is exactly the same as the other
+  --      two counters, I feel comfortable leaving it out of the model for now.
+  syncPulseAddress = 4
 
   genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
   genInputs = Gen.list (Range.linear 0 500) (genWishboneTransfer genAddr)

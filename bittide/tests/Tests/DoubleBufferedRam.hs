@@ -548,14 +548,14 @@ wbStorageSpecCompliance = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go depth@SNat = do
-     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-     wcre
-          $ wishbonePropWithModel @System
-            defExpectOptions
-            (\_ _ () -> Right ())
-            (unMemmap $ wbStorage "" depth (Just (Vec content)))
-            (genRequests (snatToNum (SNat @v) - 1))
-            ()
+    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
+    wcre
+      $ wishbonePropWithModel @System
+        defExpectOptions
+        (\_ _ () -> Right ())
+        (unMemmap $ wbStorage "" depth (Just (Vec content)))
+        (genRequests (snatToNum (SNat @v) - 1))
+        ()
 
   genRequests :: Unsigned 30 -> Gen [WishboneMasterRequest 30 4]
   genRequests size =
@@ -592,7 +592,7 @@ wbStorageBehavior = property $ do
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
       slave =
-         wcre $ unMemmap (wbStorage @System @_ @30 "" depth (Just (Vec content)))
+        wcre $ unMemmap (wbStorage @System @_ @30 "" depth (Just (Vec content)))
       simTransactions = exposeWbTransactions (Just 1000) master slave
       goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
@@ -646,14 +646,14 @@ wbStorageRangeErrors = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go depth@SNat = do
-     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-     wcre
-          $ wishbonePropWithModel @System @30
-            defExpectOptions
-            model
-            (unMemmap $ wbStorage "" depth (Just (Vec content)))
-            (genRequests (snatToNum depth))
-            (snatToInteger depth)
+    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
+    wcre
+      $ wishbonePropWithModel @System @30
+        defExpectOptions
+        model
+        (unMemmap $ wbStorage "" depth (Just (Vec content)))
+        (genRequests (snatToNum depth))
+        (snatToInteger depth)
 
   genRequests size =
     Gen.list
@@ -709,14 +709,14 @@ wbStorageProtocolsModel = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go depth@SNat = do
-     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
-     wcre
-          $ wishbonePropWithModel @System @30
-            defExpectOptions
-            model
-            (unMemmap $ wbStorage "" depth (Just (Vec content)))
-            (genRequests (snatToNum depth))
-            (I.fromAscList $ L.zip [0 ..] (toList content))
+    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
+    wcre
+      $ wishbonePropWithModel @System @30
+        defExpectOptions
+        model
+        (unMemmap $ wbStorage "" depth (Just (Vec content)))
+        (genRequests (snatToNum depth))
+        (I.fromAscList $ L.zip [0 ..] (toList content))
 
   genRequests size =
     Gen.list (Range.linear 0 32) $ do

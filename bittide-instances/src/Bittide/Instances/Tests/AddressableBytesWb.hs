@@ -29,7 +29,7 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
-import Clash.Class.BitPackC (ByteOrder (LittleEndian, BigEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols
