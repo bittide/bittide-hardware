@@ -212,7 +212,7 @@ dut
   inputB = (outputA, outputB)
    where
     outputA =
-      Transceiver.transceiverPrbsWith
+      Transceiver.transceiverAndHandshake
         gthCoreA
         Transceiver.defConfig{Transceiver.resetManagerConfig}
         Transceiver.Input
@@ -238,7 +238,7 @@ dut
           }
 
     outputB =
-      Transceiver.transceiverPrbsWith
+      Transceiver.transceiverAndHandshake
         gthCoreB
         Transceiver.defConfig{Transceiver.resetManagerConfig}
         Transceiver.Input
