@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-module Bittide.HandshakeOld (
+module Bittide.Transceiver.Handshake (
   HandshakeInput (..),
   HandshakeOutput (..),
   HandshakeInputs (..),

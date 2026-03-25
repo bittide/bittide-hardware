@@ -24,11 +24,11 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
 import Bittide.ElasticBuffer (stickyE)
-import Bittide.HandshakeOld
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
+import Bittide.Transceiver.Handshake
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)

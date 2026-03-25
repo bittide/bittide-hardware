@@ -82,7 +82,7 @@ import Clash.Explicit.Prelude
 import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
-import Bittide.HandshakeOld
+import Bittide.Transceiver.Handshake
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
 import Data.Maybe (fromMaybe, isNothing)

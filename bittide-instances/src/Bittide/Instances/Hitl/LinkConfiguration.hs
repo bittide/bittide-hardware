@@ -22,9 +22,9 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (stickyE)
-import Bittide.HandshakeOld
 import Bittide.Instances.Domains
 import Bittide.Transceiver
+import Bittide.Transceiver.Handshake
 
 import Bittide.Hitl
 

@@ -23,8 +23,8 @@ import Test.Tasty (TestTree, adjustOption, testGroup)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyNamed)
 import "extra" Data.List.Extra (splitOn)
 
-import qualified Bittide.HandshakeOld as Handshake
 import qualified Bittide.Transceiver as Transceiver
+import qualified Bittide.Transceiver.Handshake as Handshake
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
 import qualified Clash.Cores.Xilinx.Gth as Gth

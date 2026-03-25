@@ -214,7 +214,6 @@ library
     Bittide.ElasticBuffer.AutoCenter
     Bittide.Ethernet.Mac
     Bittide.Handshake
-    Bittide.HandshakeOld
     Bittide.Jtag
     Bittide.MetaPeConfig
     Bittide.Node
@@ -233,6 +232,7 @@ library
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma
+    Bittide.Transceiver.Handshake
     Bittide.Transceiver.Prbs
     Bittide.Transceiver.ResetManager
     Bittide.Transceiver.Wishbone
