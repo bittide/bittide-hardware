@@ -27,7 +27,7 @@ jobs:
       options: --memory=11g
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |

@@ -52,7 +52,7 @@ jobs:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
       options: --memory=11g
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Generate flake inputs list
       run: nix flake --extra-experimental-features "nix-command flakes" archive --json | jq -r '.path,(.inputs|to_entries[].value.path)' > flake_inputs
@@ -81,7 +81,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - run: cache clean
       - run: cache pull cabal
@@ -131,7 +131,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |
@@ -189,7 +189,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |
@@ -216,7 +216,7 @@ jobs:
           cabal run bittide-instances:samples-to multi-report ${{ matrix.target.top }}-hitl-data/hitl
 
       - name: Upload report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ${{ matrix.target.top }}-clock-report
@@ -225,7 +225,7 @@ jobs:
           retention-days: 14
 
       - name: Upload sources
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ${{ matrix.target.top }}-clock-report-sources
@@ -247,7 +247,7 @@ jobs:
     outputs:
       run_tests: ${{ steps.check.outputs.run_tests }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: check
         name: Check for non-empty debug.json
         run: |
@@ -319,7 +319,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |
@@ -354,7 +354,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - run: cache pull cargo
       - run: cache pull build
@@ -380,7 +380,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |
@@ -413,7 +413,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - run: cache pull cargo
       - run: cache pull build
@@ -436,7 +436,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Pick JSON file
         run: |
@@ -495,7 +495,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |
@@ -597,7 +597,7 @@ jobs:
 
       - name: Archive build artifacts (if anything failed)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: _build-${{ matrix.target.top }}-failure
           path: |
@@ -624,13 +624,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Get build artifacts from local server
         run: cache pull build-post-synth --prefix="${{ matrix.target.top }}"
 
       - name: Archive build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: _build-${{ matrix.target.top }}
@@ -678,7 +678,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |
@@ -701,7 +701,7 @@ jobs:
 
       - name: Archive HITL data
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target.top }}-hitl-data
           path: |
@@ -721,7 +721,7 @@ jobs:
       options: --memory=11g
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set CI flags
         run: |
@@ -733,7 +733,7 @@ jobs:
           mdbook build
 
       - name: Upload book artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           path: _build/book
 
@@ -761,7 +761,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check dependencies for failures
         run: |
