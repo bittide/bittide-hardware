@@ -239,34 +239,36 @@ inputToTransceiverHandshakeInput input = (transceiverInput, handshakeInput)
  where
   transceiverInput =
     Transceiver.TransceiverInput
-      input.clock
-      input.reset
-      input.channelReset
-      input.refClock
-      input.clockTx1
-      input.clockTx2
-      input.txActive
-      input.clockRx1
-      input.clockRx2
-      input.rxActive
-      input.transceiverIndex
-      input.channelName
-      input.clockPath
-      input.rxSim
-      input.rxN
-      input.rxP
-      undefined
+      { clock = input.clock
+      , reset = input.reset
+      , channelReset = input.channelReset
+      , refClock = input.refClock
+      , clockTx1 = input.clockTx1
+      , clockTx2 = input.clockTx2
+      , txActive = input.txActive
+      , clockRx1 = input.clockRx1
+      , clockRx2 = input.clockRx2
+      , rxActive = input.rxActive
+      , transceiverIndex = input.transceiverIndex
+      , channelName = input.channelName
+      , clockPath = input.clockPath
+      , rxSim = input.rxSim
+      , rxN = input.rxN
+      , rxP = input.rxP
+      , fromHandshake = undefined
+      }
 
   handshakeInput =
     Handshake.HandshakeInput
-      input.clock
-      input.reset
-      input.clockTx2
-      input.clockRx2
-      input.txData
-      input.txStart
-      input.rxReady
-      undefined
+      { clock = input.clock
+      , reset = input.reset
+      , txClock = input.clockTx2
+      , rxClock = input.clockRx2
+      , wordFromUser = input.txData
+      , txStart = input.txStart
+      , rxReady = input.rxReady
+      , fromTransceiver = undefined
+      }
 
 dut ::
   forall freeA freeB txA txB ref.
