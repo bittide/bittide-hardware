@@ -22,6 +22,7 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (stickyE)
+import Bittide.HandshakeOld
 import Bittide.Instances.Domains
 import Bittide.Transceiver
 
@@ -36,7 +37,6 @@ import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
 import System.FilePath ((</>))
 
-import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Clash.Explicit.Prelude as E
@@ -136,7 +136,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
   , spiM2S
   )
  where
-  allReady = and <$> bundle transceivers.debugLinkReadys
+  allReady = and <$> bundle handshakes.debugLinkReadys
   sysRst = rst `orReset` unsafeFromActiveLow (fmap not spiErr)
 
   -- Clock programming
@@ -156,6 +156,32 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
         spiS2M
 
   -- Transceiver setup
+  {-
+    transceivers =
+      transceiverPrbsN
+        @GthTx
+        @GthRx
+        @Ext200
+        @Basic125
+        @GthTxS
+        @GthRxS
+        Transceiver.defConfig
+        Transceiver.Inputs
+          { clock = sysClk
+          , reset = rst `orReset` unsafeFromActiveLow spiDone
+          , refClock = refClk
+          , channelNames
+          , clockPaths
+          , rxSims = rxs
+          , rxNs
+          , rxPs
+          , channelResets = repeat noReset
+          , txDatas = repeat myIndexTx
+          , rxReadys = repeat $ pure True
+          , txStarts = repeat $ pure True
+          }
+  -}
+
   transceivers =
     transceiverPrbsN
       @GthTx
@@ -164,20 +190,34 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
       @Basic125
       @GthTxS
       @GthRxS
-      Transceiver.defConfig
-      Transceiver.Inputs
+      defConfig
+      TransceiverInputs
         { clock = sysClk
         , reset = rst `orReset` unsafeFromActiveLow spiDone
+        , channelResets = repeat noReset
         , refClock = refClk
         , channelNames
         , clockPaths
-        , rxSims = rxs
         , rxNs
         , rxPs
-        , channelResets = repeat noReset
+        , rxSims = rxs
+        , fromHandshakes = handshakes.toTransceivers
+        }
+
+  handshakes =
+    userDataHandshakeN
+      @GthTx
+      @GthRx
+      @Basic125
+      HandshakeInputs
+        { clock = sysClk
+        , reset = rst `orReset` unsafeFromActiveLow spiDone
+        , txClock = transceivers.txClock
+        , rxClocks = transceivers.rxClocks
         , txDatas = repeat myIndexTx
-        , rxReadys = repeat $ pure True
-        , txStarts = repeat $ pure True
+        , txStarts = repeat (pure True)
+        , rxReadys = repeat (pure True)
+        , fromTransceivers = transceivers.toHandshakes
         }
 
   -- synchronizes the FPGA's stable index to the individual TX clock
@@ -194,8 +234,8 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
       $ zipWith4
         (checkData @FpgaCount sysClk)
         transceivers.rxClocks
-        transceivers.debugLinkReadys
-        transceivers.rxDatas
+        handshakes.debugLinkReadys
+        handshakes.wordToUsers
       $ zipWith3
         (expectedTargetIndex sysClk myIndex)
         transceivers.rxClocks

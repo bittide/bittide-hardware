@@ -24,6 +24,7 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
 import Bittide.ElasticBuffer (stickyE)
+import Bittide.HandshakeOld
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
@@ -104,7 +105,7 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
   , spiM2S
   )
  where
-  allUp = and <$> bundle transceivers.debugLinkUps
+  allUp = and <$> bundle handshakes.debugLinkUps
 
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
 
@@ -127,19 +128,19 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
   gthAllReset = unsafeFromActiveLow spiDone
 
   txCounters =
-    counter transceivers.txClock . unsafeFromActiveLow <$> transceivers.txSamplings
+    counter transceivers.txClock . unsafeFromActiveLow <$> handshakes.txIsUserDatas
 
   expectCounterError =
     zipWith3
       expectCounter
       transceivers.rxClocks
       transceivers.rxResets
-      transceivers.rxDatas
+      handshakes.wordToUsers
 
   expectCounterErrorSys =
     fmap or
       $ bundle
-      $ zipWith (.&&.) transceivers.debugLinkUps
+      $ zipWith (.&&.) handshakes.debugLinkUps
       $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
 
   transceivers =
@@ -151,19 +152,33 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
       @GthTxS
       @GthRxS
       defConfig
-      Inputs
+      TransceiverInputs
         { clock = sysClk
         , reset = gthAllReset
+        , channelResets = repeat noReset
         , refClock = refClk
         , channelNames
         , clockPaths
-        , rxSims = rxs
         , rxNs
         , rxPs
-        , channelResets = repeat noReset
+        , rxSims = rxs
+        , fromHandshakes = handshakes.toTransceivers
+        }
+
+  handshakes =
+    userDataHandshakeN
+      @GthTx
+      @GthRx
+      @Basic125
+      HandshakeInputs
+        { clock = sysClk
+        , reset = gthAllReset
+        , txClock = transceivers.txClock
+        , rxClocks = transceivers.rxClocks
         , txDatas = txCounters
         , txStarts = repeat (pure True)
         , rxReadys = repeat (pure True)
+        , fromTransceivers = transceivers.toHandshakes
         }
 
 -- | Top entity for this test. See module documentation for more information.

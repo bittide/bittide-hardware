@@ -39,7 +39,7 @@ data HandshakeInputs tx rx free n = HandshakeInputs
   , reset :: Reset free
   -- ^ See 'Input.reset'
   , txClock :: Clock tx
-  , rxClocks :: Vec n (Clock rx) -- Should this be Vec n?
+  , rxClocks :: Vec n (Clock rx)
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
   , txStarts :: Vec n (Signal tx Bool)
