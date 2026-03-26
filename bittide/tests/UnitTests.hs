@@ -25,6 +25,7 @@ import qualified Tests.GeneralPurposeProcessingElement.Calculator
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
+import qualified Tests.Ringbuffer
 import qualified Tests.ScatterGather
 import qualified Tests.Switch
 import qualified Tests.SwitchDemoProcessingElement
@@ -55,6 +56,7 @@ tests =
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
+    , Tests.Ringbuffer.tests
     , Tests.ScatterGather.tests
     , Tests.Switch.tests
     , Tests.SwitchDemoProcessingElement.Calculator.tests
@@ -62,8 +64,8 @@ tests =
     , Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.tests
     , Tests.Transceiver.WordAlign.tests
-    , Tests.Wishbone.tests
     , Tests.Wishbone.Arbiter.tests
+    , Tests.Wishbone.tests
     ]
 
 {- | Default number of tests is 100, which is too low for our (complicated)
