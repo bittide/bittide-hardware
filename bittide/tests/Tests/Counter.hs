@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE ImplicitParams #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Tests.Counter where
@@ -8,6 +9,7 @@ module Tests.Counter where
 import Clash.Explicit.Prelude
 import qualified Prelude as P
 
+import Clash.Cores.Xilinx (Xilinx)
 import Control.Monad (forM_)
 
 import Test.Tasty
@@ -15,6 +17,8 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 
 import Bittide.Counter (domainDiffCounter)
+
+import qualified Clash.Class.Cdc as Cdc
 
 createDomain vXilinxSystem{vName = "D10", vPeriod = hzToPeriod 100e6}
 createDomain vXilinxSystem{vName = "D17", vPeriod = hzToPeriod 170e6}
@@ -33,11 +37,15 @@ top ::
   forall src dst.
   ( KnownDomain src
   , KnownDomain dst
+  , Cdc.ValidGray Xilinx 8 src dst
   ) =>
   Reset src ->
   Reset dst ->
   Signal dst (Signed 32)
-top rstSrc rstDst = fst <$> domainDiffCounter clockGen rstSrc clockGen rstDst
+top rstSrc rstDst =
+  Cdc.withVendorI @Xilinx
+    $ fst
+    <$> (domainDiffCounter @_ @_ @Xilinx) clockGen rstSrc clockGen rstDst
 
 -- | 'domainDiffCounter' should continuously emit zeros when applied to the same domain
 case_zeroSameDomain :: Assertion

@@ -33,6 +33,7 @@ import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
+import Clash.Cores.Xilinx (withXilinx)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Protocols.Extra
 import Protocols.Idle (idleSink)
@@ -163,8 +164,9 @@ core ::
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
     )
-core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
+  $ circuit
+  $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muMm, ccMm] <- idC -< memoryMaps
 
     [muJtag, ccJtag] <- jtagChain -< jtag
@@ -237,8 +239,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           ]
       ) <-
       withBittideClockResetEnable
-        $ callistoSwClockControlC
-          @LinkCount
+        $ callistoSwClockControlC @LinkCount
           refClk
           refRst
           rxClocks

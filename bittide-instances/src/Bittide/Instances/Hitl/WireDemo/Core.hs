@@ -32,6 +32,7 @@ import Bittide.Sync (Sync)
 import Bittide.WireDemoProcessingElement (wireDemoPe, wireDemoPeConfig)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
+import Clash.Cores.Xilinx (withXilinx)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Protocols.Extra
 import Protocols.Idle (idleSink)
@@ -265,6 +266,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           ]
       ) <-
       withBittideClockResetEnable
+        $ withXilinx
         $ callistoSwClockControlC
           @LinkCount
           refClk

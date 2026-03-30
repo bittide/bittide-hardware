@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE ImplicitParams #-}
 
 module Bittide.ClockControl.CallistoSw (
   callistoSwClockControlC,
@@ -27,6 +28,7 @@ import Protocols.Extra
 import Protocols.MemoryMap
 import Protocols.Wishbone.Extra (delayWishbone)
 
+import qualified Clash.Class.Cdc as Cdc
 import qualified Protocols.Vec as Vec
 
 -- | Configuration type for software clock control.
@@ -44,7 +46,7 @@ type SwcccRemBusWidth n = 30 - PrefixWidth (n + SwcccInternalBusses)
 -- TODO: Make this the primary Callisto function once the reset logic is fixed
 -- and Callisto is detached from the ILA plotting mechanisms.
 callistoSwClockControlC ::
-  forall nLinks dom free rx otherWb otherWbMu.
+  forall nLinks dom free rx otherWb otherWbMu vendor.
   ( HiddenClockResetEnable dom
   , KnownNat nLinks
   , KnownNat otherWb
@@ -57,6 +59,10 @@ callistoSwClockControlC ::
   , 1 <= DomainPeriod dom
   , ?byteOrder :: ByteOrder
   , 4 <= SwcccRemBusWidth otherWb
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidGray vendor 8 rx dom
+  , Cdc.ValidBit vendor Bool dom dom
+  , Cdc.ValidSyncRst vendor dom free
   ) =>
   {- | Clock of an uncontrolled domain, e.g. the free-running clock. This is
   used to generate the SYNC_OUT signal.
