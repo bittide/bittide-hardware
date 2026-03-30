@@ -223,6 +223,7 @@ library
     Bittide.ProcessingElement.ProgramStream
     Bittide.ProcessingElement.ReadElf
     Bittide.ProcessingElement.Util
+    Bittide.ProgrammableMux
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Shutter
@@ -305,6 +306,7 @@ test-suite unittests
     Tests.GeneralPurposeProcessingElement.Calculator
     Tests.Handshake
     Tests.ProcessingElement.ReadElf
+    Tests.ProgrammableMux
     Tests.ScatterGather
     Tests.Shared
     Tests.Switch
