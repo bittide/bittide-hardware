@@ -19,6 +19,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (unMemmap)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   addressableBytesWb,
+  deviceConfig,
   deviceWb,
   matchEndianness,
   registerConfig,
@@ -95,7 +96,7 @@ wbStorage memoryName SNat initContent =
   let ?regByteOrder = BigEndian
    in circuit $ \(mm, wbMaster0) -> do
         wbMaster1 <- matchEndianness -< wbMaster0
-        [wb0] <- deviceWb memoryName -< (mm, wbMaster1)
+        [wb0] <- deviceWb (deviceConfig memoryName) -< (mm, wbMaster1)
         reqresp <- addressableBytesWb regConfig -< wb0
         (reads, writes0) <- ReqResp.partitionEithers -< reqresp
         writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0

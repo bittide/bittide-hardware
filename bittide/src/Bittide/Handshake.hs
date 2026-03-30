@@ -12,6 +12,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWbI,
@@ -167,7 +168,7 @@ handshakeWb ::
       CSignal dom (Bool, Bool)
     )
 handshakeWb = circuit $ \(bus, (Fwd rxLinkIn), (Fwd txLinkIn)) -> do
-  [txLastBus, rxLastBus] <- deviceWb "Handshake" -< bus
+  [txLastBus, rxLastBus] <- deviceWb (deviceConfig "Handshake") -< bus
 
   (Fwd txLast, _txLastActivity) <-
     registerWbI

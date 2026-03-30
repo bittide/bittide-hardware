@@ -51,7 +51,10 @@ transmitRingbufferWb ::
     (BitboneMm dom aw)
     (CSignal dom (BitVector 64))
 transmitRingbufferWb primitive SNat = circuit $ \wb -> do
-  [wb0] <- deviceWb "TransmitRingbuffer" <| fmapC (matchEndianness <| Wb.increaseBuswidth d1) -< wb
+  [wb0] <-
+    deviceWb (deviceConfig "TransmitRingbuffer")
+      <| fmapC (matchEndianness <| Wb.increaseBuswidth d1)
+      -< wb
   reqresp <- addressableBytesWb @memDepth regConfig -< wb0
   (reads, writes0) <- ReqResp.partitionEithers -< reqresp
   writes1 <- ReqResp.toDfs -< (writes0, writeAcks)
@@ -91,7 +94,7 @@ receiveRingbufferWb primitive SNat = circuit $ \(wb, Fwd frames) -> do
     writeAddress = register (0 :: Index memDepth) $ fmap (satSucc SatWrap) writeAddress
     writes = fmap Just $ bundle (writeAddress, frames)
   [wb0] <-
-    deviceWb "ReceiveRingbuffer"
+    deviceWb (deviceConfig "ReceiveRingbuffer")
       <| fmapC
         (matchEndianness <| Wb.increaseBuswidth d1)
       -< wb

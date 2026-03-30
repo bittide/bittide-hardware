@@ -16,6 +16,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWb,
@@ -56,11 +57,10 @@ transceiverPrbsNWb ::
     , Gth.Gths rx rxS tx txS ref n
     , CSignal tx (Vec n (BitVector 64))
     )
-    ( COutputs n tx rx free
-    )
+    (COutputs n tx rx free)
 transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   Fwd tOutputs <- transceiverPrbsNC clk tReset config -< (Fwd tInputs, gths)
-  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <- deviceWb "Transceivers" -< wb
+  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <- deviceWb (deviceConfig "Transceivers") -< wb
 
   -- Configuration registers
   (Fwd tEnable, _c0) <-

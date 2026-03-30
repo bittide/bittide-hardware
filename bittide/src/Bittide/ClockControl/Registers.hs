@@ -21,6 +21,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
   busActivityWrite,
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWb,
@@ -94,7 +95,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
     , wbDataCounts
     , wbConfig
     ] <-
-    deviceWb "ClockControl" -< wb
+    deviceWb (deviceConfig "ClockControl") -< wb
 
   (_cs, Fwd changeSpeed) <-
     registerWbI changeSpeedConfig NoChange -< (wbChangeSpeed, Fwd noWrite)

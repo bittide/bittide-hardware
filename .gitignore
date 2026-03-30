@@ -40,6 +40,12 @@ cabal.config
 *.log
 *.tar.gz
 
+# Directory to store checkouts and the like for AI purposes
+/ai
+
+# Used to store debugging waveforms
+/vcd
+
 *~
 *.DS_Store
 

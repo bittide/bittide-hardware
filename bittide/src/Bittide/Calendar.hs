@@ -37,6 +37,7 @@ import Protocols.MemoryMap
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   busActivityWrite,
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWbI,
@@ -347,7 +348,7 @@ mkCalendarC
       bsShadow
     ) = withName (compName <> "_calendar") $ circuit $ \(mm, wb) -> do
 {- FOURMOLU_DISABLE -}
-    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7Meta, wb7Bus)] <- deviceWb "calendar" -< (mm, wb)
+    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7config, wb7Meta, wb7Bus)] <- deviceWb (deviceConfig "calendar") -< (mm, wb)
     Fwd (writeEntry, _) <- registerWbI writeEntryCfg (unpack 0) -< (wb4, Fwd noWrite)
     Fwd (_, writeActive) <- registerWbI writeAddrCfg (0 :: Index calDepth) -< (wb1, Fwd noWrite)
     Fwd (readAddr, _) <- registerWbI readAddrCfg (0 :: Index calDepth) -< (wb2, Fwd noWrite)
@@ -356,7 +357,7 @@ mkCalendarC
     Fwd (_, swapActive) <- registerWbI swapActiveCfg False -< (wb5, Fwd noWrite)
     Fwd (metacycleCount, _) <- registerWbI metacycleCountCfg (0 :: Unsigned 32) -< (wb6, Fwd nextMetacycleCount)
     wbEom <- andAck calOut.lastCycle -< wb7Bus
-    registerWbI_ endOfMetacycleCfg False -< ((wb7Offset, wb7Meta, wbEom), Fwd noWrite)
+    registerWbI_ endOfMetacycleCfg False -< ((wb7Offset, wb7config, wb7Meta, wbEom), Fwd noWrite)
     {- FOURMOLU_ ENABLE -}
     let
       nextMetacycleCount = orNothing <$> calOut.lastCycle <*> (metacycleCount + 1)

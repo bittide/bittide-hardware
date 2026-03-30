@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -O0 #-}
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 -- It's a test, we'll see it :-)
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
@@ -20,22 +21,28 @@ import GHC.Stack (HasCallStack)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
 import Protocols
-import Protocols.Hedgehog (defExpectOptions, eoSampleMax)
+import Protocols.Hedgehog (defExpectOptions, eoResetCycles, eoSampleMax)
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Registers.WishboneStandard
 import Protocols.MemoryMap.Registers.WishboneStandard.Internal
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (..),
+  driveStandard,
   wishbonePropWithModel,
  )
+import System.Directory (createDirectoryIfMissing)
 import Test.Tasty
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Test.Tasty.Hedgehog (testPropertyNamed)
 import Text.Show.Pretty (ppShow)
 
 import qualified Clash.Prelude as CP
+import qualified Clash.Shockwaves as Shockwaves
+import qualified Clash.Shockwaves.Trace as T
+import qualified Clash.Shockwaves.Trace.CRE as T
 import qualified Data.Map as Map
+import qualified Data.Text.IO as TIO
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
@@ -83,6 +90,15 @@ genStalls = do
   numStalls <- smallInt
   genVec (PH.genStalls smallInt numStalls PH.Stall)
 
+{- | Whether to trace signals in 'deviceExample'. Disabled for Hedgehog tests, enabled for
+the replay test.
+-}
+data Trace = Trace | NoTrace
+
+traceToBool :: Trace -> Bool
+traceToBool Trace = True
+traceToBool NoTrace = False
+
 {- | Initial state of 'deviceExample', represented as a map from address to bit
 size and value.
 -}
@@ -118,14 +134,15 @@ deviceExample ::
   , ?regByteOrder :: ByteOrder
   , ?busByteOrder :: ByteOrder
   ) =>
+  Trace ->
   Clock dom ->
   Reset dom ->
   Circuit
     (ToConstBwd Mm, Wishbone dom 'Standard aw wordSize)
     ()
-deviceExample clk rst = circuit $ \(mm, wb) -> do
+deviceExample trace clk rst = circuit $ \(mm, wb) -> do
   [float, double, u32, readOnly, writeOnly, prio, prioPreferCircuit, delayed, delayedError] <-
-    deviceWb "example" -< (mm, wb)
+    deviceWb (deviceConfig "example"){trace = traceToBool trace} -< (mm, wb)
 
   registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
   registerWb_ clk rst (registerConfig "d") initDouble -< (double, Fwd noWrite)
@@ -349,7 +366,7 @@ prop_wb =
       ?regByteOrder = regByteOrder
       ?busByteOrder = busByteOrder
      in
-      unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem clk rst
+      unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem NoTrace clk rst
 
   roAddresses = [roAddress, delayedErrorAddress]
 
@@ -394,7 +411,7 @@ memoryMap =
         ?regByteOrder = regByteOrder
         ?busByteOrder = busByteOrder
        in
-        deviceExample @4 @AddressWidth @XilinxSystem clockGen noReset
+        deviceExample @4 @AddressWidth @XilinxSystem NoTrace clockGen noReset
 
 {- | Test that the memory map can be generated without errors. Test for sensible
 values in the memory map.
@@ -450,7 +467,7 @@ prop_addressableBytesWb = property $ do
        in
         circuit $ \wb -> do
           mm <- ignoreMM
-          [wb0] <- deviceWb "test" -< (mm, wb)
+          [wb0] <- deviceWb (deviceConfig "test") -< (mm, wb)
           reqresp <- CP.withReset rst ReqResp.forceResetSanity <| addressableBytesWb memConf -< wb0
           (reads, writes0) <- ReqResp.partitionEithers <| stallC def stalls -< reqresp
           writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
@@ -559,12 +576,91 @@ splitWriteInBytes Nothing _ = repeat Nothing
 
 ---------------------
 
+{- | Test case that replays hardcoded Wishbone transactions and generates a VCD file. This
+is not here to actually test anything, but to make it easy to replay a Hedgehog failure
+with a VCD file to debug it.
+-}
+case_replay :: Assertion
+case_replay = do
+  let
+    clk = clockGen @XilinxSystem
+    rst = noReset @XilinxSystem
+    ena = enableGen @XilinxSystem
+
+    -- Hardcoded wishbone transactions: (request, stall cycles)
+    hardcodedTransactions :: [(WishboneMasterRequest AddressWidth 4, Int)]
+    hardcodedTransactions =
+      [ -- Read from float register with 1 stall cycle
+        (Read 0 maxBound, 1)
+      , -- Write to float register
+        (Write 0 maxBound (pack (3.14 :: Float)), 0)
+      ]
+
+    dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
+    dut =
+      let
+        ?regByteOrder = regByteOrder
+        ?busByteOrder = busByteOrder
+       in
+        unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem Trace clk rst
+
+    driver = driveStandard defExpectOptions{eoResetCycles = 0} hardcodedTransactions
+
+    tracingCircuit ::
+      Circuit
+        (Wishbone XilinxSystem Standard AddressWidth 4)
+        ( Wishbone XilinxSystem Standard AddressWidth 4
+        , CSignal XilinxSystem Bool
+        )
+    tracingCircuit = Circuit $ \(wbM2S, (wbS2M, _)) ->
+      let
+        tracedClock = T.traceClock "clk" clk
+        tracedReset = T.traceReset "rst" rst
+        tracedEnable = T.traceEnable "ena" ena
+        tracedS2M = T.traceSignal "s2m" wbS2M
+        tracedM2S = T.traceSignal "m2s" wbM2S
+       in
+        ()
+          `seq` tracedClock
+          `seq` tracedReset
+          `seq` tracedEnable
+          `seq` tracedS2M
+          `seq` tracedM2S
+          `seq` (wbS2M, (wbM2S, hasBusActivity <$> bundle (wbM2S, wbS2M)))
+
+    replayDut :: Circuit () (CSignal XilinxSystem Bool)
+    replayDut = circuit $ do
+      wb0 <- driver
+      (wb1, busActivity) <- tracingCircuit -< wb0
+      dut -< wb1
+      idC -< busActivity
+
+    simResult :: Signal XilinxSystem Bool
+    simResult =
+      withClockResetEnable clk rst ena
+        $ snd
+        $ toSignals replayDut ((), ())
+
+    numSimulateCycles :: Int
+    numSimulateCycles = 32
+
+  vcdResult <- T.dumpVCD (0, numSimulateCycles) simResult ["s2m", "m2s"]
+
+  case vcdResult of
+    Left msg ->
+      error $ "VCD dump failed: " <> msg
+    Right (vcdContents, json) -> do
+      createDirectoryIfMissing True "vcd"
+      TIO.writeFile ("vcd/" <> show 'case_replay <> ".vcd") vcdContents
+      Shockwaves.writeFileJSON ("vcd/" <> show 'case_replay <> ".json") json
+
 tests :: TestTree
 tests =
   testGroup
     "WishboneStandard"
     [ testCase "case_maskWriteData" case_maskWriteData
     , testCase "case_memoryMap" case_memoryMap
+    , testCase "case_replay" case_replay
     , testPropertyNamed "prop_wb" "prop_wb" prop_wb
     , testPropertyNamed
         "prop_addressableBytesWb"

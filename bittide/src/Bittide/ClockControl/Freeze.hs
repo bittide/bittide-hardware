@@ -15,6 +15,7 @@ import Protocols.MemoryMap (Access (ReadOnly, WriteOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
+  deviceConfig,
   deviceWb,
   registerConfig,
   registerWb,
@@ -50,7 +51,7 @@ freeze clk rst =
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
     [wb0, wb1, wb2, wb3, wb4, wb5] <-
-      deviceWb "Freeze" -< (mm, wb)
+      deviceWb (deviceConfig "Freeze") -< (mm, wb)
 
     -- Only writeable register in this device: can be used by the wishbone manager
     -- to freeze all the incoming signals.

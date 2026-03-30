@@ -156,6 +156,9 @@ library
     Protocols.MemoryMap.TypeDescription
     Protocols.MemoryMap.TypeDescription.TH
 
+  other-modules:
+    Bittide.Wishbone.Orphans
+
   build-depends:
     aeson,
     aeson-pretty,
@@ -171,6 +174,7 @@ library
     ghc-typelits-extra-lemmas,
     mtl,
     scientific,
+    shockwaves,
     string-interpolate,
     template-haskell,
     text,
@@ -254,12 +258,15 @@ test-suite unittests
     constraints,
     containers,
     deepseq,
+    directory,
     extra,
     ghc-typelits-extra-lemmas,
     hedgehog >=1.0 && <1.5,
     lifted-async,
     pretty-show,
+    shockwaves,
     tasty >=1.5 && <1.7,
     tasty-hedgehog >=1.2 && <1.5,
     tasty-hunit,
     tasty-th,
+    text,

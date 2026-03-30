@@ -64,7 +64,7 @@ dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enable
     processingElement @_ dumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
 
-  [refWb] <- deviceWb "WbToDfReference" -< srcBus
+  [refWb] <- deviceWb (deviceConfig "WbToDfReference") -< srcBus
   registerWbI_ refCfg testValue -< (refWb, Fwd (pure Nothing))
 
   df <- wbToDf "WbToDfTest" -< dfBus
