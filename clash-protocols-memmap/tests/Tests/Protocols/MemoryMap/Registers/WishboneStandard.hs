@@ -13,7 +13,7 @@ module Tests.Protocols.MemoryMap.Registers.WishboneStandard where
 import Clash.Explicit.Prelude
 
 import Clash.Class.BitPackC (ByteOrder (..))
-import Clash.Class.BitPackC.Padding (packWordCI, unpackWordOrErrorCI)
+import Clash.Class.BitPackC.Words (packWordCI, unpackWordOrErrorCI)
 import Clash.Hedgehog.Sized.Vector (genVec)
 import Clash.Prelude (withClockResetEnable)
 import Control.DeepSeq (force)

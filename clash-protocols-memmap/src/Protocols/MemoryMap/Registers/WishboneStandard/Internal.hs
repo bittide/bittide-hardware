@@ -9,7 +9,7 @@ import Protocols
 
 import Bittide.Wishbone.Orphans ()
 import Clash.Class.BitPackC (BitPackC (..), ByteOrder, Bytes)
-import Clash.Class.BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
+import Clash.Class.BitPackC.Words (SizeInWordsC, maybeUnpackWordCI, packWordCI)
 import Clash.Shockwaves.Waveform (Waveform)
 import Clash.Sized.Internal.BitVector (BitVector (unsafeToNatural))
 import Data.Coerce (coerce)
@@ -528,7 +528,7 @@ registerWbDf clk rst regConfig resetValue =
               )
  where
   unpackC :: Vec (SizeInWordsC wordSize a) (Bytes wordSize) -> a
-  unpackC packed = fromMaybe err . maybeUnpackWordC ?byteOrder $ packed
+  unpackC packed = fromMaybe err . maybeUnpackWordCI $ packed
    where
     -- XXX: Quasiquoter doesn't work with implicit parameters
     byteOrder = ?byteOrder
@@ -585,7 +585,7 @@ registerWbDf clk rst regConfig resetValue =
         `seq` traceRegSignal "packedOut" packedOut
         `seq` ()
     aOut = unpackC <$> packedOut
-    packedIn0 = fmap (packWordC @wordSize ?byteOrder) <$> aIn0
+    packedIn0 = fmap (packWordCI @wordSize) <$> aIn0
 
     -- Construct register meta data. This information is only used for simulation,
     -- i.e., used to build the register map.
@@ -610,7 +610,7 @@ registerWbDf clk rst regConfig resetValue =
     -- it sees the constructor of BitVector and freaks out. Spelling it out like this
     -- (i.e., putting it behind a 'clashSimulation' flag) makes Clash okay with it.
     simOnlyResetValue
-      | clashSimulation = (pack (packWordC @wordSize ?byteOrder resetValue)).unsafeToNatural
+      | clashSimulation = (pack (packWordCI @wordSize resetValue)).unsafeToNatural
       | otherwise = 0
 
     -- Construct output to the bus and the user logic. Note that the bus activity will
@@ -642,7 +642,7 @@ registerWbDf clk rst regConfig resetValue =
         clk
         rst
         enableGen
-        (packWordC ?byteOrder resetValue)
+        (packWordCI resetValue)
         (liftA2 (<|>) packedIn1 packedInFromBus1)
 
     -- Only acknowledge bus transactions if the bus activity gets acknowledged. Note that
@@ -667,7 +667,7 @@ registerWbDf clk rst regConfig resetValue =
     setReadData s2m ma req =
       case (ma, req) of
         (Just a, Just (Left relOffset)) ->
-          s2m{readData = packWordC @wordSize ?byteOrder a !! relOffset}
+          s2m{readData = packWordCI @wordSize a !! relOffset}
         _ -> s2m
 
     goRelativeOffset :: BitVector aw -> Index (SizeInWordsC wordSize a)

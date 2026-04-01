@@ -8,7 +8,7 @@ module Tests.ClockControl.Freeze where
 import Bittide.ClockControl.Freeze (counter, freeze)
 import Bittide.SharedTypes (withByteOrder)
 import Clash.Class.BitPackC (ByteOrder (LittleEndian))
-import Clash.Class.BitPackC.Padding (unpackWordOrErrorC)
+import Clash.Class.BitPackC.Words (unpackWordOrErrorCI)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Hedgehog (Gen, Property)
@@ -67,7 +67,8 @@ prop_wb = property $ do
   -- Uncomment to see the memory map as a footnote
   -- footnote (ppShow ((\(SimOnly x) -> x) (getConstBwdAny dutMm)))
 
-  withClockResetEnable clk rst ena
+  withByteOrder endian
+    $ withClockResetEnable clk rst ena
     $ wishbonePropWithModel
       @XilinxSystem
       defExpectOptions{eoSampleMax = 10_000}
@@ -87,6 +88,7 @@ prop_wb = property $ do
   endian = LittleEndian
 
   model ::
+    (?byteOrder :: ByteOrder) =>
     WishboneMasterRequest AddressWidth 4 ->
     WishboneS2M 4 ->
     ModelState ->
@@ -107,20 +109,20 @@ prop_wb = property $ do
     | otherwise =
         Left $ "Freeze counter mismatch: expected " <> show n <> ", got " <> show readDataU
    where
-    readDataU = unpackWordOrErrorC endian (readData :> Nil)
+    readDataU = unpackWordOrErrorCI (readData :> Nil)
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Nothing}
     | a < syncPulseAddress = Right s
     | otherwise =
         -- Record the value of the register that is being read. This can predict the
         -- value of all other registers (until a freeze is requested).
-        Right s{lastSeen = Just (unpackWordOrErrorC endian (readData :> Nil) - fromIntegral a)}
+        Right s{lastSeen = Just (unpackWordOrErrorCI (readData :> Nil) - fromIntegral a)}
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Just l}
     | a < syncPulseAddress = Right s
     | readDataU - fromIntegral a == l = Right s
     | otherwise =
         Left $ "Read value mismatch: expected " <> show l <> ", got " <> show readDataU
    where
-    readDataU = unpackWordOrErrorC endian (readData :> Nil)
+    readDataU = unpackWordOrErrorCI (readData :> Nil)
   model (Write _ _ _) _ s =
     -- Only one writable register in this device: freeze. We can therefore safely
     -- ignore the address and assume that register is written to.

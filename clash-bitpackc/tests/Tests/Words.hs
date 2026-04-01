@@ -3,11 +3,11 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
-module Tests.Padding where
+module Tests.Words where
 
 import Clash.Prelude hiding (someNatVal, withSomeSNat)
 
-import Clash.Class.BitPackC.Padding (pad, unpad)
+import Clash.Class.BitPackC.Words (pad, unpad)
 import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Clash.Hedgehog.Sized.Vector (genVec)
 import Data.Data (Proxy)
