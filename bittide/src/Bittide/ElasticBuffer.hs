@@ -275,7 +275,7 @@ xilinxElasticBufferWb ::
   , 4 <= n
   , n <= 17
   , KnownNat addrW
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Clock readDom ->
   Reset readDom ->

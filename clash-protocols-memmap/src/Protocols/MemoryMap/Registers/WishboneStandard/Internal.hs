@@ -96,7 +96,7 @@ type RegisterWbConstraints (a :: Type) (dom :: Domain) (wordSize :: Nat) (aw :: 
   , KnownNat wordSize
   , KnownNat aw
   , 1 <= wordSize
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   )
 
 -- | Configuration for a device -- currently only the name.
@@ -481,8 +481,8 @@ You can tie registers created using this function together with 'deviceWb'. If
 you're looking to create a device with arbitrary offsets, use
 'registerWithOffsetWbDf' instead.
 
-The register is configurable in its byte order using '?regByteOrder'. Also
-see 'withLittleEndian'.
+The register is configurable in its byte order using '?byteOrder', also see
+'RegisterWbConstraints'.
 -}
 registerWbDf ::
   forall a dom wordSize aw.
@@ -528,17 +528,17 @@ registerWbDf clk rst regConfig resetValue =
               )
  where
   unpackC :: Vec (SizeInWordsC wordSize a) (Bytes wordSize) -> a
-  unpackC packed = fromMaybe err . maybeUnpackWordC ?regByteOrder $ packed
+  unpackC packed = fromMaybe err . maybeUnpackWordC ?byteOrder $ packed
    where
     -- XXX: Quasiquoter doesn't work with implicit parameters
-    regByteOrder = ?regByteOrder
+    byteOrder = ?byteOrder
 
     err =
       deepErrorX
         [I.i|
         Unpack failed in registerWbDf:
           wordSize:     #{natToInteger @wordSize}
-          regByteOrder: #{regByteOrder}
+          byteOrder: #{byteOrder}
           packedOut:    #{packed}
       |]
 
@@ -585,7 +585,7 @@ registerWbDf clk rst regConfig resetValue =
         `seq` traceRegSignal "packedOut" packedOut
         `seq` ()
     aOut = unpackC <$> packedOut
-    packedIn0 = fmap (packWordC @wordSize ?regByteOrder) <$> aIn0
+    packedIn0 = fmap (packWordC @wordSize ?byteOrder) <$> aIn0
 
     -- Construct register meta data. This information is only used for simulation,
     -- i.e., used to build the register map.
@@ -610,7 +610,7 @@ registerWbDf clk rst regConfig resetValue =
     -- it sees the constructor of BitVector and freaks out. Spelling it out like this
     -- (i.e., putting it behind a 'clashSimulation' flag) makes Clash okay with it.
     simOnlyResetValue
-      | clashSimulation = (pack (packWordC @wordSize ?regByteOrder resetValue)).unsafeToNatural
+      | clashSimulation = (pack (packWordC @wordSize ?byteOrder resetValue)).unsafeToNatural
       | otherwise = 0
 
     -- Construct output to the bus and the user logic. Note that the bus activity will
@@ -642,7 +642,7 @@ registerWbDf clk rst regConfig resetValue =
         clk
         rst
         enableGen
-        (packWordC ?regByteOrder resetValue)
+        (packWordC ?byteOrder resetValue)
         (liftA2 (<|>) packedIn1 packedInFromBus1)
 
     -- Only acknowledge bus transactions if the bus activity gets acknowledged. Note that
@@ -667,7 +667,7 @@ registerWbDf clk rst regConfig resetValue =
     setReadData s2m ma req =
       case (ma, req) of
         (Just a, Just (Left relOffset)) ->
-          s2m{readData = packWordC @wordSize ?regByteOrder a !! relOffset}
+          s2m{readData = packWordC @wordSize ?byteOrder a !! relOffset}
         _ -> s2m
 
     goRelativeOffset :: BitVector aw -> Index (SizeInWordsC wordSize a)

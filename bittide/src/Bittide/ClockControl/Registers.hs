@@ -67,7 +67,7 @@ clockControlWb ::
   , KnownNat addrW
   , KnownNat nLinks
   , KnownNat m
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Link mask
   Signal dom (BitVector nLinks) ->

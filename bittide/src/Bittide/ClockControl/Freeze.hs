@@ -33,7 +33,7 @@ freeze ::
   , KnownNat nLinks
   , HasCallStack
   , 4 <= aw
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->

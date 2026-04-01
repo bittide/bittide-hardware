@@ -684,7 +684,7 @@ capabilities.
 timeWb ::
   forall dom addrW.
   ( HiddenClockResetEnable dom
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   , HasCallStack
   , KnownNat addrW
   , 1 <= DomainPeriod dom
@@ -835,7 +835,7 @@ readDnaPortE2Wb ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Simulation DNA value
   BitVector 96 ->
@@ -864,7 +864,7 @@ readDnaPortE2WbWorker ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->

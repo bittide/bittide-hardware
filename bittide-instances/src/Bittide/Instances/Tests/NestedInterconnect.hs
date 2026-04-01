@@ -59,7 +59,7 @@ simplePeripheral ::
   , HiddenClock dom
   , HiddenReset dom
   , KnownNat aw
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   String ->
   Circuit

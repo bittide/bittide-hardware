@@ -38,7 +38,7 @@ programmableMux ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Local counter
   Signal dom (Unsigned 64) ->

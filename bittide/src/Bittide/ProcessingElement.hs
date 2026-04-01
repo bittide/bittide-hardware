@@ -82,7 +82,7 @@ processingElement ::
   forall dom nBusses pfxWidth.
   ( HasCallStack
   , HiddenClockResetEnable dom
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   , KnownNat nBusses
   , PeInternalBusses <= nBusses
   , KnownNat pfxWidth
@@ -160,7 +160,7 @@ processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dB
 
 rvCircuit ::
   ( HiddenClockResetEnable dom
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   BittideCpu dom ->
   DumpVcd ->
@@ -173,7 +173,7 @@ rvCircuit ::
     , BitboneMm dom 30
     )
 rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
-  case ?regByteOrder of
+  case ?byteOrder of
     LittleEndian -> Circuit go
     BigEndian ->
       clashCompileError

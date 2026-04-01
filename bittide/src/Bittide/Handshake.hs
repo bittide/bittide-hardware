@@ -150,7 +150,7 @@ handshakeWb ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Circuit
     ( (ToConstBwd Mm, Wishbone dom 'Standard addrW nBytes)

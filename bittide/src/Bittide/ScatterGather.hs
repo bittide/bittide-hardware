@@ -62,7 +62,7 @@ scatterUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig addrW (Index memDepth) ->
@@ -101,7 +101,7 @@ gatherUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig addrW (Index memDepth) ->
@@ -203,7 +203,7 @@ scatterUnitWbC ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
@@ -295,7 +295,7 @@ scatterUnitWb ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
@@ -335,7 +335,7 @@ gatherUnitWbC ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
@@ -442,7 +442,7 @@ gatherUnitWb ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->

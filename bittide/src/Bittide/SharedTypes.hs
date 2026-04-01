@@ -202,13 +202,13 @@ divRU :: (Integral a) => a -> a -> a
 divRU b a = (b + a - 1) `div` a
 
 -- | Use given byte order for both busses and registers.
-withByteOrder :: ByteOrder -> ((?regByteOrder :: ByteOrder) => r) -> r
-withByteOrder byteOrder r = let ?regByteOrder = byteOrder in r
+withByteOrder :: ByteOrder -> ((?byteOrder :: ByteOrder) => r) -> r
+withByteOrder byteOrder r = let ?byteOrder = byteOrder in r
 
 -- | Use big-endian ordering for both busses and registers.
-withBigEndian :: ((?regByteOrder :: ByteOrder) => r) -> r
+withBigEndian :: ((?byteOrder :: ByteOrder) => r) -> r
 withBigEndian = withByteOrder BigEndian
 
 -- | Use little-endian ordering for both busses and registers.
-withLittleEndian :: ((?regByteOrder :: ByteOrder) => r) -> r
+withLittleEndian :: ((?byteOrder :: ByteOrder) => r) -> r
 withLittleEndian = withByteOrder LittleEndian

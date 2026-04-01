@@ -134,7 +134,7 @@ syncOutGenerateWbC ::
   , HasSynchronousReset counterDom
   , HasCallStack
   , KnownNat aw
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Clock domain of the wishbone bus, typically the controlled domain.
   Clock dom ->

@@ -29,7 +29,7 @@ metaPeConfig ::
   , 4 <= aw
   , KnownNat bufferSize
   , 1 <= bufferSize
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   SNat bufferSize ->
   Circuit

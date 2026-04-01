@@ -96,7 +96,7 @@ statusRegister ::
   , HiddenReset dom
   , KnownNat aw
   , 1 <= aw
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Circuit
     (BitboneMm dom aw)

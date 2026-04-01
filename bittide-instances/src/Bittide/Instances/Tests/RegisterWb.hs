@@ -138,7 +138,7 @@ manyTypesWb ::
   , KnownNat aw
   , 1 <= wordSize
   , 4 <= aw
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Circuit
     (ToConstBwd Mm, Wishbone dom 'Standard aw wordSize)

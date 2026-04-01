@@ -113,7 +113,7 @@ deviceExample ::
   , KnownNat wordSize
   , KnownNat aw
   , 1 <= wordSize
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Trace ->
   Clock dom ->
@@ -229,14 +229,12 @@ genWishboneTransfer genAddr genMask genData =
 
 prop_wbBigEndian :: Property
 prop_wbBigEndian =
-  let ?regByteOrder = BigEndian
-      ?byteOrder = BigEndian
+  let ?byteOrder = BigEndian
    in prop_wb
 
 prop_wbLittleEndian :: Property
 prop_wbLittleEndian =
-  let ?regByteOrder = LittleEndian
-      ?byteOrder = LittleEndian
+  let ?byteOrder = LittleEndian
    in prop_wb
 
 {- | Test 'deviceExample' (and therefore 'deviceWb' and 'registerWb') using
@@ -255,7 +253,7 @@ It currently does NOT test:
   * 'deviceWithOffsetsWb' with gaps between registers
   * Varying the size of the Wishbone bus
 -}
-prop_wb :: (?regByteOrder :: ByteOrder, ?byteOrder :: ByteOrder) => Property
+prop_wb :: (?byteOrder :: ByteOrder) => Property
 prop_wb =
   property
     $ withClockResetEnable clk rst ena
@@ -415,7 +413,7 @@ memoryMap =
   let
     -- XXX: It really shouldn't matter what byte order we pick, but setting it to an error
     --      actually produces an error. Investigate?
-    ?regByteOrder = LittleEndian
+    ?byteOrder = LittleEndian
    in
     unSimOnly
       $ getConstBwdAny
@@ -603,7 +601,7 @@ case_replay = do
     dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
     dut =
       let
-        ?regByteOrder = LittleEndian
+        ?byteOrder = LittleEndian
        in
         unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem Trace clk rst
 
