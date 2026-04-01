@@ -102,7 +102,7 @@ prop_wb = property $ do
     -- XXX: It takes a little while for the freeze counter to update after a
     --      freeze has been issued, so we also accept a freeze counter that is
     --      one less than the expected value. Remove this when we properly delay
-    --      acknowledgement until the freeze counter is updated.
+    --      acknowledgment until the freeze counter is updated.
     | readDataU `elem` [n, n - 1] = Right s
     | otherwise =
         Left $ "Freeze counter mismatch: expected " <> show n <> ", got " <> show readDataU
@@ -122,7 +122,7 @@ prop_wb = property $ do
    where
     readDataU = unpackWordOrErrorC endian (readData :> Nil)
   model (Write _ _ _) _ s =
-    -- Only one writeable register in this device: freeze. We can therefore safely
+    -- Only one writable register in this device: freeze. We can therefore safely
     -- ignore the address and assume that register is written to.
     Right
       $ s
