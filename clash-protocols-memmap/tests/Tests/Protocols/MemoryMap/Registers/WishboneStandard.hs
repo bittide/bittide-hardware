@@ -335,8 +335,8 @@ prop_wb =
   model instr WishboneS2M{err = True} s
     | Just errorMsg <- modelError instr s = Left errorMsg
     | otherwise = Right s
-  model _ WishboneS2M{retry = True} s = Right s
-  model _ WishboneS2M{acknowledge = False} s = Right s
+  model _ WishboneS2M{retry = True} _ = Left "Unexpected retry response"
+  model _ WishboneS2M{acknowledge = False} _ = Left "Should have been filtered by wishbonePropWithModel"
   model instr WishboneS2M{readData} s =
     case Map.lookup (toAddr instr) s of
       Nothing -> Left [i|Write/read from unmapped address, should have been err=True: #{toAddr instr}|]
