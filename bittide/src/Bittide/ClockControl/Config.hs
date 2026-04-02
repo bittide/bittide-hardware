@@ -58,7 +58,7 @@ defCcConf :: Int -> CcConf Topology
 defCcConf nLinks =
   CcConf
     { topology = Topology.complete nLinks
-    , callisto = CallistoConfig{waitTime = Nothing, gain = 2e-8}
+    , callisto = CallistoConfig{waitTime = Nothing, gain = 2e-10}
     }
 
 -- | Default name of the clock control JSON configuration file.
