@@ -24,7 +24,7 @@ import Protocols.MemoryMap (Access (WriteOnly), Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWb,
  )
@@ -102,7 +102,7 @@ statusRegister ::
     (BitboneMm dom aw)
     (CSignal dom TestStatus)
 statusRegister = circuit $ \(mm, wb) -> do
-  [statusWb] <- deviceWb (deviceConfig "StatusRegister") -< (mm, wb)
+  [statusWb] <- deviceWbI (deviceConfig "StatusRegister") -< (mm, wb)
   (statusOut, _a) <-
     registerWb hasClock hasReset statusConf Running -< (statusWb, Fwd (pure Nothing))
   idC -< statusOut

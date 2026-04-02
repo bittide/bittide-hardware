@@ -694,7 +694,7 @@ timeWb ::
     (BitboneMm dom addrW)
     (CSignal dom (Unsigned 64))
 timeWb externalCounter = circuit $ \mmWb -> do
-  [(cmdOffset, cmdConfig, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- Mm.deviceWb (Mm.deviceConfig "Timer") -< mmWb
+  [(cmdOffset, cmdConfig, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- Mm.deviceWbI (Mm.deviceConfig "Timer") -< mmWb
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdConfig, cmdMeta, cmdWb1)
 
@@ -843,7 +843,7 @@ readDnaPortE2Wb ::
     (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = circuit $ \wb -> do
-  [maybeDnaWb] <- Mm.deviceWb (Mm.deviceConfig "Dna") -< wb
+  [maybeDnaWb] <- Mm.deviceWbI (Mm.deviceConfig "Dna") -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
   -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
   --      use it until the DNA is actually read out.
@@ -872,7 +872,7 @@ readDnaPortE2WbWorker ::
     (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     ()
 readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
-  [maybeDnaWb] <- Mm.deviceWb (Mm.deviceConfig "Dna") -< wb
+  [maybeDnaWb] <- Mm.deviceWbI (Mm.deviceConfig "Dna") -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
  where
   config = (registerConfig "maybe_dna"){access = Mm.ReadOnly}

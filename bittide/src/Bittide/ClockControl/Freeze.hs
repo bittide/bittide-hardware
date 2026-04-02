@@ -50,7 +50,7 @@ freeze clk rst =
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
     [wb0, wb1, wb2, wb3, wb4, wb5] <-
-      deviceWb (deviceConfig "Freeze") -< (mm, wb)
+      deviceWb clk rst (deviceConfig "Freeze") -< (mm, wb)
 
     -- Only writable register in this device: can be used by the wishbone manager
     -- to freeze all the incoming signals.

@@ -151,11 +151,11 @@ dutC = withLittleEndian
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource
-    [uartBus, (mmTime, timeBus)] <-
+    [uartBus, timeBus] <-
       processingElement NoDumpVcd peConfigC -< (mm, jtag)
     mm <- ignoreMM
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-    _localCounter <- timeWb Nothing -< (mmTime, timeBus)
+    _localCounter <- timeWb Nothing -< timeBus
     idC -< uartTx
  where
   peConfigC = unsafePerformIO $ do

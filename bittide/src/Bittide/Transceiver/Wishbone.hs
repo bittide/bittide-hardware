@@ -59,7 +59,8 @@ transceiverPrbsNWb ::
     (COutputs n tx rx free)
 transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   Fwd tOutputs <- transceiverPrbsNC clk tReset config -< (Fwd tInputs, gths)
-  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <- deviceWb (deviceConfig "Transceivers") -< wb
+  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <-
+    deviceWb clk rst (deviceConfig "Transceivers") -< wb
 
   -- Configuration registers
   (Fwd tEnable, _c0) <-

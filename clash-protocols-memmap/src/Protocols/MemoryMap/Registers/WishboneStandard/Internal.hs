@@ -42,6 +42,7 @@ import Protocols.Wishbone (
   WishboneS2M (..),
   emptyWishboneS2M,
  )
+import Protocols.Wishbone.Extra (delayWishbone)
 
 import qualified Clash.Shockwaves.Trace as Trace
 import qualified Data.List as L
@@ -106,10 +107,18 @@ data DeviceConfig = DeviceConfig
   -- ^ Whether to add 'traceSignal' statements. Is set to 'False' by default, because it
   --   causes whole signals to be kept alive which can cause memory issues for large
   --   designs.
+  , registered :: Bool
+  -- ^ Whether to insert a component breaking the combinatorial path between the Wishbone
+  -- bus and the registers. This improves timing (place and route) characteristics, at
+  -- the cost of consuming hardware resources. Its default is set to 'True'.
+  --
+  -- Note that both the forwards and the backwards path are registered. This means that
+  -- any transaction takes at least two clock cycles, with memory backed transactions taking
+  -- at least three. In the future we might opt to make this a more flexible option.
   }
 
 deviceConfig :: String -> DeviceConfig
-deviceConfig name = DeviceConfig{name, trace = False}
+deviceConfig name = DeviceConfig{name, trace = False, registered = True}
 
 type Shockwaves a = (BitPack a, NFDataX a, Typeable a, Waveform a)
 
@@ -224,17 +233,22 @@ either pass in the offsets manually or use 'registerWithOffsetWbDf'.
 -}
 deviceWithOffsetsWb ::
   forall n wordSize aw dom.
-  (HasCallStack, KnownNat n, KnownNat aw, KnownNat wordSize) =>
+  (HasCallStack, KnownDomain dom, KnownNat n, KnownNat aw, KnownNat wordSize) =>
+  Clock dom ->
+  Reset dom ->
   DeviceConfig ->
   Circuit
     ( ToConstBwd Mm
     , Wishbone dom 'Standard aw wordSize
     )
     (Vec n (RegisterWithOffsetWb dom aw wordSize))
-deviceWithOffsetsWb config =
+deviceWithOffsetsWb clk rst config =
   case divWithRemainder @wordSize @8 @7 of
     Dict ->
-      Circuit go
+      circuit $ \(mm, wb0) -> do
+        let maybeDelay = if config.registered then delayWishbone clk rst else idC
+        wb1 <- maybeDelay -< wb0
+        Circuit go -< (mm, wb1)
  where
   -- This behemoth of a type signature because the inferred type signature is
   -- too general, confusing the type checker.

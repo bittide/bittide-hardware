@@ -39,7 +39,7 @@ import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (..),
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWb,
   registerWb_,
@@ -189,7 +189,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbEitherAbc
     , wbOnlyInVec
     ] <-
-    deviceWb (deviceConfig "ManyTypes") -< (mm, wb)
+    deviceWbI (deviceConfig "ManyTypes") -< (mm, wb)
 
   registerWb_ hasClock hasReset (registerConfig "s0") initWbS0 -< (wbS0, Fwd noWrite)
   registerWb_ hasClock hasReset (registerConfig "s1") initWbS1 -< (wbS1, Fwd noWrite)

@@ -13,7 +13,7 @@ import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWbI,
  )
@@ -167,7 +167,7 @@ handshakeWb ::
       CSignal dom (Bool, Bool)
     )
 handshakeWb = circuit $ \(bus, (Fwd rxLinkIn), (Fwd txLinkIn)) -> do
-  [txLastBus, rxLastBus] <- deviceWb (deviceConfig "Handshake") -< bus
+  [txLastBus, rxLastBus] <- deviceWbI (deviceConfig "Handshake") -< bus
 
   (Fwd txLast, _txLastActivity) <-
     registerWbI

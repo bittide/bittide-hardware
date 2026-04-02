@@ -8,6 +8,7 @@ a memory map.
 module Protocols.MemoryMap.Registers.WishboneStandard (
   -- * Device creation
   deviceWb,
+  deviceWbI,
   deviceWithOffsetsWb,
 
   -- * Register creation (explicit clocks and resets)
@@ -73,16 +74,19 @@ deviceWb ::
   , KnownNat n
   , KnownNat wordSize
   , KnownNat aw
+  , KnownDomain dom
   ) =>
+  Clock dom ->
+  Reset dom ->
   DeviceConfig ->
   Circuit
     ( ToConstBwd Mm
     , Wishbone dom 'Standard aw wordSize
     )
     (Vec n (RegisterWb dom aw wordSize))
-deviceWb config = circuit $ \(mm, wb) -> do
+deviceWb clk rst config = circuit $ \(mm, wb) -> do
   (offsets0, configs, metas0, wbs) <-
-    V.unzip4 <| withFrozenCallStack deviceWithOffsetsWb config -< (mm, wb)
+    V.unzip4 <| withFrozenCallStack (deviceWithOffsetsWb clk rst config) -< (mm, wb)
   (offsets1, metas1) <- genOffsets -< (offsets0, metas0)
   V.zip4 -< (offsets1, configs, metas1, wbs)
  where
@@ -105,6 +109,24 @@ deviceWb config = circuit $ \(mm, wb) -> do
      where
       sizes = fmap (.nWords) metas
       offsets = snd $ mapAccumL (\acc size -> (acc + size, resize acc)) 0 sizes
+
+-- | Like 'deviceWb', but with an implicit clock and reset
+deviceWbI ::
+  forall n wordSize aw dom.
+  ( HasCallStack
+  , KnownNat n
+  , KnownNat wordSize
+  , KnownNat aw
+  , HiddenClock dom
+  , HiddenReset dom
+  ) =>
+  DeviceConfig ->
+  Circuit
+    ( ToConstBwd Mm
+    , Wishbone dom 'Standard aw wordSize
+    )
+    (Vec n (RegisterWb dom aw wordSize))
+deviceWbI = deviceWb hasClock hasReset
 
 -- | Like 'registerWbDf', but returns a 'CSignal' of 'Maybe' instead of a 'Df' stream.
 registerWb ::
