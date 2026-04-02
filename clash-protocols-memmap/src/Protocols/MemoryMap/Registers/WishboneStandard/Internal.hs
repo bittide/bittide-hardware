@@ -414,8 +414,10 @@ addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
     (wbS2M, req) = unbundle $ wishboneToRequestResponse regConfig.access <$> wbM2S1 <*> respData
     wbM2S1 = fmap (\wb -> wb{addr = wb.addr - offset}) wbM2S0
 
-{- | Stateless Wishbone interface that converts Wishbone transactions into
-ReqResp read/write operations, handling byte order conversion and access control.
+{- | Stateless Wishbone interface that converts Wishbone transactions into ReqResp read/write
+operations, access control. This component assumes that the given address is already checked
+to be within range. For this module, that assumption holds because 'deviceWithOffsetsWb'
+sets the Wishbone transaction signals based on offset and register size.
 -}
 wishboneToRequestResponse ::
   forall nWords wordSize aw.
@@ -454,19 +456,18 @@ wishboneToRequestResponse access wbM2S respData
       }
 
   masterActive = wbM2S.busCycle && wbM2S.strobe
-  fault = readFault || writeFault || not inRange
+  fault = readFault || writeFault
 
   -- Access control
   readFault = access == ReadOnly && wbM2S.writeEnable
   writeFault = access == WriteOnly && not wbM2S.writeEnable
 
   -- Address calculation: compute index within addressable range
-  inRange = wbM2S.addr <= resize (bitCoerce (maxBound :: Index nWords))
   wbAddr = unpack $ resize wbM2S.addr
 
   -- Request Response
-  validRead = masterActive && not wbM2S.writeEnable && inRange && not readFault
-  validWrite = masterActive && wbM2S.writeEnable && inRange && not writeFault
+  validRead = masterActive && not wbM2S.writeEnable && not readFault
+  validWrite = masterActive && wbM2S.writeEnable && not writeFault
 
   req
     | validRead = Just $ Left wbAddr
