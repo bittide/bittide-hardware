@@ -158,6 +158,7 @@ library
 
   other-modules:
     Bittide.Wishbone.Orphans
+    Protocols.Wishbone.Extra
 
   build-depends:
     aeson,

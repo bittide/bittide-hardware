@@ -16,7 +16,7 @@ import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWbI_,
  )
@@ -38,7 +38,7 @@ metaPeConfig ::
     )
     ()
 metaPeConfig SNat = circuit $ \(mm, wb) -> do
-  [wMC, wO, wN, rMC, rO, rN, buffer] <- deviceWb (deviceConfig "MetaPeConfig") -< (mm, wb)
+  [wMC, wO, wN, rMC, rO, rN, buffer] <- deviceWbI (deviceConfig "MetaPeConfig") -< (mm, wb)
 
   registerWbI_ wMcConfig (0 :: Unsigned 32) -< (wMC, Fwd noWrite)
   registerWbI_ wOConfig (0 :: Unsigned 32) -< (wO, Fwd noWrite)

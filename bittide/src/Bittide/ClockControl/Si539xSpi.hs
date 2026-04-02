@@ -20,7 +20,7 @@ import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWbI,
   registerWbI_,
@@ -44,7 +44,7 @@ type Address = Byte
 -- | Indicates that the interface producing this is currently Busy and will not respond to inputs.
 type Busy = Bool
 
--- | Indicates tgat the interface producing this value has captured the input.
+-- | Indicates that the interface producing this value has captured the input.
 type Acknowledge = Bool
 
 -- | A Si539X register entry consists of a 'Page', and 'Address' and a 'Byte' value.
@@ -169,7 +169,7 @@ si539xSpiWb minTargetPs =
   circuit $ \(mm, wb) -> do
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
-    [wb0, wb1, wb2, wb3, wb4] <- deviceWb (deviceConfig "Si539xSpi") -< (mm, wb)
+    [wb0, wb1, wb2, wb3, wb4] <- deviceWbI (deviceConfig "Si539xSpi") -< (mm, wb)
 
     -- TODO: Don't accept new wishbone transations while busy. This can be achieved with
     -- `registerWbDf`. Should be applied to `regOp`, `commit` and `readData` registers.

@@ -27,7 +27,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
   busActivityWrite,
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWb,
   registerWbDfI,
@@ -309,7 +309,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       , wbMinDataCountSeen
       , wbMaxDataCountSeen
       ] <-
-      deviceWb (deviceConfig "ElasticBuffer") -< wb
+      deviceWbI (deviceConfig "ElasticBuffer") -< wb
 
     (_ebAdjustmentAsync, ebAdjustmentAsyncDfActivity) <-
       registerWbDfI

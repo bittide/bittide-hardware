@@ -19,7 +19,7 @@ import Protocols.MemoryMap (unMemmap)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   addressableBytesWb,
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
  )
 
@@ -91,7 +91,7 @@ wbStorage ::
   Circuit (BitboneMm dom aw) ()
 wbStorage memoryName SNat initContent =
   circuit $ \wbMm -> do
-    [wb0] <- deviceWb (deviceConfig memoryName) -< wbMm
+    [wb0] <- deviceWbI (deviceConfig memoryName) -< wbMm
     reqresp <- addressableBytesWb regConfig -< wb0
     (reads, writes0) <- ReqResp.partitionEithers -< reqresp
     writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
