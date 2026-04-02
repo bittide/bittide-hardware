@@ -11,7 +11,7 @@ import Bittide.Df
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Class.BitPackC
 import Control.DeepSeq (NFData)
@@ -58,7 +58,7 @@ register to the `Df` output and also sends some debug messages over UART.
 dut ::
   (HasCallStack) =>
   Circuit (ToConstBwd Mm) (Df System SomeAdt, Df System (BitVector 8))
-dut = withBittideByteOrder $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do
+dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [srcBus, dfBus, uartBus] <-
     processingElement @_ dumpVcd peConfig -< (mm, jtagIdle)

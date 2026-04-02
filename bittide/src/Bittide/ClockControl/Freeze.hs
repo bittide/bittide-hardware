@@ -33,8 +33,7 @@ freeze ::
   , KnownNat nLinks
   , HasCallStack
   , 4 <= aw
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->
@@ -53,10 +52,10 @@ freeze clk rst =
     [wb0, wb1, wb2, wb3, wb4, wb5] <-
       deviceWb (deviceConfig "Freeze") -< (mm, wb)
 
-    -- Only writeable register in this device: can be used by the wishbone manager
+    -- Only writable register in this device: can be used by the wishbone manager
     -- to freeze all the incoming signals.
     --
-    -- TODO: Delay acknowledgement until 'freeze_counter' is updated. We currently
+    -- TODO: Delay acknowledgment until 'freeze_counter' is updated. We currently
     --       don't expect this to cause any problems as we don't critically rely
     --       on the counter being exact (i.e., reading one less just means we
     --       drop one measurement at the end of a clock control experiment). Still,

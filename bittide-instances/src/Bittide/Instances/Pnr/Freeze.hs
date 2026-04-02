@@ -5,7 +5,7 @@
 
 module Bittide.Instances.Pnr.Freeze where
 
-import Bittide.SharedTypes (BitboneMm, withBittideByteOrder)
+import Bittide.SharedTypes (BitboneMm, withLittleEndian)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols
@@ -26,7 +26,7 @@ freezeExample ::
     (BitboneMm dom 4)
     ()
 freezeExample clk rst =
-  withBittideByteOrder
+  withLittleEndian
     $ circuit
     $ \(mm, wb) -> do
       Freeze.freeze clk rst

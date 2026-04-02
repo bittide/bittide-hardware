@@ -6,8 +6,9 @@
 module Tests.ClockControl.Freeze where
 
 import Bittide.ClockControl.Freeze (counter, freeze)
-import Bittide.SharedTypes (withByteOrderings)
-import Clash.Class.BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
+import Bittide.SharedTypes (withByteOrder)
+import Clash.Class.BitPackC (ByteOrder (LittleEndian))
+import Clash.Class.BitPackC.Words (unpackWordOrErrorCI)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Hedgehog (Gen, Property)
@@ -66,7 +67,8 @@ prop_wb = property $ do
   -- Uncomment to see the memory map as a footnote
   -- footnote (ppShow ((\(SimOnly x) -> x) (getConstBwdAny dutMm)))
 
-  withClockResetEnable clk rst ena
+  withByteOrder endian
+    $ withClockResetEnable clk rst ena
     $ wishbonePropWithModel
       @XilinxSystem
       defExpectOptions{eoSampleMax = 10_000}
@@ -79,9 +81,14 @@ prop_wb = property $ do
   rst = noReset
   ena = enableGen
 
-  endian = BigEndian
+  -- This can be freely switched to BigEndian, but:
+  --
+  --   1. LittleEndian is pretty much the only target in the CPU world
+  --   2. Byte ordering should be tested by the tests covering 'registerWb' and friends itself
+  endian = LittleEndian
 
   model ::
+    (?byteOrder :: ByteOrder) =>
     WishboneMasterRequest AddressWidth 4 ->
     WishboneS2M 4 ->
     ModelState ->
@@ -97,27 +104,27 @@ prop_wb = property $ do
     -- XXX: It takes a little while for the freeze counter to update after a
     --      freeze has been issued, so we also accept a freeze counter that is
     --      one less than the expected value. Remove this when we properly delay
-    --      acknowledgement until the freeze counter is updated.
+    --      acknowledgment until the freeze counter is updated.
     | readDataU `elem` [n, n - 1] = Right s
     | otherwise =
         Left $ "Freeze counter mismatch: expected " <> show n <> ", got " <> show readDataU
    where
-    readDataU = unpackOrErrorC endian (unpack readData)
+    readDataU = unpackWordOrErrorCI (readData :> Nil)
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Nothing}
-    | a < 3 = Right s
+    | a < syncPulseAddress = Right s
     | otherwise =
         -- Record the value of the register that is being read. This can predict the
         -- value of all other registers (until a freeze is requested).
-        Right s{lastSeen = Just (unpackOrErrorC endian (unpack readData) - fromIntegral a)}
+        Right s{lastSeen = Just (unpackWordOrErrorCI (readData :> Nil) - fromIntegral a)}
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Just l}
-    | a < 3 = Right s
+    | a < syncPulseAddress = Right s
     | readDataU - fromIntegral a == l = Right s
     | otherwise =
         Left $ "Read value mismatch: expected " <> show l <> ", got " <> show readDataU
    where
-    readDataU = unpackOrErrorC endian (unpack readData)
+    readDataU = unpackWordOrErrorCI (readData :> Nil)
   model (Write _ _ _) _ s =
-    -- Only one writeable register in this device: freeze. We can therefore safely
+    -- Only one writable register in this device: freeze. We can therefore safely
     -- ignore the address and assume that register is written to.
     Right
       $ s
@@ -125,6 +132,11 @@ prop_wb = property $ do
         , lastSeen = Nothing
         , nFreezes = s.nFreezes + 1
         }
+
+  -- XXX: the local counter register is a 64-bit one, making it difficult to test in the
+  --      current infrastructure. Given that its structure is exactly the same as the other
+  --      two counters, I feel comfortable leaving it out of the model for now.
+  syncPulseAddress = 4
 
   genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
   genInputs = Gen.list (Range.linear 0 500) (genWishboneTransfer genAddr)
@@ -134,7 +146,7 @@ prop_wb = property $ do
 
   dutMm ::
     Circuit (ToConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth 4) ()
-  dutMm = withByteOrderings endian endian $ circuit $ \(mm, wb) -> do
+  dutMm = withByteOrder endian $ circuit $ \(mm, wb) -> do
     freeze @4 @32 clk rst
       -< ( (mm, wb)
          , Fwd ebCounters

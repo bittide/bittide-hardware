@@ -136,7 +136,7 @@ library
   exposed-modules:
     Clash.Class.BitPackC
     Clash.Class.BitPackC.Align
-    Clash.Class.BitPackC.Padding
+    Clash.Class.BitPackC.Words
 
   build-depends:
     base >=4.19.0.0,
@@ -168,7 +168,7 @@ test-suite unittests
 
   other-modules:
     Tests.BitPackC
-    Tests.Padding
+    Tests.Words
 
   build-depends:
     base,

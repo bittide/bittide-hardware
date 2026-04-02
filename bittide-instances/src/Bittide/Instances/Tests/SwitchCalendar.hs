@@ -54,7 +54,7 @@ simResult = chr . fromIntegral <$> catMaybes uartStream
 
 dut :: Circuit (ToConstBwd Mm) (Df Basic200 (BitVector 8))
 dut =
-  withBittideByteOrder
+  withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \mm -> do

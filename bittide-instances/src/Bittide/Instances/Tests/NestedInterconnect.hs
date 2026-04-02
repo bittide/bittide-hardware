@@ -22,7 +22,7 @@ import Bittide.ProcessingElement.Util (
   vecFromElfData,
   vecFromElfInstr,
  )
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (singleMasterInterconnectC, uartBytes, uartInterfaceWb)
 import Project.FilePath (
   CargoBuildType (Release),
@@ -59,8 +59,7 @@ simplePeripheral ::
   , HiddenClock dom
   , HiddenReset dom
   , KnownNat aw
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   String ->
   Circuit
@@ -105,7 +104,7 @@ peConfig = unsafePerformIO $ do
 dut ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
-dut = withBittideByteOrder $ circuit $ \mm -> do
+dut = withLittleEndian $ circuit $ \mm -> do
   (uartRx, jtag) <- idleSource
   ([uartBus, preInterconnectBus0], unNestedBusses) <-
     Vec.split
@@ -137,7 +136,7 @@ dut = withBittideByteOrder $ circuit $ \mm -> do
 
 -- | DUT for simulation (uses ignoreMM)
 top :: Circuit () (Df Basic50 (BitVector 8))
-top = withBittideByteOrder
+top = withLittleEndian
   $ withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do

@@ -114,8 +114,7 @@ domainDiffCountersWbC ::
   , HasSynchronousReset dst
   , KnownNat n
   , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Vec n (Clock src) ->
   Vec n (Reset src) ->

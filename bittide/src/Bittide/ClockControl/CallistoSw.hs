@@ -55,8 +55,7 @@ callistoSwClockControlC ::
   , HasDefinedInitialValues dom
   , PrefixWidth (otherWb + SwcccInternalBusses) <= 30
   , 1 <= DomainPeriod dom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   , 4 <= SwcccRemBusWidth otherWb
   ) =>
   -- | Clock of an uncontrolled domain, e.g. the free-running clock. This is

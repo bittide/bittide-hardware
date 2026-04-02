@@ -322,8 +322,7 @@ andAck extraAck = Circuit go
 mkCalendarC ::
   forall addrW a dom nBytes.
   ( HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   , KnownNat addrW
   , BitPack a
   , KnownNat nBytes
@@ -437,8 +436,7 @@ mkCalendar ::
   , BitPack calEntry
   , WithTypeDescription calEntry
   , BitPackC calEntry
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Name of the component, used as identifier in the rust code generation.
   String ->

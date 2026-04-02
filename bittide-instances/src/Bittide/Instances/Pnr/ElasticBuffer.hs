@@ -13,7 +13,7 @@ import Protocols.Wishbone
 
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ElasticBuffer
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 
 import qualified Clash.Explicit.Prelude as E
 
@@ -36,7 +36,7 @@ elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underfl
  where
   localCounter = E.register clkRead rstRead enableGen 0 (localCounter + 1)
   ((SimOnly _mm, wbOut), (dataCount, underflow, overflow, readData)) =
-    withBittideByteOrder
+    withLittleEndian
       $ toSignals
         (xilinxElasticBufferWb clkRead rstRead d5 localCounter clkWrite wdata)
         (((), wbIn), ((), (), (), ()))

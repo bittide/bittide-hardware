@@ -50,8 +50,7 @@ captureUgn ::
   ( HasCallStack
   , C.HiddenClockResetEnable dom
   , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Local counter
   Signal dom (Unsigned 64) ->

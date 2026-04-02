@@ -14,7 +14,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Project.FilePath
 
@@ -59,7 +59,7 @@ Runs the `hello` binary from `firmware-binaries`.
 -}
 dut ::
   Circuit () (Df Basic200 (BitVector 8))
-dut = withBittideByteOrder
+dut = withLittleEndian
   $ withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do

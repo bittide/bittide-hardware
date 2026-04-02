@@ -35,8 +35,7 @@ transmitRingbufferWb ::
   , KnownNat aw
   , 1 <= aw
   , 1 <= memDepth
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Primitive to use for the underlying memory.
   ( Enable dom ->
@@ -73,8 +72,7 @@ receiveRingbufferWb ::
   , KnownNat aw
   , 1 <= aw
   , 1 <= memDepth
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   -- | Primitive to use for the underlying memory.
   ( Enable dom ->

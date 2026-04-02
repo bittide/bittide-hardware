@@ -46,8 +46,7 @@ transceiverPrbsNWb ::
   , HasCallStack
   , 4 <= aw
   , n <= 1024
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Clock free ->
   Reset free ->

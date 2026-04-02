@@ -105,8 +105,7 @@ ccConfig =
 managementUnit ::
   forall dom.
   ( HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
   ) =>
   -- | External counter
@@ -169,8 +168,7 @@ calendarConfig =
 {- FOURMOLU_ENABLE -}
 
 core ::
-  ( ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  ( ?byteOrder :: ByteOrder
   ) =>
   (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->

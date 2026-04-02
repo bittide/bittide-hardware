@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -O0 #-}
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
@@ -11,12 +12,12 @@ module Tests.Protocols.MemoryMap.Registers.WishboneStandard where
 
 import Clash.Explicit.Prelude
 
-import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
-import Clash.Class.BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
+import Clash.Class.BitPackC (ByteOrder (..))
+import Clash.Class.BitPackC.Words (packWordCI, unpackWordOrErrorCI)
 import Clash.Hedgehog.Sized.Vector (genVec)
 import Clash.Prelude (withClockResetEnable)
 import Control.DeepSeq (force)
-import Data.Maybe (fromMaybe)
+import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
@@ -63,25 +64,6 @@ initU32 = 122222
 
 type AddressWidth = 4
 
-wordSize :: SNat 4
-wordSize = SNat
-
--- For these tests we use @BigEndian@ to make the (somewhat grimy..) logic in
--- these tests work.
-regByteOrder :: ByteOrder
-regByteOrder = BigEndian
-
-busByteOrder :: ByteOrder
-busByteOrder = BigEndian
-
-myPaddedPackC :: (BitPackC a) => a -> Vec (SizeInWordsC 4 a) (Bytes 4)
-myPaddedPackC = packWordC regByteOrder
-
-myPaddedUnpackC :: (BitPackC a) => Vec (SizeInWordsC 4 a) (Bytes 4) -> a
-myPaddedUnpackC =
-  fromMaybe (errorX "myPaddedUnpackC: fail to unpack")
-    . maybeUnpackWordC regByteOrder
-
 smallInt :: Gen Int
 smallInt = Gen.integral (Range.linear 0 10)
 
@@ -102,20 +84,20 @@ traceToBool NoTrace = False
 {- | Initial state of 'deviceExample', represented as a map from address to bit
 size and value.
 -}
-initState :: Map.Map (BitVector AddressWidth) (BitVector 32)
+initState :: (?byteOrder :: ByteOrder) => Map.Map (BitVector AddressWidth) (BitVector 32)
 initState =
   Map.fromList @(BitVector AddressWidth)
     -- TODO: zero-width registers
-    [ (0, myPaddedPackC initFloat !! nil)
-    , (1, myPaddedPackC initDouble !! nil)
-    , (2, myPaddedPackC initDouble !! succ nil)
-    , (3, myPaddedPackC initU32 !! nil)
-    , (4, myPaddedPackC initFloat !! nil)
-    , (5, myPaddedPackC initFloat !! nil)
-    , (6, myPaddedPackC initU32 !! nil)
-    , (7, myPaddedPackC initU32 !! nil)
-    , (8, myPaddedPackC initU32 !! nil)
-    , (9, myPaddedPackC False !! nil)
+    [ (0, packWordCI initFloat !! nil)
+    , (1, packWordCI initDouble !! nil)
+    , (2, packWordCI initDouble !! succ nil)
+    , (3, packWordCI initU32 !! nil)
+    , (4, packWordCI initFloat !! nil)
+    , (5, packWordCI initFloat !! nil)
+    , (6, packWordCI initU32 !! nil)
+    , (7, packWordCI initU32 !! nil)
+    , (8, packWordCI initU32 !! nil)
+    , (9, packWordCI False !! nil)
     ]
  where
   nil = 0 :: Int
@@ -131,8 +113,7 @@ deviceExample ::
   , KnownNat wordSize
   , KnownNat aw
   , 1 <= wordSize
-  , ?regByteOrder :: ByteOrder
-  , ?busByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Trace ->
   Clock dom ->
@@ -200,7 +181,7 @@ deviceExample trace clk rst = circuit $ \(mm, wb) -> do
   ena = enableGen
   noWrite = pure Nothing
 
-  sticky i = let s = register clk rst ena False (s .||. i) in s
+  sticky input = let s = register clk rst ena False (s .||. input) in s
 
   goDelay ::
     (Maybe (BusActivity (Unsigned 32)), Unsigned 4) ->
@@ -246,6 +227,16 @@ genWishboneTransfer genAddr genMask genData =
     , Write <$> genAddr <*> genMask <*> genData
     ]
 
+prop_wbBigEndian :: Property
+prop_wbBigEndian =
+  let ?byteOrder = BigEndian
+   in prop_wb
+
+prop_wbLittleEndian :: Property
+prop_wbLittleEndian =
+  let ?byteOrder = LittleEndian
+   in prop_wb
+
 {- | Test 'deviceExample' (and therefore 'deviceWb' and 'registerWb') using
 'wishbonePropWithModel'. This property generates a number of random Wishbone
 transactions and checks that the device behaves as expected.
@@ -262,7 +253,7 @@ It currently does NOT test:
   * 'deviceWithOffsetsWb' with gaps between registers
   * Varying the size of the Wishbone bus
 -}
-prop_wb :: Property
+prop_wb :: (?byteOrder :: ByteOrder) => Property
 prop_wb =
   property
     $ withClockResetEnable clk rst ena
@@ -277,74 +268,93 @@ prop_wb =
   rst = resetGen
   ena = enableGen
 
+  -- An error occurred on the bus, determine whether it's expected. It's okay if:
+  --
+  --  * There is no register mapped to the address
+  --  * We try to read from a WO register
+  --  * We try to write to an RO register
+  modelError ::
+    WishboneMasterRequest AddressWidth 4 ->
+    Map.Map (BitVector AddressWidth) (BitVector 32) ->
+    Maybe String
+  modelError instr s = do
+    v <- Map.lookup addr s
+    if
+      | isRead instr && addr == woAddress -> Nothing
+      | isWrite instr && addr `elem` roAddresses -> Nothing
+      | otherwise -> Just [i|Unexpected error on address #{addr}, value: #{v}|]
+   where
+    addr = toAddr instr
+
+  modelRead ::
+    BitVector AddressWidth ->
+    Map.Map (BitVector AddressWidth) (BitVector 32) ->
+    BitVector 32 ->
+    BitVector 32 ->
+    Either String (Map.Map (BitVector AddressWidth) (BitVector 32))
+  modelRead addr s v readData
+    | v /= 0 && addr == delayedErrorAddress =
+        Left [i|delayed error! v: #{v}, readData: #{readData}|]
+    | addr `elem` [prioAddress, prioPreferCircuitAddress] =
+        Right $ Map.insert addr (head $ packWordCI initU32) s
+    | v == readData =
+        Right s
+    | otherwise =
+        Left [i|addr: #{toInteger addr}, stored: #{v}, bus: #{readData}|]
+
+  modelWrite ::
+    BitVector AddressWidth ->
+    BitVector 4 ->
+    BitVector 32 ->
+    Map.Map (BitVector AddressWidth) (BitVector 32) ->
+    Map.Map (BitVector AddressWidth) (BitVector 32)
+  modelWrite addr m newDat s
+    | addr == delayedAddress =
+        let
+          double :: BitVector 32 -> BitVector 32
+          double = head . packWordCI . (* (2 :: (Unsigned 32))) . unpackWordOrErrorCI . pure
+         in
+          Map.adjust (double . update) addr s
+    | addr `elem` [prioAddress, prioPreferCircuitAddress] =
+        let
+          inc :: BitVector 32 -> BitVector 32
+          inc = head . packWordCI . (+ (1 :: (Unsigned 32))) . unpackWordOrErrorCI . pure
+         in
+          Map.adjust (inc . update) addr s
+    | otherwise =
+        Map.adjust update addr s
+   where
+    update :: BitVector 32 -> BitVector 32
+    update oldDat = head $ maskWriteData @4 @1 0 m newDat (oldDat :> Nil)
+
   model ::
     WishboneMasterRequest AddressWidth 4 ->
     WishboneS2M 4 ->
     Map.Map (BitVector AddressWidth) (BitVector 32) ->
     Either String (Map.Map (BitVector AddressWidth) (BitVector 32))
-  model instr WishboneS2M{err = True} s =
-    -- Errors should only happen when we use an unmapped address (in the future
-    -- we may want to to test other errors too).
-    let
-      errorAddress = case instr of
-        Read a _ -> a
-        Write a _ _ -> a
+  model instr WishboneS2M{err = True} s
+    | Just errorMsg <- modelError instr s = Left errorMsg
+    | otherwise = Right s
+  model _ WishboneS2M{retry = True} _ = Left "Unexpected retry response"
+  model _ WishboneS2M{acknowledge = False} _ = Left "Should have been filtered by wishbonePropWithModel"
+  model instr WishboneS2M{readData} s =
+    case Map.lookup (toAddr instr) s of
+      Nothing -> Left [i|Write/read from unmapped address, should have been err=True: #{toAddr instr}|]
+      Just v ->
+        case instr of
+          Read a _ -> modelRead a s v readData
+          Write a m newDat -> Right (modelWrite a m newDat s)
 
-      isRead (Read _ _) = True
-      isRead _ = False
+  toAddr instr =
+    case instr of
+      Read a _ -> a
+      Write a _ _ -> a
 
-      isWrite (Write{}) = True
-      isWrite _ = False
-     in
-      case Map.lookup errorAddress s of
-        Nothing ->
-          -- Whenever an error occurs, the state should be unchanged.
-          Right s
-        Just v
-          | isRead instr && errorAddress == woAddress ->
-              -- Expect an error when trying to read from the WriteOnly register
-              Right s
-          | isWrite instr && errorAddress `elem` roAddresses ->
-              -- Expect an error when trying to write to a ReadOnly register
-              Right s
-          | otherwise ->
-              Left $ "Error on address: " <> show errorAddress <> ", value: " <> show v
-  model _ WishboneS2M{retry = True} s = Right s
-  model _ WishboneS2M{acknowledge = False} s = Right s
-  model (Read a _) WishboneS2M{readData} s =
-    -- XXX: Note that we IGNORE the byte enable mask when reading. The circuit
-    --      does too.
-    case Map.lookup a s of
-      Nothing -> Left $ "Read from unmapped address: " <> show a
-      Just v
-        | v /= 0 && a == delayedErrorAddress ->
-            Left $ "delayed error! v: " <> show v <> ", readData: " <> show readData
-        | v == readData && a == prioAddress ->
-            Right $ Map.insert prioAddress (head $ myPaddedPackC initU32) s
-        | readData == pack initU32 && a == prioPreferCircuitAddress ->
-            Right $ Map.insert prioPreferCircuitAddress (head $ myPaddedPackC initU32) s
-        | v == readData ->
-            Right s
-        | otherwise ->
-            Left $ "a: " <> show a <> ", v: " <> show v <> ", readData: " <> show readData
-  model (Write a m newDat) _ s
-    | a == delayedAddress =
-        let
-          double :: BitVector 32 -> BitVector 32
-          double = head . myPaddedPackC . (* (2 :: (Unsigned 32))) . myPaddedUnpackC . pure
-         in
-          Right (Map.adjust (double . update) a s)
-    | a == prioAddress || a == prioPreferCircuitAddress =
-        let
-          inc :: BitVector 32 -> BitVector 32
-          inc = head . myPaddedPackC . (+ (1 :: (Unsigned 32))) . myPaddedUnpackC . pure
-         in
-          Right (Map.adjust (inc . update) a s)
-    | otherwise =
-        Right (Map.adjust update a s)
-   where
-    update :: BitVector 32 -> BitVector 32
-    update oldDat = head $ maskWriteData @4 @1 0 m newDat (oldDat :> Nil)
+  isRead (Read _ _) = True
+  isRead _ = False
+
+  isWrite (Write{}) = True
+  isWrite _ = False
 
   genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
   genInputs = Gen.list (Range.linear 0 300) (genWishboneTransfer genAddr genMask genData)
@@ -361,12 +371,7 @@ prop_wb =
     Gen.integral (Range.constant 0 (1 + P.maximum (Map.keys initState)))
 
   dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
-  dut =
-    let
-      ?regByteOrder = regByteOrder
-      ?busByteOrder = busByteOrder
-     in
-      unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem NoTrace clk rst
+  dut = unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem NoTrace clk rst
 
   roAddresses = [roAddress, delayedErrorAddress]
 
@@ -405,13 +410,14 @@ unSimOnly (SimOnly x) = x
 
 memoryMap :: MemoryMap
 memoryMap =
-  unSimOnly
-    $ getConstBwdAny
-    $ let
-        ?regByteOrder = regByteOrder
-        ?busByteOrder = busByteOrder
-       in
-        deviceExample @4 @AddressWidth @XilinxSystem NoTrace clockGen noReset
+  let
+    -- XXX: It really shouldn't matter what byte order we pick, but setting it to an error
+    --      actually produces an error. Investigate?
+    ?byteOrder = LittleEndian
+   in
+    unSimOnly
+      $ getConstBwdAny
+      $ deviceExample @4 @AddressWidth @XilinxSystem NoTrace clockGen noReset
 
 {- | Test that the memory map can be generated without errors. Test for sensible
 values in the memory map.
@@ -461,18 +467,14 @@ prop_addressableBytesWb = property $ do
   let
     dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
     dut =
-      let
-        ?regByteOrder = regByteOrder
-        ?busByteOrder = busByteOrder
-       in
-        circuit $ \wb -> do
-          mm <- ignoreMM
-          [wb0] <- deviceWb (deviceConfig "test") -< (mm, wb)
-          reqresp <- CP.withReset rst ReqResp.forceResetSanity <| addressableBytesWb memConf -< wb0
-          (reads, writes0) <- ReqResp.partitionEithers <| stallC def stalls -< reqresp
-          writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
-          _vecUnit <- ram -< (reads, writes1)
-          idC -< ()
+      circuit $ \wb -> do
+        mm <- ignoreMM
+        [wb0] <- deviceWb (deviceConfig "test") -< (mm, wb)
+        reqresp <- CP.withReset rst ReqResp.forceResetSanity <| addressableBytesWb memConf -< wb0
+        (reads, writes0) <- ReqResp.partitionEithers <| stallC def stalls -< reqresp
+        writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
+        _vecUnit <- ram -< (reads, writes1)
+        idC -< ()
      where
       ram = withClockResetEnable clk rst enableGen (ReqResp.fromBlockRamWithMask prim)
       prim = blockRamByteAddressable clk ena depth
@@ -599,8 +601,7 @@ case_replay = do
     dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
     dut =
       let
-        ?regByteOrder = regByteOrder
-        ?busByteOrder = busByteOrder
+        ?byteOrder = LittleEndian
        in
         unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem Trace clk rst
 
@@ -661,9 +662,7 @@ tests =
     [ testCase "case_maskWriteData" case_maskWriteData
     , testCase "case_memoryMap" case_memoryMap
     , testCase "case_replay" case_replay
-    , testPropertyNamed "prop_wb" "prop_wb" prop_wb
-    , testPropertyNamed
-        "prop_addressableBytesWb"
-        "prop_addressableBytesWb"
-        prop_addressableBytesWb
+    , testPropertyNamed "prop_addressableBytesWb" "prop_addressableBytesWb" prop_addressableBytesWb
+    , testPropertyNamed "prop_wbBigEndian" "prop_wbBigEndian" prop_wbBigEndian
+    , testPropertyNamed "prop_wbLittleEndian" "prop_wbLittleEndian" prop_wbLittleEndian
     ]

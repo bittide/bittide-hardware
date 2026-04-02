@@ -82,8 +82,7 @@ processingElement ::
   forall dom nBusses pfxWidth.
   ( HasCallStack
   , HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   , KnownNat nBusses
   , PeInternalBusses <= nBusses
   , KnownNat pfxWidth
@@ -161,8 +160,7 @@ processingElement dumpVcd PeConfig{depthI, depthD, initI, initD, iBusTimeout, dB
 
 rvCircuit ::
   ( HiddenClockResetEnable dom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   BittideCpu dom ->
   DumpVcd ->
@@ -175,20 +173,18 @@ rvCircuit ::
     , BitboneMm dom 30
     )
 rvCircuit cpu dumpVcd tInterrupt sInterrupt eInterrupt =
-  case (?busByteOrder, ?regByteOrder) of
-    (BigEndian, LittleEndian) -> Circuit go
-    (busByteOrder, regByteOrder) ->
+  case ?byteOrder of
+    LittleEndian -> Circuit go
+    BigEndian ->
       clashCompileError
         [i|
-          Unsupported bus and register byte order combination:
+          Unsupported register byte order:
 
-            busByteOrder = #{show busByteOrder}
-            regByteOrder = #{show regByteOrder}
+            BigEndian
 
-          The only supported combination is:
+          The only supported mode is:
 
-            busByteOrder = BigEndian
-            regByteOrder = LittleEndian
+            LittleEndian
         |]
  where
   go (((), jtagIn), (iBusIn, (mm, dBusIn))) = ((mm, jtagOut), (iBusWbM2S <$> cpuOut, ((), dBusWbM2S <$> cpuOut)))

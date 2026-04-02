@@ -22,7 +22,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.ScatterGather
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
 genIncrementingCalendar ::
@@ -61,7 +61,7 @@ dutWithBinary ::
   (HasCallStack, HiddenClockResetEnable dom) =>
   String ->
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
-dutWithBinary binaryName = withBittideByteOrder $ circuit $ \mm -> do
+dutWithBinary binaryName = withLittleEndian $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [ uartBus
     , wbSu

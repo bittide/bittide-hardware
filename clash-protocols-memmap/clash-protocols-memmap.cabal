@@ -265,6 +265,7 @@ test-suite unittests
     lifted-async,
     pretty-show,
     shockwaves,
+    string-interpolate,
     tasty >=1.5 && <1.7,
     tasty-hedgehog >=1.2 && <1.5,
     tasty-hunit,

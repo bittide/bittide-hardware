@@ -30,8 +30,7 @@ switchC ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->
   Circuit
@@ -71,8 +70,7 @@ switch ::
   , KnownNat links
   , KnownNat nBytes
   , 1 <= nBytes
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.

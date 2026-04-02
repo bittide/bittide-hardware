@@ -22,7 +22,7 @@ import Bittide.ProcessingElement.Util (
   vecFromElfData,
   vecFromElfInstr,
  )
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (uartBytes, uartInterfaceWb)
 import Project.FilePath (
   CargoBuildType (Release),
@@ -138,8 +138,7 @@ manyTypesWb ::
   , KnownNat aw
   , 1 <= wordSize
   , 4 <= aw
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , ?byteOrder :: ByteOrder
   ) =>
   Circuit
     (ToConstBwd Mm, Wishbone dom 'Standard aw wordSize)
@@ -431,7 +430,7 @@ dutWithBinary ::
   String ->
   Circuit (ToConstBwd Mm) (Df Basic50 (BitVector 8))
 dutWithBinary binaryName =
-  withBittideByteOrder
+  withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \mm -> do

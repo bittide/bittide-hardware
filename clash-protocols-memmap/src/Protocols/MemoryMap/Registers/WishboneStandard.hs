@@ -29,7 +29,6 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
 
   -- * Supporting types and functions
   busActivityWrite,
-  matchEndianness,
   BusReadBehavior (..),
   BusActivity (..),
   DeviceConfig (..),

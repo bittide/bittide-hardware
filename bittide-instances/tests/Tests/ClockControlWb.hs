@@ -37,7 +37,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
 -- qualified imports
@@ -124,7 +124,7 @@ expectedDataCounts = L.zip [0 ..] $ toList $ applyMask linkMask dataCounts
 
 dut :: Circuit () (Df System (BitVector 8), CSignal System (Maybe SpeedChange))
 dut =
-  withBittideByteOrder
+  withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \_unit -> do
