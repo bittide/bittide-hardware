@@ -39,7 +39,7 @@ import Protocols.Idle (idleSink, idleSource)
 import Protocols.MemoryMap (MemoryMap, Mm, ignoreMM, withName)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWb_,
  )
@@ -67,7 +67,7 @@ simplePeripheral ::
     ()
 simplePeripheral name = withName name $ circuit $ \(mm, wb) -> do
   [(offset0, config0, meta0, wb0), (offset1, config1, meta1, wb1)] <-
-    deviceWb (deviceConfig "somePeripheral") -< (mm, wb)
+    deviceWbI (deviceConfig "somePeripheral") -< (mm, wb)
   registerWb_ hasClock hasReset (registerConfig "status") (0 :: Unsigned 32)
     -< ((offset0, config0, meta0, wb0), Fwd noWrite)
   registerWb_ hasClock hasReset (registerConfig "control") (0 :: Unsigned 32)

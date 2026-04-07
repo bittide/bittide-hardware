@@ -64,7 +64,7 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
     processingElement @_ dumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
 
-  [refWb] <- deviceWb (deviceConfig "WbToDfReference") -< srcBus
+  [refWb] <- deviceWbI (deviceConfig "WbToDfReference") -< srcBus
   registerWbI_ refCfg testValue -< (refWb, Fwd (pure Nothing))
 
   df <- wbToDf "WbToDfTest" -< dfBus

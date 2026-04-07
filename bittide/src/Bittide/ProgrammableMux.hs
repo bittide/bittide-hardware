@@ -14,7 +14,7 @@ import Protocols.MemoryMap (Access (ReadWrite, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   deviceConfig,
-  deviceWb,
+  deviceWbI,
   registerConfig,
   registerWbI,
  )
@@ -51,7 +51,7 @@ programmableMux ::
     , "OUT" ::: CSignal dom a
     )
 programmableMux localCounter = circuit $ \(bus, a, b) -> do
-  [wbFirstBCycle, wbArm] <- deviceWb (deviceConfig "ProgrammableMux") -< bus
+  [wbFirstBCycle, wbArm] <- deviceWbI (deviceConfig "ProgrammableMux") -< bus
 
   let
     -- Trigger one cycle earlier to account for the delay from 'sticky'

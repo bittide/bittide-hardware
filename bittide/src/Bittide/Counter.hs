@@ -124,7 +124,7 @@ domainDiffCountersWbC ::
     (BitboneMm dst addrW)
     (CSignal dst (Vec n (Signed 32, Active)))
 domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
-  [enableWb, countersWb, activesWb] <- deviceWb (deviceConfig "DomainDiffCounters") -< bus
+  [enableWb, countersWb, activesWb] <- deviceWb clk rst (deviceConfig "DomainDiffCounters") -< bus
 
   (Fwd enables, _a) <-
     registerWb clk rst enableConfig (repeat False) -< (enableWb, Fwd noWrite)

@@ -162,7 +162,7 @@ wbToDf ::
     (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     (Df dom a)
 wbToDf name = circuit $ \(mm, wb) -> do
-  [wbData, wbCommit] <- Mm.deviceWb (Mm.deviceConfig name) -< (mm, wb)
+  [wbData, wbCommit] <- Mm.deviceWbI (Mm.deviceConfig name) -< (mm, wb)
 
   (dat, _0) <- registerWb hasClock hasReset cfgData (unpack 0) -< (wbData, Fwd noWrite)
   (_1, df) <- registerWbDf hasClock hasReset cfgCommit () -< (wbCommit, Fwd noWrite)
