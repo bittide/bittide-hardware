@@ -9,6 +9,7 @@ import Clash.Prelude (withClockResetEnable)
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam (ContentType (Vec))
 import Bittide.ElasticBuffer
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
@@ -78,8 +79,11 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "elastic_buffer_wb_test"
+      binName = "elastic_buffer_wb_test"
+      buildType = Release
+      runBuild = buildRustTarget root binName buildType
+      elfDir = root </> firmwareBinariesDir "riscv32imc" buildType
+      elfPath = elfDir </> binName
     pure
       PeConfig
         { cpu = vexRiscv0
@@ -89,12 +93,14 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
             Just
               $ Vec @IMemWords
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ runBuild
+              >> vecFromElfInstr BigEndian elfPath
         , initD =
             Just
               $ Vec @DMemWords
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ runBuild
+              >> vecFromElfData BigEndian elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

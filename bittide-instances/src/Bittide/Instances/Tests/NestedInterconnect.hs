@@ -14,6 +14,7 @@ import Bittide.DoubleBufferedRam (
   ContentType (Vec),
  )
 import Bittide.Instances.Domains (Basic50)
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement (
   PeConfig (..),
   processingElement,
@@ -79,7 +80,11 @@ simplePeripheral name = withName name $ circuit $ \(mm, wb) -> do
 peConfig :: PeConfig 7
 peConfig = unsafePerformIO $ do
   root <- findParentContaining "cabal.project"
-  let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "nested_interconnect_test"
+  let
+    binName = "nested_interconnect_test"
+    buildType = Release
+    runBuild = buildRustTarget root binName buildType
+    elfPath = root </> firmwareBinariesDir "riscv32imc" buildType </> binName
   pure
     PeConfig
       { cpu = vexRiscv0
@@ -89,12 +94,14 @@ peConfig = unsafePerformIO $ do
           Just
             $ Vec @IMemWords
             $ unsafePerformIO
-            $ vecFromElfInstr BigEndian elfPath
+            $ runBuild
+            >> vecFromElfInstr BigEndian elfPath
       , initD =
           Just
             $ Vec @DMemWords
             $ unsafePerformIO
-            $ vecFromElfData BigEndian elfPath
+            $ runBuild
+            >> vecFromElfData BigEndian elfPath
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = False

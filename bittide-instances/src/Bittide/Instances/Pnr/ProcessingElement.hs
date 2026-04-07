@@ -23,6 +23,7 @@ import VexRiscv
 
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
@@ -62,20 +63,25 @@ vexRiscvUartHelloC baudSnat = withLittleEndian $ circuit $ \(mm, (uartRx, jtag))
     root <- findParentContaining "cabal.project"
     maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Debug
-      elfPath = elfDir </> fromMaybe "vexrscv-hello" maybeBinaryName
+      binName = fromMaybe "vexriscv-hello" maybeBinaryName
+      buildType = Debug
+      runBuild = buildRustTarget root binName buildType
+      elfDir = root </> firmwareBinariesDir "riscv32imc" buildType
+      elfPath = elfDir </> binName
     pure
       peConfigRtl
         { initI =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr @IMemWords BigEndian elfPath
+              $ runBuild
+              >> vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData @DMemWords BigEndian elfPath
+              $ runBuild
+              >> vecFromElfData @DMemWords BigEndian elfPath
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , includeIlaWb = False

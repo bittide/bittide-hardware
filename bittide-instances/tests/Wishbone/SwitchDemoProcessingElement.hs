@@ -23,6 +23,7 @@ import Test.Tasty.TH
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.DoubleBufferedRam
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
@@ -103,16 +104,28 @@ dut dnaA dnaB = withLittleEndian $ circuit $ do
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "switch_demo_pe_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+      binName = "switch_demo_pe_test"
+      buildType = Release
+      runBuild = buildRustTarget root binName buildType
+      elfDir = root </> firmwareBinariesDir "riscv32imc" buildType
+      elfPath = elfDir </> binName
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
+        , initI =
+            Just
+              $ Vec
+              $ unsafePerformIO
+              $ runBuild
+              >> vecFromElfInstr BigEndian elfPath
+        , initD =
+            Just
+              $ Vec
+              $ unsafePerformIO
+              $ runBuild
+              >> vecFromElfData BigEndian elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

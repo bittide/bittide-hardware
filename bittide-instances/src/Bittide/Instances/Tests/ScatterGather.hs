@@ -19,6 +19,7 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 import Bittide.Calendar
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.ScatterGather
@@ -78,7 +79,9 @@ dutWithBinary binaryName = withLittleEndian $ circuit $ \mm -> do
   peConfig binary = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      buildType = Release
+      runBuild = buildRustTarget root binary buildType
+      elfDir = root </> firmwareBinariesDir "riscv32imc" buildType
       elfPath = elfDir </> binary
     pure
       PeConfig
@@ -89,12 +92,14 @@ dutWithBinary binaryName = withLittleEndian $ circuit $ \mm -> do
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ runBuild
+              >> vecFromElfInstr BigEndian elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ runBuild
+              >> vecFromElfData BigEndian elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

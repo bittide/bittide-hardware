@@ -8,6 +8,7 @@ import Clash.Prelude
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam hiding (registerWb)
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
@@ -51,7 +52,11 @@ dutCpu = withLittleEndian $ circuit $ \mm -> do
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "c_timer_wb"
+    let
+      binName = "c_timer_wb"
+      buildType = Release
+      runBuild = buildRustTarget root binName buildType
+      elfPath = root </> firmwareBinariesDir "riscv32imc" buildType </> "c_timer_wb"
     pure
       PeConfig
         { cpu = vexRiscv0
@@ -61,12 +66,14 @@ dutCpu = withLittleEndian $ circuit $ \mm -> do
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ runBuild
+              >> vecFromElfInstr BigEndian elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ runBuild
+              >> vecFromElfData BigEndian elfPath
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False

@@ -28,6 +28,7 @@ import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes (withLittleEndian)
@@ -162,7 +163,10 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
+      binName = "smoltcp_client"
+      buildType = Release
+      runBuild = buildRustTarget root binName buildType
+      elfPath = root </> firmwareBinariesDir "riscv32imc" buildType </> "smoltcp_client"
     pure
       $ PeConfig
         { cpu = vexRiscv0
@@ -172,13 +176,15 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
             Just
               ( Vec
                   $ unsafePerformIO
-                  $ vecFromElfInstr @IMemWords BigEndian elfPath
+                  $ runBuild
+                  >> vecFromElfInstr @IMemWords BigEndian elfPath
               )
         , initD =
             Just
               ( Vec
                   $ unsafePerformIO
-                  $ vecFromElfData @DMemWords BigEndian elfPath
+                  $ runBuild
+                  >> vecFromElfData @DMemWords BigEndian elfPath
               )
         , iBusTimeout = d0
         , dBusTimeout = d0

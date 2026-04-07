@@ -11,6 +11,7 @@ import Clash.Prelude (withClockResetEnable)
 -- Local
 import Bittide.Axi4
 import Bittide.DoubleBufferedRam
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.Wishbone
@@ -101,15 +102,28 @@ dut =
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    let
+      binName = "axi_stream_self_test"
+      buildType = Release
+      runBuild = buildRustTarget root binName buildType
+      elfPath = root </> firmwareBinariesDir "riscv32imc" buildType </> binName
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
+        , initI =
+            Just
+              $ Vec
+              $ unsafePerformIO
+              $ runBuild
+              >> vecFromElfInstr BigEndian elfPath
+        , initD =
+            Just
+              $ Vec
+              $ unsafePerformIO
+              $ runBuild
+              >> vecFromElfData BigEndian elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

@@ -13,6 +13,7 @@ import Bittide.DoubleBufferedRam (
   wbStorage,
  )
 import Bittide.Instances.Domains (Basic50)
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement (
   PeConfig (..),
   processingElement,
@@ -87,7 +88,10 @@ dutWithBinary binaryName =
 
   peConfig binary = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> binary
+    let
+      buildType = Release
+      runBuild = buildRustTarget root binary buildType
+      elfPath = root </> firmwareBinariesDir "riscv32imc" buildType </> binary
     pure
       PeConfig
         { cpu = vexRiscv0
@@ -97,12 +101,14 @@ dutWithBinary binaryName =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ runBuild
+              >> vecFromElfInstr BigEndian elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ runBuild
+              >> vecFromElfData BigEndian elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

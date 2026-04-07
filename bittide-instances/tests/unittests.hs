@@ -9,10 +9,9 @@ import Prelude
 
 import Data.String.Interpolate (i)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
-import System.IO.Unsafe (unsafePerformIO)
 import System.Process (cwd, proc, readCreateProcessWithExitCode, readProcess)
 import Test.Tasty
-import Test.Tasty.HUnit (assertFailure, testCase)
+import Test.Tasty.HUnit (assertFailure)
 import "extra" Data.List.Extra (trim)
 
 import qualified Df.ElasticBufferWb as ElasticBufferWb
@@ -64,11 +63,6 @@ tests =
     "bittide-instances"
     AllSucceed
     [ testGroup
-        "Build Rust crates"
-        [ testCase "release" (run "./cargo.sh" ["build", "--release"] (Just gitRoot))
-        , testCase "debug" (run "./cargo.sh" ["build"] (Just gitRoot))
-        ]
-    , testGroup
         "Unittests"
         [ AddressableBytesWb.tests
         , Axi.tests
@@ -89,8 +83,6 @@ tests =
         , WbToDf.tests
         ]
     ]
- where
-  gitRoot = unsafePerformIO getGitRoot
 
 main :: IO ()
 main = defaultMain tests

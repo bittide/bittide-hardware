@@ -35,6 +35,7 @@ import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
@@ -149,16 +150,28 @@ dut =
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "clock-control-wb"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+      binName = "clock-control-wb"
+      buildType = Release
+      runBuild = buildRustTarget root binName buildType
+      elfDir = root </> firmwareBinariesDir "riscv32imc" buildType
+      elfPath = elfDir </> binName
     pure
       PeConfig
         { cpu = vexRiscv0
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
+        , initI =
+            Just
+              $ Vec
+              $ unsafePerformIO
+              $ runBuild
+              >> vecFromElfInstr BigEndian elfPath
+        , initD =
+            Just
+              $ Vec
+              $ unsafePerformIO
+              $ runBuild
+              >> vecFromElfData BigEndian elfPath
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
