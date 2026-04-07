@@ -17,6 +17,7 @@ import Vivado.VivadoM
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.SwitchDemo.Driver (initGdb, initPicocom, parseTapInfo)
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -42,6 +43,8 @@ driverFunc _name targets = do
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build" </> "hitl"
+
+  liftIO $ buildRustTarget projectDir "clock-board" Release
 
   let
     expectedJtagIds = [0x0514C001]

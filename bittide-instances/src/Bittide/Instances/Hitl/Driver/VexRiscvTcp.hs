@@ -7,6 +7,7 @@ module Bittide.Instances.Hitl.Driver.VexRiscvTcp where
 import Prelude
 
 import Bittide.Hitl
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.Instances.Hitl.Utils.Program
 
 import Control.Concurrent
@@ -69,6 +70,8 @@ driverFunc ::
   VivadoM ExitCode
 driverFunc _name [d@(_, dI)] = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
+
+  liftIO $ buildRustTarget projectDir "smoltcp_client" Release
 
   let
     hitlDir = projectDir </> "_build" </> "hitl"

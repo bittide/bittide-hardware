@@ -209,6 +209,11 @@ driver testName targets = do
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
 
+  -- Build necessary binaries
+  liftIO $ buildRustTarget projectDir "clock-control" Release
+  liftIO $ buildRustTarget projectDir "switch-demo1-boot" Release
+  liftIO $ buildRustTarget projectDir "switch-demo1-mu" Release
+
   let
     hitlDir = projectDir </> "_build/hitl" </> testName
 

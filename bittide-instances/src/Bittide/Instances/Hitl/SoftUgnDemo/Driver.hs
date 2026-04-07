@@ -52,6 +52,10 @@ driver testName targets = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build/hitl" </> testName
 
+  liftIO $ buildRustTarget projectDir "switch-demo1-boot" Release
+  liftIO $ buildRustTarget projectDir "clock-control" Release
+  liftIO $ buildRustTarget projectDir "soft-ugn-mu" Release
+
   forM_ targets (assertProbe "probe_test_start")
 
   let

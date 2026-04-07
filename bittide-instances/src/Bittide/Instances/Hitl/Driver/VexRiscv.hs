@@ -16,6 +16,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
+import Bittide.Instances.Hitl.Utils.Driver (buildRustTarget)
 import Bittide.Instances.Hitl.Utils.Program
 
 import Control.Concurrent (threadDelay)
@@ -56,6 +57,8 @@ driverFunc _name targets = do
       pure $ ExitFailure 2
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
+
+  liftIO $ buildRustTarget projectDir "vexriscv-hello" Release
 
   exitCodes <- forM (L.zip [0 ..] targets) $ \(targetIndex, (hwT, deviceInfo)) -> handle (liftIO . catchError deviceInfo) $ do
     liftIO $ putStrLn $ "Running driver for " <> deviceInfo.deviceId
