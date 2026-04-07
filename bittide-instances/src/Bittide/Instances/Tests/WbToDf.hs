@@ -97,12 +97,12 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ vecFromElfInstr elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ vecFromElfData elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

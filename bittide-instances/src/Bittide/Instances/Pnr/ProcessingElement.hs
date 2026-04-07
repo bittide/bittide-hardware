@@ -9,7 +9,6 @@ import Clash.Prelude
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Clash.Annotations.TH
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.UART (ValidBaud)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
@@ -70,12 +69,12 @@ vexRiscvUartHelloC baudSnat = withLittleEndian $ circuit $ \(mm, (uartRx, jtag))
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr @IMemWords BigEndian elfPath
+              $ vecFromElfInstr @IMemWords elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData @DMemWords BigEndian elfPath
+              $ vecFromElfData @DMemWords elfPath
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , includeIlaWb = False

@@ -12,7 +12,6 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import qualified Prelude as P
 
 import Bittide.ElasticBuffer (ElasticBufferData (Data))
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal.Internal
 import Data.Char
 import Data.Maybe
@@ -105,7 +104,7 @@ dut eb localCounter = withLittleEndian $ circuit $ do
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0

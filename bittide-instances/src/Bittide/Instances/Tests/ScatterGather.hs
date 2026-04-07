@@ -6,7 +6,6 @@ module Bittide.Instances.Tests.ScatterGather where
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
@@ -89,12 +88,12 @@ dutWithBinary binaryName = withLittleEndian $ circuit $ \mm -> do
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ vecFromElfInstr elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ vecFromElfData elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

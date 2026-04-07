@@ -14,7 +14,7 @@ import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Project.FilePath
 
-import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
+import Clash.Class.BitPackC (BitPackC)
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap (Mm)
@@ -61,12 +61,12 @@ dutCpu = withLittleEndian $ circuit $ \mm -> do
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ vecFromElfInstr elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ vecFromElfData elfPath
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False

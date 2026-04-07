@@ -11,7 +11,6 @@ import Bittide.ProcessingElement.DeviceTreeCompiler
 import Bittide.ProcessingElement.ReadElf
 import Bittide.SharedTypes
 
-import Clash.Class.BitPackC (ByteOrder (..))
 import Control.Monad (when)
 import Data.Maybe
 import GHC.Stack
@@ -46,8 +45,6 @@ padToSize name (Just s) a xs
 vecsFromElf ::
   forall nInstrWords nDataWords.
   (HasCallStack, KnownNat nDataWords, KnownNat nInstrWords) =>
-  -- | How the words should be ordered
-  ByteOrder ->
   -- | Source file, assumed to be Little Endian.
   FilePath ->
   -- | Optional tuple of starting address and filepath to a device tree.
@@ -57,11 +54,11 @@ vecsFromElf ::
     ( Vec nInstrWords (BitVector 32)
     , Vec nDataWords (BitVector 32)
     )
-vecsFromElf byteOrder elfPath maybeDeviceTree = do
+vecsFromElf elfPath maybeDeviceTree = do
   (iMemIntMap, dMemIntMap) <- getBytesMems elfPath maybeDeviceTree
   let
-    (_iStartAddr, _, iList) = extractIntMapData byteOrder iMemIntMap
-    (_dStartAddr, _, dList) = extractIntMapData byteOrder dMemIntMap
+    (_iStartAddr, _, iList) = extractIntMapData iMemIntMap
+    (_dStartAddr, _, dList) = extractIntMapData dMemIntMap
     iListPadded = padToSize "Instruction memory" (Just (natToNum @nInstrWords)) 0 iList
     dListPadded = padToSize "Data memory" (Just (natToNum @nInstrWords)) 0 dList
 
@@ -71,16 +68,14 @@ vecsFromElf byteOrder elfPath maybeDeviceTree = do
 vecFromElfData ::
   forall nWords.
   (HasCallStack, KnownNat nWords) =>
-  -- | How the words should be ordered
-  ByteOrder ->
   -- | Source file, assumed to be Little Endian.
   FilePath ->
   -- | Data memory
   IO (Vec nWords (BitVector 32))
-vecFromElfData byteOrder elfPath = do
+vecFromElfData elfPath = do
   (_iMemIntMap, dMemIntMap) <- getBytesMems elfPath Nothing
   let
-    (_dStartAddr, _, dList) = extractIntMapData byteOrder dMemIntMap
+    (_dStartAddr, _, dList) = extractIntMapData dMemIntMap
     dListPadded = padToSize "Data memory" (Just (natToNum @nWords)) 0 dList
 
   pure (unsafeFromList dListPadded)
@@ -89,16 +84,14 @@ vecFromElfData byteOrder elfPath = do
 vecFromElfInstr ::
   forall nWords.
   (HasCallStack, KnownNat nWords) =>
-  -- | How the words should be ordered
-  ByteOrder ->
   -- | Source file, assumed to be Little Endian.
   FilePath ->
   -- | Instruction memory
   IO (Vec nWords (BitVector 32))
-vecFromElfInstr byteOrder elfPath = do
+vecFromElfInstr elfPath = do
   (iMemIntMap, _dMemIntMap) <- getBytesMems elfPath Nothing
   let
-    (_iStartAddr, _, iList) = extractIntMapData byteOrder iMemIntMap
+    (_iStartAddr, _, iList) = extractIntMapData iMemIntMap
     iListPadded = padToSize "Instruction memory" (Just (natToNum @nWords)) 0 iList
 
   pure (unsafeFromList iListPadded)
@@ -143,7 +136,6 @@ if the IntMap is empty.
 -}
 extractIntMapData ::
   (HasCallStack) =>
-  ByteOrder ->
   -- | IntMap
   I.IntMap (BitVector 8) ->
   -- |
@@ -151,13 +143,9 @@ extractIntMapData ::
   -- 2. Size
   -- 3. List of words
   (BitVector 32, Int, [Bytes 4])
-extractIntMapData byteOrder dataMap =
-  (resize . bitCoerce $ startAddr, size, combineFunction content)
+extractIntMapData dataMap =
+  (resize . bitCoerce $ startAddr, size, toWords content)
  where
-  combineFunction
-    | LittleEndian <- byteOrder = toWordsLinear
-    | BigEndian <- byteOrder = toWordsSwapped
-
   (ordListHead, ordListTail) = case I.toAscList dataMap of
     [] -> error "extractIntMapData: IntMap is empty"
     (x : xs) -> (x, xs)
@@ -175,19 +163,18 @@ extractIntMapData byteOrder dataMap =
      in
       padding L.++ (val : flattenContent nextAddr vals)
 
-  toWordsLinear :: [Bytes 1] -> [Bytes 4]
-  toWordsLinear [] = []
-  toWordsLinear [!a] = [bitCoerce (a, 0 :: Bytes 3)]
-  toWordsLinear [!a, !b] = [bitCoerce (a, b, 0 :: Bytes 2)]
-  toWordsLinear [!a, !b, !c] = [bitCoerce (a, b, c, 0 :: Bytes 1)]
-  toWordsLinear ((!a) : (!b) : (!c) : (!d) : rest) = bitCoerce (a, b, c, d) : toWordsLinear rest
-
-  toWordsSwapped :: [Bytes 1] -> [Bytes 4]
-  toWordsSwapped [] = []
-  toWordsSwapped [!a] = [bitCoerce (a, 0 :: Bytes 3)]
-  toWordsSwapped [!a, !b] = [bitCoerce (b, a, 0 :: Bytes 2)]
-  toWordsSwapped [!a, !b, !c] = [bitCoerce (c, b, a, 0 :: Bytes 1)]
-  toWordsSwapped ((!a) : (!b) : (!c) : (!d) : rest) = bitCoerce (d, c, b, a) : toWordsSwapped rest
+  toWords :: [Bytes 1] -> [Bytes 4]
+  toWords [] = []
+  toWords [a] = toWords [a, 0, 0, 0]
+  toWords [a, b] = toWords [a, b, 0, 0]
+  toWords [a, b, c] = toWords [a, b, c, 0]
+  toWords (a : b : c : d : rest) =
+    -- Note the way we pack: this might seem counterintuitive, but it makes sure that the
+    -- lower addresses are packed into the lower bits.
+    let
+      !packed = pack (d, c, b, a)
+     in
+      packed : toWords rest
 
 -- | Given the filepath to a device tree, return the divce tree as list of `Byte`.
 readDeviceTree :: FilePath -> IO [Byte]

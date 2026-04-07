@@ -165,12 +165,12 @@ vexRiscvTestC =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr @IMemWords BigEndian elfPath
+              $ vecFromElfInstr @IMemWords elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData @DMemWords BigEndian elfPath
+              $ vecFromElfData @DMemWords elfPath
         , includeIlaWb = False
         }
   peConfigRtl =
