@@ -10,9 +10,23 @@ import Prelude
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (demoRigInfo)
 import Bittide.Instances.Hitl.Utils.Vivado
+import Control.Monad (unless)
 import Control.Monad.IO.Class
 import Data.Maybe (fromMaybe)
+import Data.String.Interpolate (i, __i)
 import GHC.Stack (HasCallStack)
+import Project.FilePath (CargoBuildType (..))
+import System.Environment (getEnvironment)
+import System.Exit (ExitCode (ExitSuccess))
+import System.FilePath ((</>))
+import System.IO (hGetContents)
+import System.Process (
+  CreateProcess (..),
+  StdStream (CreatePipe),
+  createProcess,
+  shell,
+  waitForProcess,
+ )
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
@@ -83,3 +97,41 @@ awaitHandshakes targets = do
         then return ()
         else inner new
   inner innerInit
+
+buildRustTarget :: FilePath -> FilePath -> CargoBuildType -> IO ()
+buildRustTarget baseDir binName build = do
+  let
+    buildArg = case build of
+      Debug -> ""
+      Release -> "--release"
+
+  currentEnv <- getEnvironment
+
+  (_rustStdin, rustStdoutH, rustStderrH, rustProc) <-
+    createProcess $
+      (shell [i|cd #{baseDir </> "firmware-binaries"}; cargo build #{buildArg} --bin="#{binName}"|])
+        { env = Just currentEnv
+        , std_in = CreatePipe
+        , std_err = CreatePipe
+        , std_out = CreatePipe
+        }
+
+  rustProcExit <- waitForProcess rustProc
+
+  unless (rustProcExit == ExitSuccess) $ do
+    rustStdout <- case rustStdoutH of
+      Just h -> hGetContents h
+      _ -> return ""
+    rustStderr <- case rustStderrH of
+      Just h -> hGetContents h
+      _ -> return ""
+    let indentString = concatMap (\c -> if c == '\n' then "\n  " else [c])
+    error
+      [__i|
+        Failed to build Rust binary!
+        exit code: #{rustProcExit}
+        stdout:
+        #{indentString rustStdout}
+        stderr:
+        #{indentString rustStderr}
+      |]
