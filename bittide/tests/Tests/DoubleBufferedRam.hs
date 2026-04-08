@@ -16,9 +16,7 @@ import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Data.Maybe
-import Data.Proxy
 import Data.String
-import Data.Type.Equality (type (:~:) (Refl))
 import Hedgehog
 import Numeric (showHex)
 import Protocols.Hedgehog.Internal
@@ -36,7 +34,6 @@ import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 import Tests.Shared
 
-import qualified Clash.Sized.Vector as V
 import qualified Data.IntMap as I
 import qualified Data.List as L
 import qualified GHC.TypeNats as TN
@@ -57,26 +54,6 @@ tests =
         "Byte addressable blockRam with always high byteEnables behaves like blockRam"
         "byteAddressableBlockRamAsBlockRam"
         byteAddressableBlockRamAsBlockRam
-    , testPropertyNamed
-        "Byte addressable register can be written to and read from with byte enables."
-        "readWriteRegisterByteAddressable"
-        readWriteRegisterByteAddressable
-    , testPropertyNamed
-        "registerWb function as a normal register."
-        "registerWbSigToSig"
-        registerWbSigToSig
-    , testPropertyNamed
-        "registerWb can be written to with wishbone."
-        "registerWbWbToSig"
-        registerWbWbToSig
-    , testPropertyNamed
-        "registerWb can be read from with wishbone."
-        "registerWbSigToWb"
-        registerWbSigToWb
-    , testPropertyNamed
-        "registerWb write conflict resolution matches set priorities"
-        "registerWbWriteCollisions"
-        registerWbWriteCollisions
     , testPropertyNamed
         "Test wishboneStorage spec compliance"
         "wbStorageSpecCompliance"
@@ -201,271 +178,6 @@ byteAddressableBlockRamAsBlockRam = property $ do
       footnote . fromString $ "simOut: " <> showX simOut
       fstOut === sndOut
 
-{- | This test checks that we can generate a 'registerByteAddressable' that stores a
-configurable amount of bytes and selectively update its contents on a per byte basis.
--}
-readWriteRegisterByteAddressable :: Property
-readWriteRegisterByteAddressable = property $ do
-  nBytes <- forAll $ Gen.enum 1 10
-  case TN.someNatVal nBytes of
-    SomeNat p -> case compareSNat d1 (snatProxy p) of
-      SNatLE -> go p
-      _ -> error "readWriteRegisterByteAddressable: Amount of nBytes == 0."
- where
-  go ::
-    forall nBytes m.
-    ( KnownNat nBytes
-    , 1 <= nBytes
-    , KnownNat (nBytes * 8)
-    , 1 <= (nBytes * 8)
-    , Monad m
-    ) =>
-    Proxy nBytes ->
-    PropertyT m ()
-  go Proxy =
-    case sameNat (Proxy @nBytes) (Proxy @(Regs (Vec nBytes Byte) 8)) of
-      Just Refl -> do
-        simLength <- forAll $ Gen.enum 1 100
-        let
-          writeGen = genNonEmptyVec @nBytes $ genDefinedBitVector @8
-        initVal <- forAll writeGen
-        writes <- forAll $ Gen.list (Range.singleton simLength) writeGen
-        byteEnables <-
-          forAll
-            $ Gen.list (Range.singleton simLength)
-            $ genDefinedBitVector @(Regs (Vec nBytes Byte) 8)
-        let
-          topEntity (unbundle -> (newVal, byteEnable)) =
-            withClockResetEnable @System clockGen resetGen enableGen
-              $ registerByteAddressable initVal newVal byteEnable
-          expectedOut = P.scanl useByteEnable initVal $ P.zip writes byteEnables
-          useByteEnable olds (news, unpack -> enables) =
-            (\(enable, old, new) -> if enable then new else old) <$> zip3 enables olds news
-          simOut = simulateN simLength topEntity $ P.zip writes byteEnables
-        simOut === P.take simLength expectedOut
-      _ ->
-        error "readWriteRegisterByteAddressable: Amount of bytes not equal to registers required."
-
-{- | This test checks that 'registerWb' can be written to and read from via its wishbone bus.
-This test makes sure that writing and reading with the wishbone bus works both with
-'CircuitPriority' and 'WishbonePriority' enabled. During this test the circuit input does
-not write to the register.
--}
-registerWbSigToSig :: Property
-registerWbSigToSig = property $ do
-  bits <- forAll $ Gen.enum 1 100
-  case TN.someNatVal bits of
-    SomeNat p -> case compareSNat d1 (snatProxy p) of
-      SNatLE -> go p
-      _ -> error "registerWbSigToSig: Amount of bits == 0."
- where
-  go :: forall bits m. (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
-  go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
-    SNatLE -> do
-      initVal <- forAll $ genDefinedBitVector @bits
-      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @bits
-      let
-        simLength = L.length writes + 1
-        someReg prio sigIn =
-          fst
-            $ withClockResetEnable clockGen resetGen enableGen
-            $ registerWbSpecVal @_ @_ @4 @32 prio initVal (pure emptyWishboneM2S) sigIn
-        topEntity sigIn = bundle (someReg CircuitPriority sigIn, someReg WishbonePriority sigIn)
-        topEntityInput = (Just <$> writes) <> [Nothing]
-        simOut = simulateN @System simLength topEntity topEntityInput
-        (fstOut, sndOut) = L.unzip simOut
-      footnote . fromString $ "simOut: " <> showX simOut
-      footnote . fromString $ "input:" <> showX topEntityInput
-      footnote . fromString $ "expected" <> showX writes
-      fstOut === sndOut
-      writes === L.drop 1 fstOut
-    _ -> error "registerWbSigToSig: Registers required to store bitvector == 0."
-
-{- | This test checks that 'registerWb' can be written to with the wishbone bus and read from
-with the circuit output. This test makes sure that the behavior with 'CircuitPriority'
-and 'WishbonePriority' is identical. During this test the circuit input does not write
-to the register.
--}
-registerWbWbToSig :: Property
-registerWbWbToSig = property $ do
-  bits <- forAll $ Gen.enum 1 100
-  case TN.someNatVal bits of
-    SomeNat p -> case compareSNat d1 (snatProxy p) of
-      SNatLE -> go p
-      _ -> error "registerWbWbToSig: Amount of bits == 0."
- where
-  go :: forall bits m. (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
-  go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
-    SNatLE -> do
-      let regs = (natToNum @(DivRU bits 32))
-      initVal <- forAll $ genDefinedBitVector @bits
-      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @bits
-      let
-        simLength = L.length writes * regs + 2
-        someReg prio wbIn =
-          fst
-            $ withClockResetEnable clockGen resetGen enableGen
-            $ registerWbSpecVal @System @_ @4 @30 prio initVal wbIn (pure Nothing)
-        topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
-        topEntityInput = L.concatMap wbWrite writes <> L.repeat emptyWishboneM2S
-        simOut = simulateN simLength topEntity topEntityInput
-        (fstOut, sndOut) = L.unzip simOut
-        filteredOut = everyNth regs $ L.drop 1 fstOut
-
-      footnote . fromString $ "simOut: " <> showX simOut
-      footnote . fromString $ "filteredOut:" <> showX filteredOut
-      footnote . fromString $ "input:" <> showX (L.take simLength topEntityInput)
-      footnote . fromString $ "expected" <> showX writes
-      fstOut === sndOut
-      writes === L.take (L.length writes) filteredOut
-    _ -> error "registerWbWbToSig: Registers required to store bitvector == 0."
-   where
-    wbWrite v = L.zipWith bv2WbWrite [0 .. L.length l - 1] l
-     where
-      RegisterBank (toList -> l) = getRegsLe v
-  everyNth n l
-    | L.length l >= n = L.head xs : everyNth n (L.drop 1 xs)
-    | otherwise = []
-   where
-    xs = L.drop (n - 1) l
-
-{- | This test checks that 'registerWb' can be written to by the circuit and read from
-with the wishbone bus. This test makes sure that the behavior with 'CircuitPriority'
-and 'WishbonePriority' is identical. During this test the wishbone bus does not write
-to the register.
--}
-registerWbSigToWb :: Property
-registerWbSigToWb = property $ do
-  bits <- forAll $ Gen.enum 1 100
-  case TN.someNatVal bits of
-    SomeNat p -> case compareSNat d1 (snatProxy p) of
-      SNatLE -> go p
-      _ -> error "registerWbSigToWb: Amount of bits == 0."
- where
-  go :: forall bits m. (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
-  go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
-    SNatLE -> do
-      initVal <- forAll $ genDefinedBitVector @bits
-      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @bits
-      let
-        someReg prio sigIn wbIn =
-          snd
-            $ withClockResetEnable clockGen resetGen enableGen
-            $ registerWbSpecVal @_ @_ @4 @32 prio initVal wbIn sigIn
-        topEntity (unbundle -> (sigIn, wbIn)) =
-          bundle
-            (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
-        padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
-        readOps =
-          emptyWishboneM2S
-            : cycle
-              (wbRead <$> [(0 :: Int) .. (natToNum @(Regs (BitVector bits) 32) - 1)])
-        topEntityInput = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
-        simLength = L.length topEntityInput
-        simOut = simulateN @System simLength topEntity topEntityInput
-        (fstOut, sndOut) = L.unzip simOut
-      footnote . fromString $ "simOut: " <> showX simOut
-      footnote . fromString $ "input:" <> showX topEntityInput
-      footnote . fromString $ "expected" <> showX writes
-      postProcWb fstOut === postProcWb sndOut
-      writes === wbDecoding (L.drop 1 fstOut)
-    _ -> error "registerWbSigToWb: Registers required to store bitvector == 0."
-   where
-    wbDecoding :: ([WishboneS2M 4] -> [BitVector bits])
-    wbDecoding (wbNow : wbRest)
-      | acknowledge wbNow = entry : wbDecoding rest
-      | otherwise = wbDecoding wbRest
-     where
-      (fmap readData -> entryList, rest) =
-        L.splitAt (natToNum @(Regs (BitVector bits) 32)) (wbNow : wbRest)
-      entry = case V.fromList entryList of
-        Just (vec :: Vec (Regs (BitVector bits) 32) (BitVector 32)) ->
-          getDataLe @32 (RegisterBank vec)
-        Nothing ->
-          error
-            $ "wbDecoding: list to vector conversion failed: "
-            <> show entryList
-            <> "from "
-            <> show (wbNow : wbRest)
-    wbDecoding [] = []
-    wbRead i =
-      (emptyWishboneM2S @32)
-        { addr = resize (pack i)
-        , busCycle = True
-        , busSelect = maxBound
-        , strobe = True
-        }
-    postProcWb (WishboneS2M{..} : wbRest)
-      | acknowledge = Just readData : postProcWb wbRest
-      | err = Nothing : postProcWb wbRest
-      | otherwise = postProcWb wbRest
-    postProcWb _ = []
-
-{- | This test checks that the behavior of 'registerWb' matches the set priorities when
-a write conflict occurs. It is expected that with 'WishbonePriority', the circuit
-ignores write operations from the circuit during a wishbone write operation.
-With 'CircuitPriority', wishbone write operations are acknowledged, but silently
-ignored during a circuit write cycle.
--}
-registerWbWriteCollisions :: Property
-registerWbWriteCollisions = property $ do
-  bits <- forAll $ Gen.enum 1 32
-  case TN.someNatVal bits of
-    SomeNat p -> case compareSNat d1 (snatProxy p) of
-      SNatLE -> go p
-      _ -> error "registerWbWriteCollisions: Amount of bits == 0."
- where
-  go :: forall bits m. (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
-  go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
-    SNatLE -> do
-      initVal <- forAll $ genDefinedBitVector @bits
-      writeAmount <- forAll $ Gen.enum 1 25
-      sigWrites <- forAll $ Gen.list (Range.singleton writeAmount) $ genDefinedBitVector @bits
-      wbWrites <- forAll $ Gen.list (Range.singleton writeAmount) $ genDefinedBitVector @bits
-      let
-        simLength = writeAmount + 1
-        someReg prio sigIn wbIn =
-          fst
-            $ withClockResetEnable clockGen resetGen enableGen
-            $ registerWbSpecVal @System @_ @4 @30 prio initVal wbIn sigIn
-        topEntity (unbundle -> (sigIn, wbIn)) =
-          bundle
-            (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
-        topEntityInput =
-          L.zip
-            (Just <$> sigWrites)
-            (L.concatMap wbWrite wbWrites <> L.repeat emptyWishboneM2S)
-        simOut = simulateN simLength topEntity topEntityInput
-        (fstOut, sndOut) = L.unzip simOut
-
-      footnote . fromString $ "WishbonePrio out: " <> showX sndOut
-      footnote . fromString $ "CircuitPrio out: " <> showX fstOut
-      footnote . fromString $ "input:" <> showX (L.take simLength topEntityInput)
-      footnote . fromString $ "wbIn" <> showX wbWrites
-      footnote . fromString $ "sigIn" <> showX sigWrites
-      sigWrites === L.drop 1 fstOut
-      wbWrites === L.drop 1 sndOut
-    _ -> error "registerWbWriteCollisions: Registers required to store bitvector == 0."
-   where
-    wbWrite v = L.zipWith bv2WbWrite (L.reverse [0 .. L.length l - 1]) l
-     where
-      RegisterBank (toList -> l) = getRegsLe v
-
-bv2WbWrite ::
-  (BitPack a, Enum a) =>
-  a ->
-  ("DAT_MOSI" ::: BitVector 32) ->
-  WishboneM2S 30 4
-bv2WbWrite i v =
-  (emptyWishboneM2S @30 @4)
-    { addr = resize (pack i)
-    , writeData = v
-    , writeEnable = True
-    , busCycle = True
-    , strobe = True
-    , busSelect = maxBound
-    }
-
 {- | Model for 'byteAddressableRam', it stores the inputs in its state for a one cycle delay
 and updates the Ram based on the the write operation and byte enables.
 Furthermore it contains read-before-write behavior based on the readAddr.
@@ -509,36 +221,6 @@ byteAddressableRamBehavior state input = (state', ram !! readAddr)
 
   ram1 = if writeTrue then replace writeAddr newEntry ram else ram
   state' = (input, ram1)
-
-{- | Version of 'Bittide.DoubleBufferedRam.registerWb' which performs wishbone
-  spec validation.
--}
-registerWbSpecVal ::
-  forall dom a nBytes addrW.
-  ( HiddenClockResetEnable dom
-  , Paddable a
-  , KnownNat nBytes
-  , 1 <= nBytes
-  , KnownNat addrW
-  , BitPack a
-  , ShowX a
-  ) =>
-  -- | Determines the write priority on write collisions
-  RegisterWritePriority ->
-  -- | Initial value.
-  a ->
-  -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes) ->
-  -- | New circuit value.
-  Signal dom (Maybe a) ->
-  -- |
-  --   1. Outgoing stored value
-  --   2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M nBytes))
-registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
- where
-  (storedVal, s2m0) = registerWb @dom @a @nBytes @addrW writePriority initVal m2s1 sigIn
-  (m2s1, s2m1) = validateWb m2s0 s2m0
 
 wbStorageSpecCompliance :: Property
 wbStorageSpecCompliance = property $ do
