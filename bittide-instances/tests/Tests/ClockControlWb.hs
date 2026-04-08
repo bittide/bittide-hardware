@@ -11,7 +11,6 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 -- external imports
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
@@ -151,7 +150,7 @@ dut =
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Release
       elfPath = elfDir </> "clock-control-wb"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       PeConfig
         { cpu = vexRiscv0

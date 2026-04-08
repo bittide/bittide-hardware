@@ -29,7 +29,7 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
-import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
+import Clash.Class.BitPackC (ByteOrder (LittleEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols
@@ -97,12 +97,12 @@ dutWithBinary binaryName =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ vecFromElfInstr elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ vecFromElfData elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

@@ -30,7 +30,7 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Sized.Vector.Extra
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
@@ -89,12 +89,12 @@ peConfig = unsafePerformIO $ do
           Just
             $ Vec @IMemWords
             $ unsafePerformIO
-            $ vecFromElfInstr BigEndian elfPath
+            $ vecFromElfInstr elfPath
       , initD =
           Just
             $ Vec @DMemWords
             $ unsafePerformIO
-            $ vecFromElfData BigEndian elfPath
+            $ vecFromElfData elfPath
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = False

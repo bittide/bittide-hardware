@@ -9,7 +9,6 @@ module Wishbone.DnaPortE2 where
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Data.Char
 import Data.Maybe
@@ -72,7 +71,7 @@ dut = withLittleEndian $ circuit $ \_unit -> do
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "dna_port_e2_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0

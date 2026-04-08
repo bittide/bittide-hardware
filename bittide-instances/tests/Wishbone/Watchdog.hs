@@ -19,7 +19,6 @@ import Bittide.Wishbone
 import Project.FilePath
 
 -- Other
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Data.Char
 import Data.Maybe
 import Protocols
@@ -89,7 +88,7 @@ dut = withLittleEndian
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "watchdog_test"
 
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       $ PeConfig
         { cpu = Riscv32imc.vexRiscv0

@@ -13,7 +13,6 @@ import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
-import Clash.Class.BitPackC
 import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
@@ -89,12 +88,12 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
             Just
               $ Vec @IMemWords
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ vecFromElfInstr elfPath
         , initD =
             Just
               $ Vec @DMemWords
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ vecFromElfData elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

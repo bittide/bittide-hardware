@@ -32,7 +32,6 @@ import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 
 import Project.FilePath (
   CargoBuildType (Release),
@@ -172,13 +171,13 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
             Just
               ( Vec
                   $ unsafePerformIO
-                  $ vecFromElfInstr @IMemWords BigEndian elfPath
+                  $ vecFromElfInstr @IMemWords elfPath
               )
         , initD =
             Just
               ( Vec
                   $ unsafePerformIO
-                  $ vecFromElfData @DMemWords BigEndian elfPath
+                  $ vecFromElfData @DMemWords elfPath
               )
         , iBusTimeout = d0
         , dBusTimeout = d0

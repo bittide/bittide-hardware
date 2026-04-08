@@ -18,7 +18,6 @@ import Project.FilePath
 
 -- Other
 import Bittide.SharedTypes (withLittleEndian)
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Control.Monad (forM_)
 import Data.Char
 import Data.Maybe
@@ -102,7 +101,7 @@ dut =
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0

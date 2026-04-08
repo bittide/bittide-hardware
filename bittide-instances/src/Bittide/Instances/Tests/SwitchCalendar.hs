@@ -16,7 +16,6 @@ import Bittide.ProcessingElement.Util (
  )
 import Bittide.SharedTypes
 import Bittide.Wishbone hiding (MemoryMap)
-import Clash.Class.BitPackC
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Data.Char
@@ -85,12 +84,12 @@ dut =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfInstr BigEndian elfPath
+              $ vecFromElfInstr elfPath
         , initD =
             Just
               $ Vec
               $ unsafePerformIO
-              $ vecFromElfData BigEndian elfPath
+              $ vecFromElfData elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

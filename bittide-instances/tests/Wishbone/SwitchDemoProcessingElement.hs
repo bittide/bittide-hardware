@@ -7,7 +7,6 @@ module Wishbone.SwitchDemoProcessingElement where
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Data.Char (chr)
 import Data.List (isPrefixOf)
 import Data.Maybe (catMaybes)
@@ -105,7 +104,7 @@ dut dnaA dnaB = withLittleEndian $ circuit $ do
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Release
       elfPath = elfDir </> "switch_demo_pe_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0

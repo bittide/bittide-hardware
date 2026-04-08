@@ -17,7 +17,6 @@ import Bittide.Wishbone
 import Project.FilePath
 
 -- Other
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Control.Monad (forM_, when)
 import Data.Char
 import Data.List (isInfixOf)
@@ -77,7 +76,7 @@ dut = withLittleEndian
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "time_self_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0
@@ -161,7 +160,7 @@ dutC = withLittleEndian
   peConfigC = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "c_timer_wb"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0
