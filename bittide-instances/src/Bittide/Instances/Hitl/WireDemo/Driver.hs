@@ -57,8 +57,12 @@ type StartDelay = 10 -- seconds
 
 {- | The delay in clock cycles between 2 PEs which is not accounted for by the
 `captureUgn` component.
+
+For the wire demo this delay is 1 cycle, caused by the 'dflipflop' at the output of
+'core', which is _before_ the 'sendUgn' component and therefore not accounted for in the
+captured UGN.
 -}
-type InternalDelay = 0
+type InternalDelay = 1
 
 {- | Collect the configuration for the 'wireDemoPeConfig' and the 'programmableMux' in
 a single data structure for easier schedule generation.
