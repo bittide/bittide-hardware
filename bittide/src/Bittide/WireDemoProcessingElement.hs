@@ -83,6 +83,7 @@ data PeState linkCount linkWidth = Read | Write (Index linkCount) (BitVector lin
 it samples from the link indicated by the config (or sources static 'dna'). In the second cycle,
 it writes 'value_read_in_first_cycle XOR fpga_dna_lsbs' to the link indicated by the config
 (or writes to link '0').
+Writes the local counter to all links by default, which is useful when debugging.
 -}
 wireDemoPe ::
   forall dom linkCount linkWidth.
@@ -95,6 +96,8 @@ wireDemoPe ::
   Reset dom ->
   -- | DNA value
   Signal dom (Maybe (BitVector 96)) ->
+  -- | Local counter
+  Signal dom (Unsigned 64) ->
   Circuit
     ( "LINKS_IN" ::: Vec linkCount (CSignal dom (BitVector linkWidth))
     , "READ_INDEX" ::: CSignal dom (Maybe (Index linkCount))
@@ -103,13 +106,13 @@ wireDemoPe ::
     ( "LINKS_OUT" ::: Vec linkCount (CSignal dom (BitVector linkWidth))
     , "WRITTEN_DATA" ::: CSignal dom (Maybe (BitVector linkWidth))
     )
-wireDemoPe rst maybeDna = Circuit go
+wireDemoPe rst maybeDna localCounter = Circuit go
  where
   go ((linksIn, readIndex_, writeIndex_), _) = ((repeat (), (), ()), (unbundle linksOut, writtenData))
    where
     (linksOut, writtenData) =
       withClockResetEnable hasClock rst enableGen
-        $ mealyB goMealy Read (bundle linksIn, readIndex_, writeIndex_, dnaLsbs)
+        $ mealyB goMealy Read (bundle linksIn, readIndex_, writeIndex_, dnaLsbs, localCounter)
     -- TODO: Do the `fromMaybe` at top level, so all components use the same default DNA value.
     dnaLsbs = resize . fromMaybe 0xDEADBEEF <$> maybeDna
 
@@ -119,18 +122,19 @@ wireDemoPe rst maybeDna = Circuit go
       , Maybe (Index linkCount)
       , Maybe (Index linkCount)
       , BitVector linkWidth
+      , Unsigned 64
       ) ->
       ( PeState linkCount linkWidth
       , ( Vec linkCount (BitVector linkWidth)
         , Maybe (BitVector linkWidth)
         )
       )
-    goMealy Read (links, readIndex, writeIndex, dna) =
+    goMealy Read (links, readIndex, writeIndex, dna, counter) =
       let nextState = case readIndex of
             Just rdIdx -> Write (fromMaybe 0 writeIndex) (links !! rdIdx `xor` dna)
             Nothing -> Write (fromMaybe 0 writeIndex) dna
-       in (nextState, (repeat 0, Nothing))
-    goMealy (Write writeIndex value) _ =
-      (Idle, (replace writeIndex value (repeat 0), Just value))
-    goMealy Idle _ =
-      (Idle, (repeat 0, Nothing))
+       in (nextState, (repeat (resize (pack counter)), Nothing))
+    goMealy (Write writeIndex value) (_, _, _, _, counter) =
+      (Idle, (replace writeIndex value (repeat (resize (pack counter))), Just value))
+    goMealy Idle (_, _, _, _, counter) =
+      (Idle, (repeat (resize (pack counter)), Nothing))

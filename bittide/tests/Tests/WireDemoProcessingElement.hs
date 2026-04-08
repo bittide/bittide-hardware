@@ -51,7 +51,7 @@ prop_WireDemoPe = H.property $ do
 
           Fwd c <- idC -< cntr
           (Fwd linksOut, writtenData) <-
-            wireDemoPe @_ @1 peReset maybeDna
+            wireDemoPe @_ @1 peReset maybeDna (pure 0)
               -< (Fwd (repeat c), Fwd readIndex, Fwd writeIndex)
           -- Since 'linkCount' is 1 there is only one link in the vector
           idC -< (Fwd (head linksOut), writtenData)

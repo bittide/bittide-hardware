@@ -244,7 +244,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable wireDemoPeConfig -< (peConfigBus, peWrittenData)
     (Fwd txsBl, peWrittenData) <-
       withClock bitClk
-        $ wireDemoPe businessLogicReset maybeDna
+        $ wireDemoPe businessLogicReset maybeDna localCounter
         -< (Fwd rxs2, readLinkI, writeLinkI)
     -- Stop business logic
 
