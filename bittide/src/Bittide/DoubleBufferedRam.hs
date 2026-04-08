@@ -7,14 +7,16 @@ module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
-import Protocols (Circuit, toSignals, (<|))
+import Protocols (Circuit, ToConstBwd, toSignals, (<|))
+import Protocols.MemoryMap (Mm, unMemmap)
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
+import Data.Constraint (Dict (Dict))
+import Data.Constraint.Nat.Lemmas (cancelMulDiv)
 import Data.Typeable
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (unMemmap)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   DeviceConfig (registered),
   addressableBytesWb,
@@ -62,20 +64,22 @@ initializedRam content rd wr = case content of
 allows for word aligned reads and writes.
 -}
 wbStorage ::
-  forall dom depth aw.
+  forall dom depth aw nBytes.
   ( HasCallStack
   , HiddenClockResetEnable dom
   , KnownNat aw
+  , KnownNat nBytes
+  , 1 <= nBytes
   , 1 <= depth
   ) =>
   String ->
   SNat depth ->
-  Maybe (ContentType depth (Bytes 4)) ->
-  Circuit (BitboneMm dom aw) ()
+  Maybe (ContentType depth (Bytes nBytes)) ->
+  Circuit (ToConstBwd Mm, Wishbone dom 'Standard aw nBytes) ()
 wbStorage memoryName SNat initContent =
   circuit $ \wbMm -> do
     [wb0] <- deviceWbI (deviceConfig memoryName){registered = False} -< wbMm
-    reqresp <- addressableBytesWb regConfig -< wb0
+    reqresp <- addressableBytesWb @depth regConfig -< wb0
     (reads, writes0) <- ReqResp.partitionEithers -< reqresp
     writes1 <- ReqResp.requests <| ReqResp.dropResponse 0 -< writes0
     _vecUnit <- ram -< (reads, writes1)
@@ -83,25 +87,25 @@ wbStorage memoryName SNat initContent =
  where
   regConfig = registerConfig "data"
   ram = ReqResp.fromBlockRamWithMask
-    $ case initContent of
-      Nothing ->
-        blockRamByteAddressableU
-      Just content ->
-        blockRamByteAddressable @_ @depth content
+    $ case (initContent, cancelMulDiv @(nBytes) @8) of
+      (Nothing, Dict) -> blockRamByteAddressableU
+      (Just content, Dict) -> blockRamByteAddressable @_ @depth content
 {-# OPAQUE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
 wbStorage' ::
-  forall dom depth aw.
+  forall dom depth aw nBytes.
   ( HiddenClockResetEnable dom
   , KnownNat aw
   , KnownNat depth
   , 1 <= depth
+  , KnownNat nBytes
+  , 1 <= nBytes
   ) =>
   SNat depth ->
-  Maybe (ContentType depth (Bytes 4)) ->
-  Signal dom (WishboneM2S aw 4) ->
-  Signal dom (WishboneS2M 4)
+  Maybe (ContentType depth (Bytes nBytes)) ->
+  Signal dom (WishboneM2S aw nBytes) ->
+  Signal dom (WishboneS2M nBytes)
 wbStorage' depth initContent wbIn =
   fst $ toSignals (unMemmap $ wbStorage "" depth initContent) (wbIn, ())
 

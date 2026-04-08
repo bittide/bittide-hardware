@@ -7,7 +7,7 @@ module Bittide.Instances.Tests.TimeWb where
 import Clash.Prelude
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam hiding (registerWb)
+import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)

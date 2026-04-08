@@ -259,7 +259,7 @@ wbStorageBehavior = property $ do
   go ::
     forall words m. (KnownNat words, 2 <= words, Monad m) => SNat words -> PropertyT m ()
   go depth@SNat = do
-    content <- forAll $ genVec @words genDefinedBitVector
+    content <- forAll $ genVec @words (genDefinedBitVector @32)
     wbRequests <-
       forAll
         $ Gen.list
@@ -273,8 +273,7 @@ wbStorageBehavior = property $ do
 
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
-      slave =
-        wcre $ unMemmap (wbStorage @System @_ @30 "" depth (Just (Vec content)))
+      slave = wcre $ unMemmap (wbStorage @System @_ @30 "" depth (Just (Vec content)))
       simTransactions = exposeWbTransactions (Just 1000) master slave
       goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
