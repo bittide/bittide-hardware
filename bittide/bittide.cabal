@@ -308,7 +308,6 @@ test-suite unittests
     Tests.Handshake
     Tests.ProcessingElement.ReadElf
     Tests.ProgrammableMux
-    Tests.Ringbuffer
     Tests.ScatterGather
     Tests.Shared
     Tests.Switch

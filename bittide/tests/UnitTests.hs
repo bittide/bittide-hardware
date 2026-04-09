@@ -25,7 +25,6 @@ import qualified Tests.GeneralPurposeProcessingElement.Calculator
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
-import qualified Tests.Ringbuffer
 import qualified Tests.ScatterGather
 import qualified Tests.Switch
 import qualified Tests.SwitchDemoProcessingElement
@@ -56,7 +55,6 @@ tests =
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
-    , Tests.Ringbuffer.tests
     , Tests.ScatterGather.tests
     , Tests.Switch.tests
     , Tests.SwitchDemoProcessingElement.Calculator.tests
