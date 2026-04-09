@@ -2,19 +2,23 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Tests.Protocols.Df.Extra where
 
 import Clash.Prelude
 
+import Clash.Cores.Xilinx.BlockRam (tdpbram)
 import Clash.Hedgehog.Sized.BitVector
+import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
+import Control.DeepSeq (NFData)
 import Data.Maybe
 import Data.String.Interpolate (i)
 import Hedgehog (Gen, Property, Range, assert, cover, footnote, forAll, (===))
 import Protocols
-import Protocols.Df.Extra (skid)
+import Protocols.Df.Extra (skid, tdpbramRamOp)
 import Protocols.Hedgehog (
   ExpectOptions (..),
   defExpectOptions,
@@ -307,6 +311,68 @@ splitWriteInBytes (Just (addr, writeData)) byteSelect =
 splitWriteInBytes Nothing _ = repeat Nothing
 
 -- End of shamelessly copied code from bittide
+
+deriving instance (NFData a) => NFData (RamOp addr a)
+deriving instance (ShowX a) => ShowX (RamOp addr a)
+deriving instance (Eq a) => Eq (RamOp addr a)
+
+-- | A helper function to extract the address from a 'RamOp'
+ramAddr :: RamOp addr a -> Maybe (Index addr)
+ramAddr (RamRead addr) = Just addr
+ramAddr (RamWrite addr _) = Just addr
+ramAddr _ = Nothing
+
+{- | Writes new memory contents to the blockram with byte enables, then reads it back
+uses even addresses on the left port and odd addresses on the right port to verify that both
+ports are working correctly.
+-}
+prop_fromDualPortedBramWithMask_writeRead :: Property
+prop_fromDualPortedBramWithMask_writeRead = H.property $ do
+  newValues <- forAll $ genVec @16 (genDefinedBitVector @32)
+  masks <- forAll $ genVec genDefinedBitVector
+  nWrites <- forAll $ genIndex Range.linearBounded
+  let
+    oldMem = repeat 0
+    newMem = zipWith3 mergeWithMask oldMem newValues masks
+    addresses = [0 .. nWrites]
+
+    -- First write old memory with full masks, then write new values with given masks
+    writeOps =
+      L.zipWith3
+        (\addr m d -> RamWrite addr (m, d))
+        (addresses <> addresses)
+        (L.replicate (L.length addresses) maxBound <> toList masks)
+        (L.replicate (L.length addresses) 0 <> toList newValues)
+
+    readOps = fmap RamRead addresses
+
+    -- Partition reads and writes based on address parity to ensure both ports are used.
+    (writeOpsLeft, writeOpsRight) = L.partition (even . fromJust . ramAddr) writeOps
+    (readOpsLeft, readOpsRight) = L.partition (even . fromJust . ramAddr) readOps
+    getReadResults (RamRead a : rest) = newMem !! a : getReadResults rest
+    getReadResults (_ : rest) = getReadResults rest
+    getReadResults [] = []
+    model (lefts, rights) = (getReadResults lefts, getReadResults rights)
+
+    dut ::
+      forall dom.
+      (HiddenClockResetEnable dom) =>
+      Circuit
+        (Df dom (RamOp 16 (BitVector 4, BitVector 32)), Df dom (RamOp 16 (BitVector 4, BitVector 32)))
+        (Df dom (BitVector 32), Df dom (BitVector 32))
+    dut =
+      Df.fromDualPortedBramWithMask
+        (tdpbramRamOp tdpbram hasClock hasClock)
+        hasClock
+        hasClock
+
+    top = exposeClockResetEnable @System dut
+
+  idWithModelSingleDomainT @System
+    defExpectOptions
+    (pure $ (writeOpsLeft <> readOpsLeft, writeOpsRight <> readOpsRight))
+    (\_ _ _ -> model)
+    top
 
 tests :: TestTree
 tests = $(testGroupGenerator)

@@ -9,6 +9,7 @@ import Data.Bifunctor (Bifunctor (..))
 import Data.Maybe
 import Data.String.Interpolate (i)
 import Data.Typeable (Typeable)
+import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Df (forceResetSanity)
 
@@ -74,6 +75,115 @@ skid = Circuit go
 
 ackWhen :: Signal dom Bool -> Circuit (Df dom a) ()
 ackWhen canDrop = Circuit $ \_ -> (Ack <$> canDrop, ())
+
+-- | Creates a wrapper around `tdpbram` to make it work on `RamOp
+tdpbramRamOp ::
+  forall nAddrs domA domB nBytes a.
+  ( HasCallStack
+  , KnownNat nAddrs
+  , KnownDomain domA
+  , KnownDomain domB
+  , KnownNat nBytes
+  , BitSize a ~ (8 * nBytes)
+  , NFDataX a
+  , BitPack a
+  ) =>
+  -- | Primitive
+  ( Clock domA ->
+    Enable domA ->
+    Signal domA (Index nAddrs) ->
+    Signal domA (BitVector nBytes) ->
+    Signal domA a ->
+    Clock domB ->
+    Enable domB ->
+    Signal domB (Index nAddrs) ->
+    Signal domB (BitVector nBytes) ->
+    Signal domB a ->
+    ( Signal domA a
+    , Signal domB a
+    )
+  ) ->
+  -- | Result
+  ( Clock domA ->
+    Clock domB ->
+    Signal domA (RamOp nAddrs (BitVector nBytes, a)) ->
+    Signal domB (RamOp nAddrs (BitVector nBytes, a)) ->
+    (Signal domA a, Signal domB a)
+  )
+tdpbramRamOp prim clkA clkB ramOpA ramOpB =
+  prim clkA enA addrA byteEnaA datA clkB enB addrB byteEnaB datB
+ where
+  byteEnaA = fmap toByteEna ramOpA
+  byteEnaB = fmap toByteEna ramOpB
+  datA = fmap toDat ramOpA
+  datB = fmap toDat ramOpB
+  addrA = fmap toAddr ramOpA
+  addrB = fmap toAddr ramOpB
+  enA = enableGen
+  enB = enableGen
+
+  toByteEna (RamWrite _ (bv, _)) = bv
+  toByteEna _ = 0
+
+  toDat (RamWrite _ (_, dat)) = dat
+  toDat _ = deepErrorX "Data undefined when not writing"
+
+  toAddr (RamWrite addr _) = addr
+  toAddr (RamRead addr) = addr
+  toAddr _ = deepErrorX "Read address undefined when idle"
+
+{- | Given a true dualported blockram implementation that operates on `RamOp`.
+Creates a `Df` compatible Circuit version.
+-}
+fromDualPortedBramWithMask ::
+  (KnownDomain domA, HiddenClock domB, KnownNat n, KnownNat nBytes, NFDataX a) =>
+  ( Signal domA (RamOp n (BitVector nBytes, a)) ->
+    -- \^ RAM operation for port A
+    Signal domB (RamOp n (BitVector nBytes, a)) ->
+    -- \^ RAM operation for port B
+    (Signal domA a, Signal domB a)
+  ) ->
+  Clock domA ->
+  Clock domB ->
+  Circuit
+    ( Df domA (RamOp n (BitVector nBytes, a))
+    , Df domB (RamOp n (BitVector nBytes, a))
+    )
+    ( Df domA a
+    , Df domB a
+    )
+fromDualPortedBramWithMask prim clkA clkB = Circuit goS
+ where
+  goS ((leftOp0, rightOp0), (leftDatAck, rightDatAck)) = ((leftOpAck, rightOpAck), (leftDat1, rightDat1))
+   where
+    (leftOpAck, leftOp1, leftDat1) = goChannel clkA leftOp0 leftDat0 leftDatAck
+    (rightOpAck, rightOp1, rightDat1) = goChannel clkB rightOp0 rightDat0 rightDatAck
+    (leftDat0, rightDat0) = prim leftOp1 rightOp1
+
+  goChannel clk op0 dat0 datAck0 = (fmap Ack opAck, op1, dat1)
+   where
+    datAck1 = fmap (\(Ack a) -> a) datAck0
+
+    -- Store last RamOp
+    opReg = E.register clk E.noReset enableGen RamNoOp op1
+
+    -- Determine if we receive backpressure
+    stall = fmap isJust dat1 .&&. fmap not datAck1
+
+    -- If we receive backpressure on our rhs, we have to reissue our ramop.
+    op1 = mux stall opReg $ fmap (fromMaybe RamNoOp) op0
+
+    -- Determine if we ack our lhs
+    opAck = fmap isWrite op1 .||. fmap isNothing dat1 .||. datAck1
+
+    -- Actually construct rhs data
+    valid1 = E.register clk E.noReset enableGen False (fmap isRead op1)
+    dat1 = mux valid1 (fmap Just dat0) (pure Nothing)
+
+  isWrite (RamWrite _ _) = True
+  isWrite _ = False
+  isRead (RamRead _) = True
+  isRead _ = False
 
 {- | Creates a `Df` wrapper around a block RAM primitive that supports byte enables for
 its write channel. Writes are always acked immediately, reads receive backpressure
