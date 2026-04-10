@@ -89,7 +89,7 @@ handshake ::
     Signal dom (BitVector n)
   , -- \| To transceiver
     Signal dom (BitVector n)
-  , -- \| Tuple of (txLast, rxLast), which indicates to ugnCapture when to send/receive the UGN.
+  , -- \| Tuple of (txLast, rxLast), which indicates to ugnCapture when to send/receive the UGN
     Signal dom (Bool, Bool)
   )
 handshake rxWordIn txWordIn regs = (rxWordOut, txWordOut, bundle (txLast, rxLast))
