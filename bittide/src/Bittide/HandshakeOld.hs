@@ -29,11 +29,6 @@ data HandshakeInput tx rx free = HandshakeInput
   , rxReady :: Signal rx Bool -- Should be wishbone
   }
 
-data HandshakeInputFromWishbone tx rx = HandshakeInputFromWishbone
-  { txStart :: Signal tx Bool
-  , rxReady :: Signal rx Bool
-  }
-
 data HandshakeOutput tx rx free = HandshakeOutput
   { wordToUser :: Signal rx (Maybe (BitVector 64))
   , rxLast :: Signal rx Bool

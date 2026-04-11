@@ -534,8 +534,10 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
   (_txClk1s, txClock, _txClkActives) = txClockNw
 
+  rxOutClks :: Vec n (Clock rx)
   rxOutClks = map (.rxOutClock) outputs
   -- see [NOTE: duplicate tx/rx domain]
+  rxClockNws :: Vec n (Clock rx, Clock rx, Signal rx (BitVector 1))
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
