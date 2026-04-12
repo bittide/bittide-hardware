@@ -23,7 +23,10 @@ import Test.Tasty (TestTree, adjustOption, testGroup)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyNamed)
 import "extra" Data.List.Extra (splitOn)
 
-import qualified Bittide.Transceiver as Transceiver
+import qualified Bittide.Transceiver as Transceiver hiding (
+  TransceiverInputFirstHalf (..),
+  TransceiverInputSecondHalf (..),
+ )
 import qualified Bittide.Transceiver.Handshake as Handshake
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
