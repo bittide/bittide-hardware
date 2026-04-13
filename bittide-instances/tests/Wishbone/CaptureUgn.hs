@@ -117,8 +117,8 @@ dut eb localCounter = withLittleEndian $ circuit $ do
         , includeIlaWb = False
         }
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (4 * 1024) 4
+type DMemWords = DivRU (4 * 1024) 4
 
 {- | Simulation function which matches the remote counter to the correct sample
 of the local counter.

@@ -185,8 +185,8 @@ vexRiscvTestC =
       , includeIlaWb = True
       }
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (2 * 1024) 4
+type DMemWords = DivRU (4 * 1024) 4
 
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->

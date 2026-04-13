@@ -143,8 +143,8 @@ top = withLittleEndian
     mm <- ignoreMM
     dut -< mm
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (8 * 1024) 4
+type DMemWords = DivRU (16 * 1024) 4
 
 -- | Memory map for the nested interconnect test
 nestedInterconnectMm :: MemoryMap

@@ -117,5 +117,5 @@ memoryMap = getMMAny dut0
     _uart <- dut -< mm
     idC
 
-type IMemWords = DivRU (256 * 1024) 4
-type DMemWords = DivRU (256 * 1024) 4
+type IMemWords = DivRU (16 * 1024) 4
+type DMemWords = DivRU (16 * 1024) 4

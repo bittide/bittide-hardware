@@ -85,8 +85,8 @@ dut = withLittleEndian $ circuit $ \_unit -> do
         }
 {-# OPAQUE dut #-}
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (4 * 1024) 4
+type DMemWords = DivRU (4 * 1024) 4
 
 parseResult :: String -> BitVector 96
 parseResult = pack . (read :: String -> Unsigned 96) . P.head . lines

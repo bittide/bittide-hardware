@@ -121,7 +121,7 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
   (clk200, rst200_) = clockWizardDifferential diffClk noReset
   rst200 = rst200_ `orReset` rst_in
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (2 * 1024) 4
+type DMemWords = DivRU (1 * 1024) 4
 
 makeTopEntity 'vexRiscUartHello

@@ -77,8 +77,8 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (8 * 1024) 4)
+    , depthD = SNat @(Div (16 * 1024) 4)
     , initI = Nothing
     , initD = Nothing
     , iBusTimeout = d0
@@ -94,8 +94,8 @@ ccConfig ::
 ccConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv2
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (8 * 1024) 4)
+    , depthD = SNat @(Div (16 * 1024) 4)
     , initI = Nothing
     , initD = Nothing
     , iBusTimeout = d0
@@ -112,8 +112,8 @@ gppeConfig ::
 gppeConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv3
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (4 * 1024) 4)
+    , depthD = SNat @(Div (4 * 1024) 4)
     , initI = Nothing
     , initD = Nothing
     , iBusTimeout = d0

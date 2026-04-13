@@ -187,7 +187,7 @@ vexRiscGmiiC sysClk sysRst rxClk rxRst txClk txRst =
       , includeIlaWb = True
       }
 
-type IMemWords = DivRU (280 * 1024) 4
+type IMemWords = DivRU (80 * 1024) 4
 type DMemWords = DivRU (88 * 1024) 4
 
 vexRiscvEthernetMM :: Mm.MemoryMap

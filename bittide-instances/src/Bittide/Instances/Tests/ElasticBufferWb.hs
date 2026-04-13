@@ -99,5 +99,5 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
         , includeIlaWb = False
         }
 
-type IMemWords = DivRU (128 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (16 * 1024) 4
+type DMemWords = DivRU (16 * 1024) 4

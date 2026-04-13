@@ -152,8 +152,8 @@ dut freeClk freeRst skyClk = withLittleEndian $ circuit $ \(mm, jtag) -> do
       , includeIlaWb = False
       }
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (8 * 1024) 4
+type DMemWords = DivRU (8 * 1024) 4
 
 memoryMap :: MemoryMap
 memoryMap = getMMAny $ dut @Basic125 @Basic200 clockGen resetGen clockGen

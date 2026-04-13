@@ -90,8 +90,8 @@ dut = withLittleEndian
         }
 {-# OPAQUE dut #-}
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (8 * 1024) 4
+type DMemWords = DivRU (4 * 1024) 4
 
 data TestResult = TestResult String (Maybe String) deriving (Show)
 
@@ -160,12 +160,12 @@ dutC = withLittleEndian
   peConfigC = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "c_timer_wb"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWordsC @DMemWordsC elfPath Nothing
     pure
       PeConfig
         { cpu = Riscv32imc.vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
+        , depthI = SNat @IMemWordsC
+        , depthD = SNat @DMemWordsC
         , initI = Just (Vec iMem)
         , initD = Just (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
@@ -173,6 +173,9 @@ dutC = withLittleEndian
         , includeIlaWb = False
         }
 {-# OPAQUE dutC #-}
+
+type IMemWordsC = DivRU (4 * 1024) 4
+type DMemWordsC = DivRU (4 * 1024) 4
 
 tests :: TestTree
 tests = $(testGroupGenerator)
