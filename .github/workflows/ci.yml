@@ -418,18 +418,13 @@ jobs:
       - run: cache pull cargo
       - run: cache pull build
 
-      - name: Install `elf-limits`
-        run: cargo install --locked --git https://github.com/cuddlefishie/elf-limits --rev 5b7bd41b0167ea6e506b5f856f0252362a54721a
+      - name: Install `elf-limits` and script utils
+        run: |
+          cargo install --locked --git https://github.com/cuddlefishie/elf-limits --rev 5b7bd41b0167ea6e506b5f856f0252362a54721a
+          cargo install --locked fd-find@10.3.0 sd@1.0.0 ripgrep@15.1.0 tomlq@0.2.2
 
       - name: Checking firmware binary limits
-        run: |
-          ~/.cargo/bin/elf-limits \
-            --instruction-mem-limit 64K \
-            --data-mem-limit 64K \
-            clock-control \
-            hello \
-            processing-element-test
-        working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
+        run: .github/scripts/run_elf_limits_checks.sh
 
   bittide-instances-matrices:
     name: bittide-instances matrices generation
