@@ -215,7 +215,10 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     -- Start ringbuffers
     let
-      maxCalDepth = SNat @4000
+      -- This demo only has the scatter/gather units to have an alternative source of the
+      -- links next to the PE. The depth is reduced compared to the Soft UGN Demo to reduce
+      -- blockram usage (and thus to simplify placement).
+      maxCalDepth = SNat @200
       scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
       gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
       repetitionBits = d16
