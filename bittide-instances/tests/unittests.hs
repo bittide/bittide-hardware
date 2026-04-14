@@ -60,7 +60,7 @@ run cmd0 args cwd = do
 
 tests :: TestTree
 tests =
-  sequentialTestGroup
+  dependentTestGroup
     "bittide-instances"
     AllSucceed
     [ testGroup
