@@ -174,24 +174,15 @@ fromDualPortedBramWithMask prim clkA clkB = Circuit goS
 
     -- If we receive backpressure on our rhs, we have to reissue our ramop.
     outgoingOp
-      | stall = addrToOp lastRead
+      | stall, Just addr <- lastRead = RamRead addr
       | otherwise = fromMaybe RamNoOp maybeOp
 
     nextState
-      | isRead outgoingOp = ramAddr outgoingOp
+      | RamRead addr <- outgoingOp = Just addr
       | otherwise = Nothing
 
     -- Determine if we ack our lhs
     opAck = isNothing lastRead || ack
-
-  isRead (RamRead _) = True
-  isRead _ = False
-  addrToOp (Just addr) = RamRead addr
-  addrToOp Nothing = RamNoOp
-  ramAddr :: RamOp addr a -> Maybe (Index addr)
-  ramAddr (RamRead addr) = Just addr
-  ramAddr (RamWrite addr _) = Just addr
-  ramAddr _ = Nothing
 
 {- | Creates a 'Df' wrapper around a block RAM primitive that supports byte enables for
 its write channel. Writes are always acked immediately, reads receive backpressure
