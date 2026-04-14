@@ -117,8 +117,8 @@ dut dnaA dnaB = withLittleEndian $ circuit $ do
         , includeIlaWb = False
         }
 
-type IMemWords = DivRU (72 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (16 * 1024) 4
+type DMemWords = DivRU (16 * 1024) 4
 
 tests :: TestTree
 tests = $(testGroupGenerator)

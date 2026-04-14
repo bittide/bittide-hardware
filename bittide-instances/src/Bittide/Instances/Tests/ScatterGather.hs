@@ -100,5 +100,5 @@ dutWithBinary binaryName = withLittleEndian $ circuit $ \mm -> do
         }
 {-# OPAQUE dutWithBinary #-}
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (16 * 1024) 4
+type DMemWords = DivRU (16 * 1024) 4

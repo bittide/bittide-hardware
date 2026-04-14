@@ -96,5 +96,5 @@ dut =
         }
 {-# OPAQUE dut #-}
 
-type IMemWords = DivRU (128 * 1024) 4
-type DMemWords = DivRU (128 * 1024) 4
+type IMemWords = DivRU (8 * 1024) 4
+type DMemWords = DivRU (16 * 1024) 4

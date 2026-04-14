@@ -49,7 +49,7 @@ jobs:
       run:
         shell: git-nix-shell {0}
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
     steps:
     - uses: actions/checkout@v6
@@ -76,7 +76,7 @@ jobs:
         shell: git-nix-shell {0}
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
 
     steps:
@@ -126,7 +126,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
 
     steps:
@@ -179,7 +179,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
 
     env:
@@ -242,7 +242,7 @@ jobs:
       run:
         shell: git-nix-shell {0}
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
     outputs:
       run_tests: ${{ steps.check.outputs.run_tests }}
@@ -274,7 +274,7 @@ jobs:
     if: ${{ needs.should-run-haskell-tests.outputs.run_tests == 'true' }}
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
       volumes:
         - /opt/tools:/opt/tools
@@ -348,7 +348,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
     needs: [build]
 
@@ -374,7 +374,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
     needs: [build]
 
@@ -407,7 +407,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
     needs: [build]
 
@@ -418,18 +418,8 @@ jobs:
       - run: cache pull cargo
       - run: cache pull build
 
-      - name: Install `elf-limits`
-        run: cargo install --locked --git https://github.com/cuddlefishie/elf-limits --rev 5b7bd41b0167ea6e506b5f856f0252362a54721a
-
       - name: Checking firmware binary limits
-        run: |
-          ~/.cargo/bin/elf-limits \
-            --instruction-mem-limit 64K \
-            --data-mem-limit 64K \
-            clock-control \
-            hello \
-            processing-element-test
-        working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
+        run: .github/scripts/run_elf_limits_checks.sh
 
   bittide-instances-matrices:
     name: bittide-instances matrices generation
@@ -488,7 +478,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       volumes:
         - /opt/tools:/opt/tools
       options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
@@ -614,7 +604,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
 
     strategy:
@@ -657,7 +647,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       volumes:
         - /opt/tools:/opt/tools
         - /dev:/dev
@@ -717,7 +707,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-12-17
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-14
       options: --memory=11g
     steps:
       - name: Checkout

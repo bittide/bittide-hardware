@@ -71,8 +71,8 @@ bootPeConfig :: PeConfig BootPeBusses
 bootPeConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv0
-    , depthI = SNat @(Div (64 * 1024) 4)
-    , depthD = SNat @(Div (64 * 1024) 4)
+    , depthI = SNat @(Div (4 * 1024) 4)
+    , depthD = SNat @(Div (16 * 1024) 4)
     , initI = Nothing
     , initD = Nothing
     , iBusTimeout = d0
