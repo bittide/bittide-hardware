@@ -124,6 +124,24 @@
             pkgs.mdbook
             pkgs.drawio-headless
             mdbook-drawio
+
+            # CI dependencies
+            pkgs.fd
+            pkgs.sd
+            pkgs.ripgrep
+            pkgs.tomlq
+            (pkgs.rustPlatform.buildRustPackage (finalAttrs: {
+              pname = "elf-limits";
+              version = "0.1.0";
+              src = pkgs.fetchFromGitHub {
+                owner = "cuddlefishie";
+                repo = "elf-limits";
+                rev = "5b7bd41b0167ea6e506b5f856f0252362a54721a";
+                sha256 = "sha256-DMc/B8VajjQgGNiftq99tfn7IRWDenlaCTMGddbDYLY=";
+              };
+              cargoHash = "sha256-0o/2nSKeF+AbnI9JmDdKiLpoXi2WimvDhcAkDknVK8M=";
+              doCheck = false;
+            }))
           ];
 
           shellHook = ''

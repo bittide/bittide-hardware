@@ -8,23 +8,6 @@ TOPDIR="$(git rev-parse --show-toplevel)"
 BINDIR="${TOPDIR}/_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf"
 SRCDIR="${TOPDIR}/firmware-binaries"
 
-# PATH setup to include ~/.cargo/bin
-case ":${PATH}:" in
-  *:"$HOME/.cargo/bin":*)
-    # Already included
-    ;;
-  *)
-    if [ -z "${IN_NIX_SHELL}" ]
-    then
-      # Not in nix shell, can prepend
-      export PATH="$HOME/.cargo/bin:${PATH}"
-    else
-      # In nix shell, prefer suffix
-      export PATH="${PATH}:$HOME/.cargo/bin"
-    fi
-    ;;
-esac
-
 __conv_length() {
   local LENNUM
   read LENNUM
