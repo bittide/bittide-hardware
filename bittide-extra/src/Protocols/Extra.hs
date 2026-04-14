@@ -1,6 +1,8 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 {- | Many of these functions should be added to `clash-protocols`, there is a PR
 for this: https://github.com/clash-lang/clash-protocols/pull/116
@@ -9,7 +11,7 @@ https://github.com/bittide/bittide-hardware/issues/645
 -}
 module Protocols.Extra where
 
-import Clash.Prelude
+import Clash.Prelude hiding (traceSignal)
 
 import Protocols
 

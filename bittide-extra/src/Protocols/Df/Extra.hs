@@ -7,8 +7,6 @@ module Protocols.Df.Extra where
 import Clash.Prelude hiding (traceSignal)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Maybe
-import Data.String.Interpolate (i)
-import Data.Typeable (Typeable)
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Df (forceResetSanity)
@@ -18,7 +16,6 @@ import qualified Clash.Explicit.Signal.Delayed as ED
 import qualified Clash.Explicit.Signal.Delayed.Extra as ED
 import qualified Clash.Signal.Delayed as D
 import qualified Data.Maybe as Maybe
-import qualified Debug.Trace as Debug
 import qualified Protocols.Df as Df
 
 andAck :: forall dom a. Signal dom Bool -> Circuit (Df dom a) (Df dom a)
@@ -376,28 +373,3 @@ stallNext rdyS = circuit $ \req -> do
       | otherwise = False
 
     ackOut = Ack (passThrough && ackIn)
-
-{- | 'Df' version of 'traceShowId', introduces no state or logic of any form. Only prints when
-there is data available on the input side. Prints available data, clock cycle count in the
-relevant domain, and the corresponding Ack.
--}
-trace ::
-  (KnownDomain dom, ShowX a, NFDataX a) =>
-  String ->
-  Circuit (Df dom a) (Df dom a)
-trace msg =
-  Circuit
-    (unbundle . withClockResetEnable clockGen resetGen enableGen mealy go (0 :: Int) . bundle)
- where
-  go cnt ~(m2s, s2m) = (cnt + 1, (s2m', m2s))
-   where
-    s2m' = Debug.trace [i| Df.Trace #{msg} | #{cnt}: #{showX m2s}, #{showX s2m}|] s2m
-
--- | 'Df' version of 'Clash.Debug.traceSignal'. names forward signal (name_fwd) and backward signal (name_bwd)
-traceSignal ::
-  (KnownDomain dom, ShowX a, NFDataX a, BitPack a, Typeable a) =>
-  String ->
-  Circuit (Df dom a) (Df dom a)
-traceSignal name = Circuit go
- where
-  go ~(fwd, bwd) = (E.traceSignal (name <> "_bwd") bwd, E.traceSignal (name <> "_fwd") fwd)
