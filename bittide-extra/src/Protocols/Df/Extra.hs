@@ -156,29 +156,29 @@ fromDualPortedBramWithMask prim clkA clkB = Circuit goS
  where
   goS ((leftOp0, rightOp0), (leftDatAck, rightDatAck)) = ((leftOpAck, rightOpAck), (leftDat1, rightDat1))
    where
-    (leftOpAck, leftOp1, leftDat1) = goChannel clkA leftOp0 leftDat0 leftDatAck
-    (rightOpAck, rightOp1, rightDat1) = goChannel clkB rightOp0 rightDat0 rightDatAck
+    (leftOpAck, leftOp1, leftDat1) = goChannel clkA (leftOp0, leftDat0, leftDatAck)
+    (rightOpAck, rightOp1, rightDat1) = goChannel clkB (rightOp0, rightDat0, rightDatAck)
     (leftDat0, rightDat0) = prim leftOp1 rightOp1
 
-  goChannel clk op0 dat0 datAck0 = (fmap Ack opAck, op1, dat1)
-   where
-    datAck1 = fmap (\(Ack a) -> a) datAck0
+  goChannel clk = E.mealyB clk E.noReset enableGen goT RamNoOp
 
-    -- Store last RamOp
-    opReg = E.register clk E.noReset enableGen RamNoOp op1
+  goT lastOp (maybeOp, ramData, Ack ack) = (op1, (Ack opAck, op1, dat1))
+   where
+    -- Construct rhs data from previous cycle's operation
+    dat1
+      | isRead lastOp = Just ramData
+      | otherwise = Nothing
 
     -- Determine if we receive backpressure
-    stall = fmap isJust dat1 .&&. fmap not datAck1
+    stall = isJust dat1 && not ack
 
     -- If we receive backpressure on our rhs, we have to reissue our ramop.
-    op1 = mux stall opReg $ fmap (fromMaybe RamNoOp) op0
+    op1
+      | stall = lastOp
+      | otherwise = fromMaybe RamNoOp maybeOp
 
     -- Determine if we ack our lhs
-    opAck = fmap isWrite op1 .||. fmap isNothing dat1 .||. datAck1
-
-    -- Actually construct rhs data
-    valid1 = E.register clk E.noReset enableGen False (fmap isRead op1)
-    dat1 = mux valid1 (fmap Just dat0) (pure Nothing)
+    opAck = isWrite op1 || isNothing dat1 || ack
 
   isWrite (RamWrite _ _) = True
   isWrite _ = False
