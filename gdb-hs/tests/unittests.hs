@@ -23,7 +23,7 @@ buildTestCase name = do
 
 tests :: TestTree
 tests =
-  sequentialTestGroup
+  dependentTestGroup
     "."
     AllSucceed
     [ testGroup

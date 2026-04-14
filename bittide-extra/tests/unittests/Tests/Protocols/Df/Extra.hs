@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Tests.Protocols.Df.Extra where
 
@@ -13,7 +12,6 @@ import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
-import Control.DeepSeq (NFData)
 import Data.Maybe
 import Data.String.Interpolate (i)
 import Hedgehog (Gen, Property, Range, assert, cover, footnote, forAll, (===))
@@ -311,10 +309,6 @@ splitWriteInBytes (Just (addr, writeData)) byteSelect =
 splitWriteInBytes Nothing _ = repeat Nothing
 
 -- End of shamelessly copied code from bittide
-
-deriving instance (NFData a) => NFData (RamOp addr a)
-deriving instance (ShowX a) => ShowX (RamOp addr a)
-deriving instance (Eq a) => Eq (RamOp addr a)
 
 -- | A helper function to extract the address from a 'RamOp'
 ramAddr :: RamOp addr a -> Maybe (Index addr)
