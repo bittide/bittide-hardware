@@ -160,30 +160,38 @@ fromDualPortedBramWithMask prim clkA clkB = Circuit goS
     (rightOpAck, rightOp1, rightDat1) = goChannel clkB (rightOp0, rightDat0, rightDatAck)
     (leftDat0, rightDat0) = prim leftOp1 rightOp1
 
-  goChannel clk = E.mealyB clk E.noReset enableGen goT RamNoOp
+  goChannel clk = E.mealyB clk E.noReset enableGen goT Nothing
 
-  goT lastOp (maybeOp, ramData, Ack ack) = (op1, (Ack opAck, op1, dat1))
+  goT lastRead (maybeOp, ramData, Ack ack) = (nextState, (Ack opAck, outgoingOp, dat1))
    where
     -- Construct rhs data from previous cycle's operation
     dat1
-      | isRead lastOp = Just ramData
+      | isJust lastRead = Just ramData
       | otherwise = Nothing
 
     -- Determine if we receive backpressure
     stall = isJust dat1 && not ack
 
     -- If we receive backpressure on our rhs, we have to reissue our ramop.
-    op1
-      | stall = lastOp
+    outgoingOp
+      | stall = addrToOp lastRead
       | otherwise = fromMaybe RamNoOp maybeOp
 
-    -- Determine if we ack our lhs
-    opAck = isWrite op1 || isNothing dat1 || ack
+    nextState
+      | isRead outgoingOp = ramAddr outgoingOp
+      | otherwise = Nothing
 
-  isWrite (RamWrite _ _) = True
-  isWrite _ = False
+    -- Determine if we ack our lhs
+    opAck = isNothing lastRead || ack
+
   isRead (RamRead _) = True
   isRead _ = False
+  addrToOp (Just addr) = RamRead addr
+  addrToOp Nothing = RamNoOp
+  ramAddr :: RamOp addr a -> Maybe (Index addr)
+  ramAddr (RamRead addr) = Just addr
+  ramAddr (RamWrite addr _) = Just addr
+  ramAddr _ = Nothing
 
 {- | Creates a `Df` wrapper around a block RAM primitive that supports byte enables for
 its write channel. Writes are always acked immediately, reads receive backpressure
