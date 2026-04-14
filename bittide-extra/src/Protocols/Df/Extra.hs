@@ -76,7 +76,7 @@ skid = Circuit go
 ackWhen :: Signal dom Bool -> Circuit (Df dom a) ()
 ackWhen canDrop = Circuit $ \_ -> (Ack <$> canDrop, ())
 
--- | Creates a wrapper around `tdpbram` to make it work on `RamOp
+-- | Creates a wrapper around 'tdpbram' to make it work on 'RamOp'
 tdpbramRamOp ::
   forall nAddrs domA domB nBytes a.
   ( HasCallStack
@@ -132,8 +132,8 @@ tdpbramRamOp prim clkA clkB ramOpA ramOpB =
   toAddr (RamRead addr) = addr
   toAddr _ = deepErrorX "Read address undefined when idle"
 
-{- | Given a true dualported blockram implementation that operates on `RamOp`.
-Creates a `Df` compatible Circuit version.
+{- | Given a true dualported blockram implementation that operates on 'RamOp'.
+Creates a 'Df' compatible Circuit version.
 -}
 fromDualPortedBramWithMask ::
   (KnownDomain domA, HiddenClock domB, KnownNat n, KnownNat nBytes, NFDataX a) =>
@@ -170,7 +170,7 @@ fromDualPortedBramWithMask prim clkA clkB = Circuit goS
       | otherwise = Nothing
 
     -- Determine if we receive backpressure
-    stall = isJust dat1 && not ack
+    stall = isJust lastRead && not ack
 
     -- If we receive backpressure on our rhs, we have to reissue our ramop.
     outgoingOp
@@ -193,9 +193,9 @@ fromDualPortedBramWithMask prim clkA clkB = Circuit goS
   ramAddr (RamWrite addr _) = Just addr
   ramAddr _ = Nothing
 
-{- | Creates a `Df` wrapper around a block RAM primitive that supports byte enables for
+{- | Creates a 'Df' wrapper around a block RAM primitive that supports byte enables for
 its write channel. Writes are always acked immediately, reads receive backpressure
-based on the outgoing `Df` channel.
+based on the outgoing 'Df' channel.
 -}
 fromBlockRamWithMask ::
   (KnownDomain dom, HiddenClock dom, HiddenReset dom, Num addr, NFDataX addr, KnownNat words) =>
@@ -227,7 +227,7 @@ fromBlockRam primitive = circuit $ \(r, w) -> do
   let primitiveD ena readD = ED.fromBlockRam (primitive ena) readD write
   fromDSignal hasClock hasReset primitiveD <| forceResetSanity -< r
 
--- | Converts a delay annotated circuit with enable port into a `Df` circuit.
+-- | Converts a delay annotated circuit with enable port into a 'Df' circuit.
 fromDSignal ::
   forall dom a b n.
   ( KnownDomain dom
@@ -353,9 +353,9 @@ bypassFifo SNat fifoCircuit = circuit $ \inp -> do
          in
           (nextState, ((inpAck, fifoOutAck), (out, fifoIn)))
 
-{- | Will stall the next incoming transaction until the `Bool` is `True`. If it becomes `False`
+{- | Will stall the next incoming transaction until the 'Bool' is 'True'. If it becomes 'False'
  while a transaction is being processed it will not be affected, but the next transaction will
-be blocked until it is `True` again.
+be blocked until it is 'True' again.
 -}
 stallNext ::
   forall dom a.
@@ -386,7 +386,7 @@ stallNext rdyS = circuit $ \req -> do
 
     ackOut = Ack (passThrough && ackIn)
 
-{- | `Df` version of `traceShowId`, introduces no state or logic of any form. Only prints when
+{- | 'Df' version of 'traceShowId', introduces no state or logic of any form. Only prints when
 there is data available on the input side. Prints available data, clock cycle count in the
 relevant domain, and the corresponding Ack.
 -}
@@ -402,7 +402,7 @@ trace msg =
    where
     s2m' = Debug.trace [i| Df.Trace #{msg} | #{cnt}: #{showX m2s}, #{showX s2m}|] s2m
 
--- | `Df` version of `Clash.Debug.traceSignal`. names forward signal (name_fwd) and backward signal (name_bwd)
+-- | 'Df' version of 'Clash.Debug.traceSignal'. names forward signal (name_fwd) and backward signal (name_bwd)
 traceSignal ::
   (KnownDomain dom, ShowX a, NFDataX a, BitPack a, Typeable a) =>
   String ->
