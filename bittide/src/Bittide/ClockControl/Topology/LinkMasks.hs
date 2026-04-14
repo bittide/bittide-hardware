@@ -19,8 +19,8 @@ node setup. Extracted into a constraint synonym to avoid repetition.
 type MaskConstraints nNodes nLinks =
   ( 1 <= nNodes
   , 1 <= nLinks
-  , CLog 2 nLinks + 1 <= 64
-  , CLog 2 nNodes + 1 <= 64
+  , CLogWZ 2 nLinks 0 + 1 <= 64
+  , CLogWZ 2 nNodes 0 + 1 <= 64
   , KnownNat nNodes
   , KnownNat nLinks
   , HasCallStack
