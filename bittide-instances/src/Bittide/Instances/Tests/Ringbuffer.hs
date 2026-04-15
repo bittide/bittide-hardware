@@ -20,6 +20,7 @@ import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
 import Protocols.Df.Extra (tdpbramRamOp)
+import Protocols.Extra (fmapC)
 import Protocols.Idle
 import Protocols.MemoryMap
 import System.FilePath ((</>))
@@ -35,6 +36,7 @@ import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
 import qualified Data.List as L
+import qualified Protocols.Vec as Vec
 
 createDomain vSystem{vName = "Slow", vPeriod = hzToPeriod 1000000}
 
@@ -48,6 +50,9 @@ dutMM =
     $ withClockResetEnable @Slow clockGen (resetGenN d2) enableGen
     $ toSignals (dutWithBinary d0 "") ((), pure $ deepErrorX "memoryMap")
 
+replicateC :: forall n a b. SNat n -> Circuit a b -> Circuit (Vec n a) (Vec n b)
+replicateC SNat c = repeatC c
+
 -- | Parameterized DUT that loads a specific firmware binary with configurable latency.
 dutWithBinary ::
   (HasCallStack, HiddenClockResetEnable dom, 1 <= DomainPeriod dom, KnownNat latency) =>
@@ -56,13 +61,22 @@ dutWithBinary ::
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
 dutWithBinary latency binaryName = withLittleEndian $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
-  [uartBus, wbTx, wbRx, timeBus] <-
-    processingElement NoDumpVcd (peConfig binaryName) -< (mm, jtagIdle)
+  ([uartBus, timeBus], wbTxs0, wbRxs0) <-
+    Vec.split3
+      <| processingElement NoDumpVcd (peConfig binaryName)
+      -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
-  txOut <- transmitRingbuffer (tdpbramRamOp tdpbram hasClock hasClock) memDepth -< wbTx
-  txOutDelayed <- applyC (toSignal . delayN latency 0 . fromSignal) id -< txOut
-  receiveRingbuffer (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth
-    -< (wbRx, txOutDelayed)
+  txOuts <-
+    replicateC
+      d2
+      (transmitRingbuffer (tdpbramRamOp tdpbram hasClock hasClock) memDepth)
+      -< wbTxs0
+  -- Add configurable latency between TX and RX ringbuffers
+  txOutDelayeds <- fmapC (applyC (toSignal . delayN latency 0 . fromSignal) id) -< txOuts
+  idleSink
+    <| fmapC (receiveRingbuffer (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth)
+    <| Vec.zip
+    -< (wbRxs0, txOutDelayeds)
   _cnt <- timeWb Nothing -< timeBus
   idC -< uartTx
  where
@@ -116,5 +130,22 @@ simResultRingbuffer lat = takeUntilList "=== Test Complete ===" $ chr . fromInte
     uartTx <-
       withClockResetEnable clockGen (resetGenN d2) enableGen
         $ (dutWithBinary latency "ringbuffer_test")
+        -< mm
+    idC -< uartTx
+
+simSmolTcp :: IO ()
+simSmolTcp = putStr $ simResultSmolTcp d0
+
+simResultSmolTcp :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
+simResultSmolTcp lat = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
+ where
+  uartStream = sampleC def{timeoutAfter = 10_000_000} (dutNoMM lat)
+
+  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df Slow (BitVector 8))
+  dutNoMM latency = circuit $ do
+    mm <- ignoreMM
+    uartTx <-
+      withClockResetEnable clockGen (resetGenN d2) enableGen
+        $ (dutWithBinary latency "ringbuffer_smoltcp_test")
         -< mm
     idC -< uartTx
