@@ -39,5 +39,19 @@ prop_ringbuffer_test = H.withTests 1 $ H.property $ do
     <> result
   H.assert ("TEST PASSED" `isInfixOf` result)
 
+prop_aligned_ringbuffer_test :: H.Property
+prop_aligned_ringbuffer_test = H.withTests 1 $ H.property $ do
+  latency <- H.forAll $ Gen.integral (Range.constant 0 100)
+  liftIO $ putStrLn $ "Testing ringbuffer_test with latency " <> show latency <> " cycles"
+  let result = case someNatVal (fromInteger latency) of
+        Just (SomeNat (_ :: Proxy n)) -> simResultAlignedRingbuffer (SNat @n)
+        Nothing -> error $ "Invalid latency value: " <> show latency
+  H.annotate
+    $ "Running aligned_ringbuffer_test with latency "
+    <> show latency
+    <> " cycles\nReceived the following from the CPU over UART:\n"
+    <> result
+  H.assert ("ALL TESTS PASSED" `isInfixOf` result)
+
 tests :: TestTree
 tests = $(testGroupGenerator)
