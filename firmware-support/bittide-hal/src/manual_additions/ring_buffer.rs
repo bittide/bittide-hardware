@@ -140,7 +140,6 @@ pub trait ReceiveRingBufferInterface {
     }
 }
 
-#[allow(unused_macros)]
 macro_rules! impl_ring_buffer_interfaces {
     (rx: $rx:ty, tx: $tx:ty) => {
         const _: () = {
@@ -188,6 +187,11 @@ macro_rules! impl_ring_buffer_interfaces {
             }
         }
     };
+}
+
+impl_ring_buffer_interfaces! {
+    rx: crate::shared_devices::ReceiveRingBuffer,
+    tx: crate::shared_devices::TransmitRingBuffer
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

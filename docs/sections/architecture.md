@@ -107,7 +107,7 @@ However, the CPU approach comes with a major limitation - unlike the UGN Capture
 
 [^1]: This difference occurs because the RingBuffer (RB) only supports accessing one address per cycle. The UGN Capture sits before the RingBuffer (RB) in the data pipeline, while the MU CPU sits behind the RB. So UGN capture can inspect every new word, while the MU needs to know which RB element to inspect. If the MU were to scan the entire RB, it would find the right element, but it would then not know on which clock cycle the element was put into the RB.
 
-This way, the MU does not need to inspect every element in the RB for the clock cycle, it just needs to inspect the one entry it knows the clock cycle will eventually be in. For more detail, see the [Ringbuffer alignment](ringbuffer-alignment.html) section.
+This way, the MU does not need to inspect every element in the RB for the clock cycle, it just needs to inspect the one entry it knows the clock cycle will eventually be in. For more detail, see the [RingBuffer alignment](ringbuffer-alignment.html) section.
 
 Once the relationship has been mapped, the sending node can send a "UGN event" (5 bittide words), which will be read by the receiving MU.
 

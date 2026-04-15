@@ -14,7 +14,7 @@ The procedure operates by exchanging timestamped messages between neighbors. By 
 
 The procedure relies on the underlying scatter/gather units being configured as **ringbuffers**. Specifically:
 *   The calendars of the scatter and gather units are of equal size and contain incrementing indices such that a link that starts at a gather unit and is terminated by a scatter unit functions as a ringbuffer.
-*   The alignment of this ringbuffer (where data starting at address `0` in a gather memory arrives at address `n` in a scatter memory) is unknown at the start and is measured by the [Ringbuffer Alignment Procedure](../ringbuffer-alignment.md).
+*   The alignment of this ringbuffer (where data starting at address `0` in a gather memory arrives at address `n` in a scatter memory) is unknown at the start and is measured by the [RingBuffer Alignment Procedure](../ringbuffer-alignment.md).
 
 ## Message Types
 
@@ -50,7 +50,7 @@ Events are scheduled according to the send and receive periods:
 
 1.  **Initialization**:
     *   The MU configures scatter/gather calendars to 1:1 mapping (ringbuffer mode).
-    *   The MU aligns its software pointers to the hardware buffer positions leveraging the [Ringbuffer Alignment Procedure](../ringbuffer-alignment.md).
+    *   The MU aligns its software pointers to the hardware buffer positions leveraging the [RingBuffer Alignment Procedure](../ringbuffer-alignment.md).
     *   Initial `SEND` and `RECEIVE` events are scheduled for all ports.
 
 2.  **Discovery Loop**:

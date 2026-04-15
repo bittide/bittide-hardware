@@ -32,7 +32,7 @@ fn main() -> ! {
 
     // The calendars for the scatter and gather units are expected to write the
     // data sent over the link to the same memory location in the scatter unit. This configures
-    // them as a sort of ringbuffer and data written to the gather memory should arrive at the same
+    // them as a sort of ring_buffer and data written to the gather memory should arrive at the same
     // location in the scatter memory after being sent over the link.
     // To time our reads and writes correctly, we wait for the start of a metacycle before
     // writing to the gather memory because that gives us the most time before the data is sent
