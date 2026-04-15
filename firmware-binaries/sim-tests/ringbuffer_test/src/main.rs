@@ -7,7 +7,9 @@
 use bittide_hal::shared_devices::TransmitRingbuffer;
 use bittide_hal::{
     manual_additions::{
-        ringbuffer::{ReceiveRingbufferInterface, TransmitRingbufferInterface},
+        ringbuffer::{
+            AlignedReceiveBuffer, ReceiveRingbufferInterface, TransmitRingbufferInterface,
+        },
         timer::Duration,
     },
     ringbuffer_test::DeviceInstances,
@@ -52,11 +54,11 @@ fn main() -> ! {
 
     let mut all_passed = true;
 
-    // Both enables default to false; turn them on for the loopback test.
+    // Both enables default to false; turn them on for the loopback tests.
     tx.set_enable(true);
     rx.set_enable(true);
 
-    // Test 1: Basic loopback — data written to TX arrives at RX.
+    // Test 1: Basic loopback — data written to TX arrives at RX (possibly rotated).
     let pattern_a = make_pattern(0);
     tx.write_slice(&pattern_a, 0);
     wait(&timer);
@@ -112,11 +114,27 @@ fn main() -> ! {
         dump_buffers(&mut uart, &pattern_c, &rx_after_tx_enable);
     }
 
+    // Test 6: AlignedReceiveBuffer::align — after alignment, TX[i] arrives at RX[i] exactly.
+    let mut rx_aligned = AlignedReceiveBuffer::new(rx);
+    rx_aligned.align(&tx);
+
+    tx.clear();
+    let pattern_d: [[u8; 8]; LEN] = core::array::from_fn(|i| (0x1000 + i as u64).to_le_bytes());
+    tx.write_slice(&pattern_d, 0);
+    wait(&timer);
+    let rx_aligned_data = read_rx(&rx_aligned.buffer);
+    if pattern_d != rx_aligned_data {
+        all_passed = false;
+        uwriteln!(uart, "FAIL: aligned loopback").unwrap();
+        dump_buffers(&mut uart, &pattern_d, &rx_aligned_data);
+    }
+
     if all_passed {
         uwriteln!(uart, "*** TEST PASSED ***").unwrap();
     } else {
         uwriteln!(uart, "*** TEST FAILED ***").unwrap();
     }
+    uwriteln!(uart, "=== Test Complete ===").unwrap();
 
     loop {
         continue;

@@ -118,21 +118,3 @@ simResultRingbuffer lat = takeUntilList "=== Test Complete ===" $ chr . fromInte
         $ (dutWithBinary latency "ringbuffer_test")
         -< mm
     idC -< uartTx
-
-simAlignedRingbuffer :: IO ()
-simAlignedRingbuffer = putStr $ simResultAlignedRingbuffer d0
-
-simResultAlignedRingbuffer ::
-  forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
-simResultAlignedRingbuffer lat = takeUntilList "Test done" $ chr . fromIntegral <$> catMaybes uartStream
- where
-  uartStream = sampleC def{timeoutAfter = 250_000} (dutNoMM lat)
-
-  dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df Slow (BitVector 8))
-  dutNoMM latency = circuit $ do
-    mm <- ignoreMM
-    uartTx <-
-      withClockResetEnable clockGen (resetGenN d2) enableGen
-        $ (dutWithBinary latency "aligned_ringbuffer_test")
-        -< mm
-    idC -< uartTx
