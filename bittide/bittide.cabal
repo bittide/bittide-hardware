@@ -224,6 +224,7 @@ library
     Bittide.ProcessingElement.ReadElf
     Bittide.ProcessingElement.Util
     Bittide.ProgrammableMux
+    Bittide.RingBuffer
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Shutter
