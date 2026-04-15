@@ -26,14 +26,9 @@ module Protocols.BiDf (
   -- * Memories
   fromBlockRam,
   fromBlockRamWithMask,
-
-  -- * Debugging
-  trace,
-  traceSignal,
 ) where
 
-import Clash.Prelude hiding (map, traceSignal)
-import Data.Typeable (Typeable)
+import Clash.Prelude hiding (map)
 import Protocols
 
 import qualified Protocols.Df as Df
@@ -224,35 +219,3 @@ fromBlockRam primitive = circuit $ \(bidf, writeData) -> do
   readAddress <- toDfs -< (bidf, readData)
   readData <- Df.fromBlockRam primitive -< (readAddress, writeData)
   idC -< ()
-
-{- | `BiDf` version of `traceShowId`, introduces no state or logic of any form. Only prints when
-there is data available on the input side. Prints available data, clock cycle count in the
-relevant domain, and the corresponding Ack.
--}
-trace ::
-  (KnownDomain dom, ShowX req, NFDataX req, ShowX resp, NFDataX resp) =>
-  String ->
-  Circuit (BiDf dom req resp) (BiDf dom req resp)
-trace msg = map (Df.trace (msg <> "_request")) (Df.trace (msg <> "_response"))
-
-{- | `BiDf` version of `Clash.Debug.traceSignal` based on `Df.traceSignal`.
-Signal names:
-- left request forward: name_request_fwd
-- left request backward: name_request_bwd
-- right response forward: name_response_fwd
-- right response backward: name_response_bwd
--}
-traceSignal ::
-  ( KnownDomain dom
-  , ShowX req
-  , NFDataX req
-  , BitPack req
-  , Typeable req
-  , ShowX resp
-  , NFDataX resp
-  , BitPack resp
-  , Typeable resp
-  ) =>
-  String ->
-  Circuit (BiDf dom req resp) (BiDf dom req resp)
-traceSignal name = map (Df.traceSignal (name <> "_request")) (Df.traceSignal (name <> "_response"))

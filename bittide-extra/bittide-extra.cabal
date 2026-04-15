@@ -158,6 +158,7 @@ library
     shockwaves,
     string-interpolate,
     tasty-hunit,
+    template-haskell,
     time,
     word8,
 
@@ -178,8 +179,12 @@ library
     Protocols.BiDf
     Protocols.Df.Extra
     Protocols.Extra
+    Protocols.Extra.TH
+    Protocols.Internal.TH.Extra
+    Protocols.Internal.Types.Extra
     Protocols.ReqResp
     Protocols.Spi
+    Protocols.TraceC
     Protocols.Wishbone.Extra
     System.Timeout.Extra
 
@@ -195,6 +200,7 @@ test-suite unittests
     Tests.Numeric.Extra
     Tests.Protocols.BiDf
     Tests.Protocols.Df.Extra
+    Tests.Protocols.Extra
     Tests.Protocols.ReqResp
 
   build-depends:
@@ -207,10 +213,13 @@ test-suite unittests
     containers,
     deepseq,
     hedgehog,
+    shockwaves,
     string-interpolate,
     tasty,
     tasty-hedgehog,
+    tasty-hunit,
     tasty-th,
+    text,
 
 test-suite doctests
   type: exitcode-stdio-1.0
