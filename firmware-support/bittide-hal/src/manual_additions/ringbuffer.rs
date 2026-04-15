@@ -134,7 +134,6 @@ pub trait ReceiveRingbufferInterface {
     }
 }
 
-#[allow(unused_macros)]
 macro_rules! impl_ringbuffer_interfaces {
     (rx: $rx:ty, tx: $tx:ty) => {
         const _: () = {
@@ -176,6 +175,11 @@ macro_rules! impl_ringbuffer_interfaces {
             }
         }
     };
+}
+
+impl_ringbuffer_interfaces! {
+    rx: crate::shared_devices::ReceiveRingbuffer,
+    tx: crate::shared_devices::TransmitRingbuffer
 }
 
 pub struct AlignedReceiveBuffer<Rx, Tx> {
