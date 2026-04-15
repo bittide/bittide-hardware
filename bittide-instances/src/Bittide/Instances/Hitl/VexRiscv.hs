@@ -112,6 +112,7 @@ statusRegister = circuit $ \(mm, wb) -> do
       { access = WriteOnly
       , description = "Set test status"
       }
+{-# OPAQUE statusRegister #-}
 
 vexRiscvTestMM :: Mm.MemoryMap
 vexRiscvTestMM =

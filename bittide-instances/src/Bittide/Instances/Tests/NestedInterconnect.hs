@@ -74,6 +74,7 @@ simplePeripheral name = withName name $ circuit $ \(mm, wb) -> do
     -< ((offset1, config1, meta1, wb1), Fwd noWrite)
  where
   noWrite = pure Nothing
+{-# OPAQUE simplePeripheral #-}
 
 -- | Processing element configuration
 peConfig :: PeConfig 7

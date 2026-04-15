@@ -403,6 +403,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initOnlyInVec :: Vec 2 OnlyReferencedInVec
   initOnlyInVec = OnlyReferencedInVec 2 3 :> OnlyReferencedInVec 4 5 :> Nil
+{-# OPAQUE manyTypesWb #-}
 
 sim :: IO ()
 sim = putStrLn simResult

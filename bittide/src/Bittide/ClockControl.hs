@@ -168,3 +168,4 @@ speedChangeToStickyPins clk rst ena SNat msc = speedChangeToPins <$> stickySC
  where
   sc = fromMaybe NoChange <$> msc
   stickySC = stickyBits clk rst ena (SNat @(PeriodToCycles dom prd)) sc
+{-# OPAQUE speedChangeToStickyPins #-}

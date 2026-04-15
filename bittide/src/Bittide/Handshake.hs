@@ -192,3 +192,4 @@ handshakeWb = circuit $ \(bus, (Fwd rxLinkIn), (Fwd txLinkIn)) -> do
   let (txLinkOut, rxLinkOut, txRxLast) = handshake rxLinkIn txLinkIn txRxRegs
 
   idC -< (Fwd txLinkOut, Fwd rxLinkOut, Fwd txRxLast)
+{-# OPAQUE handshakeWb #-}

@@ -156,3 +156,4 @@ syncOutGenerateWbC clk rst counterClk counterRst = circuit $ \(mm, wb) -> do
  where
   config = registerConfig "active"
   noWrite = pure Nothing
+{-# OPAQUE syncOutGenerateWbC #-}

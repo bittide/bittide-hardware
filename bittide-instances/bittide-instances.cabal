@@ -356,7 +356,10 @@ test-suite unittests
     tasty-th,
 
 executable clash
-  ghc-options: -threaded
+  ghc-options:
+    -threaded
+    -with-rtsopts=-N8
+
   main-is: exe/clash/Main.hs
   build-depends:
     base,

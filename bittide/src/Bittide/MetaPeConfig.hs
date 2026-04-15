@@ -90,3 +90,4 @@ metaPeConfig SNat = circuit $ \(mm, wb) -> do
       }
 
   noWrite = pure Nothing
+{-# OPAQUE metaPeConfig #-}

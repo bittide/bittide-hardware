@@ -188,3 +188,4 @@ bringUp refClk refRst = withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -
           speedChanges
 
   idC -< (spi, sync, uartTx, Fwd frequencyAdjustments)
+{-# OPAQUE bringUp #-}

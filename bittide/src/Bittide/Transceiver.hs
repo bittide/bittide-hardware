@@ -452,6 +452,7 @@ transceiverPrbsNC clock reset config = Circuit go
           , txStarts = cInputs.txStarts
           , rxReadys = cInputs.rxReadys
           }
+{-# OPAQUE transceiverPrbsNC #-}
 
 transceiverPrbsN ::
   forall tx rx ref free txS rxS n m.
@@ -948,6 +949,7 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
   withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
   withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
+{-# OPAQUE transceiverPrbsWith #-}
 
 {- | Given a bittide word, extract the metadata. This function does not check that
 the input is a metadata word, and will produce garbage if used on a user word.
@@ -1070,3 +1072,4 @@ userDataHandshake input fromTransceiver = (output, transceiverInputFromHandshake
       input.txClock
       fromTransceiver.txReset
   withLockTxFree = Cdc.withLock input.txClock (unpack <$> fromTransceiver.txResetDone) input.clock input.reset
+{-# OPAQUE userDataHandshake #-}

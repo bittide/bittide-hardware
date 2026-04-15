@@ -233,6 +233,7 @@ si539xSpiWb minTargetPs =
   noWrite = pure Nothing
 
   defRegOp = RegisterOperation{page = 0, address = 0, write = Nothing}
+{-# OPAQUE si539xSpiWb #-}
 
 -- | Like 'si539xSpi', but packed as a 'Circuit'.
 si539xSpiC ::

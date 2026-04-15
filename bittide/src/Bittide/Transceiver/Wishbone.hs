@@ -147,3 +147,4 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
       , description =
           "Indicates for each neighbor whether it is ready to transmit data. Implies 'handshakes_done' is also 'True' for that neighbor."
       }
+{-# OPAQUE transceiverPrbsNWb #-}

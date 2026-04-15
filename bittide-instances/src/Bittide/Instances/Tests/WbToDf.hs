@@ -107,6 +107,7 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
         }
+{-# OPAQUE dut #-}
 
 type IMemWords = DivRU (1 * 1024) 4
 type DMemWords = DivRU (4 * 1024) 4

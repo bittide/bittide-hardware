@@ -169,3 +169,4 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
 
   maskedCounters :: Signal dom (Vec nLinks (RelDataCount m))
   maskedCounters = applyMask 0 linkMask counters
+{-# OPAQUE clockControlWb #-}
