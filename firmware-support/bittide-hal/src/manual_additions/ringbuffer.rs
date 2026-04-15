@@ -13,8 +13,6 @@ pub trait TransmitRingbufferInterface {
     /// Get a pointer to the base address of the TransmitRingbuffer
     fn base_ptr(&self) -> *mut [u8; 8];
 
-    fn set_enable(&self, enabled: bool);
-
     /// Write a slice to the transmit buffer at the given offset. The slice must not exceed the buffer length when combined with the offset.
     fn write_slice(&self, src: &[[u8; 8]], offset: usize) {
         assert!(src.len() + offset <= Self::DATA_LEN);
@@ -44,6 +42,40 @@ pub trait TransmitRingbufferInterface {
         }
 
         core::ptr::copy_nonoverlapping(src_ptr, dst_ptr, src.len());
+    }
+
+    /// Write a slice to the transmit buffer wrapping if `src.len() + offset`exceeds the length
+    /// of the buffer.
+    ///
+    /// # Panic
+    /// Panics if the length of the source exceeds the length of the buffer.
+    fn write_slice_with_wrap(&self, src: &[[u8; 8]], offset: usize) {
+        assert!(src.len() <= Self::DATA_LEN);
+        unsafe {
+            self.write_slice_with_wrap_unchecked(src, offset);
+        }
+    }
+
+    /// Write a slice to the transmit buffer without bounds checking. It wraps if `src.len() + offset`exceeds the length
+    /// of the buffer.
+    ///
+    /// # Safety
+    /// Caller must ensure that the size of the source does not exceed the buffer length.
+    unsafe fn write_slice_with_wrap_unchecked(&self, src: &[[u8; 8]], offset: usize) {
+        if src.len() + offset <= Self::DATA_LEN {
+            self.write_slice(src, offset);
+        } else {
+            let first_part_len = Self::DATA_LEN - offset;
+            let (first, second) = src.split_at(first_part_len);
+            debug!(
+                "ringbuffer tx write_slice_with_wrap offset {} first {} second {}",
+                offset,
+                first.len(),
+                second.len()
+            );
+            self.write_slice(first, offset);
+            self.write_slice(second, 0);
+        }
     }
 
     fn clear(&self) {
@@ -169,17 +201,18 @@ macro_rules! impl_ringbuffer_interfaces {
             fn base_ptr(&self) -> *mut [u8; 8] {
                 self.0.cast::<[u8; 8]>()
             }
-
-            fn set_enable(&self, enabled: bool) {
-                <$tx>::set_enable(self, enabled);
-            }
         }
     };
 }
 
 impl_ringbuffer_interfaces! {
-    rx: crate::shared_devices::ReceiveRingbuffer,
-    tx: crate::shared_devices::TransmitRingbuffer
+    rx: crate::hals::ringbuffer_test::devices::ReceiveRingbuffer,
+    tx: crate::hals::ringbuffer_test::devices::TransmitRingbuffer
+}
+
+impl_ringbuffer_interfaces! {
+    rx: crate::hals::soft_ugn_demo_mu::devices::ReceiveRingbuffer,
+    tx: crate::hals::soft_ugn_demo_mu::devices::TransmitRingbuffer
 }
 
 pub struct AlignedReceiveBuffer<Rx, Tx> {
