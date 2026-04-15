@@ -131,3 +131,4 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
     let diffCounters = fst <<$>> domainDiffs
 
     idC -< (sync, speedChanges, wbRest)
+{-# OPAQUE callistoSwClockControlC #-}

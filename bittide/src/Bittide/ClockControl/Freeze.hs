@@ -121,6 +121,7 @@ freeze clk rst =
       }
 
   noWrite = pure Nothing
+{-# OPAQUE freeze #-}
 
 -- | Simple counter
 counter ::

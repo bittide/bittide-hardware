@@ -157,6 +157,7 @@ domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
     (registerConfig "enable")
       { description = "Counters enabled? Counter is cleared when disabled."
       }
+{-# OPAQUE domainDiffCountersWbC #-}
 
 {- | A counter that counts /up/, synchronized from the domain @src@ to domain @dst@. To
 reset this component, the reset should be asserted for at least one cycle in the

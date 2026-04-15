@@ -135,6 +135,7 @@ managementUnit externalCounter maybeDna =
 
     -- Output
     idC -< (uartOut, restBusses)
+{-# OPAQUE managementUnit #-}
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
 calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
@@ -294,6 +295,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
  where
   withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   withBittideClockResetEnable = withClockResetEnable bitClk bitRst bitEna
+{-# OPAQUE core #-}
 
 uncurry4 ::
   (a -> b -> c -> d -> e) ->

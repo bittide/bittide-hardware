@@ -423,6 +423,8 @@ mkCalendarC
             "Writes to this register will only be acknowledged at the end of the metacycle."
         }
 
+{-# OPAQUE mkCalendarC #-}
+
 {- | Wrapper function to create a 'calendar' from the given 'CalendarConfig', this way
 we prevent the constraints of the type variables used in 'calendar' from leaking into
 the rest of the system.

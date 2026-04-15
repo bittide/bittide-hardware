@@ -88,6 +88,7 @@ captureUgn localCounter (C.dflipflop -> linkIn) = circuit $ \bus -> do
     (HasCaptured, Bool)
   goTrigger HasNotCaptured (Data (Just _)) = (HasCaptured, True)
   goTrigger s _ = (s, False)
+{-# OPAQUE captureUgn #-}
 
 {- | Outputs the local counter when the link is *not* sampling and the very first
 cycle that it is. Otherwise, outputs the switch data. In effect, this makes sure

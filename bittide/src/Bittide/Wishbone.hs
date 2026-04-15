@@ -550,6 +550,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
           WE:{writeEnable}
           ACK:{acknowledge}
           ERR:{err}|]
+{-# OPAQUE uartInterfaceWb #-}
 
 -- | State record for the FIFO circuit.
 data FifoState depth = FifoState
@@ -740,6 +741,8 @@ timeWb externalCounter = circuit $ \mmWb -> do
       }
 {- FOURMOLU_ENABLE -}
 
+{-# OPAQUE timeWb #-}
+
 andAck ::
   Signal dom Bool ->
   Circuit
@@ -815,6 +818,7 @@ arbiterMm = circuit $ \mmWbs -> do
   idC -< (mm, wb)
  where
   goDuplicate (_, mm) = (repeat mm, ())
+{-# OPAQUE arbiterMm #-}
 
 -- | Extend the address width of a Wishbone bus manager interface.
 extendAddressWidthWb ::
@@ -851,6 +855,7 @@ readDnaPortE2Wb simDna = circuit $ \wb -> do
  where
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
   config = (registerConfig "maybe_dna"){access = Mm.ReadOnly}
+{-# OPAQUE readDnaPortE2Wb #-}
 
 {- | A Wishbone worker circuit that exposes the DNA value from an external DnaPortE2.
 Only one DnaPortE2 can be instantiated in a design, so this component takes in the
@@ -876,6 +881,7 @@ readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
  where
   config = (registerConfig "maybe_dna"){access = Mm.ReadOnly}
+{-# OPAQUE readDnaPortE2WbWorker #-}
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'

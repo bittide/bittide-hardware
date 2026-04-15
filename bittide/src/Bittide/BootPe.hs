@@ -52,3 +52,4 @@ bootPe peConfig = circuit $ \(mm, jtag) -> do
   -- XXX: Should the transceiver just be part of the PE? This would add a whooole
   --      bunch of constraints to it.
   idC -< (uartOut, spiDone, spiOut, transceiverBus)
+{-# OPAQUE bootPe #-}

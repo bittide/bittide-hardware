@@ -307,3 +307,4 @@ switchDemoPeWb SNat localCounter maybeDna linkIn = withMemoryMap mm $ Circuit go
       , deviceName = Name "SwitchDemoPE" ""
       , definitionLoc = locHere
       }
+{-# OPAQUE switchDemoPeWb #-}

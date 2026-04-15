@@ -84,3 +84,4 @@ programmableMux localCounter = circuit $ \(bus, a, b) -> do
   muxC bool = Circuit go
    where
     go ((t, f), _) = (units, mux bool t f)
+{-# OPAQUE programmableMux #-}

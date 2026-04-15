@@ -95,6 +95,7 @@ asciiDebugMux sTimeout labels0 = circuit $ \dfs -> do
     , fromIntegral $ ord ']'
     , fromIntegral $ ord ' '
     )
+{-# OPAQUE asciiDebugMux #-}
 
 {- | Convert a 'Df' stream of bytes into a packet stream of bytes. The supplied
 predicate is used to determine the end of a packet. The meta information for
@@ -202,6 +203,7 @@ wbToDf name = circuit $ \(mm, wb) -> do
       { Mm.access = Mm.WriteOnly
       , Mm.description = "Commit register for " <> name
       }
+{-# OPAQUE wbToDf #-}
 
 {- | Takes an input that features no back pressure mechanism and turn it into `Df`.
 This function is unsafe, because data can be lost when the input is @Just _@ and
