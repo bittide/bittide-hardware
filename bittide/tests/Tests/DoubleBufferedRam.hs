@@ -245,8 +245,6 @@ wbStorageSpecCompliance = property $ do
       upperBound <- Gen.choice $ fmap pure [size, maxBound]
       WB.genWishboneTransfer (Range.constant 0 upperBound)
 
-deriving instance (ShowX a) => ShowX (RamOp i a)
-
 {- | Behavioral test for 'wbStorage', it checks whether the behavior of 'wbStorage' matches
 the 'wbStorageBehaviorModel'.
 -}
