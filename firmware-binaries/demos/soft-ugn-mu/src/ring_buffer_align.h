@@ -27,47 +27,47 @@
  * @param gather The gather unit to configure
  * @param state The alignment state to write at the first address
  */
-void ringbuffer_set_alignment(GatherUnit gather,
-                              enum RingbufferAlignState state);
+void ring_buffer_set_alignment(GatherUnit gather,
+                               enum RingBufferAlignState state);
 
 // ============================================================================
 // Scatter Unit Functions (RX/Incoming)
 // ============================================================================
 
 /**
- * @brief Scan a scatter unit's ringbuffer for alignment state messages.
+ * @brief Scan a scatter unit's ring_buffer for alignment state messages.
  *
  * This function scans the entire scatter unit memory looking for
  * RINGBUFFER_ALIGN_ANNOUNCE or RINGBUFFER_ALIGN_ACKNOWLEDGE messages.
  *
  * @param scatter The scatter unit to scan
- * @param buffer_size The size of the ringbuffer to scan
+ * @param buffer_size The size of the ring_buffer to scan
  * @param found_offset Pointer to store the offset where a message was found
  *                     (set to -1 if not found)
  * @param found_state Pointer to store the state that was found
  *                    (only valid if found_offset >= 0)
  * @return bool True if an alignment message was found, false otherwise
  */
-bool ringbuffer_find_alignment(ScatterUnit scatter, int16_t buffer_size,
-                               int16_t *found_offset,
-                               enum RingbufferAlignState *found_state);
+bool ring_buffer_find_alignment(ScatterUnit scatter, int16_t buffer_size,
+                                int16_t *found_offset,
+                                enum RingBufferAlignState *found_state);
 
 /**
  * @brief Read the alignment state at a specific offset in a scatter unit.
  *
  * @param scatter The scatter unit to read from
  * @param offset The offset to read from
- * @return enum RingbufferAlignState The alignment state found at that offset
+ * @return enum RingBufferAlignState The alignment state found at that offset
  */
-enum RingbufferAlignState
-ringbuffer_get_alignment_at_offset(ScatterUnit scatter, int16_t offset);
+enum RingBufferAlignState
+ring_buffer_get_alignment_at_offset(ScatterUnit scatter, int16_t offset);
 
 // ============================================================================
-// Ringbuffer Alignment Protocol
+// RingBuffer Alignment Protocol
 // ============================================================================
 
 /**
- * @brief Align ringbuffers across all ports using a two-phase protocol.
+ * @brief Align ring_buffers across all ports using a two-phase protocol.
  *
  * This function implements a distributed alignment protocol that discovers
  * the offset of incoming messages on each port's scatter unit.
@@ -85,7 +85,7 @@ ringbuffer_get_alignment_at_offset(ScatterUnit scatter, int16_t offset);
  * @param incoming_offsets Array to store discovered offsets for each port
  * @param uart UART for debug output
  */
-void align_ringbuffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
-                       Uart uart);
+void align_ring_buffers(UgnContext *ugn_ctx, int16_t *incoming_offsets,
+                        Uart uart);
 
 #endif // RINGBUFFER_ALIGN_H

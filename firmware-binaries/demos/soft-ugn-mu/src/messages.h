@@ -13,10 +13,10 @@
 // so we have access to Uart type and uart_* functions
 
 // ============================================================================
-// Ringbuffer Alignment State
+// RingBuffer Alignment State
 // ============================================================================
 
-enum RingbufferAlignState {
+enum RingBufferAlignState {
   RINGBUFFER_ALIGN_EMPTY = 0,
   RINGBUFFER_ALIGN_ANNOUNCE = 0xBADC0FFEE,
   RINGBUFFER_ALIGN_ACKNOWLEDGE = 0xDEADABBA,
@@ -370,13 +370,13 @@ enum RingbufferAlignState {
   } while (0);
 
 // ============================================================================
-// Ringbuffer Alignment Messages
+// RingBuffer Alignment Messages
 // ============================================================================
 
 #define PRINT_ALIGN_START(UART)                                                \
   do {                                                                         \
     uart_puts(UART, "========================================\n");             \
-    uart_puts(UART, "Starting ringbuffer alignment...\n");                     \
+    uart_puts(UART, "Starting ring_buffer alignment...\n");                    \
     uart_puts(UART, "========================================\n");             \
   } while (0)
 
@@ -424,7 +424,7 @@ enum RingbufferAlignState {
 #define PRINT_ALIGN_COMPLETE(UART, IN_OFFS, NUM_PORTS)                         \
   do {                                                                         \
     uart_puts(UART, "\n========================================\n");           \
-    uart_puts(UART, "Ringbuffer alignment complete!\n");                       \
+    uart_puts(UART, "RingBuffer alignment complete!\n");                       \
     uart_puts(UART, "Final offsets:\n");                                       \
     for (int32_t port = 0; port < (NUM_PORTS); port++) {                       \
       uart_puts(UART, "  P");                                                  \

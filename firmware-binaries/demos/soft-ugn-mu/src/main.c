@@ -12,7 +12,7 @@
 
 #include "messages.h"
 #include "priority_queue.h"
-#include "ringbuffer_align.h"
+#include "ring_buffer_align.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -91,9 +91,9 @@ int c_main(void) {
   PRINT_INIT_INFO(uart, &ugn_ctx, BUFFER_SIZE, SEND_PERIOD, RECEIVE_PERIOD,
                   NUM_PORTS);
 
-  // Align ringbuffers before starting event loop
+  // Align ring_buffers before starting event loop
   int16_t incoming_offsets[NUM_PORTS] = {0};
-  align_ringbuffers(&ugn_ctx, incoming_offsets, uart);
+  align_ring_buffers(&ugn_ctx, incoming_offsets, uart);
 
   // Event loop variables
   FixedIntPriorityQueue event_queue;
