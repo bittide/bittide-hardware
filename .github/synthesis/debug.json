@@ -1,5 +1,7 @@
 [
   {"top": "softUgnDemoTest",               "stage": "test",  "cc_report": true},
   {"top": "transmitRingbufferPnr",         "stage": "hdl",   "cc_report": false},
-  {"top": "receiveRingbufferPnr",          "stage": "hdl",   "cc_report": false}
+  {"top": "receiveRingbufferPnr",          "stage": "hdl",   "cc_report": false},
+  {"top": "transmitRingbufferRamOnlyPnr",  "stage": "hdl",   "cc_report": false},
+  {"top": "transmitRingbufferBramOnlyPnr", "stage": "hdl",   "cc_report": false}
 ]

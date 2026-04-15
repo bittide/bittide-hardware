@@ -13,7 +13,13 @@ import Protocols.Df.Extra (tdpbramRamOp)
 import Protocols.Wishbone
 
 import Bittide.Instances.Domains (Bittide)
-import Bittide.Ringbuffer (receiveRingbuffer, transmitRingbuffer)
+import Bittide.Ringbuffer (
+  receiveRingbuffer,
+  transmitRingbuffer,
+  transmitRingbufferBramOnly,
+  transmitRingbufferFilterOnly,
+  transmitRingbufferRamOnly,
+ )
 import Bittide.SharedTypes (withLittleEndian)
 import Clash.Cores.Xilinx.BlockRam (tdpbram)
 
@@ -58,3 +64,54 @@ receiveRingbufferPnr clk rst wbIn rxData = wbOut
         ((((), wbIn), rxData), ())
 
 makeTopEntity 'receiveRingbufferPnr
+
+transmitRingbufferRamOnlyPnr ::
+  "clk" ::: Clock Bittide ->
+  "rst" ::: Reset Bittide ->
+  "txEnable" ::: Signal Bittide Bool ->
+  "txData" ::: Signal Bittide (BitVector 64)
+transmitRingbufferRamOnlyPnr clk rst txEnable = txData
+ where
+  txPrim = tdpbramRamOp tdpbram clk clk
+  ((), txData) =
+    withLittleEndian
+      $ toSignals
+        (withClockResetEnable clk rst enableGen $ transmitRingbufferRamOnly txPrim (SNat @BufferDepth))
+        (txEnable, ())
+
+makeTopEntity 'transmitRingbufferRamOnlyPnr
+
+transmitRingbufferFilterOnlyPnr ::
+  "clk" ::: Clock Bittide ->
+  "rst" ::: Reset Bittide ->
+  "txEnable" ::: Signal Bittide Bool ->
+  "txData" ::: Signal Bittide (Maybe (Unsigned 64))
+transmitRingbufferFilterOnlyPnr clk rst txEnable = txData
+ where
+  ((), txData) =
+    withLittleEndian
+      $ toSignals
+        (withClockResetEnable clk rst enableGen transmitRingbufferFilterOnly)
+        (txEnable, pure (Ack True))
+
+makeTopEntity 'transmitRingbufferFilterOnlyPnr
+
+type RamOpType = RamOp BufferDepth (BitVector 8, BitVector 64)
+
+transmitRingbufferBramOnlyPnr ::
+  "clk" ::: Clock Bittide ->
+  "rst" ::: Reset Bittide ->
+  "portA" ::: Signal Bittide (Maybe RamOpType) ->
+  "portB" ::: Signal Bittide (Maybe RamOpType) ->
+  ( "outA" ::: Signal Bittide (Maybe (BitVector 64))
+  , "outB" ::: Signal Bittide (Maybe (BitVector 64))
+  )
+transmitRingbufferBramOnlyPnr clk rst portA portB = (outA, outB)
+ where
+  txPrim = tdpbramRamOp tdpbram clk clk
+  ((_ackA, _ackB), (outA, outB)) =
+    toSignals
+      (withClockResetEnable clk rst enableGen $ transmitRingbufferBramOnly txPrim (SNat @BufferDepth))
+      ((portA, portB), (pure (Ack True), pure (Ack True)))
+
+makeTopEntity 'transmitRingbufferBramOnlyPnr

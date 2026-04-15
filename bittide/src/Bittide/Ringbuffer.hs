@@ -3,7 +3,13 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 
-module Bittide.Ringbuffer where
+module Bittide.Ringbuffer (
+  transmitRingbuffer,
+  receiveRingbuffer,
+  transmitRingbufferRamOnly,
+  transmitRingbufferFilterOnly,
+  transmitRingbufferBramOnly,
+) where
 
 import Clash.Prelude
 
@@ -90,6 +96,72 @@ transmitRingbuffer primitive SNat = circuit $ \wb -> do
   ram = Df.fromDualPortedBramWithMask primitive hasClock hasClock
   writeToRamOp (addr, mask, bv) = RamWrite addr (mask, bv)
 
+-- Bug!
+{-# OPAQUE transmitRingbufferRamOnly #-}
+transmitRingbufferRamOnly ::
+  forall dom memDepth.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , 1 <= memDepth
+  ) =>
+  ( Signal dom (RamOp memDepth (BitVector 8, BitVector 64)) ->
+    Signal dom (RamOp memDepth (BitVector 8, BitVector 64)) ->
+    (Signal dom (BitVector 64), Signal dom (BitVector 64))
+  ) ->
+  SNat memDepth ->
+  Circuit
+    (CSignal dom Bool)
+    (CSignal dom (BitVector 64))
+transmitRingbufferRamOnly primitive SNat = circuit $ \(Fwd _transmitEnable) -> do
+  -- This implementation of readRamOp passes HDL generation
+  -- readRamOp <- Df.pure (RamRead (0 :: Index memDepth))
+
+  -- This implementation of readRamOp causes a ANF bug
+  readRamOp <- applyC (fmap (fmap RamRead)) id <| Df.iterate (satSucc SatWrap) 0
+
+  cpuRamOp <- idleSource
+  (leftDat, _rightDat) <- ram -< (readRamOp, cpuRamOp)
+  applyC (fmap $ fromMaybe 0) id <| Df.toMaybe -< leftDat
+ where
+  ram = Df.fromDualPortedBramWithMask primitive hasClock hasClock
+
+-- No bug
+transmitRingbufferFilterOnly ::
+  forall dom.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  ) =>
+  Circuit
+    (CSignal dom Bool)
+    (Df dom (Unsigned 64))
+transmitRingbufferFilterOnly = circuit $ \(Fwd transmitEnable) -> do
+  Df.filterS (fmap const transmitEnable) <| Df.iterate (satSucc SatWrap) 0
+
+-- No bug
+{-# OPAQUE transmitRingbufferBramOnly #-}
+transmitRingbufferBramOnly ::
+  forall dom memDepth.
+  ( HiddenClockResetEnable dom
+  , KnownNat memDepth
+  , 1 <= memDepth
+  ) =>
+  ( Signal dom (RamOp memDepth (BitVector 8, BitVector 64)) ->
+    Signal dom (RamOp memDepth (BitVector 8, BitVector 64)) ->
+    (Signal dom (BitVector 64), Signal dom (BitVector 64))
+  ) ->
+  SNat memDepth ->
+  Circuit
+    ( Df dom (RamOp memDepth (BitVector 8, BitVector 64))
+    , Df dom (RamOp memDepth (BitVector 8, BitVector 64))
+    )
+    ( Df dom (BitVector 64)
+    , Df dom (BitVector 64)
+    )
+transmitRingbufferBramOnly primitive _depth = ram
+ where
+  ram = Df.fromDualPortedBramWithMask primitive hasClock hasClock
+
+-- No bug
 {-# OPAQUE receiveRingbuffer #-}
 receiveRingbuffer ::
   forall dom aw memDepth.
