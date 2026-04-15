@@ -859,6 +859,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tcp_simultaneous_open_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
+]
+
+[[package]]
 name = "time_self_test"
 version = "0.1.0"
 dependencies = [
