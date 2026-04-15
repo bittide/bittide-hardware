@@ -4,6 +4,8 @@
 module Gdb (
   -- * GDB process management
   Gdb,
+  start,
+  stop,
   withGdb,
   withGdbs,
 

@@ -728,19 +728,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "smoltcp_client"
+name = "soft-ugn-demo-mu-2"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
- "gdb-trace",
  "heapless",
  "log",
  "memmap-generate",
  "riscv 0.10.1",
  "riscv-rt 0.11.0",
- "smoltcp 0.12.0",
+ "smoltcp",
  "ufmt",
+ "zerocopy",
 ]
 
 [[package]]
