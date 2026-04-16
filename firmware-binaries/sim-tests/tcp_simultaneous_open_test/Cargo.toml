@@ -23,7 +23,7 @@ features = ["medium-ip", "medium-ethernet", "proto-ipv4", "socket-tcp"]
 
 [dependencies.log]
 version = "0.4.21"
-features = ["max_level_trace", "release_max_level_warn"]
+features = ["max_level_trace", "release_max_level_info"]
 
 [dependencies.zerocopy]
 version = "0.7"
