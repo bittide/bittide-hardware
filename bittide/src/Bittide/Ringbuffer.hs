@@ -69,11 +69,11 @@ transmitRingbuffer primitive SNat = circuit $ \wb -> do
   writeAcks <- Df.pure 0
   cpuRamOp <- Df.roundrobinCollect Df.Parallel -< [reads1, writes1]
 
-  readRamOp <-
-    Df.filterS (fmap const transmitEnable)
-      <| applyC (fmap (fmap RamRead)) id
-      <| Df.iterate (satSucc SatWrap) 0
-  (leftDat, rightDat) <- ram -< (readRamOp, cpuRamOp)
+  let
+    readRamOp = mux transmitEnable (fmap (Just . RamRead) readCounter) (pure Nothing)
+    readCounter = register (0 :: Index memDepth) (fmap (satSucc SatWrap) readCounter)
+
+  (leftDat, rightDat) <- ram -< (Fwd readRamOp, cpuRamOp)
   applyC (fmap $ fromMaybe 0) id <| Df.toMaybe -< leftDat
  where
   transmitEnableConfig =
