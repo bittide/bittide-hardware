@@ -13,6 +13,9 @@ pub trait TransmitRingbufferInterface {
     /// Get a pointer to the base address of the TransmitRingbuffer
     fn base_ptr(&self) -> *mut [u8; 8];
 
+    /// Enable transmission of frames to the network. When disabled, will transmit zeroes.
+    fn set_enable(&self, enabled: bool);
+
     /// Write a slice to the transmit buffer at the given offset. The slice must not exceed the buffer length when combined with the offset.
     fn write_slice(&self, src: &[[u8; 8]], offset: usize) {
         assert!(src.len() + offset <= Self::DATA_LEN);
@@ -201,6 +204,9 @@ macro_rules! impl_ringbuffer_interfaces {
             fn base_ptr(&self) -> *mut [u8; 8] {
                 self.0.cast::<[u8; 8]>()
             }
+            fn set_enable(&self, enabled: bool) {
+                <$tx>::set_enable(self, enabled);
+            }
         }
     };
 }
@@ -245,6 +251,8 @@ where
         debug!("ringbuffer align start");
         tx.clear();
         let announce_pattern = [ALIGNMENT_ANNOUNCE.to_le_bytes()];
+        tx.set_enable(true);
+        self.buffer.set_enable(true);
         tx.write_slice(&announce_pattern, 0);
 
         while !self.rx_aligned {
@@ -275,6 +283,8 @@ where
             acknowledged = value == ALIGNMENT_ACKNOWLEDGE;
         }
         debug!("Alignment complete");
+        tx.set_enable(false);
+        self.buffer.set_enable(false);
         self.tx_reference = tx.base_ptr() as *const _ as usize;
     }
 
