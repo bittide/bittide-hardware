@@ -1,6 +1,11 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+
+{- | Demo for a bittide system which demonstrates we can capture UGNs in software without
+communicating with a host PC. The accompanying driver function is still used program the
+CPUs and checks that the software and hardware captured UGNs match.
+-}
 module Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude

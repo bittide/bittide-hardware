@@ -1,6 +1,14 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+
+{- | Switch demo for a Bittide system. In concert with its driver file, this device under
+test should demonstrate the predictability of a Bittide system once it has achieved logical
+synchronicity.
+
+For more details, see [QBayLogic's presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y)
+on the topic.
+-}
 module Bittide.Instances.Hitl.SwitchDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
