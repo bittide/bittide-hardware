@@ -14,7 +14,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     mdbook-drawio-flake = {
-      url = "github:QBayLogic/mdbook-drawio";
+      url = "github:rowanG077/mdbook-drawio?ref=rowan/mdbook-5";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

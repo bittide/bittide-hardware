@@ -82,15 +82,16 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1768295294,
-        "narHash": "sha256-SqT/iWj/rm4/5H6pXwavNktZ5oO/825SrL4NxVJdvw8=",
-        "owner": "QBayLogic",
+        "lastModified": 1776341582,
+        "narHash": "sha256-zIh1rIpMDcVOU2TES8xxw/8kBpxYylATYGIsPK5kfEA=",
+        "owner": "rowanG077",
         "repo": "mdbook-drawio",
-        "rev": "b6574150273ada90618512c9818ccac0b5b353ac",
+        "rev": "bb28b12cf9d635ee71e76b372c01213fabb50625",
         "type": "github"
       },
       "original": {
-        "owner": "QBayLogic",
+        "owner": "rowanG077",
+        "ref": "rowan/mdbook-5",
         "repo": "mdbook-drawio",
         "type": "github"
       }
@@ -163,11 +164,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1756348497,
-        "narHash": "sha256-xJp3VnoYh4kpsaKFO/7SsGbwOz7pI1ZmjbqpXEuR2cw=",
+        "lastModified": 1776309239,
+        "narHash": "sha256-XzTecca59093jBsVAE4PVAMcJO+PAYHYHBPRnOR8iWs=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "0adf92c70d23fb4f703aea5d3ebb51ac65994f7f",
+        "rev": "3717ee024da7b0a20744f12c39b41e27cbc12f2d",
         "type": "github"
       },
       "original": {
