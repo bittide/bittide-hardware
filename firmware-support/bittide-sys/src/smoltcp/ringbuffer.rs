@@ -192,6 +192,7 @@ where
     }
 
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+        self.tx_buffer.set_enable(true);
         Some(TxToken {
             tx_buffer: &mut self.tx_buffer,
             mtu: self.mtu,
