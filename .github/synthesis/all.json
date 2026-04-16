@@ -28,5 +28,6 @@
   {"top": "syncInSyncOut",                 "stage": "test",  "cc_report": false},
   {"top": "temperatureMonitor",            "stage": "test",  "cc_report": false},
   {"top": "transceiversUpTest",            "stage": "test",  "cc_report": false},
-  {"top": "vexRiscvTest",                  "stage": "test",  "cc_report": false}
+  {"top": "vexRiscvTest",                  "stage": "test",  "cc_report": false},
+  {"top": "wireDemoTest",                  "stage": "test",  "cc_report": true}
 ]

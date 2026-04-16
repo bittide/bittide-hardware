@@ -23,15 +23,17 @@ import qualified Data.Map as Map
 
 type FpgaId = String
 
--- TODO: find a way to derive this 4 from the code instead of using a magic number.
---
--- This is currently '4', because we traverse two switches and each switch has registered
--- inputs and outputs.
-iNTERNAL_SWITCH_DELAY :: (Num a) => a
-iNTERNAL_SWITCH_DELAY = 4
+{- | The delay in clock cycles between 2 PEs. This delay is not included in the UGNs when
+captured by the 'captureUgn' component, because that component is placed before the
+switch. For the switch demo the delay is 4 cycles, because the data traverses two switches
+and each switch has registered inputs and outputs.
 
-dELAY_CROSSBAR_TO_PE :: (Num a) => a
-dELAY_CROSSBAR_TO_PE = 1
+TODO: find a way to derive this 4 from the code instead of using a magic number.
+-}
+type InternalSwitchDelay = 4
+
+-- | The delay in clock cycles between the crossbar and the PE
+type DelayCrossbarToPe = 1
 
 {- | Convert a table (fpga_nr x link_nr) to a vector of maps mapping an fpga index
 (instead of a link index) to the value.
@@ -53,12 +55,13 @@ convert it into a table that represents the mapping from an FPGA's local counter
 to another FPGA's counter.
 -}
 toCounterMap ::
-  forall nNodes a.
+  forall nNodes a internalDelay.
   (HasCallStack, Num a, KnownNat nNodes, 1 <= nNodes) =>
+  SNat internalDelay ->
   Vec nNodes (Map (Index nNodes) (a, a)) ->
   -- | n -> m: c
   Vec nNodes (Map (Index nNodes) a)
-toCounterMap fpgaIndexed = goSrc <$> indicesI
+toCounterMap SNat fpgaIndexed = goSrc <$> indicesI
  where
   goSrc ::
     (HasCallStack) =>
@@ -74,7 +77,7 @@ toCounterMap fpgaIndexed = goSrc <$> indicesI
   goSrcDst src dst | src == dst = Nothing
   goSrcDst src dst =
     let (srcCycle, dstCycle) = fpgaIndexed !! dst Map.! src
-     in Just (dst, srcCycle - dstCycle + iNTERNAL_SWITCH_DELAY)
+     in Just (dst, srcCycle - dstCycle + natToNum @internalDelay)
 
 uncons :: Vec (n + 1) a -> (a, Vec n a)
 uncons (x :> xs) = (x, xs)
@@ -418,7 +421,7 @@ chainConfigurationWorker _ fpgaConfig ugnParts writeOffset =
   metacycleLength = natToNum @(MetacycleLength nNodes cyclesPerWrite padding reps)
 
   counterMap :: Vec nNodes (Map (Index nNodes) Integer)
-  counterMap = toCounterMap (toFpgaIndexed fpgaConfig ugnParts)
+  counterMap = toCounterMap (SNat @InternalSwitchDelay) (toFpgaIndexed fpgaConfig ugnParts)
 
   mkLink ::
     (Integer, Integer) ->
@@ -465,7 +468,7 @@ chainConfigurationWorker _ fpgaConfig ugnParts writeOffset =
     -- https://docs.google.com/presentation/d/1JryWl8EjcWlwOW7OO24nXui5wx_WPlDJOtp1Jlf_fmE
     linkSelectOffset0 = offsetsByFpga !! dst Map.! src
     linkSelectOffset1 = linkSelectOffset0 + windowCycles
-    crossbarDstCycle = mapCycle (srcCycle - dELAY_CROSSBAR_TO_PE) src dst
+    crossbarDstCycle = mapCycle (srcCycle - natToNum @DelayCrossbarToPe) src dst
     offsetInDstMetacycle = rem crossbarDstCycle metacycleLength
 
   offsets :: (KnownNat nNodes, 1 <= nNodes) => Vec nNodes (Vec (nNodes - 1) Integer)

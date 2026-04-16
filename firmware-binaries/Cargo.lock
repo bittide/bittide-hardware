@@ -900,3 +900,14 @@ dependencies = [
  "riscv-rt 0.11.0",
  "ufmt",
 ]
+
+[[package]]
+name = "wire-demo-mu"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+ "ufmt",
+]

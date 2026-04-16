@@ -32,6 +32,7 @@ import Numeric (showHex)
 import Project.Chan
 import Project.FilePath
 import Project.Handle (assertEither, expectRight)
+import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
 import System.IO
@@ -84,12 +85,14 @@ muSwitchDemoPeBuffer =
         TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
       lift val
    )
+
 sampleMemoryBase :: Integer
 sampleMemoryBase =
   $( do
       val <- TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
       lift val
    )
+
 dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
@@ -196,6 +199,48 @@ parseTapInfo expectedJtagIds initOcd =
           error [i|Parsed JTAG IDs do not match expected IDs!|]
       | otherwise -> tapInfos
 
+{- | Read the current time in clock cycles from the given target/device using the given
+GDB connection. Requires the CPU to be halted.
+-}
+readCurrentTime :: (HasCallStack) => MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
+readCurrentTime mm (_, d) gdb = do
+  putStrLn $ "Getting current time from device " <> d.deviceId
+  commandAddress <- expectRight $ getPathAddress mm ["0", "Timer", "command"]
+  scratchAddress <- expectRight $ getPathAddress mm ["0", "Timer", "scratchpad"]
+  Gdb.writeLe gdb commandAddress Capture
+  Gdb.readLe gdb scratchAddress
+
+{- | Read the hardware UGNs of the given device using the given GDB connection. Requires
+the CPU to be halted.
+-}
+readHardwareUgns :: MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
+readHardwareUgns mm (_, d) gdb = do
+  let
+    captureUgnPrefixed :: Int -> String -> [String]
+    captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
+
+    readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
+    readUgnMmio linkNr = do
+      let getUgnRegister = expectRight . getPathAddress mm . captureUgnPrefixed linkNr
+      counterAddresses <- mapM getUgnRegister ["local_counter", "remote_counter"]
+      [localCounter, remoteCounter] <- mapM (Gdb.readLe gdb) counterAddresses
+      delta <- Gdb.readLe gdb =<< getUgnRegister "elastic_buffer_delta"
+      pure (localCounter, remoteCounter, delta)
+
+    -- Adjust the local counter for the frames added/removed from the elastic
+    -- buffer after capturing the UGN. Leaves the remote counter untouched.
+    adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 32) -> (Unsigned 64, Unsigned 64)
+    adjustLocalCounter (localCounter, remoteCounter, delta) =
+      (addSigned localCounter delta, remoteCounter)
+     where
+      addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
+      addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
+
+  liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
+  ugnTriples <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
+  liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
+  pure $ adjustLocalCounter <$> ugnTriples
+
 driver ::
   (HasCallStack) =>
   String ->
@@ -212,34 +257,6 @@ driver testName targets = do
   let
     hitlDir = projectDir </> "_build/hitl" </> testName
 
-    muGetUgns :: (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
-    muGetUgns (_, d) gdb = do
-      let
-        captureUgnPrefixed :: Int -> String -> [String]
-        captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
-
-        readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
-        readUgnMmio linkNr = do
-          let getUgnRegister = expectRight . getPathAddress MemoryMaps.mu . captureUgnPrefixed linkNr
-          counterAddresses <- mapM getUgnRegister ["local_counter", "remote_counter"]
-          [localCounter, remoteCounter] <- mapM (Gdb.readLe gdb) counterAddresses
-          delta <- Gdb.readLe gdb =<< getUgnRegister "elastic_buffer_delta"
-          pure (localCounter, remoteCounter, delta)
-
-        -- Adjust the local counter for the frames added/removed from the elastic
-        -- buffer after capturing the UGN. Leaves the remote counter untouched.
-        adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 32) -> (Unsigned 64, Unsigned 64)
-        adjustLocalCounter (localCounter, remoteCounter, delta) =
-          (addSigned localCounter delta, remoteCounter)
-         where
-          addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
-          addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
-
-      liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      ugnTriples <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
-      liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
-      pure $ adjustLocalCounter <$> ugnTriples
-
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
@@ -249,14 +266,6 @@ driver testName targets = do
       output <-
         Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 muSwitchDemoPeBuffer}|]
       putStrLn [i|PE buffer readout:\n#{output}|]
-
-    muGetCurrentTime :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
-    muGetCurrentTime (_, d) gdb = do
-      putStrLn $ "Getting current time from device " <> d.deviceId
-      commandAddress <- expectRight $ getPathAddress MemoryMaps.mu ["0", "Timer", "command"]
-      scratchAddress <- expectRight $ getPathAddress MemoryMaps.mu ["0", "Timer", "scratchpad"]
-      Gdb.writeLe gdb commandAddress Capture
-      Gdb.readLe gdb scratchAddress
 
     -- \| Read the elastic buffer under and overflow flags and verify they are clear
     checkElasticBufferFlags :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO Bool
@@ -431,14 +440,14 @@ driver testName targets = do
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
-          ugnPairsTable <- liftIO $ zipWithConcurrently muGetUgns targets muGdbs
+          ugnPairsTable <- liftIO $ zipWithConcurrently (readHardwareUgns MemoryMaps.mu) targets muGdbs
           let
             ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
           liftIO $ do
             putStrLn "Calculating IGNs for all targets"
             Calc.printAllIgns ugnPairsTableV fpgaSetup
             mapM_ print ugnPairsTableV
-          currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
+          currentTime <- liftIO $ readCurrentTime MemoryMaps.mu (L.head targets) (L.head muGdbs)
           let
             startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
             metaChainConfig ::
@@ -468,7 +477,7 @@ driver testName targets = do
             threadDelay delayMicros
             liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
             putStrLn [i|Slept for: #{delayMicros}μs|]
-            newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+            newCurrentTime <- readCurrentTime MemoryMaps.mu (L.head targets) (L.head muGdbs)
             putStrLn [i|Clock is now: #{newCurrentTime}|]
 
           _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs

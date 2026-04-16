@@ -237,6 +237,7 @@ library
     Bittide.Transceiver.ResetManager
     Bittide.Transceiver.Wishbone
     Bittide.Transceiver.WordAlign
+    Bittide.WireDemoProcessingElement
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
@@ -315,6 +316,7 @@ test-suite unittests
     Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign
+    Tests.WireDemoProcessingElement
     Tests.Wishbone
     Tests.Wishbone.Arbiter
     Tests.Wishbone.Utils

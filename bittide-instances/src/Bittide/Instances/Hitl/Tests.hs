@@ -34,6 +34,7 @@ import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
 import qualified Bittide.Instances.Hitl.TemperatureMonitor as TemperatureMonitor
 import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
 import qualified Bittide.Instances.Hitl.VexRiscv as VexRiscv
+import qualified Bittide.Instances.Hitl.WireDemo.TopEntity as WireDemo
 
 hitlTests :: [HitlTestGroup]
 hitlTests =
@@ -53,3 +54,4 @@ hitlTests =
     <> [TemperatureMonitor.tests]
     <> [Transceivers.tests]
     <> [VexRiscv.tests]
+    <> [WireDemo.tests]

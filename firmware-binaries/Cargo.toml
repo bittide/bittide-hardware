@@ -51,5 +51,6 @@ members = [
   "demos/switch-demo1-mu",
   "demos/switch-demo2-mu",
   "demos/switch-demo2-gppe",
+  "demos/wire-demo-mu",
 ]
 resolver = "2"

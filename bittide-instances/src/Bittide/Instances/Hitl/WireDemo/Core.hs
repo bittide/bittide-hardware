@@ -2,17 +2,11 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{- | Switch demo for a Bittide system. In concert with its driver file, this device under
-test should demonstrate the predictability of a Bittide system once it has achieved logical
-synchronicity.
-
-For more details, see [QBayLogic's presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y)
-on the topic.
--}
-module Bittide.Instances.Hitl.SwitchDemo.Core (InternalCpuCount, core) where
+-- | Wire demo for a bittide system, similar to the switch demo but without a switch.
+module Bittide.Instances.Hitl.WireDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, withClock, withClockResetEnable)
 import Protocols
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
@@ -22,7 +16,7 @@ import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockCont
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
-import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
+import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
@@ -31,14 +25,16 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
+import Bittide.ProgrammableMux (programmableMux)
+import Bittide.ScatterGather
 import Bittide.SharedTypes (Bitbone, BitboneMm)
-import Bittide.Switch (switchC)
-import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
 import Bittide.Sync (Sync)
+import Bittide.WireDemoProcessingElement (wireDemoPe, wireDemoPeConfig)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Protocols.Extra
+import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone.Extra (delayWishbone)
 import VexRiscv (DumpVcd (..), Jtag)
@@ -64,14 +60,18 @@ type NmuInternalBusses = 3 + PeInternalBusses
 {- Busses per link:
     - UGN component
     - Elastic buffer
+    - Scatter unit
+    - Scatter calendar
+    - Gather unit
+    - Gather calendar
 -}
-type PeripheralsPerLink = 2
+type PeripheralsPerLink = 6
 
 {- External busses:
-    - ASIC PE
-    - Switch calendar
     - Transceivers
     - Callisto
+    - Programmable mux
+    - PE config
 -}
 type NmuExternalBusses = 4 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
@@ -84,7 +84,7 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , depthI = SNat @(Div (8 * 1024) 4)
+    , depthI = SNat @(Div (16 * 1024) 4)
     , depthD = SNat @(Div (16 * 1024) 4)
     , initI = Nothing
     , initD = Nothing
@@ -144,37 +144,6 @@ managementUnit externalCounter maybeDna =
     -- Output
     idC -< (uartOut, restBusses)
 
-{- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
-calendarConfig =
-  CalendarConfig
-    (SNat @LinkCount)
-    {- The '@12' is so that the generated Rust code works. At time of writing,
-    the generator makes two separate device-specific types for 'ValidEntry' since
-    they have differing repetition bit widths. To fix this, all tests are being
-    set to a width of 12.
-    -}
-    (SNat @12)
-
-    -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
-    -- than that we cycle through the other nodes.
-    (      ValidEntry (2 :> repeat 1) nRepetitions
-        :> ValidEntry (3 :> repeat 1) nRepetitions
-        :> ValidEntry (4 :> repeat 1) nRepetitions
-        :> ValidEntry (5 :> repeat 1) nRepetitions
-        :> ValidEntry (6 :> repeat 1) nRepetitions
-        :> ValidEntry (7 :> repeat 1) nRepetitions
-        :> ValidEntry (8 :> repeat 1) nRepetitions
-        :> Nil
-    )
-
-    -- Don't care about inactive calendar:
-    (ValidEntry (repeat 0) 0 :> Nil)
-  where
-  -- We want enough time to read _number of FPGAs_ triplets
-  nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
-{- FOURMOLU_ENABLE -}
-
 core ::
   ( ?byteOrder :: ByteOrder
   ) =>
@@ -211,12 +180,14 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    [ peBus
-      , (switchMm, switchWb)
-      , muTransceiverBus
+    (scatterBusses, scatterCalendarBusses, muWbs3) <- Vec.split3 -< muWbs2
+    (gatherBusses, gatherCalendarBusses, muWbs4) <- Vec.split3 -< muWbs3
+    [ muTransceiverBus
       , muCallistoBus
+      , muProgrammableMuxBus
+      , peConfigBus
       ] <-
-      idC -< muWbs2
+      idC -< muWbs4
     -- Stop management unit
 
     -- Start internal links
@@ -234,19 +205,58 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
         <| repeatC (fmapC $ withBittideClockResetEnable delayWishbone)
         -< ebWbs
 
-    rxs2 <- withBittideClockResetEnable $ Vec.vecCircuits (captureUgn localCounter <$> rxs1) -< ugnWbs
-
-    switchIn <- Vec.append -< ([peOut], rxs2)
-    (switchOut, _calEntry) <-
-      withBittideClockResetEnable $ switchC calendarConfig -< (switchMm, (switchIn, switchWb))
-    ([Fwd peIn], txs) <- Vec.split -< switchOut
+    -- Use of `dflipflop` to add pipelining should be replaced by
+    -- https://github.com/bittide/bittide-hardware/pull/1134
+    Fwd rxs2 <-
+      withBittideClockResetEnable
+        $ Vec.vecCircuits ((captureUgn localCounter . dflipflop bitClk) <$> rxs1)
+        -< ugnWbs
     -- Stop internal links
 
-    -- Start ASIC processing element
-    peOut <-
-      withBittideClockResetEnable (switchDemoPeWb (SNat @FpgaCount) localCounter maybeDna peIn)
-        -< peBus
-    -- Stop ASIC processing element
+    -- Start ringbuffers
+    let
+      -- This demo only has the scatter/gather units to have an alternative source of the
+      -- links next to the PE. The depth is reduced compared to the Soft UGN Demo to reduce
+      -- blockram usage (and thus to simplify placement).
+      maxCalDepth = SNat @200
+      scatterConfig = ScatterConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+      gatherConfig = GatherConfig maxCalDepth (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
+      repetitionBits = d16
+      sgCal = ValidEntry 0 (snatToNum maxCalDepth - 1) :> Nil
+
+    scatterCalendarBussesDelayed <-
+      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< scatterCalendarBusses
+    gatherCalendarBussesDelayed <-
+      repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< gatherCalendarBusses
+
+    idleSink
+      <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs2)
+      <| Vec.zip
+      -< (scatterBusses, scatterCalendarBussesDelayed)
+    Fwd txsMu <-
+      repeatC (withBittideClockResetEnable (gatherUnitWbC gatherConfig))
+        <| Vec.zip
+        -< (gatherBusses, gatherCalendarBussesDelayed)
+    -- Stop ringbuffers
+
+    -- Start business logic
+    (readLinkI, writeLinkI) <-
+      withBittideClockResetEnable wireDemoPeConfig -< (peConfigBus, peWrittenData)
+    (Fwd txsBl, peWrittenData) <-
+      withClock bitClk
+        $ wireDemoPe businessLogicReset maybeDna localCounter
+        -< (Fwd rxs2, readLinkI, writeLinkI)
+    -- Stop business logic
+
+    -- Start programmable mux
+    (Fwd businessLogicReset, Fwd txs) <-
+      withBittideClockResetEnable
+        $ programmableMux localCounter
+        -< ( muProgrammableMuxBus
+           , (Fwd (bundle txsMu))
+           , (Fwd (bundle txsBl))
+           )
+    -- Stop programmable mux
 
     -- Start clock control
     ( sync
@@ -291,10 +301,12 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           else swCcOut0
     -- Stop clock control
 
+    -- Use of `dflipflop` to add pipelining should be replaced by
+    -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
          , Fwd localCounter
-         , txs
+         , Fwd (dflipflop bitClk <$> (unbundle txs))
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus

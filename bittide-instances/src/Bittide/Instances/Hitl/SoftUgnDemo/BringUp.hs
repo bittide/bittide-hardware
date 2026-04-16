@@ -3,13 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
 
-{- | Switch demo for a Bittide system. In concert with its driver file, this device under
-test should demonstrate the predictability of a Bittide system once it has achieved logical
-synchronicity.
-
-For more details, see [QBayLogic's presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y)
-on the topic.
--}
 module Bittide.Instances.Hitl.SoftUgnDemo.BringUp (bringUp) where
 
 import Clash.Explicit.Prelude
@@ -51,6 +44,7 @@ import qualified Protocols.Vec as Vec
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
+import Clash.Cores.UART.Extra
 #else
 type Baud = 921_600
 #endif

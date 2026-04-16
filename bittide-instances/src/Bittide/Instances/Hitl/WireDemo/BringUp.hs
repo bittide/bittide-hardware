@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
 
-module Bittide.Instances.Hitl.SwitchDemoGppe.BringUp (bringUp) where
+module Bittide.Instances.Hitl.WireDemo.BringUp (bringUp) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -22,7 +22,7 @@ import Bittide.Instances.Domains (
   GthTxS,
  )
 import Bittide.Instances.Hitl.Setup (LinkCount)
-import Bittide.Instances.Hitl.SwitchDemoGppe.Core (InternalCpuCount, core)
+import Bittide.Instances.Hitl.WireDemo.Core (InternalCpuCount, core)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..))
 import Bittide.SharedTypes (Byte, withLittleEndian)
@@ -52,13 +52,12 @@ type Baud = 921_600
 baud :: SNat Baud
 baud = SNat
 
-uartLabels :: Vec 4 (Vec 2 Byte)
+uartLabels :: Vec 3 (Vec 2 Byte)
 uartLabels =
   fmap (fromIntegral . ord)
     <$> ( $(listToVecTH "BT")
             :> $(listToVecTH "MU")
             :> $(listToVecTH "CC")
-            :> $(listToVecTH "PE")
             :> Nil
         )
 
