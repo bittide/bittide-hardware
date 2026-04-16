@@ -25,11 +25,12 @@ data State
       { adjustments :: Signed 32
       -- ^ Cumulative adjustments that have been submitted to the elastic buffer
       , wait :: Index 256
-      -- ^ Number of cycles to wait before moving to Idle state. This should be long enough
-      -- to ensure that the adjustment has taken an effect on the buffer's occupancy count.
-      -- It is currently hardcoded to 256 cycles, which should be well above the time it
-      -- takes for an adjustment to take effect. At the same time, it should be more than
-      -- quick enough to not be too slow even for systems that are wildly out of balance.
+      {- ^ Number of cycles to wait before moving to Idle state. This should be long enough
+      to ensure that the adjustment has taken an effect on the buffer's occupancy count.
+      It is currently hardcoded to 256 cycles, which should be well above the time it
+      takes for an adjustment to take effect. At the same time, it should be more than
+      quick enough to not be too slow even for systems that are wildly out of balance.
+      -}
       }
   deriving (Generic, NFDataX, Show)
 
@@ -54,12 +55,14 @@ autoCenter ::
   (HiddenClock dom, KnownNat n, n <= 32) =>
   Reset dom ->
   Enable dom ->
-  -- | Correction margin. If set to 1, the circuit will try to keep the buffer at
-  --   [-1, 0, 1]. Note that if set to 0, the circuit will try to keep the buffer at exactly
-  --   0, which will cause it to submit many small adjustments, which may not be desirable.
+  {- | Correction margin. If set to 1, the circuit will try to keep the buffer at
+  [-1, 0, 1]. Note that if set to 0, the circuit will try to keep the buffer at exactly
+  0, which will cause it to submit many small adjustments, which may not be desirable.
+  -}
   Signal dom (Unsigned 16) ->
-  -- | The current number of items in the buffer. The circuit will try to keep this at 0
-  --   (or within the margin if set).
+  {- | The current number of items in the buffer. The circuit will try to keep this at 0
+  (or within the margin if set).
+  -}
   Signal dom (RelDataCount n) ->
   Circuit
     ()

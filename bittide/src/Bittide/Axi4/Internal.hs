@@ -68,9 +68,10 @@ splitAxi4Stream ::
         ('Axi4StreamConfig (widthA + widthB) idWith destWidth)
         (userTypeA, userTypeB)
     ) ->
-  -- |
-  -- 1. Axi4Stream transfer with the first half of the data, keep and strobe vectors.
-  -- 2. Axi4Stream transfer with the second half of the data, keep and strobe vectors.
+  {- |
+  1. Axi4Stream transfer with the first half of the data, keep and strobe vectors.
+  2. Axi4Stream transfer with the second half of the data, keep and strobe vectors.
+  -}
   ( Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWith destWidth) userTypeA)
   , Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWith destWidth) userTypeB)
   )

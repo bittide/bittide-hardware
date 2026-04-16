@@ -40,12 +40,13 @@ initCompleteMarker = "Initialization complete"
 
 data OcdInitData = OcdInitData
   { log :: [String]
-  -- ^ All output from OpenOCD until initialization complete. This can be used
-  -- to parse the JTAG IDs and GDB ports. See:
-  --
-  -- - 'parseJtagIdsAndGdbPorts'
-  -- - 'parseJtagIds'
-  -- - 'parseGdbPorts'
+  {- ^ All output from OpenOCD until initialization complete. This can be used
+  to parse the JTAG IDs and GDB ports. See:
+
+  - 'parseJtagIdsAndGdbPorts'
+  - 'parseJtagIds'
+  - 'parseGdbPorts'
+  -}
   , handles :: ProcessHandles
   -- ^ OpenOCD stdio handles
   , cleanup :: IO ()
@@ -54,8 +55,9 @@ data OcdInitData = OcdInitData
 
 data InitOpenOcdArgs = InitOpenOcdArgs
   { expectedJtagIds :: [JtagId]
-  -- ^ Expected JTAG IDs for the target devices, in order. Only used for port
-  -- calculation and TAP insertion.
+  {- ^ Expected JTAG IDs for the target devices, in order. Only used for port
+  calculation and TAP insertion.
+  -}
   , hitlDir :: FilePath
   -- ^ Directory to store OpenOCD logs in.
   , deviceInfo :: DeviceInfo

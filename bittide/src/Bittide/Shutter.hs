@@ -13,8 +13,9 @@ import Protocols
 shutter ::
   forall dom a.
   (KnownDomain dom) =>
-  -- | Shutter control. If 'True', the signal is let through. If 'False', the
-  -- signal is blocked.
+  {- | Shutter control. If 'True', the signal is let through. If 'False', the
+  signal is blocked.
+  -}
   Signal dom Bool ->
   Circuit
     (CSignal dom a)

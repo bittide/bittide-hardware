@@ -121,8 +121,9 @@ bitStep bv tap =
   xor (lsb bv) (unpack $ slice tap tap bv)
 
 data TrackerState
-  = -- | Link is considered down. Needs 127 cycles of \"good\" input to transition
-    -- to 'Up'.
+  = {- | Link is considered down. Needs 127 cycles of \"good\" input to transition
+    to 'Up'.
+    -}
     Down (Index 127)
   | -- | Link has not seen errors in at least 127 cycles.
     Up

@@ -91,9 +91,10 @@ data
     (padding :: Nat)
     (reps :: Nat)
   where
-  -- | Calculates the calendar for a system using general purpose processing elements,
-  --   where there may be padding and repetition is required due to double-buffered
-  --   memories in the scatter units.
+  {- | Calculates the calendar for a system using general purpose processing elements,
+  where there may be padding and repetition is required due to double-buffered
+  memories in the scatter units.
+  -}
   GppeCalculator ::
     forall (nNodes :: Nat) (cyclesPerWrite :: Nat) (padding :: Nat).
     ( HasCallStack
@@ -107,8 +108,9 @@ data
     SNat cyclesPerWrite ->
     SNat padding ->
     CalendarCalculator nNodes cyclesPerWrite padding 2
-  -- | Calculates the calendar for a system using switch demo processing elements,
-  --   where no padding and no additional repetition are required.
+  {- | Calculates the calendar for a system using switch demo processing elements,
+  where no padding and no additional repetition are required.
+  -}
   SdpeCalculator ::
     forall (nNodes :: Nat) (cyclesPerWrite :: Nat).
     ( HasCallStack
@@ -138,8 +140,9 @@ class CalendarProps cal where
   -- | The total number of cycles any given node will write for per window.
   type CalGroupCycles cal :: Nat
 
-  -- | The number of cycles in a window - one complete repetition of all nodes
-  --   writing out their data.
+  {- | The number of cycles in a window - one complete repetition of all nodes
+  writing out their data.
+  -}
   type CalWindowCycles cal :: Nat
 
   -- | The number of total cycles for all windows to complete.

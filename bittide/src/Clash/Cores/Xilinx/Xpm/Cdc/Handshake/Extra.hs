@@ -63,9 +63,10 @@ xpmCdcHandshakeMaybe ::
   Signal src (Maybe a) ->
   -- | Acknowledgement from destination domain.
   Signal dst Bool ->
-  -- |
-  -- 1. Acknowledgement in source domain.
-  -- 2. Data in the destination domain.
+  {- |
+  1. Acknowledgement in source domain.
+  2. Data in the destination domain.
+  -}
   (Signal src Bool, Signal dst (Maybe a))
 xpmCdcHandshakeMaybe clkSrc clkDst srcIn dstAck = (srcRcv, orNothing <$> dstReq <*> dstOut)
  where

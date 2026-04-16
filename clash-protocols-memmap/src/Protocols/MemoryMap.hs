@@ -97,11 +97,12 @@ type Mm = SimOnly MemoryMap
 
 data Name = Name
   { name :: String
-  -- ^ Name of the 'thing'. Used as an identifier in generated data structures.
-  --
-  -- TODO: Only allow very basic names here to make sure it can be used in all
-  --       common target languages. Provide a Template Haskell helper to make
-  --       sure the name is valid at compile time?
+  {- ^ Name of the 'thing'. Used as an identifier in generated data structures.
+
+  TODO: Only allow very basic names here to make sure it can be used in all
+      common target languages. Provide a Template Haskell helper to make
+      sure the name is valid at compile time?
+  -}
   , description :: String
   -- ^ Description of the 'thing'. Used in generated documentation.
   }

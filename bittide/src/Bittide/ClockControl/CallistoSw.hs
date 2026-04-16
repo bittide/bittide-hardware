@@ -58,12 +58,14 @@ callistoSwClockControlC ::
   , ?byteOrder :: ByteOrder
   , 4 <= SwcccRemBusWidth otherWb
   ) =>
-  -- | Clock of an uncontrolled domain, e.g. the free-running clock. This is
-  --   used to generate the SYNC_OUT signal.
+  {- | Clock of an uncontrolled domain, e.g. the free-running clock. This is
+  used to generate the SYNC_OUT signal.
+  -}
   Clock free ->
   Reset free ->
-  -- | Clocks from the incoming links. Used to construct domain difference
-  --   counters.
+  {- | Clocks from the incoming links. Used to construct domain difference
+  counters.
+  -}
   Vec nLinks (Clock rx) ->
   Vec nLinks (Reset rx) ->
   DumpVcd ->

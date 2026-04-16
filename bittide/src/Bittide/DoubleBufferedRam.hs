@@ -194,9 +194,10 @@ updateAddrs ::
   Maybe (Index m, b) ->
   -- | A boolean that will be used for the addresses LSBs.
   AorB ->
-  -- |
-  --   1. Updated address
-  --   2. Write operation with updated address.
+  {- |
+  1. Updated address
+  2. Write operation with updated address.
+  -}
   (Index (n * 2), Maybe (Index (m * 2), b))
 updateAddrs rdAddr (Just (i, a)) bufSelect =
   (mul2Index rdAddr bufSelect, Just (mul2Index i (swapAorB bufSelect), a))

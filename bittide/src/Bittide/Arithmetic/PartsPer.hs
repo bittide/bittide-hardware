@@ -78,10 +78,11 @@ cyclesToPartsPerI ::
   (KnownDomain dom, KnownNat ps, Integral a) =>
   -- | Clock domain. Proxy for an ideal frequency.
   Proxy dom ->
-  -- | Period observed for in picoseconds (see 'Seconds', 'Milliseconds', etc.). E.g.,
-  -- if you want to pass in 1 millisecond, you would pass in:
-  --
-  -- > cyclesToPartsPerI (Proxy @dom) (Proxy @(Milliseconds 1))
+  {- | Period observed for in picoseconds (see 'Seconds', 'Milliseconds', etc.). E.g.,
+  if you want to pass in 1 millisecond, you would pass in:
+
+  > cyclesToPartsPerI (Proxy @dom) (Proxy @(Milliseconds 1))
+  -}
   Proxy ps ->
   -- | Observed number of clock cycles
   a ->

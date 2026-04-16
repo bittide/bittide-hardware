@@ -70,10 +70,10 @@ traceCTupleInstance n =
   mkResultDec i =
     [d|
       $[p|
-        ( $(varP $ mkName $ "bwd" <> show i <> "'")
-          , $(varP $ mkName $ "fwd" <> show i <> "'")
-          )
-        |] =
+         ( $(varP $ mkName $ "bwd" <> show i <> "'")
+           , $(varP $ mkName $ "fwd" <> show i <> "'")
+           )
+         |] =
           $(varE $ mkName $ "traced" <> show i)
             ( $(varE $ mkName $ "fwd" <> show i)
             , $(varE $ mkName $ "bwd" <> show i)

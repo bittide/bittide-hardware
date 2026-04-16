@@ -185,8 +185,7 @@ class
             -- Plus all the fields
             + MultipleOf (GByteSizeC 0 (Rep a)) (GAlignmentBoundaryC (Rep a))
         )
-        ( AlignmentBoundaryC a
-        )
+        (AlignmentBoundaryC a)
 
   packC# :: ByteOrder -> a -> Bytes (ByteSizeC a)
   default packC# ::

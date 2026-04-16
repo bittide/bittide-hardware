@@ -107,11 +107,13 @@ data DeviceInfo = DeviceInfo
   , dna :: BitVector 96
   -- ^ Can be found in the Vivado GUI or through its TCL interface.
   , serial :: String
-  -- ^ Path to the serial device file. For example,
-  -- @"/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0"@
+  {- ^ Path to the serial device file. For example,
+  @"/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0"@
+  -}
   , usbAdapterLocation :: String
-  -- ^ The USB adapter location for the hardware target, for example @"1-2:1"@.
-  -- Currently primarily used for the JTAG target location with OpenOCD.
+  {- ^ The USB adapter location for the hardware target, for example @"1-2:1"@.
+  Currently primarily used for the JTAG target location with OpenOCD.
+  -}
   }
   deriving (Eq, Ord, Show)
 
@@ -207,21 +209,23 @@ data HitlTestGroup where
     -- ^ List of test cases
     , mDriverProc ::
         Maybe (String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode)
-    -- ^ Optional function driving the test. If provided, this function must:
-    --   - Handle any pre-processing necessary to begin the test
-    --   - Assert the start probe(s)
-    --   - Wait for results on the test done and success probes
-    --
-    -- The HITL testing infrastructure deasserts the start probe(s) after running this function
-    -- and collecting ILA data, so unless there is a good reason to this function should not also
-    -- deassert it. Because the deassertions are not done simultaneously, unpredictable behaviour
-    -- caused by the shutdown of only parts of a multi-FPGA system may end up recorded in the test
-    -- data ILAs. Thus it's more desirable to allow the HITL testing infrastructure to handle this
-    -- process after it has collected the ILA data.
+    {- ^ Optional function driving the test. If provided, this function must:
+    - Handle any pre-processing necessary to begin the test
+    - Assert the start probe(s)
+    - Wait for results on the test done and success probes
+
+    The HITL testing infrastructure deasserts the start probe(s) after running this function
+    and collecting ILA data, so unless there is a good reason to this function should not also
+    deassert it. Because the deassertions are not done simultaneously, unpredictable behaviour
+    caused by the shutdown of only parts of a multi-FPGA system may end up recorded in the test
+    data ILAs. Thus it's more desirable to allow the HITL testing infrastructure to handle this
+    process after it has collected the ILA data.
+    -}
     , mPostProc :: Maybe (FilePath -> ExitCode -> IO (TestStepResult ()))
-    -- ^ Optional post processing step. If provided, this function is run after the test case
-    -- completely finishes execution, including collection of ILA data and deassertion of the
-    -- start probe(s).
+    {- ^ Optional post processing step. If provided, this function is run after the test case
+    completely finishes execution, including collection of ILA data and deassertion of the
+    start probe(s).
+    -}
     , externalHdl :: [String]
     -- ^ List of external HDL files to include in the project
     } ->
@@ -243,8 +247,9 @@ deriving instance Show (HitlTestCase h a b)
 
 -- | A class for extracting optional post processing data from a test.
 class MayHavePostProcData b where
-  -- | Returns the test names with some post processing data of type @c@,
-  -- if that data exists.
+  {- | Returns the test names with some post processing data of type @c@,
+  if that data exists.
+  -}
   mGetPPD ::
     forall h a.
     [HitlTestCase h a b] ->
@@ -305,10 +310,10 @@ testCasesFromEnum ::
   [HitlTestCase HwTargetRef a b]
 testCasesFromEnum hwTs ppd =
   [ HitlTestCase
-    { name = show constr
-    , parameters = Map.fromList ((,constr) <$> hwTs)
-    , postProcData = ppd
-    }
+      { name = show constr
+      , parameters = Map.fromList ((,constr) <$> hwTs)
+      , postProcData = ppd
+      }
   | (constr :: a) <- [minBound ..]
   ]
 
@@ -327,23 +332,27 @@ hitlVio ::
   ( KnownDomain dom
   , BitPack a
   ) =>
-  -- | Default value for @a@. This is an artifact of this VIO internally representing
-  -- the output value as two probes (\"valid\" and \"data\") to accommodate the
-  -- HITL test infrastructure. Hence, the actual value of the default doesn't
-  -- matter: whenever it is output, this VIO will output 'Nothing'.
-  --
-  -- TODO: Allow use of 'errorX' in 'vioProbe'
+  {- | Default value for @a@. This is an artifact of this VIO internally representing
+  the output value as two probes (\"valid\" and \"data\") to accommodate the
+  HITL test infrastructure. Hence, the actual value of the default doesn't
+  matter: whenever it is output, this VIO will output 'Nothing'.
+
+  TODO: Allow use of 'errorX' in 'vioProbe'
+  -}
   a ->
   P.Clock dom ->
-  -- | Should be asserted when a test is done. For sanity checking the HITL test
-  -- infrastructure, this must be *deasserted* when a test is not running.
+  {- | Should be asserted when a test is done. For sanity checking the HITL test
+  infrastructure, this must be *deasserted* when a test is not running.
+  -}
   P.Signal dom Done ->
-  -- | When 'Done' is asserted, this signal indicates whether a test has been
-  -- completed successfully.
+  {- | When 'Done' is asserted, this signal indicates whether a test has been
+  completed successfully.
+  -}
   P.Signal dom Success ->
-  -- | Test parameter supplied by the VIO. Test modules should export a symbol
-  -- @test :: HitlTestGroup@ that defines this parameter for every hardware target
-  -- (FPGA) that the test involves.
+  {- | Test parameter supplied by the VIO. Test modules should export a symbol
+  @test :: HitlTestGroup@ that defines this parameter for every hardware target
+  (FPGA) that the test involves.
+  -}
   P.Signal dom (Maybe a)
 hitlVio dflt clk done success
   | natToInteger @(BitSize a) == 0 =
@@ -381,11 +390,13 @@ hitlVioBool ::
   forall dom.
   (KnownDomain dom) =>
   P.Clock dom ->
-  -- | Should be asserted when a test is done. For sanity checking the HITL test
-  -- infrastructure, this must be *deasserted* when a test is not running.
+  {- | Should be asserted when a test is done. For sanity checking the HITL test
+  infrastructure, this must be *deasserted* when a test is not running.
+  -}
   P.Signal dom Done ->
-  -- | When 'Done' is asserted, this signal indicates whether a test has been
-  -- completed successfully.
+  {- | When 'Done' is asserted, this signal indicates whether a test has been
+  completed successfully.
+  -}
   P.Signal dom Success ->
   -- | Test started?
   P.Signal dom Bool

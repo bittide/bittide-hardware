@@ -93,8 +93,9 @@ data Ddr4AxiFsm
     WaitForWrite
   | -- | Respond on @read_data@ channel
     Read (BitVector C_S_AXI_ADDR_WIDTH)
-  | -- | We got a request on the @write_address@ channel, wait for a request on
-    -- the @write_data@ channel.
+  | {- | We got a request on the @write_address@ channel, wait for a request on
+    the @write_data@ channel.
+    -}
     WaitWriteData (BitVector C_S_AXI_ADDR_WIDTH)
   | -- | Confirm write request
     ConfirmWrite
@@ -200,9 +201,10 @@ ddr4Axi ::
   ) =>
   -- | Must be sysclk_300
   "sys_clock_300" ::: DiffClock refDom ->
-  -- | Resets the entire memory design. The reset is asynchronous and must be asserted
-  -- for a minimum pulse width of 5 ns. It is internally synchronized to @ui_clk_sync_rst@
-  -- (or @c0_ddr4_ui_clk_sync_rst@ in the primitive HDL).
+  {- | Resets the entire memory design. The reset is asynchronous and must be asserted
+  for a minimum pulse width of 5 ns. It is internally synchronized to @ui_clk_sync_rst@
+  (or @c0_ddr4_ui_clk_sync_rst@ in the primitive HDL).
+  -}
   "sys_rst" ::: Reset refDom ->
   -- Routed from our own designs
   "axi_shim_reset" ::: Reset Ddr200 ->

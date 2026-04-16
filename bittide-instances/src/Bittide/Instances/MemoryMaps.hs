@@ -39,71 +39,71 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Protocols.MemoryMap.Json as Json
 
 $( do
-    -------------------------------
-    -- MEMORY MAPS               --
-    --                           --
-    -- Add new memory maps here  --
-    -------------------------------
-    let memoryMaps =
-          [ ("AddressableBytesWb", AddressableBytesWb.memoryMap)
-          , ("ClockControlWb", ClockControlWb.dutMm)
-          , ("Ethernet", vexRiscvEthernetMM)
-          , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
-          , ("Freeze", freezeMM)
-          , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)
-          , ("ProcessingElement", vexRiscvUartHelloMM)
-          , ("RegisterWb", RegisterWb.memoryMap)
-          , ("ScatterGatherPe", ScatterGather.dutMM)
-          , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
-          , ("SoftUgnDemoBoot", SoftUgnDemo.boot)
-          , ("SoftUgnDemoMu", SoftUgnDemo.mu)
-          , ("SoftUgnDemoCc", SoftUgnDemo.cc)
-          , ("SwitchC", SwitchCalendar.memoryMap)
-          , ("SwitchDemoBoot", SwitchDemo.boot)
-          , ("SwitchDemoMu", SwitchDemo.mu)
-          , ("SwitchDemoCc", SwitchDemo.cc)
-          , ("SwitchDemoGppeBoot", SwitchDemoGppe.boot)
-          , ("SwitchDemoGppeMu", SwitchDemoGppe.mu)
-          , ("SwitchDemoGppeCc", SwitchDemoGppe.cc)
-          , ("SwitchDemoGppeGppe", SwitchDemoGppe.gppe)
-          , ("TimeWb", TimeWb.timeWbMm)
-          , ("WbToDfTest", WbToDf.dutMM)
-          , ("WireDemoBoot", WireDemo.boot)
-          , ("WireDemoMu", WireDemo.mu)
-          , ("WireDemoCc", WireDemo.cc)
-          , ("VexRiscv", vexRiscvTestMM)
-          ]
+     -------------------------------
+     -- MEMORY MAPS               --
+     --                           --
+     -- Add new memory maps here  --
+     -------------------------------
+     let memoryMaps =
+           [ ("AddressableBytesWb", AddressableBytesWb.memoryMap)
+           , ("ClockControlWb", ClockControlWb.dutMm)
+           , ("Ethernet", vexRiscvEthernetMM)
+           , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
+           , ("Freeze", freezeMM)
+           , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)
+           , ("ProcessingElement", vexRiscvUartHelloMM)
+           , ("RegisterWb", RegisterWb.memoryMap)
+           , ("ScatterGatherPe", ScatterGather.dutMM)
+           , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
+           , ("SoftUgnDemoBoot", SoftUgnDemo.boot)
+           , ("SoftUgnDemoMu", SoftUgnDemo.mu)
+           , ("SoftUgnDemoCc", SoftUgnDemo.cc)
+           , ("SwitchC", SwitchCalendar.memoryMap)
+           , ("SwitchDemoBoot", SwitchDemo.boot)
+           , ("SwitchDemoMu", SwitchDemo.mu)
+           , ("SwitchDemoCc", SwitchDemo.cc)
+           , ("SwitchDemoGppeBoot", SwitchDemoGppe.boot)
+           , ("SwitchDemoGppeMu", SwitchDemoGppe.mu)
+           , ("SwitchDemoGppeCc", SwitchDemoGppe.cc)
+           , ("SwitchDemoGppeGppe", SwitchDemoGppe.gppe)
+           , ("TimeWb", TimeWb.timeWbMm)
+           , ("WbToDfTest", WbToDf.dutMM)
+           , ("WireDemoBoot", WireDemo.boot)
+           , ("WireDemoMu", WireDemo.mu)
+           , ("WireDemoCc", WireDemo.cc)
+           , ("VexRiscv", vexRiscvTestMM)
+           ]
 
-    memMapDir <- runIO $ do
-      root <- findParentContaining "cabal.project"
-      let dir = root </> buildDir </> "memory_maps"
-      -- clean existing memory maps
-      removePathForcibly dir
+     memMapDir <- runIO $ do
+       root <- findParentContaining "cabal.project"
+       let dir = root </> buildDir </> "memory_maps"
+       -- clean existing memory maps
+       removePathForcibly dir
 
-      createDirectoryIfMissing True dir
-      pure dir
+       createDirectoryIfMissing True dir
+       pure dir
 
-    let convertedTrees = map (\m -> convert m.tree) (snd <$> memoryMaps)
-    let normalizedTrees = map normalizeRelTree convertedTrees
+     let convertedTrees = map (\m -> convert m.tree) (snd <$> memoryMaps)
+     let normalizedTrees = map normalizeRelTree convertedTrees
 
-    let absResults =
-          flip map (memoryMaps `zip` normalizedTrees) $
-            \((_name, mm), normalised) ->
-              runMakeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) normalised
+     let absResults =
+           flip map (memoryMaps `zip` normalizedTrees) $
+             \((_name, mm), normalised) ->
+               runMakeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) normalised
 
-    forM_ (memoryMaps `zip` absResults) $ \((mmName, mm), (absTree, errors)) -> do
-      if not $ null errors
-        then do
-          -- report errors
-          forM_ errors $ \err -> do
-            reportError (getErrorMessage err)
-          pure ()
-        else do
-          -- output JSON
+     forM_ (memoryMaps `zip` absResults) $ \((mmName, mm), (absTree, errors)) -> do
+       if not $ null errors
+         then do
+           -- report errors
+           forM_ errors $ \err -> do
+             reportError (getErrorMessage err)
+           pure ()
+         else do
+           -- output JSON
 
-          let json = Json.memoryMapJson Json.LocationSeparate mm.deviceDefs absTree
-          let jsonPath = memMapDir </> mmName <.> "json"
-          runIO $ BS.writeFile jsonPath $ Json.encode json
+           let json = Json.memoryMapJson Json.LocationSeparate mm.deviceDefs absTree
+           let jsonPath = memMapDir </> mmName <.> "json"
+           runIO $ BS.writeFile jsonPath $ Json.encode json
 
-    pure []
+     pure []
  )

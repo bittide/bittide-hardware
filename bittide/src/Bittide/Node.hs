@@ -146,9 +146,10 @@ data GppeConfig nmuRemBusWidth metaPeBufferWidth where
     , gatherConfig :: GatherConfig 4 nmuRemBusWidth
     -- ^ Configuration for the gather engine
     , peConfig :: PeConfig GppeBusses
-    -- ^ Configuration for a 'gppe's 'processingElement', which statically
-    -- has four external busses connected to the instruction memory, data memory
-    -- , 'scatterUnitWb' and 'gatherUnitWb'.
+    {- ^ Configuration for a 'gppe's 'processingElement', which statically
+    has four external busses connected to the instruction memory, data memory
+    , 'scatterUnitWb' and 'gatherUnitWb'.
+    -}
     , dumpVcd :: DumpVcd
     , metaPeConfigBufferWidth :: SNat metaPeBufferWidth
     } ->

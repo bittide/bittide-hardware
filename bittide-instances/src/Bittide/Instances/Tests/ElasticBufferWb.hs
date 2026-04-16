@@ -42,8 +42,7 @@ dut ::
   (HasCallStack) =>
   Circuit
     (ToConstBwd Mm)
-    ( Df XilinxSystem (BitVector 8) -- UART output
-    )
+    (Df XilinxSystem (BitVector 8)) -- UART output
 dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
   [ebWbBus, uartBus, (mmTime, timeBus)] <-

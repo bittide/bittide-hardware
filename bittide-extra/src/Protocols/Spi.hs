@@ -17,8 +17,9 @@ data M2S = M2S
   , mosi :: "MOSI" ::: Bit
   -- ^ Serial data output from the manager to the subordinate
   , cs :: "CS" ::: Bool
-  -- ^ Active-low chip select signal from manager to enable communication with a
-  -- specific subordinate device
+  {- ^ Active-low chip select signal from manager to enable communication with a
+  specific subordinate device
+  -}
   }
   deriving (Show, ShowX, BitPack, Shock.Waveform, Generic, NFDataX, Eq)
 

@@ -244,17 +244,19 @@ wbAxisRxBuffer ::
   , 1 <= wbBytes
   , 1 <= bufferBytes
   ) =>
-  -- | Minimum number of bytes that can be stored in the buffer, will be rounded up
-  --   to the nearest multiple of wbBytes.
+  {- | Minimum number of bytes that can be stored in the buffer, will be rounded up
+  to the nearest multiple of wbBytes.
+  -}
   SNat bufferBytes ->
   -- | Wishbone master bus.
   "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes) ->
   -- | Axi4 Stream master bus.
   "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)) ->
-  -- |
-  --   1. Wishbone slave bus
-  --   2. Axi4 Stream slave bus
-  --   3. Status
+  {- |
+  1. Wishbone slave bus
+  2. Axi4 Stream slave bus
+  3. Status
+  -}
   ""
     ::: ( "wbS2M" ::: Signal dom (WishboneS2M wbBytes)
         , "axisS2M" ::: Signal dom Axi4StreamS2M
@@ -296,10 +298,11 @@ wbAxisRxBuffer# ::
   "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes) ->
   -- | Axi4 Stream master bus.
   "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)) ->
-  -- |
-  --   1. Wishbone slave bus
-  --   2. Axi4 Stream slave bus
-  --   3. Status
+  {- |
+  1. Wishbone slave bus
+  2. Axi4 Stream slave bus
+  3. Status
+  -}
   ""
     ::: ( "wbS2M" ::: Signal dom (WishboneS2M wbBytes)
         , "axisS2M" ::: Signal dom Axi4StreamS2M
@@ -742,11 +745,13 @@ axiPacking = AS.forceResetSanity |> Circuit (mealyB go Nothing)
 ilaAxi4Stream ::
   forall dom conf userType.
   (HiddenClock dom, KnownAxi4StreamConfig conf) =>
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  --   Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  {- | Number of registers to insert at each probe. Supported values: 0-6.
+  Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  -}
   Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  --   by 'ilaConfig' equals 'D4096'.
+  {- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  by 'ilaConfig' equals 'D4096'.
+  -}
   Depth ->
   Circuit
     (Axi4Stream dom conf userType)

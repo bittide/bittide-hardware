@@ -148,8 +148,9 @@ execBaseTcl ::
   LocatedManifest ->
   -- | Board part or part to synthesize for
   BoardPart ->
-  -- | Path to tclConnector: a Tcl script that can parse Clash output and emit
-  -- the correct commands for loading the design into Vivado
+  {- | Path to tclConnector: a Tcl script that can parse Clash output and emit
+  the correct commands for loading the design into Vivado
+  -}
   FilePath ->
   IO ()
 execBaseTcl v outputDir globPatterns LocatedManifest{lmPath} boardPart connector = do
@@ -220,8 +221,9 @@ runSynthesis ::
   [TclGlobPattern] ->
   -- | Manifests of which the first is the top-level to synthesize
   LocatedManifest ->
-  -- | Path to tclConnector: a Tcl script that can parse Clash output and emit
-  -- the correct commands for loading the design into Vivado
+  {- | Path to tclConnector: a Tcl script that can parse Clash output and emit
+  the correct commands for loading the design into Vivado
+  -}
   FilePath ->
   IO ()
 runSynthesis
@@ -353,8 +355,7 @@ idFromHwTRef (HwTargetById targetId _) = targetId
 deviceInfoFromHwTRef :: HwTargetRef -> DeviceInfo
 deviceInfoFromHwTRef (HwTargetByIndex ix) =
   fromMaybe
-    ( error $ "The given index " <> show ix <> " is out of range for the list of known FPGA IDs"
-    )
+    (error $ "The given index " <> show ix <> " is out of range for the list of known FPGA IDs")
     (demoRigInfo !? fromIntegral ix)
 deviceInfoFromHwTRef (HwTargetById _ d) = d
 
@@ -425,8 +426,9 @@ programBitstream ::
   [HwTargetRef] ->
   -- | Hardware server URL
   String ->
-  -- | Flag indicating if the target has a probes file. If true, the probes file
-  -- is programmed alongside the bitstream.
+  {- | Flag indicating if the target has a probes file. If true, the probes file
+  is programmed alongside the bitstream.
+  -}
   Bool ->
   IO ()
 programBitstream outputDir hwTRefs url hasProbesFile = with $ \v -> do

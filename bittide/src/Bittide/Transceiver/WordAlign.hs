@@ -122,10 +122,11 @@ aligner ::
   ) =>
   -- | Alignment function (e.g., 'alignLsbFirst'). Can also be used to dealign.
   AlignmentFn n ->
-  -- | Freeze offset signal (i.e., keep the current offset). Note: it takes one
-  -- cycle to flush the state of this circuit, so if you don't want to see garbage
-  -- data, you should make sure the offset signal has been stable for at least
-  -- two cycles before freezing it.
+  {- | Freeze offset signal (i.e., keep the current offset). Note: it takes one
+  cycle to flush the state of this circuit, so if you don't want to see garbage
+  data, you should make sure the offset signal has been stable for at least
+  two cycles before freezing it.
+  -}
   Signal dom Bool ->
   -- | Offset
   Signal dom (Index n) ->

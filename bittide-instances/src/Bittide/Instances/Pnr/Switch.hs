@@ -42,19 +42,19 @@ switchExample clk rst =
   calActive :: Vec 2 (ValidEntry (Vec 16 (Index 17)) 12)
   calActive =
     $( lift
-        $ ( ValidEntry{veEntry = fmap resize indicesI, veRepeat = 8} ::
-              (ValidEntry (Vec 16 (Index 17)) 12)
-          )
-        :> ValidEntry{veEntry = reverse $ fmap resize indicesI, veRepeat = 16}
-        :> Nil
+         $ ( ValidEntry{veEntry = fmap resize indicesI, veRepeat = 8} ::
+               (ValidEntry (Vec 16 (Index 17)) 12)
+           )
+         :> ValidEntry{veEntry = reverse $ fmap resize indicesI, veRepeat = 16}
+         :> Nil
      )
   calShadow :: Vec 16 (ValidEntry (Vec 16 (Index 17)) 12)
   calShadow =
     $( lift
-        $ iterate
-          d16
-          (\ve -> ve{veEntry = fmap succ ve.veEntry, veRepeat = succ ve.veRepeat})
-          (ValidEntry{veEntry = repeat 0, veRepeat = 0} :: (ValidEntry (Vec 16 (Index 17)) 12))
+         $ iterate
+           d16
+           (\ve -> ve{veEntry = fmap succ ve.veEntry, veRepeat = succ ve.veRepeat})
+           (ValidEntry{veEntry = repeat 0, veRepeat = 0} :: (ValidEntry (Vec 16 (Index 17)) 12))
      )
 {-# OPAQUE switchExample #-}
 

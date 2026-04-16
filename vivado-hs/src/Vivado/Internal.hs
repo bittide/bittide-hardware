@@ -37,12 +37,14 @@ data VivadoHandle = VivadoHandle
   -- ^ Handle to read from. Note that TCL does not use stderr.
   , process :: ProcessHandle
   , logHandle :: Handle
-  -- ^ Handle to full log: everything that Vivado writes to stdout, and everything
-  -- that we write to Vivado.
+  {- ^ Handle to full log: everything that Vivado writes to stdout, and everything
+  that we write to Vivado.
+  -}
   , logPath :: FilePath
   , prettyLogHandle :: Handle
-  -- ^ Handle to pretty log: everything that Vivado writes to stdout, and everything
-  -- that we write to Vivado, but without the magic and error handling cruft.
+  {- ^ Handle to pretty log: everything that Vivado writes to stdout, and everything
+  that we write to Vivado, but without the magic and error handling cruft.
+  -}
   , prettyLogPath :: FilePath
   }
 

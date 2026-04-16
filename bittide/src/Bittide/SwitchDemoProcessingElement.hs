@@ -31,8 +31,9 @@ switchDemoPe ::
   , HiddenClockResetEnable dom
   , 1 <= bufferSize
   ) =>
-  -- | Size of buffer in number of "tri-cycles". That is, we always store 3 64-bit words:
-  -- local clock cycle counter, DNA (64 lsbs), DNA (32 msbs, zero-extended).
+  {- | Size of buffer in number of "tri-cycles". That is, we always store 3 64-bit words:
+  local clock cycle counter, DNA (64 lsbs), DNA (32 msbs, zero-extended).
+  -}
   SNat bufferSize ->
   -- | Local clock cycle counter
   Signal dom (Unsigned 64) ->
