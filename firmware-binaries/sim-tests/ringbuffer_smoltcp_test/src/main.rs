@@ -8,13 +8,12 @@
 use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
 use bittide_hal::ringbuffer_test::DeviceInstances;
 use bittide_sys::net_state::{UgnEdge, UgnReport};
-use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkConfig, LinkInterface};
+use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface};
 use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
 use core::cell::SyncUnsafeCell;
 use core::fmt::Write;
 use log::{info, LevelFilter};
 use smoltcp::iface::SocketStorage;
-use smoltcp::wire::IpAddress;
 use ufmt::uwriteln;
 
 #[cfg(not(test))]
@@ -52,16 +51,10 @@ fn main() -> ! {
     rx_aligned0.align(&tx_buffer0);
     rx_aligned1.align(&tx_buffer1);
 
-    // Step 2: Configure IP addresses
-    info!("Step 2: Configuring network...");
-    const PORT: u16 = 8080;
-    let manager_ip = IpAddress::v4(100, 100, 100, 100);
-    let subordinate_ip = IpAddress::v4(100, 100, 100, 101);
+    // Step 2: Create LinkInterfaces with simultaneous open
+    info!("Step 2: Creating LinkInterfaces with TCP simultaneous open...");
 
-    // Step 3: Create LinkInterfaces with simultaneous open
-    info!("Step 3: Creating LinkInterfaces with TCP simultaneous open...");
-
-    // Manager side (simultaneous open)
+    // Manager side
     static MANAGER_SOCKET_RX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
     static MANAGER_SOCKET_TX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
     static MANAGER_STORAGE: SyncUnsafeCell<[SocketStorage; 1]> =
@@ -70,7 +63,6 @@ fn main() -> ! {
     let mut link_manager = LinkInterface::new(
         rx_aligned0,
         tx_buffer1,
-        LinkConfig::simultaneous_open(manager_ip, subordinate_ip, PORT),
         LinkBuffers {
             socket_storage: unsafe { &mut *MANAGER_STORAGE.get() },
             tcp_rx_buffer: unsafe { &mut *MANAGER_SOCKET_RX.get() },
@@ -79,7 +71,7 @@ fn main() -> ! {
         timer,
     );
 
-    // Subordinate side (simultaneous open)
+    // Subordinate side
     static SUBORDINATE_SOCKET_RX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
     static SUBORDINATE_SOCKET_TX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
     static SUBORDINATE_STORAGE: SyncUnsafeCell<[SocketStorage; 1]> =
@@ -88,7 +80,6 @@ fn main() -> ! {
     let mut link_subordinate = LinkInterface::new(
         rx_aligned1,
         tx_buffer0,
-        LinkConfig::simultaneous_open(subordinate_ip, manager_ip, PORT),
         LinkBuffers {
             socket_storage: unsafe { &mut *SUBORDINATE_STORAGE.get() },
             tcp_rx_buffer: unsafe { &mut *SUBORDINATE_SOCKET_RX.get() },
@@ -97,8 +88,8 @@ fn main() -> ! {
         unsafe { bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0) },
     );
 
-    // Step 4: Wait for connection establishment
-    info!("Step 4: Waiting for connection establishment...");
+    // Step 3: Wait for connection establishment
+    info!("Step 3: Waiting for connection establishment...");
     for _ in 0..1000 {
         link_manager.poll();
         link_subordinate.poll();
@@ -117,8 +108,8 @@ fn main() -> ! {
         }
     }
 
-    // Step 5: Exchange DNA
-    info!("Step 5: Exchanging DNA...");
+    // Step 4: Exchange DNA
+    info!("Step 4: Exchanging DNA...");
     let manager_dna: [u8; 12] = core::array::from_fn(|i| (i + 100) as u8);
     let subordinate_dna: [u8; 12] = core::array::from_fn(|i| i as u8);
 
@@ -197,8 +188,8 @@ fn main() -> ! {
 
     info!("  DNA exchange complete!");
 
-    // Step 5b: Exchange port numbers
-    info!("Step 5b: Exchanging port numbers...");
+    // Step 4b: Exchange port numbers
+    info!("Step 4b: Exchanging port numbers...");
     let manager_port: u32 = 0;
     let subordinate_port: u32 = 1;
 
@@ -253,8 +244,8 @@ fn main() -> ! {
 
     info!("  Port exchange complete!");
 
-    // Step 6: Manager requests UGN report
-    info!("Step 6: Manager requesting UGN report...");
+    // Step 5: Manager requests UGN report
+    info!("Step 5: Manager requesting UGN report...");
     let subordinate_report = build_placeholder_report();
 
     // Phase 1: Manager sends command, subordinate receives it
@@ -401,8 +392,8 @@ fn main() -> ! {
         }
     }
 
-    // Step 7: Verify results
-    info!("Step 7: Verifying results...");
+    // Step 6: Verify results
+    info!("Step 6: Verifying results...");
 
     if manager_count == 0 {
         info!("  FAILURE: No UGN edges received!");

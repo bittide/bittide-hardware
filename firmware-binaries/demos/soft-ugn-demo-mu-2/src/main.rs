@@ -11,20 +11,18 @@ use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::net_state::{UgnEdge, UgnReport};
-use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkConfig, LinkInterface};
+use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface};
 use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
 use core::cell::SyncUnsafeCell;
 use core::fmt::Write;
 use log::{info, error, LevelFilter};
 use riscv::register::{mcause, mepc, mtval};
 use smoltcp::iface::SocketStorage;
-use smoltcp::wire::IpAddress;
 use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 const LINK_COUNT: usize = 7;
 const MANAGER_DNA: [u8; 12] = [133, 129, 48, 4, 64, 192, 105, 1, 1, 0, 2, 64];
-const PORT: u16 = 8080;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -178,8 +176,6 @@ fn main() -> ! {
         if is_manager { "manager" } else { "subordinate" }
     );
 
-    let ip = IpAddress::v4(100, 100, 100, 100);
-
     // Create aligned receive buffers for all links and align them
     let mut rx_aligned = rx_buffers.map(AlignedReceiveBuffer::new);
     for (rx_aligned, tx) in rx_aligned.iter_mut().zip(tx_buffers.iter()) {
@@ -233,59 +229,17 @@ fn main() -> ! {
     let [tx0, tx1, tx2, tx3, tx4, tx5, tx6] = tx_buffers;
 
     // Create all LinkInterfaces
-    info!("Creating LinkInterfaces with unique ports (8080-8086)...");
+    info!("Creating LinkInterfaces");
     let timer = INSTANCES.timer;
     let make_timer = || unsafe { bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0) };
 
-    let mut link0 = LinkInterface::new(
-        rx0,
-        tx0,
-        LinkConfig::simultaneous_open(ip, ip, PORT),
-        get_buffers(0),
-        timer,
-    );
-    let mut link1 = LinkInterface::new(
-        rx1,
-        tx1,
-        LinkConfig::simultaneous_open(ip, ip, PORT + 1),
-        get_buffers(1),
-        make_timer(),
-    );
-    let mut link2 = LinkInterface::new(
-        rx2,
-        tx2,
-        LinkConfig::simultaneous_open(ip, ip, PORT + 2),
-        get_buffers(2),
-        make_timer(),
-    );
-    let mut link3 = LinkInterface::new(
-        rx3,
-        tx3,
-        LinkConfig::simultaneous_open(ip, ip, PORT + 3),
-        get_buffers(3),
-        make_timer(),
-    );
-    let mut link4 = LinkInterface::new(
-        rx4,
-        tx4,
-        LinkConfig::simultaneous_open(ip, ip, PORT + 4),
-        get_buffers(4),
-        make_timer(),
-    );
-    let mut link5 = LinkInterface::new(
-        rx5,
-        tx5,
-        LinkConfig::simultaneous_open(ip, ip, PORT + 5),
-        get_buffers(5),
-        make_timer(),
-    );
-    let mut link6 = LinkInterface::new(
-        rx6,
-        tx6,
-        LinkConfig::simultaneous_open(ip, ip, PORT + 6),
-        get_buffers(6),
-        make_timer(),
-    );
+    let mut link0 = LinkInterface::new(rx0, tx0, get_buffers(0), timer);
+    let mut link1 = LinkInterface::new(rx1, tx1, get_buffers(1), make_timer());
+    let mut link2 = LinkInterface::new(rx2, tx2, get_buffers(2), make_timer());
+    let mut link3 = LinkInterface::new(rx3, tx3, get_buffers(3), make_timer());
+    let mut link4 = LinkInterface::new(rx4, tx4, get_buffers(4), make_timer());
+    let mut link5 = LinkInterface::new(rx5, tx5, get_buffers(5), make_timer());
+    let mut link6 = LinkInterface::new(rx6, tx6, get_buffers(6), make_timer());
 
     // Step 1: Wait for all connections to establish
     info!("Step 1: Waiting for all connections to establish...");

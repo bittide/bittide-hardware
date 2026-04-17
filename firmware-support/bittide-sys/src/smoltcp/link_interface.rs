@@ -22,7 +22,7 @@ use bittide_hal::manual_additions::ringbuffer::{
 use bittide_hal::manual_additions::timer::{Duration, Instant};
 use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use smoltcp::socket::tcp;
-use smoltcp::wire::{HardwareAddress, IpAddress, IpEndpoint};
+use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
 use crate::smoltcp::ringbuffer::RingbufferDevice;
@@ -49,50 +49,12 @@ pub enum SendError {
     Closed,
 }
 
-/// Network configuration for LinkInterface
-pub struct LinkConfig {
-    pub local_ip: IpAddress,
-    pub remote_ip: Option<IpAddress>,
-    pub local_port: Option<u16>,
-    pub remote_port: u16,
-}
+/// Fixed IP address used for all link interfaces.
+/// Each link is point-to-point with no routing, so both sides use the same IP.
+const LINK_IP: IpAddress = IpAddress::v4(100, 100, 100, 100);
 
-impl LinkConfig {
-    /// Create config for TCP simultaneous open
-    pub fn simultaneous_open(local_ip: IpAddress, remote_ip: IpAddress, port: u16) -> Self {
-        Self {
-            local_ip,
-            remote_ip: Some(remote_ip),
-            local_port: Some(port),
-            remote_port: port,
-        }
-    }
-
-    /// Create config for TCP client
-    pub fn client(
-        local_ip: IpAddress,
-        remote_ip: IpAddress,
-        local_port: u16,
-        remote_port: u16,
-    ) -> Self {
-        Self {
-            local_ip,
-            remote_ip: Some(remote_ip),
-            local_port: Some(local_port),
-            remote_port,
-        }
-    }
-
-    /// Create config for TCP server
-    pub fn server(local_ip: IpAddress, port: u16) -> Self {
-        Self {
-            local_ip,
-            remote_ip: None,
-            local_port: None,
-            remote_port: port,
-        }
-    }
-}
+/// Fixed port used for TCP simultaneous open on all link interfaces.
+const LINK_PORT: u16 = 8080;
 
 /// Buffer storage for LinkInterface
 pub struct LinkBuffers<'a> {
@@ -115,94 +77,15 @@ where
     RxRb: ReceiveRingbufferInterface + 'static,
     TxRb: TransmitRingbufferInterface + 'static,
 {
-    /// Create a new LinkInterface with TCP simultaneous open
+    /// Create a new LinkInterface with TCP simultaneous open.
     ///
-    /// Both endpoints call this method with the same port, initiating
+    /// Both endpoints use the same fixed IP and port, initiating
     /// a TCP simultaneous open where both sides send SYN packets.
-    ///
-    /// # Arguments
-    ///
-    /// * `rx_aligned` - Aligned receive ringbuffer
-    /// * `tx_buffer` - Transmit ringbuffer
-    /// * `config` - Network configuration (use `LinkConfig::simultaneous_open()`)
-    /// * `buffers` - Buffer storage for TCP socket
-    /// * `timer` - Timer for timestamping network events
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let config = LinkConfig::simultaneous_open(local_ip, remote_ip, 8080);
-    /// LinkInterface::new(rx_aligned, tx_buffer, config, buffers, timer)
-    /// ```
+    /// This works because each link is a point-to-point connection
+    /// with no routing.
     pub fn new(
         rx_aligned: AlignedReceiveBuffer<RxRb, TxRb>,
         tx_buffer: TxRb,
-        config: LinkConfig,
-        buffers: LinkBuffers<'a>,
-        timer: bittide_hal::shared_devices::Timer,
-    ) -> Self {
-        Self::new_with_config(rx_aligned, tx_buffer, config, buffers, timer)
-    }
-
-    /// Create a new LinkInterface as a TCP client
-    ///
-    /// # Arguments
-    ///
-    /// * `rx_aligned` - Aligned receive ringbuffer
-    /// * `tx_buffer` - Transmit ringbuffer
-    /// * `config` - Network configuration (use `LinkConfig::client()`)
-    /// * `buffers` - Buffer storage for TCP socket
-    /// * `timer` - Timer for timestamping network events
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let config = LinkConfig::client(local_ip, remote_ip, 1234, 8080);
-    /// LinkInterface::new_client(rx_aligned, tx_buffer, config, buffers, timer)
-    /// ```
-    pub fn new_client(
-        rx_aligned: AlignedReceiveBuffer<RxRb, TxRb>,
-        tx_buffer: TxRb,
-        config: LinkConfig,
-        buffers: LinkBuffers<'a>,
-        timer: bittide_hal::shared_devices::Timer,
-    ) -> Self {
-        Self::new_with_config(rx_aligned, tx_buffer, config, buffers, timer)
-    }
-
-    /// Create a new LinkInterface as a TCP server (listening)
-    ///
-    /// # Arguments
-    ///
-    /// * `rx_aligned` - Aligned receive ringbuffer
-    /// * `tx_buffer` - Transmit ringbuffer
-    /// * `config` - Network configuration (use `LinkConfig::server()`)
-    /// * `buffers` - Buffer storage for TCP socket
-    /// * `timer` - Timer for timestamping network events
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let config = LinkConfig::server(local_ip, 8080);
-    /// LinkInterface::new_server(rx_aligned, tx_buffer, config, buffers, timer)
-    /// ```
-    pub fn new_server(
-        rx_aligned: AlignedReceiveBuffer<RxRb, TxRb>,
-        tx_buffer: TxRb,
-        config: LinkConfig,
-        buffers: LinkBuffers<'a>,
-        timer: bittide_hal::shared_devices::Timer,
-    ) -> Self {
-        Self::new_with_config(rx_aligned, tx_buffer, config, buffers, timer)
-    }
-
-    /// Create a new LinkInterface with explicit configuration
-    ///
-    /// This is the most flexible constructor that accepts a complete `LinkConfig`.
-    pub fn new_with_config(
-        rx_aligned: AlignedReceiveBuffer<RxRb, TxRb>,
-        tx_buffer: TxRb,
-        config: LinkConfig,
         buffers: LinkBuffers<'a>,
         timer: bittide_hal::shared_devices::Timer,
     ) -> Self {
@@ -217,9 +100,7 @@ where
 
         // Set IP address
         iface.update_ip_addrs(|addrs| {
-            addrs
-                .push(smoltcp::wire::IpCidr::new(config.local_ip, 24))
-                .unwrap();
+            addrs.push(IpCidr::new(LINK_IP, 24)).unwrap();
         });
 
         // Create TCP socket
@@ -231,22 +112,14 @@ where
         let mut sockets = SocketSet::new(&mut buffers.socket_storage[..]);
         let socket_handle = sockets.add(socket);
 
-        // Initialize connection based on mode
-        if let Some(remote_ip) = config.remote_ip {
-            // Client or simultaneous open mode
-            let remote_endpoint = IpEndpoint::new(remote_ip, config.remote_port);
-            let local_port = config.local_port.unwrap_or(config.remote_port);
-            let socket = sockets.get_mut::<tcp::Socket>(socket_handle);
-            let cx = iface.context();
-            socket
-                .connect(cx, remote_endpoint, local_port)
-                .map_err(|_| "Failed to initiate connection")
-                .unwrap();
-        } else {
-            // Server mode
-            let socket = sockets.get_mut::<tcp::Socket>(socket_handle);
-            socket.listen(config.remote_port).unwrap();
-        }
+        // Simultaneous open: both sides connect to the same endpoint
+        let remote_endpoint = IpEndpoint::new(LINK_IP, LINK_PORT);
+        let socket = sockets.get_mut::<tcp::Socket>(socket_handle);
+        let cx = iface.context();
+        socket
+            .connect(cx, remote_endpoint, LINK_PORT)
+            .map_err(|_| "Failed to initiate connection")
+            .unwrap();
 
         Self {
             iface,

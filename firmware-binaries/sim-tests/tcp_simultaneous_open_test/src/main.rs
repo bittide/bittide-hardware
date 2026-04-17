@@ -8,12 +8,11 @@
 use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::ringbuffer_test::DeviceInstances;
-use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkConfig, LinkInterface, RecvError};
+use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface, RecvError};
 use core::cell::SyncUnsafeCell;
 use core::fmt::Write;
 use log::{info, LevelFilter};
 use smoltcp::iface::SocketStorage;
-use smoltcp::wire::IpAddress;
 use ufmt::uwriteln;
 use zerocopy::byteorder::{I64, LE, U16, U32};
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
@@ -89,10 +88,6 @@ fn main() -> ! {
     rx_aligned1.align(&tx_buffer1);
 
     // Create two links with TCP simultaneous open
-    const PORT: u16 = 1234;
-    let ip0 = IpAddress::v4(100, 100, 100, 100);
-    let ip1 = IpAddress::v4(100, 100, 100, 101);
-
     static SOCKET0_RX_BUF: SyncUnsafeCell<[u8; 512]> = SyncUnsafeCell::new([0; 512]);
     static SOCKET0_TX_BUF: SyncUnsafeCell<[u8; 512]> = SyncUnsafeCell::new([0; 512]);
     static SOCKETS0_STORAGE: SyncUnsafeCell<[SocketStorage; 1]> =
@@ -101,7 +96,6 @@ fn main() -> ! {
     let mut link0 = LinkInterface::new(
         rx_aligned0,
         tx_buffer1,
-        LinkConfig::simultaneous_open(ip0, ip1, PORT),
         LinkBuffers {
             socket_storage: unsafe { &mut *SOCKETS0_STORAGE.get() },
             tcp_rx_buffer: unsafe { &mut *SOCKET0_RX_BUF.get() },
@@ -118,7 +112,6 @@ fn main() -> ! {
     let mut link1 = LinkInterface::new(
         rx_aligned1,
         tx_buffer0,
-        LinkConfig::simultaneous_open(ip1, ip0, PORT),
         LinkBuffers {
             socket_storage: unsafe { &mut *SOCKETS1_STORAGE.get() },
             tcp_rx_buffer: unsafe { &mut *SOCKET1_RX_BUF.get() },
