@@ -15,7 +15,7 @@ use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkConfig, LinkInterfac
 use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
 use core::cell::SyncUnsafeCell;
 use core::fmt::Write;
-use log::{info, LevelFilter};
+use log::{info, error, LevelFilter};
 use riscv::register::{mcause, mepc, mtval};
 use smoltcp::iface::SocketStorage;
 use smoltcp::wire::IpAddress;
@@ -178,7 +178,6 @@ fn main() -> ! {
         if is_manager { "manager" } else { "subordinate" }
     );
 
-    // Get our IP address based on role
     let ip = IpAddress::v4(100, 100, 100, 100);
 
     // Create aligned receive buffers for all links and align them
@@ -335,18 +334,6 @@ fn main() -> ! {
         }
     }
 
-    let link_refs = [&link0, &link1, &link2, &link3, &link4, &link5, &link6];
-    let established_count = link_refs
-        .iter()
-        .filter(|link| link.is_established())
-        .count();
-    if established_count != LINK_COUNT {
-        info!(
-            "  WARNING: Only {} of {} links established",
-            established_count, LINK_COUNT
-        );
-    }
-
     // Step 2: Exchange DNA with all neighbors
     info!("Step 2: Exchanging DNA and ports with all neighbors...");
     info!("  Our DNA: {:02X?}", dna);
@@ -363,7 +350,7 @@ fn main() -> ! {
 
     info!("  Waiting to receive DNA and ports from all neighbors...");
 
-    for _ in 0..1000 {
+    for _ in 0..10000 {
         for (i, link) in [
             &mut link0, &mut link1, &mut link2, &mut link3, &mut link4, &mut link5, &mut link6,
         ]
@@ -411,8 +398,14 @@ fn main() -> ! {
     if dna_success_count != LINK_COUNT {
         info!(
             "  WARNING: Only received DNA from {} of {} links",
-            dna_success_count, LINK_COUNT
+            dna_success_count,
+            LINK_COUNT
         );
+        for (i, dna) in partner_dnas.iter().enumerate() {
+            if dna.is_none() {
+                error!("    Link {}: no DNA received", i);
+            }
+        }
     }
 
     // Step 3: Build complete UGN report from all neighbor information
@@ -522,11 +515,12 @@ fn main() -> ! {
             manager_idx.unwrap()
         );
 
-        // Step 4c: Send edges to all links
+        // Step 4c: Send edges to manager
         let mut edges_sent = 0;
-        while edges_sent < report.count as usize {
+        let mut edge_idx = 0;
+        while edges_sent < report.count as usize && edge_idx < report.edges.len() {
             manager_link.poll();
-            if let Some(edge) = report.edges[edges_sent] {
+            if let Some(edge) = report.edges[edge_idx] {
                 let wire: UgnEdgeWire = edge.into();
                 if manager_link.try_send(&wire).is_ok() {
                     info!(
@@ -540,7 +534,10 @@ fn main() -> ! {
                         edge.ugn
                     );
                     edges_sent += 1;
+                    edge_idx += 1;
                 }
+            } else {
+                edge_idx += 1;
             }
         }
     }
@@ -588,10 +585,9 @@ fn build_complete_report(
     capture_ugns: &[bittide_hal::shared_devices::CaptureUgn; LINK_COUNT],
 ) -> UgnReport {
     let mut report = UgnReport::new();
-    report.count = LINK_COUNT as u32;
-
     for link_idx in 0..LINK_COUNT {
         if let Some((partner_dna, partner_port)) = partner_info[link_idx] {
+            report.count += 1;
             let ugn = capture_ugns[link_idx].local_counter() as i64
                 - capture_ugns[link_idx].remote_counter() as i64;
             report.edges[link_idx] = Some(UgnEdge {
