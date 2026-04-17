@@ -203,7 +203,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     -- Start ringbuffers
     let
-      bufferDepth = SNat @4000
+      bufferDepth = d32
       rxPrim ena = blockRamU bitClk bitRst ena NoClearOnReset bufferDepth
       txPrim = tdpbramRamOp tdpbram bitClk bitClk
 
