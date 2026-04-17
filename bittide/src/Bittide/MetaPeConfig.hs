@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE ImplicitParams #-}
 
 -- | Device to store configuration data for the Switch Demo
 module Bittide.MetaPeConfig where

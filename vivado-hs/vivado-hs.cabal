@@ -28,6 +28,7 @@ common common-options
     DeriveLift
     DeriveTraversable
     DerivingStrategies
+    ImplicitParams
     InstanceSigs
     KindSignatures
     LambdaCase
