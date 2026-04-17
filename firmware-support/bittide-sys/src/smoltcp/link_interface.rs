@@ -25,6 +25,8 @@ use smoltcp::socket::tcp;
 use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint};
 use zerocopy::{AsBytes, FromBytes, FromZeroes};
 
+use log::{debug, trace, warn};
+
 use crate::smoltcp::ringbuffer::RingbufferDevice;
 
 /// Error type for receive operations
@@ -70,6 +72,7 @@ pub struct LinkInterface<'a, RxRb, TxRb> {
     sockets: SocketSet<'a>,
     socket_handle: smoltcp::iface::SocketHandle,
     timer: bittide_hal::shared_devices::Timer,
+    last_state: tcp::State,
 }
 
 impl<'a, RxRb, TxRb> LinkInterface<'a, RxRb, TxRb>
@@ -121,12 +124,16 @@ where
             .map_err(|_| "Failed to initiate connection")
             .unwrap();
 
+        let state = sockets.get::<tcp::Socket>(socket_handle).state();
+        debug!("LinkInterface created, initial state: {:?}", state);
+
         Self {
             iface,
             device,
             sockets,
             socket_handle,
             timer,
+            last_state: state,
         }
     }
 
@@ -138,6 +145,12 @@ where
         let timestamp = to_smoltcp_instant(self.timer.now());
         self.iface
             .poll(timestamp, &mut self.device, &mut self.sockets);
+
+        let new_state = self.sockets.get::<tcp::Socket>(self.socket_handle).state();
+        if new_state != self.last_state {
+            debug!("TCP state: {:?} -> {:?}", self.last_state, new_state);
+            self.last_state = new_state;
+        }
     }
 
     /// Check if the TCP connection is established
@@ -297,14 +310,24 @@ where
             self.poll();
 
             match self.try_send_bytes(data) {
-                Ok(n) => return Ok(n),
+                Ok(n) => {
+                    trace!("send_blocking_bytes: sent {} bytes", n);
+                    return Ok(n);
+                }
                 Err(SendError::WouldBlock) => {
                     if self.timer.now() >= deadline {
+                        warn!(
+                            "send_blocking_bytes: timed out sending {} bytes",
+                            data.len()
+                        );
                         return Err(SendError::WouldBlock);
                     }
                     continue;
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    warn!("send_blocking_bytes: error {:?}", e);
+                    return Err(e);
+                }
             }
         }
     }
@@ -407,11 +430,18 @@ where
                 Ok(()) => return Ok(()),
                 Err(SendError::WouldBlock) => {
                     if self.timer.now() >= deadline {
+                        warn!(
+                            "send_blocking: timed out sending {} bytes",
+                            core::mem::size_of::<T>()
+                        );
                         return Err(SendError::WouldBlock);
                     }
                     continue;
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    warn!("send_blocking: error {:?}", e);
+                    return Err(e);
+                }
             }
         }
     }
@@ -529,14 +559,21 @@ where
             self.poll();
 
             match self.try_recv_bytes(buffer) {
-                Ok(n) => return Ok(n),
+                Ok(n) => {
+                    trace!("recv_blocking_bytes: received {} bytes", n);
+                    return Ok(n);
+                }
                 Err(RecvError::WouldBlock) => {
                     if self.timer.now() >= deadline {
+                        warn!("recv_blocking_bytes: timed out");
                         return Err(RecvError::WouldBlock);
                     }
                     continue;
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    warn!("recv_blocking_bytes: error {:?}", e);
+                    return Err(e);
+                }
             }
         }
     }
@@ -580,7 +617,11 @@ where
         if n == core::mem::size_of::<T>() {
             Ok(buffer)
         } else {
-            // Received wrong size, put it back by discarding and return WouldBlock
+            warn!(
+                "try_recv: expected {} bytes, got {}",
+                core::mem::size_of::<T>(),
+                n
+            );
             Err(RecvError::WouldBlock)
         }
     }
@@ -631,9 +672,16 @@ where
             match self.try_recv::<T>() {
                 Ok(value) => return Ok(value),
                 Err(RecvError::WouldBlock) => continue,
-                Err(e) => return Err(e),
+                Err(e) => {
+                    warn!("recv_blocking: error {:?}", e);
+                    return Err(e);
+                }
             }
         }
+        warn!(
+            "recv_blocking: timed out waiting for {} bytes",
+            core::mem::size_of::<T>()
+        );
         Err(RecvError::WouldBlock)
     }
 
@@ -644,6 +692,7 @@ where
     /// Call `poll()` repeatedly and check `is_closing_or_closed()` to
     /// track the close progress.
     pub fn close(&mut self) {
+        debug!("closing TCP connection (state: {:?})", self.state());
         let socket = self.sockets.get_mut::<tcp::Socket>(self.socket_handle);
         socket.close();
     }

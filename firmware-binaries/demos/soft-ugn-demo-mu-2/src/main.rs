@@ -15,7 +15,7 @@ use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface};
 use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
 use core::cell::SyncUnsafeCell;
 use core::fmt::Write;
-use log::{info, error, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
 use riscv::register::{mcause, mepc, mtval};
 use smoltcp::iface::SocketStorage;
 use ufmt::uwriteln;
@@ -29,7 +29,7 @@ use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let mut uart = INSTANCES.uart;
+    let uart = INSTANCES.uart;
     unsafe {
         use bittide_sys::uart::log::LOGGER;
         let logger = &mut (*LOGGER.get());
@@ -84,7 +84,6 @@ fn main() -> ! {
     }
 
     info!("Waiting for stability...");
-    let _cc = INSTANCES.clock_control;
     loop {
         let stable = cc.links_stable()[0];
         if stable != 0 {
@@ -109,8 +108,8 @@ fn main() -> ! {
 
     info!("Captured hardware UGNs");
     for (i, capture_ugn) in capture_ugns.iter().enumerate() {
-        info!(
-            "Capture UGN {}: local = {}, remote = {}",
+        debug!(
+            "  UGN {}: local={}, remote={}",
             i,
             capture_ugn.local_counter(),
             capture_ugn.remote_counter()
@@ -243,9 +242,7 @@ fn main() -> ! {
 
     // Step 1: Wait for all connections to establish
     info!("Step 1: Waiting for all connections to establish...");
-    let mut loop_count = 0;
     loop {
-        // Poll all links
         link0.poll();
         link1.poll();
         link2.poll();
@@ -253,27 +250,6 @@ fn main() -> ! {
         link4.poll();
         link5.poll();
         link6.poll();
-
-        loop_count += 1;
-        if loop_count % 1000000 == 0 {
-            let established = [
-                link0.is_established(),
-                link1.is_established(),
-                link2.is_established(),
-                link3.is_established(),
-                link4.is_established(),
-                link5.is_established(),
-                link6.is_established(),
-            ];
-            let count = established.iter().filter(|&&e| e).count();
-            info!("    Progress: {}/{} links established", count, LINK_COUNT);
-            let link_refs = [&link0, &link1, &link2, &link3, &link4, &link5, &link6];
-            for (idx, (&is_est, link)) in established.iter().zip(link_refs.iter()).enumerate() {
-                if !is_est {
-                    info!("      Link {}: state={:?}", idx, link.state());
-                }
-            }
-        }
 
         if link0.is_established()
             && link1.is_established()
@@ -283,14 +259,14 @@ fn main() -> ! {
             && link5.is_established()
             && link6.is_established()
         {
-            info!("  All {} links established!", LINK_COUNT);
             break;
         }
     }
+    info!("  All {} links established", LINK_COUNT);
 
     // Step 2: Exchange DNA with all neighbors
     info!("Step 2: Exchanging DNA and ports with all neighbors...");
-    info!("  Our DNA: {:02X?}", dna);
+    debug!("  Our DNA: {:02X?}", dna);
 
     // Prepare DNA and port data to send
     let port_bytes: [[u8; 4]; LINK_COUNT] = core::array::from_fn(|i| (i as u32).to_le_bytes());
@@ -317,7 +293,7 @@ fn main() -> ! {
             let mut dna_buf = [0u8; 12];
             if partner_dnas[i].is_none() && link.try_recv_bytes(&mut dna_buf).is_ok() {
                 partner_dnas[i] = Some(dna_buf);
-                info!("  Link {}: received partner DNA: {:02X?}", i, dna_buf);
+                debug!("  Link {}: received partner DNA: {:02X?}", i, dna_buf);
             }
 
             // Try receiving partner port if we received their DNA and haven't received their port yet
@@ -326,19 +302,19 @@ fn main() -> ! {
                 if link.try_recv_bytes(&mut port_buf).is_ok() {
                     partner_ports[i] = u32::from_le_bytes(port_buf);
                     port_received[i] = true;
-                    info!("  Link {}: received partner port: {}", i, partner_ports[i]);
+                    debug!("  Link {}: received partner port: {}", i, partner_ports[i]);
                 }
             }
 
             // Try sending our DNA if we haven't already
             if !dna_sent[i] && link.try_send_bytes(&dna).is_ok() {
-                info!("  Link {}: sent DNA", i);
+                info!("  Link {}: sent our DNA", i);
                 dna_sent[i] = true;
             }
 
             // Try sending our port if we sent our DNA and haven't sent our port yet.
             if dna_sent[i] && !port_sent[i] && link.try_send_bytes(&port_bytes[i]).is_ok() {
-                info!("  Link {}: sent port={}", i, i);
+                info!("  Link {}: sent our port {}", i, i);
                 port_sent[i] = true;
             }
         }
@@ -349,11 +325,15 @@ fn main() -> ! {
     }
 
     let dna_success_count = partner_dnas.iter().filter(|dna| dna.is_some()).count();
-    if dna_success_count != LINK_COUNT {
+    if dna_success_count == LINK_COUNT {
         info!(
-            "  WARNING: Only received DNA from {} of {} links",
-            dna_success_count,
+            "  DNA and port exchange complete for all {} links",
             LINK_COUNT
+        );
+    } else {
+        error!(
+            "  Only received DNA from {} of {} links",
+            dna_success_count, LINK_COUNT
         );
         for (i, dna) in partner_dnas.iter().enumerate() {
             if dna.is_none() {
@@ -363,22 +343,19 @@ fn main() -> ! {
     }
 
     // Step 3: Build complete UGN report from all neighbor information
-    info!("Step 3: Building complete UGN report from all neighbor information...");
+    info!("Step 3: Building UGN report...");
 
-    // Create partner_info array from collected data
     let partner_info: [Option<(&[u8; 12], u32)>; LINK_COUNT] =
         core::array::from_fn(|i| partner_dnas[i].as_ref().map(|dna| (dna, partner_ports[i])));
 
     let mut report: UgnReport = build_complete_report(&dna, &partner_info, &capture_ugns);
-
-    info!("  Built report with {} edges for node", report.count);
+    info!("  Built report with {} edges", report.count);
 
     // Step 4: Execute role-specific protocol
     if is_manager {
-        // Manager: Send commands to all links
-        info!("Step 4a: Manager sending commands to all links...");
+        info!("Step 4: Manager collecting reports from subordinates...");
 
-        for (i, partner_dna) in partner_dnas.iter().enumerate() {
+        for i in 0..LINK_COUNT {
             let subordinate_link = match i {
                 0 => &mut link0,
                 1 => &mut link1,
@@ -389,37 +366,38 @@ fn main() -> ! {
                 6 => &mut link6,
                 _ => unreachable!(),
             };
-            info!(" Processing link {i} with DNA {:02X?}...", partner_dna);
             let wire_command: CommandWire = Command::RequestUgnReport.into();
-            subordinate_link
-                .send_blocking(&wire_command, Duration::from_secs(1))
-                .expect("Failed to send command");
-            let count: u32 = subordinate_link
-                .recv_blocking(Duration::from_secs(1))
-                .expect("Failed to receive count");
-            info!("  Link {}: received count={}", i, count);
-            for _ in 0..count {
-                let edge: UgnEdgeWire = subordinate_link
-                    .recv_blocking(Duration::from_secs(1))
-                    .expect("Failed to receive edge");
-                info!(
-                    "  Link {}: received edge: {:02X?}:{} -> {:02X?}:{}, ugn={}",
-                    i, edge.src_node, edge.src_port, edge.dst_node, edge.dst_port, edge.ugn
-                );
+            if let Err(e) = subordinate_link.send_blocking(&wire_command, Duration::from_secs(1)) {
+                error!("  Link {}: failed to send command: {:?}", i, e);
+                continue;
+            }
+            let count: u32 = match subordinate_link.recv_blocking(Duration::from_secs(1)) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!("  Link {}: failed to receive count: {:?}", i, e);
+                    continue;
+                }
+            };
+            debug!("  Link {}: expecting {} edges", i, count);
+            for j in 0..count {
+                let edge: UgnEdgeWire = match subordinate_link.recv_blocking(Duration::from_secs(1))
+                {
+                    Ok(e) => e,
+                    Err(e) => {
+                        error!("  Link {}: failed to receive edge {}: {:?}", i, j, e);
+                        break;
+                    }
+                };
                 report.insert_edge(edge.into());
             }
         }
-        info!(
-            "  Manager received all reports and built complete UGN graph with {} edges!",
-            report.count
-        );
-        info!("  Final UGN Report: {:?}", report);
+        info!("  Complete UGN graph: {} edges", report.count);
+        debug!("  Final UGN Report: {:?}", report);
     } else {
-        // Subordinate: Wait for commands and respond with reports
-        info!("Step 4a: Subordinate has to wait for command from manager...");
+        // Subordinate role: wait for manager command, then send report
+        info!("Step 4: Subordinate waiting for manager command...");
         let mut manager_idx = None;
 
-        // Wait for commands on all links
         while manager_idx.is_none() {
             for i in 0..LINK_COUNT {
                 let potential_manager_link = match i {
@@ -436,20 +414,16 @@ fn main() -> ! {
                 potential_manager_link.poll();
                 if let Ok(wire) = potential_manager_link.try_recv::<CommandWire>() {
                     if let Ok(Command::RequestUgnReport) = Command::try_from(wire) {
-                        info!("  Link {}: received RequestUgnReport command", i);
+                        info!("  Received RequestUgnReport on link {}", i);
                         manager_idx = Some(i);
                         break;
+                    } else {
+                        warn!("  Link {}: received unknown command: {:?}", i, wire);
                     }
                 }
             }
         }
-        info!(
-            "  Received command on link {}, preparing to send report...",
-            manager_idx.unwrap()
-        );
 
-        // Step 4b: Send counts to all links
-        info!("Step 4b: Sending UGN edge counts to all links...");
         let manager_link = match manager_idx.unwrap() {
             0 => &mut link0,
             1 => &mut link1,
@@ -464,12 +438,6 @@ fn main() -> ! {
             .send_blocking(&report.count, Duration::from_secs(1))
             .expect("Failed to send count");
 
-        info!(
-            "  Sent count to manager link {}, now sending edges...",
-            manager_idx.unwrap()
-        );
-
-        // Step 4c: Send edges to manager
         let mut edges_sent = 0;
         let mut edge_idx = 0;
         while edges_sent < report.count as usize && edge_idx < report.edges.len() {
@@ -477,16 +445,6 @@ fn main() -> ! {
             if let Some(edge) = report.edges[edge_idx] {
                 let wire: UgnEdgeWire = edge.into();
                 if manager_link.try_send(&wire).is_ok() {
-                    info!(
-                        "  Link {}: sent edge {}: {:02X?}:{} -> {:02X?}:{}, ugn={}",
-                        manager_idx.unwrap(),
-                        edges_sent,
-                        edge.src_node,
-                        edge.src_port,
-                        edge.dst_node,
-                        edge.dst_port,
-                        edge.ugn
-                    );
                     edges_sent += 1;
                     edge_idx += 1;
                 }
@@ -494,9 +452,10 @@ fn main() -> ! {
                 edge_idx += 1;
             }
         }
+        info!("  Sent {} edges to manager", edges_sent);
     }
 
-    uwriteln!(uart, "Demo complete.").unwrap();
+    info!("Demo complete.");
     // Keep polling links to ensure all transmissions complete
     loop {
         link0.poll();
