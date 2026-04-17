@@ -22,13 +22,12 @@ pub struct ConfigEntry {
     pub data: u8,
 }
 
-#[allow(clippy::from_over_into)]
-impl Into<RegisterOperation> for ConfigEntry {
-    fn into(self) -> RegisterOperation {
+impl From<ConfigEntry> for RegisterOperation {
+    fn from(value: ConfigEntry) -> Self {
         RegisterOperation {
-            page: [self.page],
-            address: [self.address],
-            write: Just([self.data]),
+            page: [value.page],
+            address: [value.address],
+            write: Just([value.data]),
         }
     }
 }

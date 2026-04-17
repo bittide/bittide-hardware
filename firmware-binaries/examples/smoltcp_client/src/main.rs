@@ -4,8 +4,6 @@
 
 #![no_std]
 #![no_main]
-#![allow(unused_mut)]
-#![allow(clippy::collapsible_if)]
 #![feature(sync_unsafe_cell)]
 
 use bittide_hal::hals::ethernet as hal;
@@ -71,9 +69,9 @@ fn main() -> ! {
     uwriteln!(INSTANCES.uart, "Initializing peripherals").unwrap();
 
     // Initialize peripherals
-    let mut timer = INSTANCES.timer;
+    let timer = INSTANCES.timer;
     // TODO: Use EthMacStatus instead of MacStatus
-    let mut _mac = INSTANCES.mac_status;
+    let _mac = INSTANCES.mac_status;
 
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
@@ -94,13 +92,13 @@ fn main() -> ! {
     let mut eth_addr = EthernetAddress::from_bytes(&dna[0..6]);
     set_unicast(&mut eth_addr);
     set_local(&mut eth_addr);
-    let mut config = Config::new(eth_addr.into());
+    let config = Config::new(eth_addr.into());
     let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, None);
     let now = to_smoltcp_instant(timer.now());
     let mut iface = Interface::new(config, &mut eth, now);
 
     // Create sockets
-    let mut dhcp_socket = dhcpv4::Socket::new();
+    let dhcp_socket = dhcpv4::Socket::new();
     let client_socket = {
         // It is not strictly necessary to use a `static mut` and unsafe code here, but
         // on embedded systems that smoltcp targets it is far better to allocate the data
@@ -143,25 +141,22 @@ fn main() -> ! {
             info!("{}, IP address: {}", timer.now(), my_ip.unwrap());
             let now = timer.now();
             stress_test_end = now + stress_test_duration;
-            info!("{}, Stress test will end at {}", now, stress_test_end);
+            info!("{now}, Stress test will end at {stress_test_end}");
         }
 
-        let mut socket = sockets.get_mut::<Socket>(client_handle);
+        let socket = sockets.get_mut::<Socket>(client_handle);
         let cx = iface.context();
         if !socket.is_open() {
             debug!("{}, Opening socket", timer.now());
             if !socket.is_active() {
                 mac_status = unsafe { MAC_ADDR.read_volatile() };
                 debug!(
-                    "Connecting from {:?}:{} to {}:{}",
+                    "Connecting from {:?}:1234 to {SERVER_IP}:{SERVER_PORT}",
                     my_ip.unwrap().octets(),
-                    1234,
-                    SERVER_IP,
-                    SERVER_PORT
                 );
                 match socket.connect(cx, (SERVER_IP, SERVER_PORT), 1234) {
                     Ok(_) => debug!("Connected to {SERVER_IP}:{SERVER_PORT}"),
-                    Err(e) => debug!("Error connecting: {:?}", e),
+                    Err(e) => debug!("Error connecting: {e:?}"),
                 }
             }
         }
@@ -169,11 +164,11 @@ fn main() -> ! {
             debug!("Sending data");
             match socket.send_slice(&[0; CHUNK_SIZE]) {
                 Ok(n) => debug!("Sent {n} bytes"),
-                Err(e) => debug!("Error sending data: {:?}", e),
+                Err(e) => debug!("Error sending data: {e:?}"),
             }
             let now = timer.now();
             if now > stress_test_end {
-                info!("{}, Stress test complete", now);
+                info!("{now}, Stress test complete");
                 socket.close();
                 let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
                 uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
@@ -183,7 +178,7 @@ fn main() -> ! {
             Some(smoltcp::time::Duration::ZERO) => {}
             Some(smoltcp_delay) => {
                 let delay = from_smoltcp_duration(smoltcp_delay);
-                debug!("sleeping for {} ms", delay);
+                debug!("sleeping for {delay} ms");
                 timer.wait(delay);
                 debug!("done sleeping");
             }
@@ -220,7 +215,7 @@ fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
             });
 
             if let Some(router) = config.router {
-                debug!("Default gateway: {}", router);
+                debug!("Default gateway: {router}");
                 iface.routes_mut().add_default_ipv4_route(router).unwrap();
             } else {
                 debug!("Default gateway: None");
@@ -228,7 +223,7 @@ fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
             }
 
             for (i, s) in config.dns_servers.iter().enumerate() {
-                debug!("DNS server {}:    {}", i, s);
+                debug!("DNS server {i}:    {s}");
             }
         }
         Some(dhcpv4::Event::Deconfigured) => {

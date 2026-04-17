@@ -4,7 +4,6 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 #![allow(const_item_mutation)]
-#![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
 
 // Non-aliased imports
@@ -26,7 +25,9 @@ const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 fn test_result(result: &str) -> ! {
     let uart = &mut INSTANCES.uart;
     uwriteln!(uart, "RESULT: {}", result).unwrap();
-    loop {}
+    loop {
+        continue;
+    }
 }
 
 fn test_ok() -> ! {

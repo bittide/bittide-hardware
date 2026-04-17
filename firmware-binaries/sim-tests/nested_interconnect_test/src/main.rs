@@ -1,7 +1,6 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 #![allow(const_item_mutation)]
-#![allow(clippy::empty_loop)]
 
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
@@ -20,7 +19,9 @@ const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 fn test_result(result: &str) -> ! {
     let uart = &mut INSTANCES.uart;
     uwriteln!(uart, "RESULT: {}", result).unwrap();
-    loop {}
+    loop {
+        continue;
+    }
 }
 
 fn test_ok() -> ! {
@@ -29,7 +30,7 @@ fn test_ok() -> ! {
 
 fn test_fail(msg: &str) -> ! {
     let mut full_msg = heapless::String::<150>::new();
-    write!(full_msg, "FAIL: {}", msg).unwrap();
+    write!(full_msg, "FAIL: {msg}").unwrap();
     test_result(&full_msg)
 }
 
@@ -70,23 +71,23 @@ fn main() -> ! {
         let mut name_buf = heapless::String::<50>::new();
 
         // Read initial values (should be 0)
-        write!(name_buf, "peripheral{}.status.init", i).unwrap();
+        write!(name_buf, "peripheral{i}.status.init").unwrap();
         expect(&name_buf, 0u32, peripheral.status());
         name_buf.clear();
 
-        write!(name_buf, "peripheral{}.control.init", i).unwrap();
+        write!(name_buf, "peripheral{i}.control.init").unwrap();
         expect(&name_buf, 0u32, peripheral.control());
         name_buf.clear();
 
         // Write and read back status
         peripheral.set_status(*status_val);
-        write!(name_buf, "peripheral{}.status.readback", i).unwrap();
+        write!(name_buf, "peripheral{i}.status.readback").unwrap();
         expect(&name_buf, *status_val, peripheral.status());
         name_buf.clear();
 
         // Write and read back control
         peripheral.set_control(*control_val);
-        write!(name_buf, "peripheral{}.control.readback", i).unwrap();
+        write!(name_buf, "peripheral{i}.control.readback").unwrap();
         expect(&name_buf, *control_val, peripheral.control());
     }
 
@@ -95,7 +96,7 @@ fn main() -> ! {
         peripherals.iter_mut().zip(test_values.iter()).enumerate()
     {
         let mut name_buf = heapless::String::<50>::new();
-        write!(name_buf, "peripheral{}.status.final", i).unwrap();
+        write!(name_buf, "peripheral{i}.status.final").unwrap();
         expect(&name_buf, *status_val, peripheral.status());
     }
 
@@ -106,5 +107,7 @@ fn main() -> ! {
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
     let uart = unsafe { &mut hal::DeviceInstances::new().uart };
     uwriteln!(uart, "RESULT: PANIC").unwrap();
-    loop {}
+    loop {
+        continue;
+    }
 }

@@ -129,12 +129,12 @@ pub(crate) fn generate_tag_docs<'a>(
     toks.extend(quote::quote! { #[doc = ""] });
 
     for tag in tags {
-        let msg = format!(" - `{}`", tag);
+        let msg = format!(" - `{tag}`");
         toks.extend(quote::quote! { #[doc = #msg] });
     }
 
     for tag in ann_tags {
-        let msg = format!(" - `{}`", tag);
+        let msg = format!(" - `{tag}`");
         toks.extend(quote::quote! { #[doc = #msg] });
     }
 

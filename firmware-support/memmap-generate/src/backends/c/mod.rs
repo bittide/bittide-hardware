@@ -347,7 +347,7 @@ fn type_to_ident(ctx: &IrCtx, ty: Handle<TypeRef>) -> String {
             let name = &ctx.identifiers[*handle];
             format!("var_{name}")
         }
-        TypeRef::Nat(n) => format!("{}", n),
+        TypeRef::Nat(n) => format!("{n}"),
         TypeRef::Reference { name, args } => {
             let type_name = &ctx.type_names[*name];
             let mut ident = type_name.base.clone();
