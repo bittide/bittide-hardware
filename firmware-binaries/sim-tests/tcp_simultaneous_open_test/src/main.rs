@@ -6,7 +6,6 @@
 #![feature(sync_unsafe_cell)]
 
 use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
-use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::ringbuffer_test::DeviceInstances;
 use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface, RecvError};
 use core::cell::SyncUnsafeCell;
@@ -205,7 +204,7 @@ fn main() -> ! {
     }
 
     // Exchange structured data using the new typed API
-    info!("Exchanging structured data with typed recv_blocking...");
+    info!("Exchanging structured data with typed try_recv...");
 
     let struct_0_to_1 = TestMessage {
         id: 42,
@@ -224,45 +223,48 @@ fn main() -> ! {
     link0.send(wire_0.as_bytes());
     link1.send(wire_1.as_bytes());
 
-    // Pattern 2: Using typed recv_blocking for maximum simplicity
+    // Both links share a single CPU, so recv_blocking can't be used — it only
+    // polls its own link, starving the other side's transmissions.  Poll both
+    // links and use try_recv instead.
     let mut struct0_received = false;
     let mut struct1_received = false;
 
-    // Receive on node 0 using typed blocking receive
-    match link0.recv_blocking::<TestMessageWire>(Duration::from_millis(500)) {
-        Ok(wire_msg) => {
-            let received: TestMessage = wire_msg.into();
-            if received == struct_1_to_0 {
-                info!(
-                    "Node 0 received correct struct (typed): id={}, value={}, flags={:#x}",
-                    received.id, received.value, received.flags
-                );
-                struct0_received = true;
-            } else {
-                info!("Node 0 received struct but data mismatch");
-            }
-        }
-        Err(e) => {
-            info!("Node 0 recv_blocking error: {:?}", e);
-        }
-    }
+    for _ in 0..5000 {
+        link0.poll();
+        link1.poll();
 
-    // Receive on node 1 using typed blocking receive
-    match link1.recv_blocking::<TestMessageWire>(Duration::from_millis(500)) {
-        Ok(wire_msg) => {
-            let received: TestMessage = wire_msg.into();
-            if received == struct_0_to_1 {
-                info!(
-                    "Node 1 received correct struct (typed): id={}, value={}, flags={:#x}",
-                    received.id, received.value, received.flags
-                );
-                struct1_received = true;
-            } else {
-                info!("Node 1 received struct but data mismatch");
+        if !struct0_received {
+            if let Ok(wire_msg) = link0.try_recv::<TestMessageWire>() {
+                let received: TestMessage = wire_msg.into();
+                if received == struct_1_to_0 {
+                    info!(
+                        "Node 0 received correct struct (typed): id={}, value={}, flags={:#x}",
+                        received.id, received.value, received.flags
+                    );
+                    struct0_received = true;
+                } else {
+                    info!("Node 0 received struct but data mismatch");
+                }
             }
         }
-        Err(e) => {
-            info!("Node 1 recv_blocking error: {:?}", e);
+
+        if !struct1_received {
+            if let Ok(wire_msg) = link1.try_recv::<TestMessageWire>() {
+                let received: TestMessage = wire_msg.into();
+                if received == struct_0_to_1 {
+                    info!(
+                        "Node 1 received correct struct (typed): id={}, value={}, flags={:#x}",
+                        received.id, received.value, received.flags
+                    );
+                    struct1_received = true;
+                } else {
+                    info!("Node 1 received struct but data mismatch");
+                }
+            }
+        }
+
+        if struct0_received && struct1_received {
+            break;
         }
     }
 
