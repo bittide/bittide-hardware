@@ -4,8 +4,7 @@
 
 {- | Transceiver module for the Bittide project. This module is a wrapper around
 the 'Clash.Cores.Xilinx.Gth.gthCore' function, adding additional functionality
-such as PRBS generation and checking, comma insertion, word alignment, and
-user data handshaking.
+such as PRBS generation and checking, comma insertion, and word alignment.
 
 __CAUTION__: When instantiating multiple transceivers you might want to use
 'transceiverPrbsN'. Make sure to read its documentation before proceeding.
@@ -25,11 +24,6 @@ After sending commas, we assume the receiver receives our words in a byte-aligne
 fashion. We can use this fact by reserving the MSB of each byte for an alignment
 symbol - see "Bittide.Transceiver.WordAlign".
 
-__Meta data__
-We send along meta data with each word. This meta data is used to signal to the
-neighbor that we're ready to receive user data, ready to transmit user data, or
-that the next word will be user data.
-
 __Reset manager__
 A reset manager is used as a sort of \"watchdog\" while booting the
 transceivers. It will reset the receive side of the transceiver if it doesn't
@@ -44,11 +38,10 @@ __Word format__
 An (aligned) 64 bit word is formatted as follows:
 
 > +----------+----------+----------+----------+----------+----------+----------+----------+
-> | 1mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp |
+> | 1ppppppp | 0ppppppp | 0ppppppp | 0ppppppp | 0ppppppp | 0ppppppp | 0ppppppp | 0ppppppp |
 > +----------+----------+----------+----------+----------+----------+----------+----------+
 
  * 1/0: alignment symbol
- * m: meta data
  * p: PRBS data
 
 __Protocol__
@@ -57,13 +50,12 @@ The protocol is as follows:
 Transmit:
 
  1. Send commas for a number of cycles
- 2. Send PRBS data with meta data
- 3. Wait for receiver to signal it has successfully decoded PRBS data for a long time
- 4. Send meta data with user supplied 'Input.rxReady' and 'Input.txStart'
- 5. Wait for 'Input.rxReady', 'Input.txStart' and its neighbor to signal it is ready to
-    receive user data.
- 6. Send meta data with 'lastPrbsWord' set to 'True'
- 7. Send user data
+ 2. Send PRBS data with word alignment bits
+ 3. Wait for receive side to signal it has successfully decoded PRBS data for such a long
+    time that we don't expect the other side to reset anymore.
+ 4. Wait for that same amount of time (+a little bit) to make sure the other side can reach
+    the same conclusion.
+ 5. Send user data
 
 Note that the reset manager might decide to reset in steps (2) and (3).
 
@@ -71,10 +63,8 @@ Receive:
 
  1. Detect alignment symbol and shift data accordingly
  2. Check PRBS data
- 3. Signal that PRBS data is OK after observing it for some time (see section
-   __Reset manager__).
- 4. Wait for 'Meta.lastPrbsWord'
- 5. Freeze alignment logic
+ 3. Signal that PRBS data is OK after observing it for some time (see section __Reset manager__).
+ 4. Freeze alignment logic
 -}
 module Bittide.Transceiver where
 
@@ -83,7 +73,7 @@ import Protocols
 
 import Bittide.Arithmetic.Time (trueForSteps)
 import Bittide.ElasticBuffer (stickyE)
-import Bittide.Handshake (Meta (..))
+import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
 import Data.Maybe (fromMaybe, isNothing)
@@ -125,8 +115,6 @@ data Input tx rx tx1 rx1 ref free rxS = Input
   , clockRx1 :: Clock rx1
   , clockRx2 :: Clock rx
   , rxActive :: Signal rx (BitVector 1)
-  , transceiverIndex :: Unsigned 3
-  -- ^ Index of this transceiver, used for debugging. Can be set to 0 if not used.
   , channelName :: String
   -- ^ Channel name, example \"X0Y18\"
   , clockPath :: String
@@ -136,17 +124,7 @@ data Input tx rx tx1 rx1 ref free rxS = Input
   , rxN :: Gth.Wire rxS
   , rxP :: Gth.Wire rxS
   , txData :: Signal tx (BitVector 64)
-  -- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
-  -- 'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
-  -- afterwards.
-  , txStart :: Signal tx Bool
-  -- ^ When asserted, signal to neighbor that next word will be user data. This
-  -- signal is ignored until 'Output.txReady' is asserted. Can be tied
-  -- to 'True'.
-  , rxReady :: Signal rx Bool
-  -- ^ When asserted, allow signalling to the neighbor that we are ready to
-  -- receive user data. Once asserted, it should stay asserted. Note that the
-  -- neighbor might decide to not send user data for a long time, even if this
+  -- ^ Data to transmit to the neighbor. This data is sampled if 'Output.txDataInitDone'
   -- is asserted.
   }
 
@@ -171,10 +149,6 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.rxSim'
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
-  , txStarts :: Vec n (Signal tx Bool)
-  -- ^ See 'Input.txStart'
-  , rxReadys :: Vec n (Signal rx Bool)
-  -- ^ See 'Input.rxReady'
   }
 
 data CInputs tx rx free n = CInputs
@@ -182,10 +156,6 @@ data CInputs tx rx free n = CInputs
   -- ^ Resets for each individual link
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
-  , txStarts :: Vec n (Signal tx Bool)
-  -- ^ See 'Input.txStart'
-  , rxReadys :: Vec n (Signal rx Bool)
-  -- ^ See 'Input.rxReady'
   }
 
 instance Protocol (CInputs tx rx free n) where
@@ -198,14 +168,6 @@ data Output tx rx tx1 rx1 txS free = Output
   , txReset :: Reset tx
   -- ^ Reset for 'Input.clockTx2'. Clock can be unstable until this reset is
   -- deasserted. See documentation of 'transceiverPrbsN' for more information.
-  , txReady :: Signal tx Bool
-  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
-  -- 'Input.txStart' to be asserted before starting to send 'txData'.
-  , txSampling :: Signal tx Bool
-  -- ^ Data is sampled from 'Input.txData'
-  , handshakeDoneTx :: Signal tx Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
   , txP :: Gth.Wire txS
   -- ^ Transmit data (and implicitly a clock), positive
   , txN :: Gth.Wire txS
@@ -217,24 +179,21 @@ data Output tx rx tx1 rx1 txS free = Output
   , rxReset :: Reset rx
   -- ^ Reset signal for the receive side. Clock can be unstable until this reset
   -- is deasserted.
-  , rxData :: Signal rx (Maybe (BitVector 64))
-  -- ^ User data received from the neighbor
-  , handshakeDone :: Signal rx Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  , debugLinkUp :: Signal free Bool
-  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
-  --  and receive side are either handling user data.
-  , debugLinkReady :: Signal free Bool
-  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
-  --  and receive side ready to handle user data or doing so. I.e., 'debugLinkUp' implies
-  -- 'debugLinkReady'.
-  , handshakeDoneFree :: Signal free Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
-  , neighborReceiveReady :: Signal free Bool
-  -- ^ Asserted when the neighbor has signalled it is ready to receive user data.
-  , neighborTransmitReady :: Signal free Bool
-  -- ^ Asserted when the neighbor has signalled it is ready to transmit user data.
+  , rxData :: Signal rx (BitVector 64)
+  -- ^ User data received from the neighbor. Valid (but not necessary a user word) when
+  -- 'Output.rxReset' is deasserted and 'Output.rxDataInitDone' is asserted.
+  , rxDataInitDone :: Signal rx Bool
+  -- ^ Receive data initialization procedure done. This means that the data presented on
+  -- 'rxData' is word aligned and coming from the neighbor. Note that you might still see
+  -- PRBS / initialization data coming from the other side. If you need first-word boundaries
+  -- you'll need to connect a handshake component.
+  , rxDataInitDoneFree :: Signal free Bool
+  -- ^ 'rxDataInitDone', but synchronized to @free@ domain
+  , txDataInitDone :: Signal tx Bool
+  -- ^ Transmit data initialization procedure done. This mean that the data presented on
+  -- 'Input.txData' is sampled and sent to the neighbor.
+  , txDataInitDoneFree :: Signal free Bool
+  -- ^ 'Output.txDataInitDone' but in the free domain.
   , stats :: Signal free ResetManager.Statistics
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
@@ -247,12 +206,6 @@ data Outputs n tx rx txS free = Outputs
   -- ^ Single transmit clock, shared by all links
   , txReset :: Reset tx
   -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable.
-  , txReadys :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txReady'
-  , txSamplings :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txSampling'
-  , handshakesDoneTx :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.handshakeDoneTx'
   , txPs :: Gth.Wires txS n
   -- ^ See 'Output.txP'
   , txNs :: Gth.Wires txS n
@@ -263,20 +216,16 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.rxClock'
   , rxResets :: Vec n (Reset rx)
   -- ^ See 'Output.rxReset'
-  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  , rxDatas :: Vec n (Signal rx (BitVector 64))
   -- ^ See 'Output.rxData'
-  , handshakesDone :: Vec n (Signal rx Bool)
-  -- ^ See 'Output.handshakeDone'
-  , debugLinkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.debugLinkUp'
-  , debugLinkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.debugLinkReady'
-  , handshakesDoneFree :: Vec n (Signal free Bool)
-  -- ^ See 'Output.handshakeDoneFree'
-  , neighborReceiveReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.neighborReceiveReady'
-  , neighborTransmitReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.neighborTransmitReady'
+  , rxDataInitDones :: Vec n (Signal rx Bool)
+  -- ^ See 'Output.rxDataInitDone'
+  , rxDataInitDonesFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.rxDataInitDoneFree'
+  , txDataInitDones :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txDataInitDone'
+  , txDataInitDonesFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.txDataInitDoneFree'
   , stats :: Vec n (Signal free ResetManager.Statistics)
   -- ^ See 'Output.stats'
   }
@@ -289,30 +238,20 @@ data COutputs n tx rx free = COutputs
   -- ^ See 'Output.txClock'
   , txReset :: Reset tx
   -- ^ See 'Output.txReset'
-  , txReadys :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txReady'
-  , txSamplings :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.txSampling'
-  , handshakesDoneTx :: Vec n (Signal tx Bool)
-  -- ^ See 'Output.handshakeDoneTx'
   , rxClocks :: Vec n (Clock rx)
   -- ^ See 'Output.rxClock'
   , rxResets :: Vec n (Reset rx)
   -- ^ See 'Output.rxReset'
-  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  , rxDatas :: Vec n (Signal rx (BitVector 64))
   -- ^ See 'Output.rxData'
-  , handshakesDone :: Vec n (Signal rx Bool)
-  -- ^ See 'Output.handshakeDone'
-  , debugLinkUps :: Vec n (Signal free Bool)
-  -- ^ See 'Output.debugLinkUp'
-  , debugLinkReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.debugLinkReady'
-  , handshakesDoneFree :: Vec n (Signal free Bool)
-  -- ^ See 'Output.handshakeDoneFree'
-  , neighborReceiveReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.neighborReceiveReady'
-  , neighborTransmitReadys :: Vec n (Signal free Bool)
-  -- ^ See 'Output.neighborTransmitReady'
+  , rxDataInitDones :: Vec n (Signal rx Bool)
+  -- ^ See 'Output.rxDataInitDone'
+  , rxDataInitDonesFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.rxDataInitDoneFree'
+  , txDataInitDones :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txDataInitDone'
+  , txDataInitDonesFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.txDataInitDoneFree'
   , stats :: Vec n (Signal free ResetManager.Statistics)
   -- ^ See 'Output.stats'
   }
@@ -346,15 +285,14 @@ instance Protocol (Outputs n tx rx txS free) where
 {-
 [NOTE: duplicate tx/rx domain]
 'gthCore' and the inside of 'transceiverPrbsN' have two extra domains, tx1 and rx1,
-that aren't visible outside of transceiverPrbsN.
-To do this completely clean/safe transceiverPrbsN should have two extra
-forall arguments, two extra KnownDomain constraints.
+that aren't visible outside of transceiverPrbsN. To do this completely clean/safe
+transceiverPrbsN should have two extra forall arguments, two extra KnownDomain constraints.
 And either some Proxy arguments or we would have to enable AllowAmbiguousTypes.
 
-Because the tx1/rx1 domains aren't visible outside 'transceiverPrbsN',
-I choose to sidestep the extra complication and pretend tx1/rx1 and tx/rx are the same.
-This disables the typechecking safety we'd normally get from clash,
-but vivado should call us out when we make a mistake.
+Because the tx1/rx1 domains aren't visible outside 'transceiverPrbsN', I chose to sidestep
+the extra complication and pretend tx1/rx1 and tx/rx are the same. This disables the type
+checking safety we'd normally get from Clash, but Vivado should call us out when we make a
+mistake.
 -}
 
 {- | Clash has a very hard time translating maps with 'SimOnly' constructs,
@@ -374,18 +312,13 @@ outputsToCOutputs outputs =
   COutputs
     { txClock = outputs.txClock
     , txReset = outputs.txReset
-    , txReadys = outputs.txReadys
-    , txSamplings = outputs.txSamplings
-    , handshakesDoneTx = outputs.handshakesDoneTx
     , rxClocks = outputs.rxClocks
     , rxResets = outputs.rxResets
     , rxDatas = outputs.rxDatas
-    , handshakesDone = outputs.handshakesDone
-    , debugLinkUps = outputs.debugLinkUps
-    , debugLinkReadys = outputs.debugLinkReadys
-    , handshakesDoneFree = outputs.handshakesDoneFree
-    , neighborReceiveReadys = outputs.neighborReceiveReadys
-    , neighborTransmitReadys = outputs.neighborTransmitReadys
+    , rxDataInitDones = outputs.rxDataInitDones
+    , rxDataInitDonesFree = outputs.rxDataInitDonesFree
+    , txDataInitDones = outputs.txDataInitDones
+    , txDataInitDonesFree = outputs.txDataInitDonesFree
     , stats = outputs.stats
     }
 
@@ -449,8 +382,6 @@ transceiverPrbsNC clock reset config = Circuit go
           , rxNs
           , rxPs
           , txDatas = cInputs.txDatas
-          , txStarts = cInputs.txStarts
-          , rxReadys = cInputs.rxReadys
           }
 
 transceiverPrbsN ::
@@ -476,24 +407,19 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
     { -- tx
       txClock
     , txReset
-    , txReadys = map (.txReady) outputs
-    , txSamplings = map (.txSampling) outputs
-    , handshakesDoneTx = map (.handshakeDoneTx) outputs
     , txSims = simOnlyHdlWorkaround (SimOnly (map (Gth.unSimOnly . (.txSim)) outputs))
+    , txDataInitDones = map (.txDataInitDone) outputs
     , -- rx
       rxClocks = rxClocks
     , rxResets = map (.rxReset) outputs
     , rxDatas = map (.rxData) outputs
-    , handshakesDone = map (.handshakeDone) outputs
+    , rxDataInitDones = map (.rxDataInitDone) outputs
     , -- transceiver
       txPs = pack <$> bundle (map (.txP) outputs)
     , txNs = pack <$> bundle (map (.txN) outputs)
     , -- free
-      debugLinkUps = map (.debugLinkUp) outputs
-    , debugLinkReadys = map (.debugLinkReady) outputs
-    , handshakesDoneFree = map (.handshakeDoneFree) outputs
-    , neighborReceiveReadys = map (.neighborReceiveReady) outputs
-    , neighborTransmitReadys = map (.neighborTransmitReady) outputs
+      txDataInitDonesFree = map (.txDataInitDoneFree) outputs
+    , rxDataInitDonesFree = map (.rxDataInitDoneFree) outputs
     , stats = map (.stats) outputs
     }
  where
@@ -503,22 +429,17 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   -- That breaks the instantiation of the the debug ILAs inside 'transceiverPrbs'.
   --
   -- But when the GTHs were changed to use external "user clock networks",
-  -- this zipWithN became unusably slow when using more then ~4 transceivers.
-  -- Unfortunately this means debugIla is broken now, when using more then 1 transceiver.
+  -- this zipWithN became unusably slow when using more than ~4 transceivers.
+  -- Unfortunately this means debugIla is broken now, when using more than 1 transceiver.
   outputs =
     go txClockNw
-      <$> iterateI (+ 1) 0 -- Note that the target type is only 3 bits, so this will
-      -- wrap around after 8 transceivers. This is fine, as we
-      -- only use this for debugging.
-      <*> inputs.channelNames
+      <$> inputs.channelNames
       <*> inputs.clockPaths
       <*> simOnlyHdlWorkaround (map SimOnly (Gth.unSimOnly inputs.rxSims))
       <*> unbundle (unpack <$> inputs.rxNs)
       <*> unbundle (unpack <$> inputs.rxPs)
       <*> inputs.channelResets
       <*> inputs.txDatas
-      <*> inputs.txStarts
-      <*> inputs.rxReadys
       <*> rxClockNws
 
   -- NOTE: The example project generated by gtwizard_ultrascale suggests tying tx/rxUsrClkRst
@@ -540,7 +461,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
-  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxSim rxN rxP channelReset txData txStart rxReady (clockRx1, clockRx2, rxActive) =
+  go (clockTx1, clockTx2, txActive) channelName clockPath rxSim rxN rxP channelReset txData (clockRx1, clockRx2, rxActive) =
     transceiverPrbs
       opts
       Input
@@ -551,9 +472,6 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
         , rxP
         , channelReset
         , txData
-        , txStart
-        , rxReady
-        , transceiverIndex
         , clock
         , reset
         , refClock
@@ -583,172 +501,7 @@ transceiverPrbs ::
   Config free ->
   Input tx rx tx1 rx1 ref free rxS ->
   Output tx rx tx1 rx1 txS free
-transceiverPrbs = transceiverAndHandshake Gth.gthCore
-
-transceiverAndHandshake ::
-  ( HasSynchronousReset tx
-  , HasDefinedInitialValues tx
-  , HasSynchronousReset rx
-  , HasDefinedInitialValues rx
-  , HasSynchronousReset free
-  , HasDefinedInitialValues free
-  , KnownDomain rx1
-  , KnownDomain tx1
-  , KnownDomain rxS
-  , KnownDomain txS
-  , KnownDomain ref
-  , KnownDomain free
-  ) =>
-  Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
-  Config free ->
-  Input tx rx tx1 rx1 ref free rxS ->
-  Output tx rx tx1 rx1 txS free
-transceiverAndHandshake core config input = output
- where
-  output = transceiverOutputAndHandshakeOutputToOutput transceiver handshake
-
-  transceiverInput = inputToTransceiverInput input
-  handshakeInput = inputToHandshakeInput input
-  (transceiver, handshakeInputFromTransceiver) = transceiverPrbsWith core config transceiverInput transceiverInputFromHandshake
-  (handshake, transceiverInputFromHandshake) = userDataHandshake handshakeInput handshakeInputFromTransceiver
-
-transceiverOutputAndHandshakeOutputToOutput ::
-  TransceiverOutput tx rx tx1 rx1 txS free ->
-  HandshakeOutput tx rx free ->
-  Output tx rx tx1 rx1 txS free
-transceiverOutputAndHandshakeOutputToOutput transceiver handshake = output
- where
-  output =
-    Output
-      { txSampling = handshake.txIsUserData
-      , rxData = handshake.wordToUser
-      , txReady = handshake.neighborReceiveReadyTx
-      , handshakeDoneTx = transceiver.prbsHandshakeDoneTx
-      , handshakeDone = transceiver.prbsHandshakeDone
-      , handshakeDoneFree = transceiver.prbsHandshakeDoneFree
-      , txSim = transceiver.txSim
-      , txN = transceiver.txN
-      , txP = transceiver.txP
-      , txReset = transceiver.txReset
-      , txOutClock = transceiver.txOutClock
-      , rxOutClock = transceiver.rxOutClock
-      , rxReset = transceiver.rxReset
-      , debugLinkUp = handshake.debugLinkUp
-      , debugLinkReady = handshake.debugLinkReady
-      , neighborReceiveReady = handshake.neighborReceiveReady
-      , neighborTransmitReady = handshake.neighborTransmitReady
-      , stats = transceiver.stats
-      }
-
-inputToTransceiverInput ::
-  Input tx rx tx1 rx1 ref free rxS -> TransceiverInput tx rx tx1 rx1 ref free rxS
-inputToTransceiverInput input = transceiverInput
- where
-  transceiverInput =
-    TransceiverInput
-      { clock = input.clock
-      , reset = input.reset
-      , channelReset = input.channelReset
-      , refClock = input.refClock
-      , clockTx1 = input.clockTx1
-      , clockTx2 = input.clockTx2
-      , txActive = input.txActive
-      , clockRx1 = input.clockRx1
-      , clockRx2 = input.clockRx2
-      , rxActive = input.rxActive
-      , transceiverIndex = input.transceiverIndex
-      , channelName = input.channelName
-      , clockPath = input.clockPath
-      , rxSim = input.rxSim
-      , rxN = input.rxN
-      , rxP = input.rxP
-      }
-
-inputToHandshakeInput :: Input tx rx tx1 rx1 ref free rxS -> HandshakeInput tx rx free
-inputToHandshakeInput input = handshakeInput
- where
-  handshakeInput =
-    HandshakeInput
-      { clock = input.clock
-      , reset = input.reset
-      , txClock = input.clockTx2
-      , rxClock = input.clockRx2
-      , wordFromUser = input.txData
-      , txStart = input.txStart
-      , rxReady = input.rxReady
-      }
-
-data TransceiverInput tx rx tx1 rx1 ref free rxS = TransceiverInput
-  { clock :: Clock free
-  , reset :: Reset free
-  , channelReset :: Reset free
-  , refClock :: Clock ref
-  , clockTx1 :: Clock tx1
-  , clockTx2 :: Clock tx
-  , txActive :: Signal tx (BitVector 1)
-  , clockRx1 :: Clock rx1
-  , clockRx2 :: Clock rx
-  , rxActive :: Signal rx (BitVector 1)
-  , transceiverIndex :: Unsigned 3
-  , channelName :: String
-  , clockPath :: String
-  , rxSim :: Gth.SimWire rx
-  , rxN :: Gth.Wire rxS
-  , rxP :: Gth.Wire rxS
-  }
-
-data TransceiverOutput tx rx tx1 rx1 txS free = TransceiverOutput
-  { txOutClock :: Clock tx1
-  , txReset :: Reset tx
-  , prbsHandshakeDoneTx :: Signal tx Bool
-  , txP :: Gth.Wire txS
-  , txN :: Gth.Wire txS
-  , txSim :: Gth.SimWire tx
-  , rxOutClock :: Clock rx1
-  , rxReset :: Reset rx
-  , prbsHandshakeDone :: Signal rx Bool
-  , prbsHandshakeDoneFree :: Signal free Bool
-  , stats :: Signal free ResetManager.Statistics
-  }
-
-data HandshakeInput tx rx free = HandshakeInput
-  { clock :: Clock free
-  , reset :: Reset free
-  , txClock :: Clock tx
-  , rxClock :: Clock rx
-  , wordFromUser :: Signal tx (BitVector 64)
-  , txStart :: Signal tx Bool -- Set by CPU via wishbone
-  , rxReady :: Signal rx Bool -- Set by CPU via wishbone
-  }
-
-data HandshakeOutput tx rx free = HandshakeOutput
-  { wordToTransceiver :: Signal tx (BitVector 64)
-  , wordToUser :: Signal rx (Maybe (BitVector 64))
-  , rxLast :: Signal rx Bool
-  , rxIsUserData :: Signal rx Bool
-  , txIsUserData :: Signal tx Bool
-  , debugLinkUp :: Signal free Bool
-  , debugLinkReady :: Signal free Bool
-  , neighborReceiveReady :: Signal free Bool
-  , neighborReceiveReadyTx :: Signal tx Bool
-  , neighborTransmitReady :: Signal free Bool
-  }
-
-data HandshakeInputFromTransceiver tx rx = HandshakeInputFromTransceiver
-  { txReset :: Reset tx
-  , txResetDone :: Signal tx (BitVector 1)
-  , rxReset :: Reset rx
-  , rxResetDone :: Signal rx (BitVector 1)
-  , linkHealthy :: Signal rx Bool
-  , wordFromTransceiver :: Signal rx (BitVector 64)
-  }
-
-data TransceiverInputFromHandshake tx rx free = TransceiverInputFromHandshake
-  { wordToTransceiver :: Signal tx (BitVector 64)
-  , rxLast :: Signal rx Bool
-  , rxUserData :: Signal rx Bool
-  , txUserData :: Signal tx Bool
-  }
+transceiverPrbs = transceiverPrbsWith Gth.gthCore
 
 transceiverPrbsWith ::
   forall tx rx tx1 rx1 ref free txS rxS.
@@ -767,34 +520,25 @@ transceiverPrbsWith ::
   ) =>
   Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
   Config free ->
-  TransceiverInput tx rx tx1 rx1 ref free rxS ->
-  TransceiverInputFromHandshake tx rx free ->
-  (TransceiverOutput tx rx tx1 rx1 txS free, HandshakeInputFromTransceiver tx rx)
-transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTransceiver rxLast rxUserData txUserData) = (output, handshakeInput)
+  Input tx rx tx1 rx1 ref free rxS ->
+  Output tx rx tx1 rx1 txS free
+transceiverPrbsWith gthCore opts input = output
  where
   output =
-    TransceiverOutput
-      { prbsHandshakeDoneTx = withLockRxTx prbsOkDelayed
-      , prbsHandshakeDone = prbsOkDelayed
-      , prbsHandshakeDoneFree = withLockRxFree prbsOkDelayed
-      , txSim
+    Output
+      { txSim
       , txN
       , txP
       , txReset = txDomainReset
       , txOutClock
       , rxOutClock
       , rxReset
+      , rxData = alignedRxData0
       , stats
-      }
-
-  handshakeInput =
-    HandshakeInputFromTransceiver
-      { txReset
-      , txResetDone = reset_tx_done
-      , rxReset
-      , rxResetDone = reset_rx_done
-      , linkHealthy = prbsOkDelayed
-      , wordFromTransceiver = alignedRxData0
+      , rxDataInitDone
+      , rxDataInitDoneFree
+      , txDataInitDone = txDataInitDoneTx
+      , txDataInitDoneFree
       }
 
   Gth.CoreOutput
@@ -841,7 +585,7 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
           , gtwizUserclkRxActiveIn = input.rxActive
           }
 
-  prbsConfig = Prbs.conf31 @48
+  prbsConfig = Prbs.conf31 @56
 
   clock = input.clock
   reset = input.reset
@@ -851,23 +595,12 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
   (commas, txctrl) = Comma.generator d1 txClock txReset
   commasDone = isNothing <$> commas
   prbs = Prbs.generator txClock (unsafeFromActiveLow commasDone) enableGen prbsConfig
-  -- Ideally, the transceiver would just receive a word from the handshake and send it out.
-  -- This word could be a metadata word or a user word. However, since metadata words are
-  -- padded with prbs data, we have two options: 1) setup handshake to do prbs, so that the
-  -- metadata words can be sent directly by the transceiver, or 2) take the metadata word
-  -- from handshake and have the transceiver write in the prbs info into the word. We choose
-  -- option 2, because that better decouples the handshake from the transceiver logic.
-  --
-  -- The logic below simply takes the handshake word and, if the handshake signals it's
-  -- sending metadata, rewrites the metadata word with prbs data inserted
-  metaTx = wordToMetadata <$> wordToTransceiver
-  prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
-  prbsWithMetaAndAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbsWithMeta
+  prbsWithAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbs
   gtwiz_userdata_tx_in =
     mux
-      txUserData
-      wordToTransceiver
-      (fromMaybe <$> prbsWithMetaAndAlign <*> commas)
+      txDataInitDoneTx
+      input.txData
+      (fromMaybe <$> prbsWithAlign <*> commas)
 
   rxReset =
     xpmResetSynchronizer Asserted rxClock rxClock
@@ -877,15 +610,12 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
   alignedRxData0 :: Signal rx (BitVector 64)
   alignedRxData0 =
     withClock rxClock
-      $ WordAlign.alignBytesFromMsbs @8 WordAlign.alignLsbFirst (rxUserData .||. rxLast) rx_data0
+      $ WordAlign.alignBytesFromMsbs @8 WordAlign.alignLsbFirst prbsOkDelayedSticky rx_data0
 
   (alignedAlignBits, alignedRxData1) =
     unbundle (WordAlign.splitMsbs @8 @8 <$> alignedRxData0)
 
-  (_, alignedRxData2) =
-    unbundle (WordAlign.splitMsbs @8 @7 <$> alignedRxData1)
-
-  prbsErrors = Prbs.checker rxClock rxReset enableGen prbsConfig alignedRxData2
+  prbsErrors = Prbs.checker rxClock rxReset enableGen prbsConfig alignedRxData1
   anyPrbsErrors = prbsErrors ./=. pure 0
   alignError = alignedAlignBits ./=. pure WordAlign.alignSymbol
 
@@ -900,21 +630,39 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
       .||. (rxCtrl2 ./=. pure 0)
       .||. (rxCtrl3 ./=. pure 0)
 
-  prbsOk =
-    rxUserData
-      .||. Prbs.tracker rxClock rxReset (anyPrbsErrors .||. alignError .||. rxCtrlOrError)
+  prbsOk = Prbs.tracker rxClock rxReset (anyPrbsErrors .||. alignError .||. rxCtrlOrError)
 
-  -- 'prbsWaitMs' is the number of milliseconds representing the worst case time
-  -- it takes for the PRBS to stabilize. I.e., after this time we can be sure the
-  -- neighbor doesn't reset its transceiver anymore. We add a single retry to
-  -- account for clock speed variations.
+  -- 'prbsWaitMs' is the number of milliseconds representing the worst case time it takes
+  -- for the PRBS to stabilize. I.e., after this time we can be sure the neighbor doesn't
+  -- reset its transceiver anymore. We add a single retry to account for clock speed
+  -- variations.
   prbsWaitMs =
     ((1 :: Index 2) `add` opts.resetManagerConfig.rxRetries)
       `mul` opts.resetManagerConfig.rxTimeoutMs
-  prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
 
-  errorAfterRxUserData :: Signal rx Bool
-  errorAfterRxUserData = mux rxUserData rxCtrlOrError (pure False)
+  -- We assume that the link is established after waiting for 'prbsWaitMs' and won't switch
+  -- out off it. Recovering for errors is handled by the 'ResetManager' after observing
+  -- encoding errors, or by the application layer.
+  prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
+  prbsOkDelayedSticky = stickyE rxClock rxReset prbsOkDelayed
+  rxDataInitDone = prbsOkDelayedSticky
+  rxDataInitDoneFree = withLockRxFree rxDataInitDone
+
+  -- After we assume the RX side is stable, we cannot be sure the other side has concluded
+  -- the same yet. We therefore wait the worst case time it takes for the PRBS to stabilize
+  -- (see 'prbsWaitMs') and add another retry to account for clock speed variations.
+  prbsWaitMsPessimistic =
+    ((2 :: Index 3) `add` opts.resetManagerConfig.rxRetries)
+      `mul` opts.resetManagerConfig.rxTimeoutMs
+  txGraceDoneSticky =
+    -- Note that this variable is sticky because 'prbsOkDelayedSticky' is
+    trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMsPessimistic rxClock rxReset prbsOkDelayedSticky
+  txDataInitDone = txGraceDoneSticky
+  txDataInitDoneFree = withLockRxFree txGraceDoneSticky
+  txDataInitDoneTx = xpmCdcSingle rxClock txClock txDataInitDone
+
+  errorAfterRxInitDone :: Signal rx Bool
+  errorAfterRxInitDone = mux rxDataInitDone rxCtrlOrError (pure False)
 
   (resets, stats) =
     ResetManager.resetManager
@@ -925,8 +673,8 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
         { channelReset = input.channelReset
         , txInitDone = withLockTxFree (pure True) -- See note @ withLockRxFree
         , rxInitDone = withLockRxFree (pure True) -- See note @ withLockRxFree
-        , rxDataGood = withLockRxFree (prbsOk .||. rxUserData)
-        , errorAfterRxUser = withLockRxFree errorAfterRxUserData
+        , rxDataGood = withLockRxFree (prbsOk .||. prbsOkDelayedSticky)
+        , errorAfterRxUser = withLockRxFree errorAfterRxInitDone
         }
 
   -- Synchronized version of 'resets.txUser' and 'resets.txDomain'. We use
@@ -946,127 +694,5 @@ transceiverPrbsWith gthCore opts input (TransceiverInputFromHandshake wordToTran
   -- seeing stale signals, 'withLock' is employed. This means that constructs
   -- such as @withLockRxFree (pure True)@ are actually doing something!
   withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
-  withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
   withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
-
-{- | Given a bittide word, extract the metadata. This function does not check that
-the input is a metadata word, and will produce garbage if used on a user word.
--}
-wordToMetadata ::
-  BitVector 64 ->
-  Meta
-wordToMetadata word = unpack alignedMetaBits
- where
-  (_alignData, payload) = WordAlign.splitMsbs @8 @8 word
-  (alignedMetaBits, _) = WordAlign.splitMsbs @8 @7 payload
-
-{- | Given a metadata, output it formatted into a bittide word. The word is
-simply the metadata padded with 0s, such that one can later re-extract the
-metadata with `wordToMetadata`.
--}
-metadataToWord ::
-  Meta ->
-  BitVector 64
-metadataToWord meta = word
- where
-  padding = 0 :: BitVector 48
-  metaWithPadding = WordAlign.joinMsbs @8 (pack meta) padding
-  word = WordAlign.joinMsbs @8 0 metaWithPadding
-
-{- | Performs the handshake between two nodes to agree on when to switch over from
- - bittide metadata words to user data words. The handshake follows these steps:
- - 1) These two steps happen in parallel:
- -    1A) When the CPU says it is successfully booted, the handshake sends "Read Ready"
- -    metadata word to neighbor node.
- -    1B) The handshake waits to receive a "Read Ready" metadata word from the neighbor
- - 2) Once both 1A and 1B have been done, the handshake signals to the EB to pause centering.
- - 3) These two steps happen in parallel:
- -    3A) The handshake sends a "Write Ready" metadata word when the EB has paused
- -    3B) The handshake waits to receive a "Write Ready" metadata word from the neighbor
- - 4) Once both 3A and 3B have been done, the following two happen in parallel
- -    4A) The handshake sends a "Last Metadata Word" metadata word, and then switches to a pass-through mode.
- -    4B) The handshake waits for a "Last Metadat Word" metadata word, and then switches to a pass-through mode
--}
-userDataHandshake ::
-  forall rx tx free.
-  (KnownDomain rx, KnownDomain tx, KnownDomain free) =>
-  HandshakeInput tx rx free ->
-  HandshakeInputFromTransceiver tx rx ->
-  (HandshakeOutput tx rx free, TransceiverInputFromHandshake tx rx free)
-userDataHandshake input fromTransceiver = (output, transceiverInputFromHandshake)
- where
-  output =
-    HandshakeOutput
-      { wordToTransceiver
-      , wordToUser
-      , rxLast
-      , rxIsUserData
-      , txIsUserData
-      , debugLinkUp
-      , debugLinkReady
-      , neighborReceiveReady
-      , neighborReceiveReadyTx
-      , neighborTransmitReady
-      }
-
-  transceiverInputFromHandshake =
-    TransceiverInputFromHandshake
-      wordToTransceiver
-      rxLast
-      rxIsUserData
-      txIsUserData
-
-  metadata = wordToMetadata <$> fromTransceiver.wordFromTransceiver
-  validMeta = mux rxIsUserData (pure False) fromTransceiver.linkHealthy
-
-  rxMeta = mux validMeta (Just <$> metadata) (pure Nothing)
-  rxLast = maybe False (.lastMetadataWord) <$> rxMeta
-  rxReadyNeighbor = maybe False (.readyToReceive) <$> rxMeta
-  txReadyNeighbor = maybe False (.readyToTransmit) <$> rxMeta
-
-  rxIsUserData = stickyE input.rxClock fromTransceiver.rxReset rxLast
-  txIsUserData = stickyE input.txClock fromTransceiver.txReset txLast
-
-  indicateRxReady =
-    withLockRxTx
-      (fromTransceiver.linkHealthy .&&. stickyE input.rxClock fromTransceiver.rxReset input.rxReady)
-
-  rxReadyNeighborSticky = stickyE input.rxClock fromTransceiver.rxReset rxReadyNeighbor
-  txReadyNeighborSticky = stickyE input.rxClock fromTransceiver.rxReset txReadyNeighbor
-  txLast = indicateRxReady .&&. input.txStart .&&. withLockRxTx rxReadyNeighborSticky
-
-  metaTx :: Signal tx Meta
-  metaTx =
-    Meta
-      <$> indicateRxReady
-      <*> (withLockRxTx fromTransceiver.linkHealthy .&&. input.txStart)
-      <*> txLast
-      -- Padding
-      <*> pure 0
-
-  wordToTransceiver =
-    mux
-      txIsUserData
-      input.wordFromUser
-      (metadataToWord <$> metaTx)
-  wordToUser = mux rxIsUserData (Just <$> fromTransceiver.wordFromTransceiver) (pure Nothing)
-
-  debugLinkUp =
-    withLockTxFree txIsUserData
-      .&&. withLockRxFree rxIsUserData
-
-  debugLinkReady = debugLinkUp .||. withLockRxFree rxReadyNeighborSticky
-
-  neighborReceiveReady = withLockRxFree rxReadyNeighborSticky
-  neighborReceiveReadyTx = withLockRxTx rxReadyNeighborSticky
-  neighborTransmitReady = withLockRxFree txReadyNeighborSticky
-
-  -- Clock domain crossing functions
-  withLockRxFree = Cdc.withLock input.rxClock (unpack <$> fromTransceiver.rxResetDone) input.clock input.reset
-  withLockRxTx =
-    Cdc.withLock
-      input.rxClock
-      (unpack <$> fromTransceiver.rxResetDone)
-      input.txClock
-      fromTransceiver.txReset
-  withLockTxFree = Cdc.withLock input.txClock (unpack <$> fromTransceiver.txResetDone) input.clock input.reset
+{-# INLINE transceiverPrbsWith #-}
