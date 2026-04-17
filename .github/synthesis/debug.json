@@ -1,0 +1,33 @@
+[
+  {"top": "counterReducedPins",            "stage": "hdl",   "cc_report": false},
+  {"top": "elasticBufferWb",               "stage": "hdl",   "cc_report": false},
+  {"top": "freeze",                        "stage": "hdl",   "cc_report": false},
+  {"top": "gatherUnit1KReducedPins",       "stage": "hdl",   "cc_report": false},
+  {"top": "safeDffSynchronizer",           "stage": "hdl",   "cc_report": false},
+  {"top": "scatterUnit1KReducedPins",      "stage": "hdl",   "cc_report": false},
+  {"top": "si5391Spi",                     "stage": "hdl",   "cc_report": false},
+  {"top": "switchExampleReducedPins",      "stage": "hdl",   "cc_report": false},
+
+  {"top": "asciiDebugMux",                 "stage": "hdl",   "cc_report": false},
+  {"top": "gatherUnit1K",                  "stage": "hdl",   "cc_report": false},
+  {"top": "scatterUnit1K",                 "stage": "hdl",   "cc_report": false},
+  {"top": "switchExample",                 "stage": "hdl",   "cc_report": false},
+
+  {"top": "vexRiscvTcpTest",               "stage": "hdl", "cc_report": false},
+
+  {"top": "boardTestExtended",             "stage": "hdl",  "cc_report": false},
+  {"top": "boardTestSimple",               "stage": "hdl",  "cc_report": false},
+  {"top": "ddr4Test",                      "stage": "hdl",  "cc_report": false},
+  {"top": "dnaOverSerial",                 "stage": "hdl",  "cc_report": false},
+  {"top": "fincFdecTests",                 "stage": "hdl",  "cc_report": false},
+  {"top": "linkConfigurationTest",         "stage": "hdl",  "cc_report": false},
+  {"top": "si539xConfigTest",              "stage": "hdl",  "cc_report": false},
+  {"top": "softUgnDemoTest",               "stage": "hdl",  "cc_report": false},
+  {"top": "switchDemoTest",                "stage": "hdl",  "cc_report": false},
+  {"top": "switchDemoGppeTest",            "stage": "hdl",  "cc_report": false},
+  {"top": "syncInSyncOut",                 "stage": "hdl",  "cc_report": false},
+  {"top": "temperatureMonitor",            "stage": "hdl",  "cc_report": false},
+  {"top": "transceiversUpTest",            "stage": "hdl",  "cc_report": false},
+  {"top": "vexRiscvTest",                  "stage": "hdl",  "cc_report": false},
+  {"top": "wireDemoTest",                  "stage": "hdl",  "cc_report": false}
+]
