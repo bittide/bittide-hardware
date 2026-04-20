@@ -10,7 +10,6 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
 import Bittide.BootPe (BootPeBusses, bootPe)
-import Bittide.CaptureUgn (sendUgnC)
 import Bittide.ClockControl
 import Bittide.Df (asciiDebugMux)
 import Bittide.Instances.Domains (
@@ -124,18 +123,10 @@ bringUp refClk refRst = withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -
       refClk
       refRst
       Transceiver.defConfig
-      -< (transceiverWb, gths, Fwd (bundle switchDataOutOrLocalCounters))
-
-  -- Send local counter the very first "user" cycle for UGN computation. Should
-  -- this be handled in 'core'?
-  Fwd switchDataOutOrLocalCounters <-
-    withBittideClockResetEnable
-      $ sendUgnC localCounter tOutputs.txSamplings
-      -< switchDataOut
+      -< (transceiverWb, gths, Fwd (bundle coreToTransceivers))
 
   ( Fwd speedChanges
-    , Fwd localCounter
-    , switchDataOut
+    , Fwd coreToTransceivers
     , sync
     , uartBytesBittide
     , muTransceiverWbBittide
@@ -144,7 +135,7 @@ bringUp refClk refRst = withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -
       (refClk, refRst)
       (bittideClk, bittideRst, enableGen)
       tOutputs.rxClocks
-      (unsafeFromActiveLow <$> tOutputs.handshakesDone)
+      (unsafeFromActiveLow <$> tOutputs.rxDataInitDones)
       -< ( coreMemoryMaps
          , otherJtagBittide
          , Fwd (pure maxBound)
@@ -156,9 +147,6 @@ bringUp refClk refRst = withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -
     withRefClockResetEnable :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
     withRefClockResetEnable = withClockResetEnable refClk refRst enableGen
 
-    withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
-    withBittideClockResetEnable = withClockResetEnable bittideClk bittideRst enableGen
-
     bittideClk :: Clock Bittide
     bittideClk = tOutputs.txClock
 
@@ -166,7 +154,7 @@ bringUp refClk refRst = withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -
     bittideRst = tOutputs.txReset
 
     linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
-    linksSuitableForCc = fmap pack (bundle tOutputs.handshakesDoneTx)
+    linksSuitableForCc = fmap pack (bundle tOutputs.txDataInitDones)
 
     frequencyAdjustments :: Signal Bittide (FINC, FDEC)
     frequencyAdjustments =

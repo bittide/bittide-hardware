@@ -9,14 +9,14 @@ module Wishbone.CaptureUgn where
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
-import Clash.Signal.Internal (Signal (..))
-import Data.Char (chr)
-import Data.Maybe (catMaybes)
-import Numeric (showHex)
-import Protocols (sampleC)
-import Test.Tasty (TestTree)
-import Test.Tasty.HUnit (Assertion, assertBool, testCase)
-import Test.Tasty.TH (testGroupGenerator)
+import Clash.Signal.Internal
+import Data.Char
+import Data.Maybe
+import Numeric
+import Protocols
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.TH
 
 import Bittide.Instances.Tests.CaptureUgn (dut, peConfigSim)
 

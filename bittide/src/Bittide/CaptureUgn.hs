@@ -6,7 +6,6 @@ module Bittide.CaptureUgn (captureUgn, sendUgn, sendUgnC) where
 
 import Clash.Explicit.Prelude
 
-import Bittide.ElasticBuffer (ElasticBufferData (Data), fromData)
 import Bittide.SharedTypes (BitboneMm)
 import Bittide.Shutter (shutter)
 import Data.Maybe (fromJust)
@@ -55,7 +54,7 @@ captureUgn ::
   -- | Local counter
   Signal dom (Unsigned 64) ->
   -- | Data from link
-  Signal dom (ElasticBufferData (Maybe (BitVector 64))) ->
+  Signal dom (Maybe (BitVector 64)) ->
   Circuit
     (BitboneMm dom addrW)
     (CSignal dom (BitVector 64))
@@ -63,7 +62,7 @@ captureUgn localCounter (C.dflipflop -> linkIn) = circuit $ \bus -> do
   [wbLocalCounter, wbRemoteCounter, wbEbDelta, wbHasCaptured] <-
     deviceWbI (deviceConfig "CaptureUgn") -< bus
   let
-    rawLinkIn = fromJust . fromData <$> linkIn
+    rawLinkIn = fromJust <$> linkIn
     trigger = C.mealy goTrigger HasNotCaptured linkIn
   capturedLocalCounter <- shutter trigger -< Fwd localCounter
   capturedRemoteCounter <- shutter trigger -< Fwd (unpack <$> rawLinkIn)
@@ -84,9 +83,9 @@ captureUgn localCounter (C.dflipflop -> linkIn) = circuit $ \bus -> do
 
   goTrigger ::
     HasCaptured ->
-    ElasticBufferData (Maybe (BitVector 64)) ->
+    Maybe (BitVector 64) ->
     (HasCaptured, Bool)
-  goTrigger HasNotCaptured (Data (Just _)) = (HasCaptured, True)
+  goTrigger HasNotCaptured (Just _) = (HasCaptured, True)
   goTrigger s _ = (s, False)
 
 {- | Outputs the local counter when the link is *not* sampling and the very first
@@ -123,7 +122,7 @@ sendUgnC ::
   ) =>
   -- | Local counter
   Signal dom (Unsigned 64) ->
-  -- | Sampling? Typically driven by 'Bittide.Transceiver.Outputs.txSamplings'.
+  -- | Sampling? Typically driven by 'Bittide.Handshake.Output.fromCoreDone'.
   Vec n (Signal dom Bool) ->
   Circuit
     (Vec n (CSignal dom (BitVector 64)))

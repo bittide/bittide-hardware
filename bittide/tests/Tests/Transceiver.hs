@@ -7,7 +7,7 @@
 
 module Tests.Transceiver where
 
-import Clash.Explicit.Prelude hiding (PeriodToCycles)
+import Clash.Explicit.Prelude hiding (PeriodToCycles, assert)
 import Clash.Prelude (withClock)
 import Hedgehog
 
@@ -27,7 +27,6 @@ import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
 import qualified Clash.Cores.Xilinx.Gth as Gth
-import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
@@ -164,10 +163,9 @@ gthCoreMock
     predSatZeroNatural 0 = 0
     predSatZeroNatural n = n - 1
 
-data Input tx rx = Input
+data Input tx free = Input
   { dat :: Signal tx (BitVector 64)
-  , txStart :: Signal tx Bool
-  , rxReady :: Signal rx Bool
+  , channelReset :: Reset free
   }
 
 dut ::
@@ -193,8 +191,8 @@ dut ::
   Reset freeA ->
   Clock freeB ->
   Reset freeB ->
-  Input txA txB ->
-  Input txB txA ->
+  Input txA freeA ->
+  Input txB freeB ->
   ( Transceiver.Output txA txB txA txB txA freeA
   , Transceiver.Output txB txA txB txA txB freeB
   )
@@ -212,7 +210,7 @@ dut
   inputB = (outputA, outputB)
    where
     outputA =
-      Transceiver.transceiverAndHandshake
+      Transceiver.transceiverPrbsWith
         gthCoreA
         Transceiver.defConfig{Transceiver.resetManagerConfig}
         Transceiver.Input
@@ -225,20 +223,17 @@ dut
           , clockRx1 = clockGen
           , clockRx2 = clockGen
           , rxActive = pure 1 -- TODO: a better simulation of this
-          , transceiverIndex = 0
           , channelName = "A"
           , clockPath = "A clkA"
           , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
           , rxN = error "A: rxN not used in simulation"
           , rxP = error "A: rxP not used in simulation"
-          , channelReset = noReset
+          , channelReset = inputA.channelReset
           , txData = inputA.dat
-          , txStart = inputA.txStart
-          , rxReady = inputA.rxReady
           }
 
     outputB =
-      Transceiver.transceiverAndHandshake
+      Transceiver.transceiverPrbsWith
         gthCoreB
         Transceiver.defConfig{Transceiver.resetManagerConfig}
         Transceiver.Input
@@ -251,16 +246,13 @@ dut
           , clockRx1 = clockGen
           , clockRx2 = clockGen
           , rxActive = pure 1
-          , transceiverIndex = 1
           , channelName = "B"
           , clockPath = "B clkB"
           , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
           , rxN = error "B: rxN not used in simulation"
           , rxP = error "B: rxP not used in simulation"
-          , channelReset = noReset
+          , channelReset = inputB.channelReset
           , txData = inputB.dat
-          , txStart = inputB.txStart
-          , rxReady = inputB.rxReady
           }
 
 type DutTestFunc txA txB free =
@@ -270,7 +262,7 @@ type DutTestFunc txA txB free =
 
 type InputFunc txA txB free =
   Transceiver.Output txA txB txA txB txA free ->
-  Input txA txB
+  Input txA free
 
 dutRandomized ::
   forall txA txB free.
@@ -343,181 +335,86 @@ dutRandomized f inputA inputB Proxy = property $ do
 
   f outputA outputB
 
-{- | Tests whether the link is up within 500 milliseconds. This also asserts that
-the handshake is done
+-- | Input with no applied 'channelReset' and arbitrary TX data.
+noResetInput :: (KnownDomain free) => InputFunc txA txB free
+noResetInput _ = Input{dat = maxBound, channelReset = noReset}
+
+{- | Observation window (in @free@-domain cycles) used by 'testUp500ms' and
+'testNeverUp500ms'. 500 ms is comfortably above the link-up latency produced
+by 'dutRandomized'.
 -}
-testUp500ms :: DutTestFunc txA txB free
+window500ms :: forall free. (KnownDomain free) => Proxy free -> Int
+window500ms Proxy =
+  fromIntegral (maxBound :: Index (PeriodToCycles free (Milliseconds 500)))
+
+-- | Input that holds 'channelReset' asserted forever.
+heldResetInput :: (KnownDomain free) => InputFunc txA txB free
+heldResetInput _ =
+  Input{dat = maxBound, channelReset = unsafeFromActiveHigh (pure True)}
+
+-- | Both sides reach @rx/txDataInitDone@ within 500 ms.
+testUp500ms ::
+  forall txA txB free. (KnownDomain free) => DutTestFunc txA txB free
 testUp500ms outputA outputB =
-  case sampledAfterStable of
-    [] -> failure
-    (List.map snd -> ups) -> do
-      let n = 100
-      List.take n ups === List.replicate n True
+  assert (or (sampleN (window500ms (Proxy @free)) allUp))
  where
-  handshakeDone = outputA.handshakeDoneFree .&&. outputB.handshakeDoneFree
-  linksUp = outputA.debugLinkUp .&&. outputB.debugLinkUp
-  nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
-  sampledLinksUp = sampleN nCycles (linksUp .&&. handshakeDone)
-  sampledAfterStable = List.dropWhile (not . snd) (List.zip [(0 :: Int) ..] sampledLinksUp)
+  allUp =
+    outputA.rxDataInitDoneFree
+      .&&. outputB.rxDataInitDoneFree
+      .&&. outputA.txDataInitDoneFree
+      .&&. outputB.txDataInitDoneFree
 
--- | Tests whether the link is up within 500 milliseconds
-testHandshakeDone500ms :: DutTestFunc txA txB free
-testHandshakeDone500ms outputA outputB =
-  case sampledAfterStable of
-    [] -> failure
-    (List.map snd -> ups) -> do
-      let n = 100
-      List.take n ups === List.replicate n True
- where
-  linksUp = outputA.handshakeDoneFree .&&. outputB.handshakeDoneFree
-  nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
-  sampledLinksUp = sampleN nCycles linksUp
-  sampledAfterStable = List.dropWhile (not . snd) (List.zip [(0 :: Int) ..] sampledLinksUp)
+-- | Neither side ever reaches @rxDataInitDone@ within 500 ms.
+testNeverUp500ms ::
+  forall txA txB free. (KnownDomain free) => DutTestFunc txA txB free
+testNeverUp500ms outputA outputB = do
+  let n = window500ms (Proxy @free)
+  assert (not (or (sampleN n outputA.rxDataInitDoneFree)))
+  assert (not (or (sampleN n outputB.rxDataInitDoneFree)))
 
--- | Test whether the link is never up within 500 milliseconds
-testNeitherUp500ms :: DutTestFunc txA txB free
-testNeitherUp500ms outputA outputB =
-  False === or (sampleN nCycles linksUp)
- where
-  linksUp = outputA.debugLinkUp .||. outputB.debugLinkUp
-  nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
-
--- | Test whether the link is never up within 500 milliseconds
-testNotBothUp500ms :: DutTestFunc txA txB free
-testNotBothUp500ms outputA outputB =
-  False === or (sampleN nCycles linksUp)
- where
-  linksUp = (outputA.debugLinkUp .==. pure True) .&&. (outputB.debugLinkUp .==. pure True)
-  nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
-
--- Input that applies no (back)pressure on the link
-noPressureInput :: InputFunc txA txB free
-noPressureInput _ = Input{dat = complement <$> 0, txStart = pure True, rxReady = pure True}
-
--- | Input that ties 'txStart' to 'txReady'
-txStartEqTxReady :: InputFunc txA txB free
-txStartEqTxReady i = (noPressureInput i){txStart = i.txReady}
-
--- Input that never sets 'txStart' to 'True'
-noTxStartInput :: InputFunc txA txB free
-noTxStartInput i = (noPressureInput i){txStart = pure False}
-
--- Input that never sets 'rxReady' to 'True'
-noRxReadyInput :: InputFunc txA txB free
-noRxReadyInput i = (noPressureInput i){rxReady = pure False}
-
--- Input that never sets 'txStart' to 'True'
-noTxStartNoRxReadyInput :: InputFunc txA txB free
-noTxStartNoRxReadyInput i = (noPressureInput i){txStart = pure False, rxReady = pure False}
-
-{- | Check whether handshake works when there is no pressure on the link,
-specialized to 'A', 'A', 'FreeSlow'.
+{- | With no 'channelReset' asserted on either side, the link must come up. This test is
+repeated for a number of other domains -- initialization should work for all of these.
+The combination of domains are left out from other tests as these tests are mighty slow
+and I suspect there isn't much more value to it.
 -}
-prop_noPressure_A_A_FreeSlow :: Property
-prop_noPressure_A_A_FreeSlow =
-  dutRandomized @A @A @FreeSlow testUp500ms noPressureInput noPressureInput Proxy
+prop_bothDeasserted_AA :: Property
+prop_bothDeasserted_AA =
+  dutRandomized @A @A @Free testUp500ms noResetInput noResetInput Proxy
 
-{- | Check whether handshake works when there is no pressure on the link,
-specialized to 'A', 'A', 'Free'.
--}
-prop_noPressure_A_A_Free :: Property
-prop_noPressure_A_A_Free =
-  dutRandomized @A @A @Free testUp500ms noPressureInput noPressureInput Proxy
+prop_bothDeasserted_AAS :: Property
+prop_bothDeasserted_AAS =
+  dutRandomized @A @A @FreeSlow testUp500ms noResetInput noResetInput Proxy
 
-{- | Check whether handshake works when there is no pressure on the link,
-specialized to 'A', 'A', 'FreeFast'.
--}
-prop_noPressure_A_A_FreeFast :: Property
-prop_noPressure_A_A_FreeFast =
-  dutRandomized @A @A @FreeFast testUp500ms noPressureInput noPressureInput Proxy
+prop_bothDeasserted_AAF :: Property
+prop_bothDeasserted_AAF =
+  dutRandomized @A @A @FreeFast testUp500ms noResetInput noResetInput Proxy
 
-{- | Check whether handshake works when there is no pressure on the link,
-specialized to 'A', 'B', 'Free'.
--}
-prop_noPressure_A_B_Free :: Property
-prop_noPressure_A_B_Free =
-  dutRandomized @A @B @Free testUp500ms noPressureInput noPressureInput Proxy
+prop_bothDeasserted_AB :: Property
+prop_bothDeasserted_AB =
+  dutRandomized @A @B @Free testUp500ms noResetInput noResetInput Proxy
 
-{- | Check whether handshake works when there is no pressure on the link,
-specialized to 'B', 'A', 'Free'.
--}
-prop_noPressure_B_A_Free :: Property
-prop_noPressure_B_A_Free =
-  dutRandomized @B @A @Free testUp500ms noPressureInput noPressureInput Proxy
+prop_bothDeasserted_ABS :: Property
+prop_bothDeasserted_ABS =
+  dutRandomized @A @B @FreeSlow testUp500ms noResetInput noResetInput Proxy
 
--- | Check whether handshake works when 'txStart' is tied to 'txReady'
-prop_txStartEqTxReady :: Property
-prop_txStartEqTxReady =
-  dutRandomized @B @A @Free testUp500ms txStartEqTxReady noPressureInput Proxy
+prop_bothDeasserted_ABF :: Property
+prop_bothDeasserted_ABF =
+  dutRandomized @A @B @FreeFast testUp500ms noResetInput noResetInput Proxy
 
--- | Check whether handshake works when 'txStart' is tied to 'txReady'
-prop_txStartEqTxReadyFlipped :: Property
-prop_txStartEqTxReadyFlipped =
-  dutRandomized @B @A @Free testUp500ms noPressureInput txStartEqTxReady Proxy
+-- | If A's 'channelReset' is held asserted forever, neither side comes up.
+prop_heldOnA :: Property
+prop_heldOnA =
+  dutRandomized @A @A @Free testNeverUp500ms heldResetInput noResetInput Proxy
 
--- | Check whether handshake works when 'txStart' is tied to 'txReady'
-prop_txStartEqTxReadyBoth :: Property
-prop_txStartEqTxReadyBoth =
-  dutRandomized @B @A @Free testUp500ms txStartEqTxReady txStartEqTxReady Proxy
+-- | If B's 'channelReset' is held asserted forever, neither side comes up.
+prop_heldOnB :: Property
+prop_heldOnB =
+  dutRandomized @A @A @Free testNeverUp500ms noResetInput heldResetInput Proxy
 
-{- | Check whether neither handshake works when one of the transceivers never
-indicates it's ready to the other.
--}
-prop_noTxReady :: Property
-prop_noTxReady =
-  dutRandomized @A @A @Free testNeitherUp500ms noPressureInput noTxStartInput Proxy
-
--- | Same as 'prop_noTxReady', but with the transceivers flipped
-prop_noTxReadyFlipped :: Property
-prop_noTxReadyFlipped =
-  dutRandomized @A @A @Free testNeitherUp500ms noTxStartInput noPressureInput Proxy
-
-{- | Check whether neither node indicates it's up, when it never transitions to
-sending user data.
--}
-prop_noRxReady :: Property
-prop_noRxReady =
-  dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noRxReadyInput Proxy
-
-{- | Check that neither node indicates it is sending *and* receiving user data,
-when one of the nodes never indicates it's ready to receive data. The side that
-never indicates it's ready to receive data, should also never start sending user
-data, because it would lose the ability to apply backpressure. The other side
-should then naturally also not claim it is receiving user data.
--}
-prop_noRxReadyNoPressure :: Property
-prop_noRxReadyNoPressure =
-  dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noPressureInput Proxy
-
--- | Same as 'prop_noRxReadyNoPressure', but flipped.
-prop_noPressureNoRxReady :: Property
-prop_noPressureNoRxReady =
-  dutRandomized @A @A @Free testNeitherUp500ms noPressureInput noRxReadyInput Proxy
-
-{- | Check that nodes complete their handshake, even when the users never indicate
-that they're ready to receive data.
--}
-prop_handshakeNoRxReady :: Property
-prop_handshakeNoRxReady =
-  dutRandomized @A @A @Free testHandshakeDone500ms noRxReadyInput noRxReadyInput Proxy
-
-{- | Check that nodes complete their handshake, even when the users never indicate
-that they're ready to send data.
--}
-prop_handshakeNoTxStart :: Property
-prop_handshakeNoTxStart =
-  dutRandomized @A @A @Free testHandshakeDone500ms noTxStartInput noTxStartInput Proxy
-
-{- | Check that nodes complete their handshake, even when the users never indicate
-that they're ready to receive or send data.
--}
-prop_handshakeNoTxStartNoRxReady :: Property
-prop_handshakeNoTxStartNoRxReady =
-  dutRandomized @A @A @Free
-    testHandshakeDone500ms
-    noTxStartNoRxReadyInput
-    noTxStartNoRxReadyInput
-    Proxy
+-- | If both sides hold 'channelReset' asserted forever, neither side comes up.
+prop_heldOnBoth :: Property
+prop_heldOnBoth =
+  dutRandomized @A @A @Free testNeverUp500ms heldResetInput heldResetInput Proxy
 
 -- TODO: Add tests for actual data transmission. This currently only happens in
 --       hardware, as we currently don't have the infrastructure to memory-efficiently
@@ -539,33 +436,16 @@ tests :: TestTree
 tests =
   -- XXX: The number of tests we run is very low, due to the time it takes to
   --      execute them.
-  testGroup
-    "Transceiver"
-    [ adjustOption (\_ -> HedgehogTestLimit (Just 100))
-        $ testGroup
-          "Slow tests"
-          [ testPropertyThName 'prop_noPressure_A_A_FreeSlow prop_noPressure_A_A_FreeSlow
-          , testPropertyThName 'prop_noPressure_A_A_Free prop_noPressure_A_A_Free
-          , testPropertyThName 'prop_noPressure_A_A_FreeFast prop_noPressure_A_A_FreeFast
-          , testPropertyThName 'prop_noPressure_A_B_Free prop_noPressure_A_B_Free
-          , testPropertyThName 'prop_noPressure_B_A_Free prop_noPressure_B_A_Free
-          , testPropertyThName 'prop_txStartEqTxReady prop_txStartEqTxReady
-          , testPropertyThName 'prop_txStartEqTxReadyFlipped prop_txStartEqTxReadyFlipped
-          , testPropertyThName 'prop_txStartEqTxReadyBoth prop_txStartEqTxReadyBoth
-          , testPropertyThName 'prop_handshakeNoRxReady prop_handshakeNoRxReady
-          , testPropertyThName 'prop_handshakeNoTxStart prop_handshakeNoTxStart
-          , testPropertyThName 'prop_handshakeNoTxStartNoRxReady prop_handshakeNoTxStartNoRxReady
-          ]
-    , adjustOption (\_ -> HedgehogTestLimit (Just 10))
-        $ testGroup
-          "Very slow tests"
-          -- These tests are "very slow" because they cannot exit early on some
-          -- condition. Instead, they just wait for some deadline, and if they don't
-          -- see an erroneous condition by then, they pass.
-          [ testPropertyThName 'prop_noTxReady prop_noTxReady
-          , testPropertyThName 'prop_noTxReadyFlipped prop_noTxReadyFlipped
-          , testPropertyThName 'prop_noRxReady prop_noRxReady
-          , testPropertyThName 'prop_noRxReadyNoPressure prop_noRxReadyNoPressure
-          , testPropertyThName 'prop_noPressureNoRxReady prop_noPressureNoRxReady
-          ]
-    ]
+  adjustOption (\_ -> HedgehogTestLimit (Just 10))
+    $ testGroup
+      "Transceiver"
+      [ testPropertyThName 'prop_bothDeasserted_AA prop_bothDeasserted_AA
+      , testPropertyThName 'prop_bothDeasserted_AAS prop_bothDeasserted_AAS
+      , testPropertyThName 'prop_bothDeasserted_AAF prop_bothDeasserted_AAF
+      , testPropertyThName 'prop_bothDeasserted_AB prop_bothDeasserted_AB
+      , testPropertyThName 'prop_bothDeasserted_ABS prop_bothDeasserted_ABS
+      , testPropertyThName 'prop_bothDeasserted_ABF prop_bothDeasserted_ABF
+      , testPropertyThName 'prop_heldOnA prop_heldOnA
+      , testPropertyThName 'prop_heldOnB prop_heldOnB
+      , testPropertyThName 'prop_heldOnBoth prop_heldOnBoth
+      ]
