@@ -25,10 +25,11 @@ import qualified Data.ByteString.Lazy as ByteString
 
 data CallistoConfig = CallistoConfig
   { waitTime :: Maybe Word32
-  -- ^ Number of cycles to wait until reframing takes place after stability has
-  -- been detected. Reframing allows a system to resettle buffers around their
-  -- midpoints, without dropping any frames. For more information, see
-  -- [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
+  {- ^ Number of cycles to wait until reframing takes place after stability has
+  been detected. Reframing allows a system to resettle buffers around their
+  midpoints, without dropping any frames. For more information, see
+  [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
+  -}
   , gain :: Float
   -- ^ See https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24.
   }

@@ -104,17 +104,19 @@ type RegisterWbConstraints (a :: Type) (dom :: Domain) (wordSize :: Nat) (aw :: 
 data DeviceConfig = DeviceConfig
   { name :: String
   , trace :: Bool
-  -- ^ Whether to add 'traceSignal' statements. Is set to 'False' by default, because it
-  --   causes whole signals to be kept alive which can cause memory issues for large
-  --   designs.
+  {- ^ Whether to add 'traceSignal' statements. Is set to 'False' by default, because it
+  causes whole signals to be kept alive which can cause memory issues for large
+  designs.
+  -}
   , registered :: Bool
-  -- ^ Whether to insert a component breaking the combinatorial path between the Wishbone
-  -- bus and the registers. This improves timing (place and route) characteristics, at
-  -- the cost of consuming hardware resources. Its default is set to 'True'.
-  --
-  -- Note that both the forwards and the backwards path are registered. This means that
-  -- any transaction takes at least two clock cycles, with memory backed transactions taking
-  -- at least three. In the future we might opt to make this a more flexible option.
+  {- ^ Whether to insert a component breaking the combinatorial path between the Wishbone
+  bus and the registers. This improves timing (place and route) characteristics, at
+  the cost of consuming hardware resources. Its default is set to 'True'.
+
+  Note that both the forwards and the backwards path are registered. This means that
+  any transaction takes at least two clock cycles, with memory backed transactions taking
+  at least three. In the future we might opt to make this a more flexible option.
+  -}
   }
 
 deviceConfig :: String -> DeviceConfig
@@ -135,8 +137,9 @@ data RegisterMeta aw = RegisterMeta
   , srcLoc :: SimOnly SrcLoc
   , register :: SimOnly Register
   , nWords :: BitVector (aw + 1)
-  -- ^ Number of words occupied by this register. Note that it is (+1) because we need
-  --   to be able to represent registers that occupy the full address space.
+  {- ^ Number of words occupied by this register. Note that it is (+1) because we need
+  to be able to represent registers that occupy the full address space.
+  -}
   }
 
 {- | Meta information for a zero-width register. Zero-width registers do not take up
@@ -174,12 +177,14 @@ zeroWidthRegisterMeta Proxy conf =
 
 -- | What to do when a bus read occurs at the same time as a circuit write.
 data BusReadBehavior
-  = -- | When a bus read occurs at the same time as a circuit write, read the
-    --     value still in the register.
+  = {- | When a bus read occurs at the same time as a circuit write, read the
+    value still in the register.
+    -}
     PreferRegister
-  | -- | When a bus read occurs at the same time as a circuit write, read the
-    --     value being written by the circuit. Selecting this option introduces an
-    --     extra mux and, depending on the type, packing logic.
+  | {- | When a bus read occurs at the same time as a circuit write, read the
+    value being written by the circuit. Selecting this option introduces an
+    extra mux and, depending on the type, packing logic.
+    -}
     PreferCircuit
   deriving (Show)
 
@@ -191,11 +196,13 @@ data RegisterConfig = RegisterConfig
   , tags :: [String]
   -- ^ Tags included for code generation
   , access :: Access
-  -- ^ Access rights for this register, also propagated to code generation. Default:
-  --   'ReadWrite'.
+  {- ^ Access rights for this register, also propagated to code generation. Default:
+  'ReadWrite'.
+  -}
   , busRead :: BusReadBehavior
-  -- ^ Behavior when a bus read occurs at the same time as a circuit write. Default:
-  --   'PreferRegister'.
+  {- ^ Behavior when a bus read occurs at the same time as a circuit write. Default:
+  'PreferRegister'.
+  -}
   }
   deriving (Show)
 
@@ -420,8 +427,7 @@ addressableBytesWb regConfig = case divWithRemainder @wordSize @8 @7 of
     ( ((), (), RegisterMeta aw, Signal dom (WishboneS2M wordSize))
     , Signal
         dom
-        ( Maybe (Either (Index nWords) (Index nWords, BitVector wordSize, Bytes wordSize))
-        )
+        (Maybe (Either (Index nWords) (Index nWords, BitVector wordSize, Bytes wordSize)))
     )
   go ((offset, _config, _, wbM2S0), respData) = (((), (), meta, wbS2M), req)
    where

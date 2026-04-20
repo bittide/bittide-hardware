@@ -134,13 +134,15 @@ data Target = Target
   , targetHasVio :: Bool
   -- ^ Whether target has one or more VIOs
   , targetTest :: Maybe HitlTestGroup
-  -- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
-  -- loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
+  {- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
+  loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
+  -}
   , targetXdcs :: [FilePath]
   -- ^ XDC files required for the designs. These will be sourced from 'data/constraints'.
   , targetExternalHdl :: [TclGlobPattern]
-  -- ^ A list of patterns that match the external HDL files that are used by the
-  -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
+  {- ^ A list of patterns that match the external HDL files that are used by the
+  instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
+  -}
   }
 
 defTarget :: ClashTargetName -> Target

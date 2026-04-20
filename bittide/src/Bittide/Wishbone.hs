@@ -202,15 +202,18 @@ after it.
 ilaWb ::
   forall name dom addrW nBytes.
   (HiddenClock dom) =>
-  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
-  --   unreliable when more than one ILA is used with the same arguments, but the
-  --   module name can be set reliably.
+  {- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  unreliable when more than one ILA is used with the same arguments, but the
+  module name can be set reliably.
+  -}
   SSymbol name ->
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  --   Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  {- | Number of registers to insert at each probe. Supported values: 0-6.
+  Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  -}
   Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  --   by 'ilaConfig' equals 'D4096'.
+  {- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  by 'ilaConfig' equals 'D4096'.
+  -}
   Depth ->
   WbToBool dom 'Standard addrW nBytes ->
   WbToBool dom 'Standard addrW nBytes ->
@@ -277,18 +280,22 @@ ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
 maybeIlaWb ::
   forall name dom addrW nBytes.
   (HiddenClock dom) =>
-  -- | Whether or not this ILA instance should be real or not. 'True' actually creates
-  --   the ILA, 'False' makes this circuit element a no-op.
+  {- | Whether or not this ILA instance should be real or not. 'True' actually creates
+  the ILA, 'False' makes this circuit element a no-op.
+  -}
   Bool ->
-  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
-  --   unreliable when more than one ILA is used with the same arguments, but the
-  --   module name can be set reliably.
+  {- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  unreliable when more than one ILA is used with the same arguments, but the
+  module name can be set reliably.
+  -}
   SSymbol name ->
-  -- | Number of registers to insert at each probe. Supported values: 0-6.
-  --   Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  {- | Number of registers to insert at each probe. Supported values: 0-6.
+  Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  -}
   Index 7 ->
-  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
-  --   by 'ilaConfig' equals 'D4096'.
+  {- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  by 'ilaConfig' equals 'D4096'.
+  -}
   Depth ->
   WbToBool dom 'Standard addrW nBytes ->
   WbToBool dom 'Standard addrW nBytes ->
@@ -355,8 +362,9 @@ singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
 uartDf ::
   (HiddenClockResetEnable dom, ValidBaud dom baud) =>
   SNat baud ->
-  -- | Left side of circuit: word to send, receive bit
-  --   Right side of circuit: received word, transmit bit
+  {- | Left side of circuit: word to send, receive bit
+  Right side of circuit: received word, transmit bit
+  -}
   Circuit
     ( Df dom (BitVector 8)
     , CSignal dom Bit
@@ -376,8 +384,9 @@ uartDf baud = Circuit go
 -- | Component compatible with `uartInterfaceWb` for simulation purposes.
 uartBytes ::
   (HiddenClockResetEnable dom) =>
-  -- | Left side of circuit: word to send, receive interface
-  --   Right side of circuit: received word, transmit interface
+  {- | Left side of circuit: word to send, receive interface
+  Right side of circuit: received word, transmit interface
+  -}
   Circuit
     ( Df dom (BitVector 8)
     , Df dom (BitVector 8)
@@ -414,11 +423,13 @@ uartInterfaceWb ::
   , KnownNat nBytes
   , 1 <= nBytes
   ) =>
-  -- | Recommended value: 16. This seems to be a good balance between resource
-  --   usage and usability.
+  {- | Recommended value: 16. This seems to be a good balance between resource
+  usage and usability.
+  -}
   SNat transmitBufferDepth ->
-  -- | Recommended value: 16. This seems to be a good balance between resource
-  --   usage and usability.
+  {- | Recommended value: 16. This seems to be a good balance between resource
+  usage and usability.
+  -}
   SNat receiveBufferDepth ->
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
@@ -654,9 +665,10 @@ wbToVec ::
   Vec nRegisters (Bytes nBytes) ->
   -- | Wishbone bus (master to slave)
   WishboneM2S addrW nBytes ->
-  -- |
-  --   1. Written data
-  --   2. Outgoing wishbone bus (slave to master)
+  {- |
+  1. Written data
+  2. Outgoing wishbone bus (slave to master)
+  -}
   ( Vec nRegisters (Maybe (Bytes nBytes))
   , WishboneS2M nBytes
   )

@@ -4,7 +4,7 @@
 
 [book]
 title = "Developing on a bittide system"
-author = ["QBayLogic B.V."]
+authors = ["QBayLogic B.V."]
 src = "."
 
 language = "en"

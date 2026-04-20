@@ -176,8 +176,7 @@ calendarConfig =
 {- FOURMOLU_ENABLE -}
 
 core ::
-  ( ?byteOrder :: ByteOrder
-  ) =>
+  (?byteOrder :: ByteOrder) =>
   (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->
   Vec LinkCount (Clock GthRx) ->
@@ -223,13 +222,13 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     (_relDatCount, _underflow, _overflow, Fwd rxs1) <-
       unzip4Vec
         <| ( Vec.vecCircuits
-              $ xilinxElasticBufferWb
-                bitClk
-                bitRst
-                (SNat @FifoSize)
-                localCounter
-              <$> rxClocks
-              <*> rxs0
+               $ xilinxElasticBufferWb
+                 bitClk
+                 bitRst
+                 (SNat @FifoSize)
+                 localCounter
+               <$> rxClocks
+               <*> rxs0
            )
         <| repeatC (fmapC $ withBittideClockResetEnable delayWishbone)
         -< ebWbs

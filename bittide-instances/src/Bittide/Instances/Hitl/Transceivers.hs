@@ -236,10 +236,10 @@ tests =
   iterNames = ["I" <> show n | n <- [(0 :: Int) .. nIters - 1]]
   iters =
     [ HitlTestCase
-      { name = nm
-      , parameters =
-          Map.fromList (L.zip (HwTargetByIndex . fromIntegral <$> fpgaIndices) fpgaIndices)
-      , postProcData = ()
-      }
+        { name = nm
+        , parameters =
+            Map.fromList (L.zip (HwTargetByIndex . fromIntegral <$> fpgaIndices) fpgaIndices)
+        , postProcData = ()
+        }
     | nm <- iterNames
     ]

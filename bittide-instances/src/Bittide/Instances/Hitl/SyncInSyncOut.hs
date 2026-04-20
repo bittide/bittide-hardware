@@ -88,8 +88,9 @@ data TestFsmState
     InReset
   | -- | Expect _low_ for a least 1 second
     ExpectLow (IndexSeconds 1)
-  | -- | Expect a rising edge within 10 seconds. The edge is expected after _time
-    -- it takes to start the remaining tests_.
+  | {- | Expect a rising edge within 10 seconds. The edge is expected after _time
+    it takes to start the remaining tests_.
+    -}
     WaitForRising (IndexSeconds 10)
   | Done TestStatus
   deriving (Generic, Show, ShowX, NFDataX)

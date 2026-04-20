@@ -106,9 +106,10 @@ ethMac1GFifoC ::
   SNat txFifoDepth ->
   -- | RX FIFO depth
   SNat rxFifoDepth ->
+  -- | Logic clock
+
   -- Clocks and resets
 
-  -- | Logic clock
   Clock sys ->
   -- | Logic reset
   Reset sys ->
@@ -172,9 +173,10 @@ ethMac1GFifo ::
   SNat txFifoDepth ->
   -- | RX FIFO depth
   SNat rxFifoDepth ->
+  -- | Logic clock
+
   -- Clocks and resets
 
-  -- | Logic clock
   Clock sys ->
   -- | Logic reset
   Reset sys ->
@@ -339,9 +341,10 @@ ethMac1GFifoBb ::
   SNat txFifoDepth ->
   -- | RX FIFO depth
   SNat rxFifoDepth ->
+  -- | Logic clock
+
   -- Clocks and resets
 
-  -- | Logic clock
   Clock sys ->
   -- | Logic reset
   Reset sys ->
@@ -359,9 +362,10 @@ ethMac1GFifoBb ::
   Signal tx Bool ->
   -- | RX Clock enable
   Signal rx Bool ->
+  -- | TX Axi data
+
   -- TX Axi inputs
 
-  -- | TX Axi data
   Signal sys (Vec 1 (Unsigned 8)) ->
   -- | TX Axi keep
   Signal sys (Vec 1 Bool) ->
@@ -371,17 +375,19 @@ ethMac1GFifoBb ::
   Signal sys Bool ->
   -- | TX Axi user
   Signal sys Bool ->
+  -- | RX Gmii data
+
   -- RX Gmii inputs
 
-  -- | RX Gmii data
   Signal rx (BitVector 8) ->
   -- | RX Gmii valid
   Signal rx Bool ->
   -- | RX Gmii error
   Signal rx Bool ->
+  -- | RX Axi ready
+
   -- RX Axi inputs
 
-  -- | RX Axi ready
   Signal sys Bool ->
   ( -- TX Axi outputs
     -- \| TX Axi ready

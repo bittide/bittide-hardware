@@ -12,7 +12,8 @@ data Stability = Stability
   { stable :: Bool
   -- ^ Indicates stability of the signal over time.
   , settled :: Bool
-  -- ^ Indicates whether the signal is stable and close to
-  -- 'targetDataCount'.
+  {- ^ Indicates whether the signal is stable and close to
+  'targetDataCount'.
+  -}
   }
   deriving (Generic, NFDataX, BitPack, ShowX, Show)

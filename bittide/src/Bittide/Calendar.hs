@@ -65,9 +65,10 @@ data ValidEntry a repetitionBits = ValidEntry
   { veEntry :: a
   -- ^ Calendar entry
   , veRepeat :: Unsigned repetitionBits
-  -- ^ Number of times the calendar entry should be repeated:
-  --   0 = no repetition, entry is valid for one cycle.
-  --   1 = repeated once, entry is valid for two cycles.
+  {- ^ Number of times the calendar entry should be repeated:
+  0 = no repetition, entry is valid for one cycle.
+  1 = repeated once, entry is valid for two cycles.
+  -}
   }
   deriving (BitPack, Eq, Generic, NFDataX, Show, ShowX, BitPackC, Lift)
 

@@ -72,9 +72,10 @@ scatterUnit ::
   Signal dom (BitVector frameWidth) ->
   -- | Read address.
   Signal dom (Index memDepth) ->
-  -- | 1. Data at read address delayed 1 cycle
-  --   2. Wishbone (slave -> master) from 'calendar')
-  --   3. End of metacycle.
+  {- | 1. Data at read address delayed 1 cycle
+  2. Wishbone (slave -> master) from 'calendar')
+  3. End of metacycle.
+  -}
   ( Signal dom (BitVector frameWidth)
   , Signal dom (WishboneS2M nBytes)
   , Signal dom Bool
@@ -111,9 +112,10 @@ gatherUnit ::
   Signal dom (Maybe (LocatedBits memDepth frameWidth)) ->
   -- | Byte enable for write operation.
   Signal dom (ByteEnable (BitVector frameWidth)) ->
-  -- | 1. Frame to Bittide Link.
-  --   2. Wishbone (slave -> master) from 'calendar')
-  --   3. End of metacycle.
+  {- | 1. Frame to Bittide Link.
+  2. Wishbone (slave -> master) from 'calendar')
+  3. End of metacycle.
+  -}
   ( Signal dom (BitVector frameWidth)
   , Signal dom (WishboneS2M nBytes)
   , Signal dom Bool
@@ -161,23 +163,26 @@ with the @endOfMetacycle@ signal to stall the wishbone master until the end of t
 addStalling ::
   forall memAddresses nBytes a.
   (KnownNat memAddresses, 1 <= memAddresses, NumConvert (Unsigned 32) (Bytes nBytes)) =>
-  -- | Controls the 'acknowledge' of the returned 'WishboneS2M' when the incoming address
-  --   is 'maxBound'.
+  {- | Controls the 'acknowledge' of the returned 'WishboneS2M' when the incoming address
+  is 'maxBound'.
+  -}
   Bool ->
   -- | The current metacycle count.
   Unsigned 32 ->
-  -- |
-  --   1. Incoming 'WishboneS2M' bus.
-  --   2. Incoming wishbone address (stalling address in range).
-  --   3. Incoming write operation.
+  {- |
+  1. Incoming 'WishboneS2M' bus.
+  2. Incoming wishbone address (stalling address in range).
+  3. Incoming write operation.
+  -}
   ( WishboneS2M nBytes
   , Index (memAddresses + 2)
   , Maybe a
   ) ->
-  -- |
-  --   1. Outgoing 'WishboneS2M' bus (@acknowledge@ replaced with @endOfMetacycle@ when @wbAddr == maxBound@).
-  --   2. Outgoing wishbone address (stalling address not in range).
-  --   3. Outgoing write operation (set to @Nothing@ when @wbAddr == maxBound@).
+  {- |
+  1. Outgoing 'WishboneS2M' bus (@acknowledge@ replaced with @endOfMetacycle@ when @wbAddr == maxBound@).
+  2. Outgoing wishbone address (stalling address not in range).
+  3. Outgoing write operation (set to @Nothing@ when @wbAddr == maxBound@).
+  -}
   ( WishboneS2M nBytes
   , Index memAddresses
   , Maybe a
@@ -305,9 +310,10 @@ scatterUnitWb ::
   Signal dom (BitVector 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
   Signal dom (WishboneM2S awSu 4) ->
-  -- |
-  --   1. Wishbone (slave -> master) port scatter memory
-  --   2. Wishbone (slave -> master) port 'calendar'
+  {- |
+  1. Wishbone (slave -> master) port scatter memory
+  2. Wishbone (slave -> master) port 'calendar'
+  -}
   (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal), Mm)
 scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
   (delayControls wbOutSu, wbOutCal, mm)
@@ -450,9 +456,10 @@ gatherUnitWb ::
   Signal dom (WishboneM2S awCal nBytesCal) ->
   -- | Wishbone (master -> slave) port gather memory.
   Signal dom (WishboneM2S awGu 4) ->
-  -- |
-  --   1. Wishbone (slave -> master) port gather memory
-  --   2. Wishbone (slave -> master) port 'calendar'
+  {- |
+  1. Wishbone (slave -> master) port gather memory
+  2. Wishbone (slave -> master) port 'calendar'
+  -}
   ( Signal dom (BitVector 64)
   , Signal dom (WishboneS2M 4)
   , Signal dom (WishboneS2M nBytesCal)

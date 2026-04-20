@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -14,7 +14,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     mdbook-drawio-flake = {
-      url = "github:QBayLogic/mdbook-drawio";
+      url = "github:rowanG077/mdbook-drawio?ref=rowan/mdbook-5";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -73,10 +73,10 @@
             pkgs.haskell-language-server
             pkgs.haskell.compiler.ghc910
             pkgs.pkg-config
-            pkgs.python3Full
+            pkgs.python3
             pkgs.python3Packages.matplotlib
             pkgs.python3Packages.scipy
-            pkgs.python3Packages.GitPython
+            pkgs.python3Packages.gitpython
             pkgs.python3Packages.pyaml
             pkgs.libz
             pkgs.sbt
@@ -94,7 +94,7 @@
             # Simulation report generation
             pkgs.dot2tex
             pkgs.texlive.combined.scheme-medium
-            pkgs.poppler_utils
+            pkgs.poppler-utils
 
             (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
@@ -107,7 +107,7 @@
 
             # CI scripts
             pkgs.python3Packages.docopt
-            pkgs.python3Packages.dateutil
+            pkgs.python3Packages.python-dateutil
             mc
             pkgs.pcre
             pkgs.getent
@@ -153,9 +153,6 @@
             # We use unstable features (floating point), we don't want to hear about it
             # every time we build.
             export RUSTFLAGS="-Aunstable-features"
-
-            # Mixing Nix Cabal and non-Nix Cabal yields some weird linking errors.
-            export CABAL_DIR="$HOME/.cabal-nix";
 
             # Allow writing 'shake ...' instead of 'cabal run shake -- ...'
             export PATH="$(git rev-parse --show-toplevel)/nix/bin:$PATH";

@@ -114,9 +114,10 @@ data Input tx rx tx1 rx1 ref free rxS = Input
   , reset :: Reset free
   -- ^ Reset signal for the entire transceiver
   , channelReset :: Reset free
-  -- ^ Reset from user logic. The transceiver will not attempt to establish a link
-  -- while this reset is asserted. If this is asserted while a link is established,
-  -- the link will be torn down.
+  {- ^ Reset from user logic. The transceiver will not attempt to establish a link
+  while this reset is asserted. If this is asserted while a link is established,
+  the link will be torn down.
+  -}
   , refClock :: Clock ref
   -- ^ Reference clock. Used to synthesize transmit clock.
   , clockTx1 :: Clock tx1
@@ -136,18 +137,21 @@ data Input tx rx tx1 rx1 ref free rxS = Input
   , rxN :: Gth.Wire rxS
   , rxP :: Gth.Wire rxS
   , txData :: Signal tx (BitVector 64)
-  -- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
-  -- 'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
-  -- afterwards.
+  {- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
+  'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
+  afterwards.
+  -}
   , txStart :: Signal tx Bool
-  -- ^ When asserted, signal to neighbor that next word will be user data. This
-  -- signal is ignored until 'Output.txReady' is asserted. Can be tied
-  -- to 'True'.
+  {- ^ When asserted, signal to neighbor that next word will be user data. This
+  signal is ignored until 'Output.txReady' is asserted. Can be tied
+  to 'True'.
+  -}
   , rxReady :: Signal rx Bool
-  -- ^ When asserted, allow signalling to the neighbor that we are ready to
-  -- receive user data. Once asserted, it should stay asserted. Note that the
-  -- neighbor might decide to not send user data for a long time, even if this
-  -- is asserted.
+  {- ^ When asserted, allow signalling to the neighbor that we are ready to
+  receive user data. Once asserted, it should stay asserted. Note that the
+  neighbor might decide to not send user data for a long time, even if this
+  is asserted.
+  -}
   }
 
 data Inputs tx rx ref free rxS n = Inputs
@@ -196,16 +200,19 @@ data Output tx rx tx1 rx1 txS free = Output
   { txOutClock :: Clock tx1
   -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
   , txReset :: Reset tx
-  -- ^ Reset for 'Input.clockTx2'. Clock can be unstable until this reset is
-  -- deasserted. See documentation of 'transceiverPrbsN' for more information.
+  {- ^ Reset for 'Input.clockTx2'. Clock can be unstable until this reset is
+  deasserted. See documentation of 'transceiverPrbsN' for more information.
+  -}
   , txReady :: Signal tx Bool
-  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
-  -- 'Input.txStart' to be asserted before starting to send 'txData'.
+  {- ^ Ready to signal to neighbor that next word will be user data. Waiting for
+  'Input.txStart' to be asserted before starting to send 'txData'.
+  -}
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txData'
   , handshakeDoneTx :: Signal tx Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  {- ^ Asserted when link has been established, but not necessarily handling user data.
+  This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  -}
   , txP :: Gth.Wire txS
   -- ^ Transmit data (and implicitly a clock), positive
   , txN :: Gth.Wire txS
@@ -215,22 +222,26 @@ data Output tx rx tx1 rx1 txS free = Output
   , rxOutClock :: Clock rx1
   -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
   , rxReset :: Reset rx
-  -- ^ Reset signal for the receive side. Clock can be unstable until this reset
-  -- is deasserted.
+  {- ^ Reset signal for the receive side. Clock can be unstable until this reset
+  is deasserted.
+  -}
   , rxData :: Signal rx (Maybe (BitVector 64))
   -- ^ User data received from the neighbor
   , handshakeDone :: Signal rx Bool
   -- ^ Asserted when link has been established, but not necessarily handling user data.
   , debugLinkUp :: Signal free Bool
-  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
-  --  and receive side are either handling user data.
+  {- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
+  and receive side are either handling user data.
+  -}
   , debugLinkReady :: Signal free Bool
-  -- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
-  --  and receive side ready to handle user data or doing so. I.e., 'debugLinkUp' implies
-  -- 'debugLinkReady'.
+  {- ^ Legacy field, not yet removed because it is used by a HITL test. True if both the transmit
+  and receive side ready to handle user data or doing so. I.e., 'debugLinkUp' implies
+  'debugLinkReady'.
+  -}
   , handshakeDoneFree :: Signal free Bool
-  -- ^ Asserted when link has been established, but not necessarily handling user data.
-  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  {- ^ Asserted when link has been established, but not necessarily handling user data.
+  This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
+  -}
   , neighborReceiveReady :: Signal free Bool
   -- ^ Asserted when the neighbor has signalled it is ready to receive user data.
   , neighborTransmitReady :: Signal free Bool
@@ -411,8 +422,7 @@ transceiverPrbsNC ::
     ( CInputs tx rx free n
     , Gth.Gths rx rxS tx txS ref n
     )
-    ( COutputs n tx rx free
-    )
+    (COutputs n tx rx free)
 transceiverPrbsNC clock reset config = Circuit go
  where
   go ::

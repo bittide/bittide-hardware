@@ -84,8 +84,9 @@ trueFor ::
   forall dom t.
   (HasCallStack) =>
   (KnownDomain dom, KnownNat t) =>
-  -- | Use the type aliases of 'Bittide.Arithmetic.Time' for time span
-  -- specification.
+  {- | Use the type aliases of 'Bittide.Arithmetic.Time' for time span
+  specification.
+  -}
   SNat t ->
   Clock dom ->
   Reset dom ->
@@ -124,8 +125,9 @@ trueForSteps ::
   , Eq counter
   , Num counter
   ) =>
-  -- | Step size. Use the type aliases of 'Bittide.Arithmetic.Time' for time span
-  -- specification.
+  {- | Step size. Use the type aliases of 'Bittide.Arithmetic.Time' for time span
+  specification.
+  -}
   Proxy stepSize ->
   -- | Number of steps to wait for
   counter ->

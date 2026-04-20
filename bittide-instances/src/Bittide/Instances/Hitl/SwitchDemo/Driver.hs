@@ -81,16 +81,16 @@ showHex32 a = "0x" <> padding <> hexStr
 muSwitchDemoPeBuffer :: Integer
 muSwitchDemoPeBuffer =
   $( do
-      val <-
-        TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
-      lift val
+       val <-
+         TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
+       lift val
    )
 
 sampleMemoryBase :: Integer
 sampleMemoryBase =
   $( do
-      val <- TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
-      lift val
+       val <- TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
+       lift val
    )
 
 dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
@@ -306,10 +306,10 @@ driver testName targets = do
           [i|  linkNr, unf, ovf, unfTimestamp, ovfTimestamp, minDataCount, maxDataCount|]
         forM_ (L.zip4 [0 :: Int ..] flags timestamps minMaxDataCounts)
           $ \( linkNr
-              , (underflow, overflow)
-              , (underflowTimestamp, overflowTimestamp)
-              , (minDataCount, maxDataCount)
-              ) -> do
+               , (underflow, overflow)
+               , (underflowTimestamp, overflowTimestamp)
+               , (minDataCount, maxDataCount)
+               ) -> do
               putStrLn
                 [i|  #{linkNr}: #{underflow}, #{overflow}, #{underflowTimestamp}, #{overflowTimestamp}, #{minDataCount}, #{maxDataCount}|]
       pure allClear

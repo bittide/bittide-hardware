@@ -138,10 +138,11 @@ extractIntMapData ::
   (HasCallStack) =>
   -- | IntMap
   I.IntMap (BitVector 8) ->
-  -- |
-  -- 1. Starting address
-  -- 2. Size
-  -- 3. List of words
+  {- |
+  1. Starting address
+  2. Size
+  3. List of words
+  -}
   (BitVector 32, Int, [Bytes 4])
 extractIntMapData dataMap =
   (resize . bitCoerce $ startAddr, size, toWords content)

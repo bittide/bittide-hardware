@@ -56,15 +56,18 @@ data PeConfig nBusses where
     , initD :: Maybe (ContentType depthD (Bytes 4))
     -- ^ Initial content of the data memory, can be smaller than its total depth.
     , iBusTimeout :: SNat iBusTimeout
-    -- ^ Number of clock cycles after which the a transaction on the instruction bus times out.
-    --     Set to 0 to disable timeouts on the instruction bus.
+    {- ^ Number of clock cycles after which the a transaction on the instruction bus times out.
+    Set to 0 to disable timeouts on the instruction bus.
+    -}
     , dBusTimeout :: SNat dBusTimeout
-    -- ^ Number of clock cycles after which the a transaction on the data bus times out.
-    --     Set to 0 to disable timeouts on the data bus.
+    {- ^ Number of clock cycles after which the a transaction on the data bus times out.
+    Set to 0 to disable timeouts on the data bus.
+    -}
     , includeIlaWb :: Bool
-    -- ^ Indicates whether or not to include the Wishbone ILA component probes. Should be set
-    --     to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
-    --     given system should have this set to 'True' in order to avoid probe name conflicts.
+    {- ^ Indicates whether or not to include the Wishbone ILA component probes. Should be set
+    to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
+    given system should have this set to 'True' in order to avoid probe name conflicts.
+    -}
     , cpu :: forall dom. BittideCpu dom
     -- ^ The CPU to use in this processing element.
     } ->
