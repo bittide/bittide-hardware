@@ -154,9 +154,6 @@
             # every time we build.
             export RUSTFLAGS="-Aunstable-features"
 
-            # Mixing Nix Cabal and non-Nix Cabal yields some weird linking errors.
-            export CABAL_DIR="$HOME/.cabal-nix";
-
             # Allow writing 'shake ...' instead of 'cabal run shake -- ...'
             export PATH="$(git rev-parse --show-toplevel)/nix/bin:$PATH";
             ${preCommitHook.shellHook}

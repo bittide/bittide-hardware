@@ -52,7 +52,7 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
-GLOBAL_CACHE_BUST = 15
+GLOBAL_CACHE_BUST = 16
 
 CARGO_CACHE_BUST = 2
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
@@ -64,7 +64,8 @@ CABAL_CACHE_BUST = 2
 CABAL_KEY_PREFIX = f"cabal-g{GLOBAL_CACHE_BUST}-l{CABAL_CACHE_BUST}-"
 CABAL_KEY_PATTERNS = ("**/cabal.project", "**/cabal.project.freeze")
 CABAL_CACHE_INCLUDE_PATTERNS = (
-    "~/.cabal-nix",
+    "~/.local/state/cabal",
+    "~/.cache/cabal",
     f"{PWD}/dist-newstyle/src",
 )
 CABAL_CACHE_EXCLUDE_PATTERNS = ()
