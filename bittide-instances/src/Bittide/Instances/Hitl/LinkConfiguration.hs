@@ -53,11 +53,11 @@ checkData ::
   Clock dst ->
   Clock src ->
   Signal dst Bool ->
-  Signal src (Maybe (BitVector 64)) ->
+  Signal src (BitVector 64) ->
   Signal src (Maybe (Index n)) ->
   Signal dst Bool
 checkData dstClk srcClk ready rx setup =
-  ready .&&. xpmCdcSingle srcClk dstClk (match <$> rx <*> setup)
+  ready .&&. xpmCdcSingle srcClk dstClk (match <$> fmap Just rx <*> setup)
  where
   match ma mb = fromMaybe False (ma .==. (zExtend . pack <$> mb))
   zExtend = zeroExtend @_ @(BitSize (Index n)) @(64 - BitSize (Index n))
@@ -136,7 +136,9 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
   , spiM2S
   )
  where
-  allReady = and <$> bundle transceivers.debugLinkReadys
+  allReady =
+    fmap and (bundle transceivers.rxDataInitDonesFree)
+      .&&. fmap and (bundle transceivers.txDataInitDonesFree)
   sysRst = rst `orReset` unsafeFromActiveLow (fmap not spiErr)
 
   -- Clock programming
@@ -176,8 +178,6 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
         , rxPs
         , channelResets = repeat noReset
         , txDatas = repeat myIndexTx
-        , rxReadys = repeat $ pure True
-        , txStarts = repeat $ pure True
         }
 
   -- synchronizes the FPGA's stable index to the individual TX clock
@@ -194,7 +194,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
       $ zipWith4
         (checkData @FpgaCount sysClk)
         transceivers.rxClocks
-        transceivers.debugLinkReadys
+        transceivers.rxDataInitDonesFree
         transceivers.rxDatas
       $ zipWith3
         (expectedTargetIndex sysClk myIndex)
@@ -246,6 +246,7 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
 
   failAfterUp = isFalling sysClk testRst enableGen False allReady
   failAfterUpSticky = stickyE sysClk testRst failAfterUp
+  successSticky = stickyE sysClk testRst success
 
   -- Consider the test done if links have been up consistently for 40
   -- seconds. This is just below the test timeout of 60 seconds, so
@@ -254,7 +255,7 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
   -- i.e., if all neighbors have transmitted the expected ids
   -- alltogether at least once.
   done =
-    success
+    successSticky
       .||. failAfterUpSticky
       .||. trueFor (SNat @(Seconds 40)) sysClk testRst allReady
 

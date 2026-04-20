@@ -11,7 +11,6 @@ import Bittide.Transceiver (CInputs (..), COutputs (..), Config, transceiverPrbs
 
 import Bittide.Transceiver.ResetManager (emptyStatistics)
 import Clash.Class.BitPackC (ByteOrder)
-import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -52,14 +51,14 @@ transceiverPrbsNWb ::
   Reset free ->
   Config free ->
   Circuit
-    ( (BitboneMm free aw)
+    ( BitboneMm free aw
     , Gth.Gths rx rxS tx txS ref n
     , CSignal tx (Vec n (BitVector 64))
     )
     (COutputs n tx rx free)
 transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   Fwd tOutputs <- transceiverPrbsNC clk tReset config -< (Fwd tInputs, gths)
-  [wbc0, wbc1, wbc2, wbc3, wbs0, wbs1, wbs2, wbs3] <-
+  [wbc0, wbc1, wbs0, wbs1, wbs2] <-
     deviceWb clk rst (deviceConfig "Transceivers") -< wb
 
   -- Configuration registers
@@ -67,20 +66,14 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
     registerWb clk rst transceiverEnableConfig False -< (wbc0, Fwd noWrite)
   (Fwd channelEnables, _c1) <-
     registerWb clk tReset channelEnablesConfig (repeat False) -< (wbc1, Fwd noWrite)
-  (Fwd rxReadys, _c2) <-
-    registerWb clk tReset rxReadysConfig (repeat False) -< (wbc2, Fwd noWrite)
-  (Fwd txStarts, _c3) <-
-    registerWb clk tReset txStartsConfig (repeat False) -< (wbc3, Fwd noWrite)
 
   -- Status registers
   registerWb_ clk tReset statsConfig (repeat emptyStatistics)
     -< (wbs0, Fwd (Just <$> bundle tOutputs.stats))
-  registerWb_ clk tReset handshakesDoneConfig (repeat False)
-    -< (wbs1, Fwd (Just <$> bundle tOutputs.handshakesDoneFree))
-  registerWb_ clk tReset neighborReceiveReadysConfig (repeat False)
-    -< (wbs2, Fwd (Just <$> bundle tOutputs.neighborReceiveReadys))
-  registerWb_ clk tReset neighborTransmitReadysConfig (repeat False)
-    -< (wbs3, Fwd (Just <$> bundle tOutputs.neighborTransmitReadys))
+  registerWb_ clk tReset rxDataInitDoneConfig (repeat False)
+    -< (wbs1, Fwd (Just <$> bundle tOutputs.rxDataInitDonesFree))
+  registerWb_ clk tReset txDataInitDoneConfig (repeat False)
+    -< (wbs2, Fwd (Just <$> bundle tOutputs.txDataInitDonesFree))
 
   let
     noWrite = pure Nothing
@@ -91,8 +84,6 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
       CInputs
         { channelResets = map unsafeFromActiveLow (unbundle channelEnables)
         , txDatas = unbundle txDatas
-        , txStarts = unbundle (xpmCdcArraySingle clk tOutputs.txClock txStarts)
-        , rxReadys = xpmCdcSingle clk <$> tOutputs.rxClocks <*> unbundle rxReadys
         }
 
   idC -< Fwd tOutputs
@@ -106,44 +97,23 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   channelEnablesConfig =
     (registerConfig "channel_enables")
       { description =
-          "Enable individual channels. Enabling a channel means a link will be established, provided the other side also enables it. It does not mean (user) data will be sent or received on that channel, see 'receive_readys' and 'transmit_starts'. Conversely, disabling a channel will immediately drop the link if it was up, and no data will be sent or received on that channel."
+          "Enable individual channels. Enabling a channel means a link will be established, provided the other side also enables it. Conversely, disabling a channel will immediately drop the link if it was up, and no data will be sent or received on that channel."
       }
 
-  rxReadysConfig =
-    (registerConfig "receive_readys")
+  rxDataInitDoneConfig =
+    (registerConfig "rx_data_init_dones")
       { description =
-          "Indicate ready to receive (non-link negotiation) data. You should only set this when you are actually ready to receive data, as setting it when not ready will lead to data loss. This typically means that the elastic buffer on the receiver side has space to store incoming data. Though this can be set independently of 'channel_enables', this setting has no effect unless the corresponding channel is also enabled. Once set, you must not retract readiness until the next time the channel is disabled."
+          "Receive data initialization procedure done. This means that the data presented on 'rxData' is word aligned and coming from the neighbor."
       }
 
-  txStartsConfig =
-    (registerConfig "transmit_starts")
+  txDataInitDoneConfig =
+    (registerConfig "tx_data_init_dones")
       { description =
-          "Indicate ready to transmit (non-link negotiation) data. Note that the transceiver block will not transition to sending data until you indicate the link is also ready to receive data (see 'receive_readys'). Though this can be set independently of 'channel_enables', this setting has no effect unless the corresponding channel is also enabled. Once set, you must not retract readiness until the next time the channel is disabled."
+          "Transmit data initialization procedure done. This mean that the data presented on the block's input is sampled and sent to the neighbor."
       }
 
   statsConfig =
     (registerConfig "statistics")
       { access = ReadOnly
       , description = "Various statistics from the transceiver reset manager."
-      }
-
-  handshakesDoneConfig =
-    (registerConfig "handshakes_done")
-      { access = ReadOnly
-      , description =
-          "Indicates whether link negotiation has completed for each channel. This means that, bar catastrophic failure, the link will be able to transfer user data."
-      }
-
-  neighborReceiveReadysConfig =
-    (registerConfig "neighbor_receive_readys")
-      { access = ReadOnly
-      , description =
-          "Indicates for each neighbor whether it is ready to receive data. Implies 'handshakes_done' is also 'True' for that neighbor."
-      }
-
-  neighborTransmitReadysConfig =
-    (registerConfig "neighbor_transmit_readys")
-      { access = ReadOnly
-      , description =
-          "Indicates for each neighbor whether it is ready to transmit data. Implies 'handshakes_done' is also 'True' for that neighbor."
       }
