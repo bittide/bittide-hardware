@@ -17,28 +17,21 @@ import Clash.Cores.UART.Extra
 import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Explicit.Testbench
+import Project.FilePath (CargoBuildType (Release))
 import Protocols
 import Protocols.MemoryMap as Mm
-import qualified Protocols.ToConst as ToConst
 import VexRiscv
 
 import Bittide.Axi4
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
+import Bittide.Instances.Common (PeConfigElfSource (NameOnly), emptyPeConfig, peConfigFromElf)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
-import Project.FilePath (
-  CargoBuildType (Release),
-  findParentContaining,
-  firmwareBinariesDir,
- )
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
+import qualified Protocols.ToConst as ToConst
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -49,18 +42,35 @@ type Baud = 921_600
 baud :: SNat Baud
 baud = SNat
 
+peConfigSim :: IO (PeConfig 8)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "smoltcp_client")
+    Release
+    d0
+    d0
+    False
+    vexRiscv0
+
+peConfigRtl :: PeConfig 8
+peConfigRtl = emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 True vexRiscv0
+
 sim :: IO ()
-sim =
+sim = do
+  peConfig <- peConfigSim
+  let
+    go (uartRx, _) = ((), uartTx)
+     where
+      (_, uartTx, _) =
+        vexRiscEthernet
+          peConfig
+          clockGen
+          (resetGenN d2)
+          (clockToDiffClock clockGen)
+          (pure $ unpack 0, uartRx, pure $ unpack 0)
   uartIO @Basic125B stdin stdout baud $ Circuit go
- where
-  go (uartRx, _) = ((), uartTx)
-   where
-    (_, uartTx, _) =
-      vexRiscEthernet
-        clockGen
-        (resetGenN d2)
-        (clockToDiffClock clockGen)
-        (pure $ unpack 0, uartRx, pure $ unpack 0)
 
 {- | Instance containing:
 * VexRiscv CPU
@@ -83,6 +93,7 @@ vexRiscGmiiC ::
   Reset rx ->
   Clock tx ->
   Reset tx ->
+  PeConfig 8 ->
   Circuit
     ( ToConstBwd Mm
     , ( CSignal logic Bit
@@ -93,7 +104,7 @@ vexRiscGmiiC ::
     ( CSignal logic Bit
     , CSignal tx Gmii
     )
-vexRiscGmiiC sysClk sysRst rxClk rxRst txClk txRst =
+vexRiscGmiiC sysClk sysRst rxClk rxRst txClk txRst peConfig =
   circuit $ \(mm, (uartTx, gmiiRx, jtag)) -> do
     [ uartBus
       , (mmTime, timeBus)
@@ -145,48 +156,6 @@ vexRiscGmiiC sysClk sysRst rxClk rxRst txClk txRst =
   wcre :: (((HiddenClockResetEnable logic) => a) -> a)
   wcre = withClockResetEnable sysClk sysRst enableGen
 
-  peConfig
-    | clashSimulation = peConfigSim
-    | otherwise = peConfigRtl
-
-  peConfigSim = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let
-      elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
-    pure
-      $ PeConfig
-        { cpu = vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI =
-            Just
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfInstr @IMemWords elfPath
-              )
-        , initD =
-            Just
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfData @DMemWords elfPath
-              )
-        , iBusTimeout = d0
-        , dBusTimeout = d0
-        , includeIlaWb = False
-        }
-
-  peConfigRtl =
-    PeConfig
-      { cpu = vexRiscv0
-      , depthI = SNat @IMemWords
-      , depthD = SNat @DMemWords
-      , initI = Nothing
-      , initD = Nothing
-      , iBusTimeout = d0
-      , dBusTimeout = d0
-      , includeIlaWb = True
-      }
-
 type IMemWords = DivRU (80 * 1024) 4
 type DMemWords = DivRU (88 * 1024) 4
 
@@ -200,8 +169,10 @@ vexRiscvEthernetMM =
       resetGen
       clockGen
       resetGen
+      peConfigRtl
 
 vexRiscEthernet ::
+  PeConfig 8 ->
   Clock Basic125B ->
   Reset Basic125B ->
   DiffClock Basic625 ->
@@ -213,7 +184,7 @@ vexRiscEthernet ::
   , Signal Basic125B Bit
   , Signal Basic625 Lvds
   )
-vexRiscEthernet sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
+vexRiscEthernet peConfig sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
   (jtagOut, uartOut, bridgeLvdsOut)
  where
   BridgeOutput{..} = bridge sgmiiIn gmiiOut
@@ -232,7 +203,7 @@ vexRiscEthernet sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
   rxClk = bridgeClk125 :: Clock Basic125A
   rxRst = bridgeRst125
   bridgeRst = unsafeResetDesynchronizer sysClk sysRst
-  circFn = toSignals $ vexRiscGmiiC sysClk sysRst rxClk rxRst rxClk rxRst
+  circFn = toSignals $ vexRiscGmiiC sysClk sysRst rxClk rxRst rxClk rxRst peConfig
 
   ( ((SimOnly _mm, (_, _, jtagOut)))
     , (uartOut, gmiiOut)
