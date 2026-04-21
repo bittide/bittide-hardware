@@ -17,6 +17,7 @@ import Clash.Class.BitPackC.Words (packWordCI, unpackWordOrErrorCI)
 import Clash.Hedgehog.Sized.Vector (genVec)
 import Clash.Prelude (withClockResetEnable)
 import Control.DeepSeq (force)
+import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Hedgehog (Gen, Property)
@@ -460,6 +461,47 @@ case_memoryMap = do
   regDelayed.value.address @?= 32
   regDelayedError.value.address @?= 36
 
+{- | Given a 'blockRam' primitive, create a circuit that offers a 'ReqResp' interface to access
+the primitive using 'ReqResp' for the read channel and 'Df' for the write channel.
+
+If you use 'ReqResp' for the write channel, you can use 'requests' to convert it to a 'Df' stream
+to be used with this circuit.
+
+XXX: This is a shameless copy of 'ReqResp.fromBlockRamWithMask' in 'bittide-extra'. That component
+     (or rather its unittest) depends on `Clash.Explicit.Signal.Delayed.Extra.fromBlockRam`, which
+     needs to be upstreamed to `clash-prelude`. To avoid being blocked on that we temporarily add a
+     copy of the function here. This should be removed once the function is upstreamed and we can
+     depend on it directly.
+-}
+fromBlockRamWithMask ::
+  (KnownDomain dom, Num addr, KnownNat words) =>
+  Clock dom ->
+  Reset dom ->
+  ( Signal dom addr ->
+    Signal dom (Maybe (addr, BitVector (words * 8))) ->
+    Signal dom (BitVector words) ->
+    Signal dom (BitVector (words * 8))
+  ) ->
+  Circuit
+    ( ReqResp.ReqResp dom addr (BitVector (words * 8))
+    , Df dom (addr, BitVector words, BitVector (words * 8))
+    )
+    ()
+fromBlockRamWithMask clk rst primitive = Circuit go
+ where
+  writeBwd = pure $ Ack True
+  go ((readFwd, writeFwd), ()) = ((readBwd, writeBwd), ())
+   where
+    -- Separate the write data and byte enables
+    writeData = fmap (>>= \(addr, _mask, dat) -> Just (addr, dat)) writeFwd
+    byteEnables = fmap (\case Just (_, mask, _) -> mask; Nothing -> 0) writeFwd
+
+    readData = primitive (fromMaybe 0 <$> readFwd) writeData byteEnables
+
+    -- Reading takes 1 cycle so we run at half speed
+    readValid = register clk rst enableGen False (fmap isJust readFwd .&&. fmap not readValid)
+    readBwd = liftA2 (\v d -> if v then Just d else Nothing) readValid readData
+
 -- | Test the addressableBytesWb circuit using wishbonePropWithModel
 prop_addressableBytesWb :: Property
 prop_addressableBytesWb = property $ do
@@ -476,7 +518,7 @@ prop_addressableBytesWb = property $ do
         _vecUnit <- ram -< (reads, writes1)
         idC -< ()
      where
-      ram = withClockResetEnable clk rst enableGen (ReqResp.fromBlockRamWithMask prim)
+      ram = fromBlockRamWithMask clk rst prim
       prim = blockRamByteAddressable clk ena depth
       memConf = registerConfig "buffer"
 
