@@ -29,7 +29,7 @@ use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let uart = INSTANCES.uart;
+    let mut uart = INSTANCES.uart;
     unsafe {
         use bittide_sys::uart::log::LOGGER;
         let logger = &mut (*LOGGER.get());
@@ -241,7 +241,7 @@ fn main() -> ! {
     let mut link6 = LinkInterface::new(rx6, tx6, get_buffers(6), make_timer());
 
     // Step 1: Wait for all connections to establish
-    info!("Step 1: Waiting for all connections to establish...");
+    uwriteln!(uart, "Step 1: Waiting for all connections to establish...").unwrap();
     loop {
         link0.poll();
         link1.poll();
@@ -262,7 +262,7 @@ fn main() -> ! {
             break;
         }
     }
-    info!("  All {} links established", LINK_COUNT);
+    uwriteln!(uart, "  All {} links established", LINK_COUNT).unwrap();
 
     // Step 2: Exchange DNA with all neighbors
     info!("Step 2: Exchanging DNA and ports with all neighbors...");
@@ -278,7 +278,11 @@ fn main() -> ! {
     let mut partner_ports = [0u32; LINK_COUNT];
     let mut port_received = [false; LINK_COUNT];
 
-    info!("  Waiting to receive DNA and ports from all neighbors...");
+    uwriteln!(
+        uart,
+        "  Waiting to receive DNA and ports from all neighbors..."
+    )
+    .unwrap();
 
     for _ in 0..10000 {
         for (i, link) in [
@@ -392,7 +396,7 @@ fn main() -> ! {
             }
         }
         info!("  Complete UGN graph: {} edges", report.count);
-        debug!("  Final UGN Report: {:?}", report);
+        writeln!(uart, "  Final UGN Report: {:?}", report).unwrap();
     } else {
         // Subordinate role: wait for manager command, then send report
         info!("Step 4: Subordinate waiting for manager command...");
@@ -455,7 +459,7 @@ fn main() -> ! {
         info!("  Sent {} edges to manager", edges_sent);
     }
 
-    info!("Demo complete.");
+    uwriteln!(uart, "Demo complete.").unwrap();
     // Keep polling links to ensure all transmissions complete
     loop {
         link0.poll();
@@ -483,9 +487,9 @@ fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
     let mut uart = INSTANCES.uart;
     riscv::interrupt::free(|| {
         uwriteln!(uart, "... caught an exception. Looping forever now.\n").unwrap();
-        info!("mcause: {:?}\n", mcause::read());
-        info!("mepc: {:?}\n", mepc::read());
-        info!("mtval: {:?}\n", mtval::read());
+        writeln!(uart, "mcause: {:?}\n", mcause::read()).unwrap();
+        writeln!(uart, "mepc: {:?}\n", mepc::read()).unwrap();
+        writeln!(uart, "mtval: {:?}\n", mtval::read()).unwrap();
     });
     loop {
         continue;
