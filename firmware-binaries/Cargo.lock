@@ -712,6 +712,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "smoltcp-demo"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "heapless",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
+]
+
+[[package]]
 name = "smoltcp_client"
 version = "0.1.0"
 dependencies = [
@@ -725,22 +741,6 @@ dependencies = [
  "riscv-rt 0.11.0",
  "smoltcp",
  "ufmt",
-]
-
-[[package]]
-name = "soft-ugn-demo-mu-2"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-sys",
- "heapless",
- "log",
- "memmap-generate",
- "riscv 0.10.1",
- "riscv-rt 0.11.0",
- "smoltcp",
- "ufmt",
- "zerocopy",
 ]
 
 [[package]]

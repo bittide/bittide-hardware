@@ -50,7 +50,7 @@ members = [
 
   "demos/clock-control",
   "demos/soft-ugn-mu",
-  "demos/soft-ugn-demo-mu-2",
+  "demos/smoltcp-demo",
   "demos/switch-demo1-boot",
   "demos/switch-demo1-mu",
   "demos/switch-demo2-mu",

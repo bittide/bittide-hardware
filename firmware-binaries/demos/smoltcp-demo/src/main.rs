@@ -168,12 +168,13 @@ fn main() -> ! {
     static TCP_TX_6: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
 
     let dna = INSTANCES.dna.dna();
-    info!("My DNA: {:?}", dna);
     let is_manager = dna == MANAGER_DNA;
-    info!(
-        "Role: {}",
+    writeln!(
+        uart,
+        "DNA: {dna:?}, Role: {}",
         if is_manager { "manager" } else { "subordinate" }
-    );
+    )
+    .unwrap();
 
     // Create aligned receive buffers for all links and align them
     let mut rx_aligned = rx_buffers.map(AlignedReceiveBuffer::new);
