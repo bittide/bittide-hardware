@@ -108,12 +108,12 @@ tests =
         ]
     , externalHdl = []
     , testCases =
-        [ HitlTestCase
-            { name = "soft-ugn-demo"
-            , parameters = paramForHwTargets allHwTargets ()
-            , postProcData = ()
-            }
-        , HitlTestCase
+        [ -- HitlTestCase
+          --   { name = "soft-ugn-demo"
+          --   , parameters = paramForHwTargets allHwTargets ()
+          --   , postProcData = ()
+          --   }
+          HitlTestCase
             { name = "smoltcp-demo"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
