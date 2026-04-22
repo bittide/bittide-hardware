@@ -177,13 +177,11 @@ fn main() -> ! {
 
     // Create aligned receive buffers for all links and align them
     let mut rx_aligned = rx_buffers.map(AlignedReceiveBuffer::new);
-    while rx_aligned.iter().any(|rx| !rx.is_aligned()) {
-        for (rx, tx) in rx_aligned.iter_mut().zip(tx_buffers.iter()) {
-            if !rx.is_aligned() {
-                rx.align_step(tx);
-            }
-        }
-    }
+    while rx_aligned
+        .iter_mut()
+        .zip(tx_buffers.iter())
+        .any(|(rx, tx)| !rx.align_step(tx))
+    {}
 
     // Helper function to get static buffers for a given link index
     let get_buffers = |idx: usize| -> LinkBuffers<'static> {

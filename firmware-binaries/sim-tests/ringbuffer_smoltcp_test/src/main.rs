@@ -48,14 +48,7 @@ fn main() -> ! {
 
     let mut rx_aligned0 = AlignedReceiveBuffer::new(rx_buffer0);
     let mut rx_aligned1 = AlignedReceiveBuffer::new(rx_buffer1);
-    while !rx_aligned0.is_aligned() || !rx_aligned1.is_aligned() {
-        if !rx_aligned0.is_aligned() {
-            rx_aligned0.align_step(&tx_buffer0);
-        }
-        if !rx_aligned1.is_aligned() {
-            rx_aligned1.align_step(&tx_buffer1);
-        }
-    }
+    while !(rx_aligned0.align_step(&tx_buffer0) & rx_aligned1.align_step(&tx_buffer1)) {}
 
     tx_buffer0.set_enable(true);
     tx_buffer1.set_enable(true);
