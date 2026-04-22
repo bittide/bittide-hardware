@@ -11,13 +11,11 @@ use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::net_state::{UgnEdge, UgnReport};
-use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface};
+use bittide_sys::smoltcp::link_interface::LinkInterface;
 use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
-use core::cell::SyncUnsafeCell;
 use core::fmt::Write;
 use log::{debug, error, info, warn, LevelFilter};
 use riscv::register::{mcause, mepc, mtval};
-use smoltcp::iface::SocketStorage;
 use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
@@ -136,37 +134,6 @@ fn main() -> ! {
         INSTANCES.transmit_ringbuffer_6,
     ];
 
-    // Create socket storage (one socket per link)
-    static SOCKET_STORAGE_0: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-    static SOCKET_STORAGE_1: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-    static SOCKET_STORAGE_2: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-    static SOCKET_STORAGE_3: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-    static SOCKET_STORAGE_4: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-    static SOCKET_STORAGE_5: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-    static SOCKET_STORAGE_6: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-
-    static TCP_RX_0: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_TX_0: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_RX_1: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_TX_1: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_RX_2: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_TX_2: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_RX_3: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_TX_3: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_RX_4: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_TX_4: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_RX_5: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_TX_5: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_RX_6: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static TCP_TX_6: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-
     let dna = INSTANCES.dna.dna();
     let is_manager = dna == MANAGER_DNA;
     writeln!(
@@ -179,10 +146,10 @@ fn main() -> ! {
     // Create aligned receive buffers for all links and align them
     let start_time = INSTANCES.timer.now();
     let mut rx_aligned = rx_buffers.map(AlignedReceiveBuffer::new);
-    while rx_aligned
+    while !rx_aligned
         .iter_mut()
         .zip(tx_buffers.iter())
-        .any(|(rx, tx)| !rx.align_step(tx))
+        .fold(true, |done, (rx, tx)| rx.align_step(tx) && done)
     {}
     let stop_time = INSTANCES.timer.now();
     uwriteln!(
@@ -191,84 +158,26 @@ fn main() -> ! {
         (stop_time - start_time)
     )
     .unwrap();
-    // Helper function to get static buffers for a given link index
-    let get_buffers = |idx: usize| -> LinkBuffers<'static> {
-        match idx {
-            0 => LinkBuffers {
-                socket_storage: unsafe { &mut *SOCKET_STORAGE_0.get() },
-                tcp_rx_buffer: unsafe { &mut *TCP_RX_0.get() },
-                tcp_tx_buffer: unsafe { &mut *TCP_TX_0.get() },
-            },
-            1 => LinkBuffers {
-                socket_storage: unsafe { &mut *SOCKET_STORAGE_1.get() },
-                tcp_rx_buffer: unsafe { &mut *TCP_RX_1.get() },
-                tcp_tx_buffer: unsafe { &mut *TCP_TX_1.get() },
-            },
-            2 => LinkBuffers {
-                socket_storage: unsafe { &mut *SOCKET_STORAGE_2.get() },
-                tcp_rx_buffer: unsafe { &mut *TCP_RX_2.get() },
-                tcp_tx_buffer: unsafe { &mut *TCP_TX_2.get() },
-            },
-            3 => LinkBuffers {
-                socket_storage: unsafe { &mut *SOCKET_STORAGE_3.get() },
-                tcp_rx_buffer: unsafe { &mut *TCP_RX_3.get() },
-                tcp_tx_buffer: unsafe { &mut *TCP_TX_3.get() },
-            },
-            4 => LinkBuffers {
-                socket_storage: unsafe { &mut *SOCKET_STORAGE_4.get() },
-                tcp_rx_buffer: unsafe { &mut *TCP_RX_4.get() },
-                tcp_tx_buffer: unsafe { &mut *TCP_TX_4.get() },
-            },
-            5 => LinkBuffers {
-                socket_storage: unsafe { &mut *SOCKET_STORAGE_5.get() },
-                tcp_rx_buffer: unsafe { &mut *TCP_RX_5.get() },
-                tcp_tx_buffer: unsafe { &mut *TCP_TX_5.get() },
-            },
-            6 => LinkBuffers {
-                socket_storage: unsafe { &mut *SOCKET_STORAGE_6.get() },
-                tcp_rx_buffer: unsafe { &mut *TCP_RX_6.get() },
-                tcp_tx_buffer: unsafe { &mut *TCP_TX_6.get() },
-            },
-            _ => panic!("Invalid link index"),
-        }
-    };
-
-    // Destructure arrays to allow moving individual elements
-    let [rx0, rx1, rx2, rx3, rx4, rx5, rx6] = rx_aligned;
-    let [tx0, tx1, tx2, tx3, tx4, tx5, tx6] = tx_buffers;
 
     // Create all LinkInterfaces
     info!("Creating LinkInterfaces");
     let timer = INSTANCES.timer;
     let make_timer = || unsafe { bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0) };
 
-    let mut link0 = LinkInterface::new(rx0, tx0, get_buffers(0), make_timer());
-    let mut link1 = LinkInterface::new(rx1, tx1, get_buffers(1), make_timer());
-    let mut link2 = LinkInterface::new(rx2, tx2, get_buffers(2), make_timer());
-    let mut link3 = LinkInterface::new(rx3, tx3, get_buffers(3), make_timer());
-    let mut link4 = LinkInterface::new(rx4, tx4, get_buffers(4), make_timer());
-    let mut link5 = LinkInterface::new(rx5, tx5, get_buffers(5), make_timer());
-    let mut link6 = LinkInterface::new(rx6, tx6, get_buffers(6), make_timer());
+    let mut links: heapless::Vec<LinkInterface<_, _, 256>, LINK_COUNT> = rx_aligned
+        .into_iter()
+        .zip(tx_buffers)
+        .map(|(rx, tx)| LinkInterface::new(rx, tx, make_timer()))
+        .collect();
+    for link in links.iter_mut() {
+        link.connect();
+    }
 
     // Step 1: Wait for all connections to establish
     uwriteln!(uart, "Step 1: Waiting for all connections to establish...").unwrap();
     loop {
-        link0.poll();
-        link1.poll();
-        link2.poll();
-        link3.poll();
-        link4.poll();
-        link5.poll();
-        link6.poll();
-
-        if link0.is_established()
-            && link1.is_established()
-            && link2.is_established()
-            && link3.is_established()
-            && link4.is_established()
-            && link5.is_established()
-            && link6.is_established()
-        {
+        links.iter_mut().for_each(|l| l.poll());
+        if links.iter().all(|l| l.is_established()) {
             break;
         }
     }
@@ -296,12 +205,7 @@ fn main() -> ! {
 
     let deadline = timer.now() + Duration::from_secs(1);
     while timer.now() < deadline {
-        for (i, link) in [
-            &mut link0, &mut link1, &mut link2, &mut link3, &mut link4, &mut link5, &mut link6,
-        ]
-        .iter_mut()
-        .enumerate()
-        {
+        for (i, link) in links.iter_mut().enumerate() {
             link.poll();
 
             // Try receiving partner DNA if we haven't already
@@ -377,23 +281,13 @@ fn main() -> ! {
     if is_manager {
         info!("Step 4: Manager collecting reports from subordinates...");
 
-        for i in 0..LINK_COUNT {
-            let subordinate_link = match i {
-                0 => &mut link0,
-                1 => &mut link1,
-                2 => &mut link2,
-                3 => &mut link3,
-                4 => &mut link4,
-                5 => &mut link5,
-                6 => &mut link6,
-                _ => unreachable!(),
-            };
+        for (i, link) in links.iter_mut().enumerate() {
             let wire_command: CommandWire = Command::RequestUgnReport.into();
-            if let Err(e) = subordinate_link.send_blocking(&wire_command, Duration::from_secs(1)) {
+            if let Err(e) = link.send_blocking(&wire_command, Duration::from_secs(1)) {
                 error!("  Link {}: failed to send command: {:?}", i, e);
                 continue;
             }
-            let count: u32 = match subordinate_link.recv_blocking(Duration::from_secs(1)) {
+            let count: u32 = match link.recv_blocking(Duration::from_secs(1)) {
                 Ok(c) => c,
                 Err(e) => {
                     error!("  Link {}: failed to receive count: {:?}", i, e);
@@ -402,8 +296,7 @@ fn main() -> ! {
             };
             debug!("  Link {}: expecting {} edges", i, count);
             for j in 0..count {
-                let edge: UgnEdgeWire = match subordinate_link.recv_blocking(Duration::from_secs(1))
-                {
+                let edge: UgnEdgeWire = match link.recv_blocking(Duration::from_secs(1)) {
                     Ok(e) => e,
                     Err(e) => {
                         error!("  Link {}: failed to receive edge {}: {:?}", i, j, e);
@@ -421,20 +314,9 @@ fn main() -> ! {
         let mut manager_idx = None;
 
         while manager_idx.is_none() {
-            for i in 0..LINK_COUNT {
-                let potential_manager_link = match i {
-                    0 => &mut link0,
-                    1 => &mut link1,
-                    2 => &mut link2,
-                    3 => &mut link3,
-                    4 => &mut link4,
-                    5 => &mut link5,
-                    6 => &mut link6,
-                    _ => unreachable!(),
-                };
-
-                potential_manager_link.poll();
-                if let Ok(wire) = potential_manager_link.try_recv::<CommandWire>() {
+            for (i, link) in links.iter_mut().enumerate() {
+                link.poll();
+                if let Ok(wire) = link.try_recv::<CommandWire>() {
                     if let Ok(Command::RequestUgnReport) = Command::try_from(wire) {
                         info!("  Received RequestUgnReport on link {}", i);
                         manager_idx = Some(i);
@@ -446,16 +328,7 @@ fn main() -> ! {
             }
         }
 
-        let manager_link = match manager_idx.unwrap() {
-            0 => &mut link0,
-            1 => &mut link1,
-            2 => &mut link2,
-            3 => &mut link3,
-            4 => &mut link4,
-            5 => &mut link5,
-            6 => &mut link6,
-            _ => panic!("Invalid manager link index"),
-        };
+        let manager_link = &mut links[manager_idx.unwrap()];
         manager_link
             .send_blocking(&report.count, Duration::from_secs(1))
             .expect("Failed to send count");
@@ -480,14 +353,7 @@ fn main() -> ! {
     uwriteln!(uart, "Demo complete.").unwrap();
     // Keep polling links to ensure all transmissions complete
     loop {
-        link0.poll();
-        link1.poll();
-        link2.poll();
-        link3.poll();
-        link4.poll();
-        link5.poll();
-        link6.poll();
-        continue;
+        links.iter_mut().for_each(|l| l.poll());
     }
 }
 

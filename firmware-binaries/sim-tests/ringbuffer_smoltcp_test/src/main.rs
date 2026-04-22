@@ -8,12 +8,10 @@
 use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
 use bittide_hal::ringbuffer_test::DeviceInstances;
 use bittide_sys::net_state::{UgnEdge, UgnReport};
-use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface};
+use bittide_sys::smoltcp::link_interface::LinkInterface;
 use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
-use core::cell::SyncUnsafeCell;
 use core::fmt::Write;
 use log::{info, LevelFilter};
-use smoltcp::iface::SocketStorage;
 use ufmt::uwriteln;
 
 #[cfg(not(test))]
@@ -48,7 +46,10 @@ fn main() -> ! {
 
     let mut rx_aligned0 = AlignedReceiveBuffer::new(rx_buffer0);
     let mut rx_aligned1 = AlignedReceiveBuffer::new(rx_buffer1);
-    while !(rx_aligned0.align_step(&tx_buffer0) & rx_aligned1.align_step(&tx_buffer1)) {}
+    while !(rx_aligned0.is_aligned() & rx_aligned1.is_aligned()) {
+        rx_aligned0.align_step(&tx_buffer0);
+        rx_aligned1.align_step(&tx_buffer1);
+    }
 
     tx_buffer0.set_enable(true);
     tx_buffer1.set_enable(true);
@@ -58,39 +59,13 @@ fn main() -> ! {
     // Step 2: Create LinkInterfaces with simultaneous open
     info!("Step 2: Creating LinkInterfaces with TCP simultaneous open...");
 
-    // Manager side
-    static MANAGER_SOCKET_RX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static MANAGER_SOCKET_TX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static MANAGER_STORAGE: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
+    let mut link_manager = LinkInterface::<_, _, 512>::new(rx_aligned0, tx_buffer1, timer);
+    link_manager.connect();
 
-    let mut link_manager = LinkInterface::new(
-        rx_aligned0,
-        tx_buffer1,
-        LinkBuffers {
-            socket_storage: unsafe { &mut *MANAGER_STORAGE.get() },
-            tcp_rx_buffer: unsafe { &mut *MANAGER_SOCKET_RX.get() },
-            tcp_tx_buffer: unsafe { &mut *MANAGER_SOCKET_TX.get() },
-        },
-        timer,
-    );
-
-    // Subordinate side
-    static SUBORDINATE_SOCKET_RX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static SUBORDINATE_SOCKET_TX: SyncUnsafeCell<[u8; 256]> = SyncUnsafeCell::new([0; 256]);
-    static SUBORDINATE_STORAGE: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-
-    let mut link_subordinate = LinkInterface::new(
-        rx_aligned1,
-        tx_buffer0,
-        LinkBuffers {
-            socket_storage: unsafe { &mut *SUBORDINATE_STORAGE.get() },
-            tcp_rx_buffer: unsafe { &mut *SUBORDINATE_SOCKET_RX.get() },
-            tcp_tx_buffer: unsafe { &mut *SUBORDINATE_SOCKET_TX.get() },
-        },
-        unsafe { bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0) },
-    );
+    let mut link_subordinate = LinkInterface::<_, _, 512>::new(rx_aligned1, tx_buffer0, unsafe {
+        bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0)
+    });
+    link_subordinate.connect();
 
     // Step 3: Wait for connection establishment
     info!("Step 3: Waiting for connection establishment...");

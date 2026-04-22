@@ -7,17 +7,15 @@
 
 use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
 use bittide_hal::ringbuffer_test::DeviceInstances;
-use bittide_sys::smoltcp::link_interface::{LinkBuffers, LinkInterface, RecvError};
-use core::cell::SyncUnsafeCell;
+use bittide_sys::smoltcp::link_interface::{LinkInterface, RecvError};
 use core::fmt::Write;
 use log::{info, LevelFilter};
-use smoltcp::iface::SocketStorage;
+use riscv::register::{mcause, mepc, mtval};
+#[cfg(not(test))]
+use riscv_rt::entry;
 use ufmt::uwriteln;
 use zerocopy::byteorder::{I64, LE, U16, U32};
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned};
-
-#[cfg(not(test))]
-use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
@@ -70,7 +68,7 @@ fn main() -> ! {
         logger.set_timer(INSTANCES.timer);
         logger.display_source = LevelFilter::Warn;
         log::set_logger_racy(logger).ok();
-        log::set_max_level_racy(LevelFilter::Info);
+        log::set_max_level_racy(LevelFilter::Trace);
     }
 
     info!("=== LinkInterface Example ===");
@@ -83,40 +81,19 @@ fn main() -> ! {
 
     let mut rx_aligned0 = AlignedReceiveBuffer::new(rx_buffer0);
     let mut rx_aligned1 = AlignedReceiveBuffer::new(rx_buffer1);
-    while !(rx_aligned0.align_step(&tx_buffer0) & rx_aligned1.align_step(&tx_buffer1)) {}
+    while !(rx_aligned0.is_aligned() & rx_aligned1.is_aligned()) {
+        rx_aligned0.align_step(&tx_buffer0);
+        rx_aligned1.align_step(&tx_buffer1);
+    }
 
     // Create two links with TCP simultaneous open
-    static SOCKET0_RX_BUF: SyncUnsafeCell<[u8; 512]> = SyncUnsafeCell::new([0; 512]);
-    static SOCKET0_TX_BUF: SyncUnsafeCell<[u8; 512]> = SyncUnsafeCell::new([0; 512]);
-    static SOCKETS0_STORAGE: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
+    let mut link0 = LinkInterface::<_, _, 512>::new(rx_aligned0, tx_buffer1, timer);
+    link0.connect();
 
-    let mut link0 = LinkInterface::new(
-        rx_aligned0,
-        tx_buffer1,
-        LinkBuffers {
-            socket_storage: unsafe { &mut *SOCKETS0_STORAGE.get() },
-            tcp_rx_buffer: unsafe { &mut *SOCKET0_RX_BUF.get() },
-            tcp_tx_buffer: unsafe { &mut *SOCKET0_TX_BUF.get() },
-        },
-        timer,
-    );
-
-    static SOCKET1_RX_BUF: SyncUnsafeCell<[u8; 512]> = SyncUnsafeCell::new([0; 512]);
-    static SOCKET1_TX_BUF: SyncUnsafeCell<[u8; 512]> = SyncUnsafeCell::new([0; 512]);
-    static SOCKETS1_STORAGE: SyncUnsafeCell<[SocketStorage; 1]> =
-        SyncUnsafeCell::new([SocketStorage::EMPTY; 1]);
-
-    let mut link1 = LinkInterface::new(
-        rx_aligned1,
-        tx_buffer0,
-        LinkBuffers {
-            socket_storage: unsafe { &mut *SOCKETS1_STORAGE.get() },
-            tcp_rx_buffer: unsafe { &mut *SOCKET1_RX_BUF.get() },
-            tcp_tx_buffer: unsafe { &mut *SOCKET1_TX_BUF.get() },
-        },
-        unsafe { bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0) },
-    );
+    let mut link1 = LinkInterface::<_, _, 512>::new(rx_aligned1, tx_buffer0, unsafe {
+        bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0)
+    });
+    link1.connect();
 
     info!("Links created, waiting for connection...");
     info!("Link0 initial state: {:?}", link0.state());
@@ -222,9 +199,6 @@ fn main() -> ! {
     link0.send(wire_0.as_bytes());
     link1.send(wire_1.as_bytes());
 
-    // Both links share a single CPU, so recv_blocking can't be used — it only
-    // polls its own link, starving the other side's transmissions.  Poll both
-    // links and use try_recv instead.
     let mut struct0_received = false;
     let mut struct1_received = false;
 
@@ -281,10 +255,6 @@ fn main() -> ! {
     link0.close();
     link1.close();
 
-    // Poll to process close handshake
-    // Note: TCP close goes through states like FinWait1, FinWait2, Closing, TimeWait
-    // before reaching Closed. TimeWait can have a long timeout, so we check for
-    // closing state rather than fully closed.
     for _ in 0..5000 {
         link0.poll();
         link1.poll();
@@ -294,7 +264,6 @@ fn main() -> ! {
             info!("Link0 final state: {:?}", link0.state());
             info!("Link1 final state: {:?}", link1.state());
 
-            // Check if fully closed (may not happen due to TimeWait timeout)
             if link0.is_closed() && link1.is_closed() {
                 info!("Both links reached Closed state");
             }
@@ -312,10 +281,23 @@ fn main() -> ! {
     }
 }
 
-#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     let mut uart = INSTANCES.uart;
     writeln!(uart, "PANIC: {}", info).ok();
     loop {}
+}
+
+#[export_name = "ExceptionHandler"]
+fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
+    let mut uart = INSTANCES.uart;
+    riscv::interrupt::free(|| {
+        uwriteln!(uart, "... caught an exception. Looping forever now.\n").unwrap();
+        writeln!(uart, "mcause: {:?}\n", mcause::read()).unwrap();
+        writeln!(uart, "mepc: {:?}\n", mepc::read()).unwrap();
+        writeln!(uart, "mtval: {:?}\n", mtval::read()).unwrap();
+    });
+    loop {
+        continue;
+    }
 }

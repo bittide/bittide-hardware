@@ -106,8 +106,8 @@ dutWithBinary latency binaryName = withLittleEndian $ circuit $ \mm -> do
         }
 {-# OPAQUE dutWithBinary #-}
 
-type IMemWords = DivRU (64 * 1024) 4
-type DMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (80 * 1024) 4
+type DMemWords = DivRU (80 * 1024) 4
 
 takeUntilList :: (Eq a) => [a] -> [a] -> [a]
 takeUntilList _ [] = []
@@ -139,7 +139,7 @@ simSmolTcp = putStr $ simResultSmolTcp d0
 simResultSmolTcp :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> String
 simResultSmolTcp lat = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def{timeoutAfter = 10_000_000} (dutNoMM lat)
+  uartStream = sampleC def{timeoutAfter = 50_000_000} (dutNoMM lat)
 
   dutNoMM :: (HasCallStack, KnownNat n) => SNat n -> Circuit () (Df Slow (BitVector 8))
   dutNoMM latency = circuit $ do
