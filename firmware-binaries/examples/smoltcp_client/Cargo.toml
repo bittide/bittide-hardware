@@ -31,7 +31,7 @@ default-features = false
 
 [dependencies.log]
 version = "0.4.21"
-features = ["max_level_trace", "release_max_level_debug"]
+features = ["max_level_trace", "release_max_level_info"]
 
 [dependencies.smoltcp]
 version = "0.12.0"
