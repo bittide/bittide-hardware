@@ -232,7 +232,7 @@ fn main() -> ! {
     let timer = INSTANCES.timer;
     let make_timer = || unsafe { bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0) };
 
-    let mut link0 = LinkInterface::new(rx0, tx0, get_buffers(0), timer);
+    let mut link0 = LinkInterface::new(rx0, tx0, get_buffers(0), make_timer());
     let mut link1 = LinkInterface::new(rx1, tx1, get_buffers(1), make_timer());
     let mut link2 = LinkInterface::new(rx2, tx2, get_buffers(2), make_timer());
     let mut link3 = LinkInterface::new(rx3, tx3, get_buffers(3), make_timer());
@@ -284,7 +284,8 @@ fn main() -> ! {
     )
     .unwrap();
 
-    for _ in 0..10000 {
+    let deadline = timer.now() + Duration::from_secs(1);
+    while timer.now() < deadline {
         for (i, link) in [
             &mut link0, &mut link1, &mut link2, &mut link3, &mut link4, &mut link5, &mut link6,
         ]
@@ -294,17 +295,24 @@ fn main() -> ! {
             link.poll();
 
             // Try receiving partner DNA if we haven't already
-            let mut dna_buf = [0u8; 12];
-            if partner_dnas[i].is_none() && link.try_recv_bytes(&mut dna_buf).is_ok() {
-                partner_dnas[i] = Some(dna_buf);
-                debug!("  Link {}: received partner DNA: {:02X?}", i, dna_buf);
+            if partner_dnas[i].is_none() {
+                let mut dna_buf = [0u8; 12];
+                match link.try_recv_bytes(&mut dna_buf) {
+                    Ok(12) => {
+                        partner_dnas[i] = Some(dna_buf);
+                        debug!("  Link {}: received partner DNA: {:02X?}", i, dna_buf);
+                    }
+                    Ok(n) if n > 0 => {
+                        error!("  Link {}: partial DNA recv: {} bytes", i, n);
+                    }
+                    _ => {}
+                }
             }
 
             // Try receiving partner port if we received their DNA and haven't received their port yet
             if partner_dnas[i].is_some() && !port_received[i] {
-                let mut port_buf = [0u8; 4];
-                if link.try_recv_bytes(&mut port_buf).is_ok() {
-                    partner_ports[i] = u32::from_le_bytes(port_buf);
+                if let Ok(port) = link.try_recv::<u32>() {
+                    partner_ports[i] = port;
                     port_received[i] = true;
                     debug!("  Link {}: received partner port: {}", i, partner_ports[i]);
                 }
@@ -312,17 +320,17 @@ fn main() -> ! {
 
             // Try sending our DNA if we haven't already
             if !dna_sent[i] && link.try_send_bytes(&dna).is_ok() {
-                info!("  Link {}: sent our DNA", i);
+                debug!("  Link {}: sent our DNA", i);
                 dna_sent[i] = true;
             }
 
             // Try sending our port if we sent our DNA and haven't sent our port yet.
             if dna_sent[i] && !port_sent[i] && link.try_send_bytes(&port_bytes[i]).is_ok() {
-                info!("  Link {}: sent our port {}", i, i);
+                debug!("  Link {}: sent our port {}", i, i);
                 port_sent[i] = true;
             }
         }
-        if partner_dnas.iter().all(|dna| dna.is_some()) {
+        if partner_dnas.iter().all(|dna| dna.is_some()) && port_received.iter().all(|&r| r) {
             info!("  DNA and port exchange complete for all links!");
             break;
         }
