@@ -60,7 +60,7 @@ vecsFromElf elfPath maybeDeviceTree = do
     (_iStartAddr, _, iList) = extractIntMapData iMemIntMap
     (_dStartAddr, _, dList) = extractIntMapData dMemIntMap
     iListPadded = padToSize "Instruction memory" (Just (natToNum @nInstrWords)) 0 iList
-    dListPadded = padToSize "Data memory" (Just (natToNum @nInstrWords)) 0 dList
+    dListPadded = padToSize "Data memory" (Just (natToNum @nDataWords)) 0 dList
 
   pure (unsafeFromList iListPadded, unsafeFromList dListPadded)
 
