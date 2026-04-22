@@ -7,19 +7,15 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import GHC.Stack (HasCallStack)
-import Project.FilePath
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.Calendar
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam
+import Bittide.Instances.Common (emptyPeConfig)
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
 import Bittide.ScatterGather
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
@@ -51,16 +47,17 @@ gatherConfig = GatherConfig SNat $ CalendarConfig d32 (SNat @12) gatherCal gathe
 
 dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
 dutMM =
-  (\(SimOnly mm, _) -> mm)
+  getMMAny
     $ withClockResetEnable @System clockGen (resetGenN d2) enableGen
-    $ toSignals (dutWithBinary "") ((), pure $ deepErrorX "memoryMap")
+    $ dutWithPeConfig
+    $ emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
 
 -- | Parameterized DUT that loads a specific firmware binary.
-dutWithBinary ::
+dutWithPeConfig ::
   (HasCallStack, HiddenClockResetEnable dom) =>
-  String ->
-  Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
-dutWithBinary binaryName = withLittleEndian $ circuit $ \mm -> do
+  PeConfig 7 ->
+  Circuit (ToConstBwd Mm, ()) (Df dom (BitVector 8))
+dutWithPeConfig peConfig = withLittleEndian $ circuit $ \(mm, _unit) -> do
   (uartRx, jtagIdle) <- idleSource
   [ uartBus
     , wbSu
@@ -68,37 +65,12 @@ dutWithBinary binaryName = withLittleEndian $ circuit $ \mm -> do
     , wbSuCal
     , wbGuCal
     ] <-
-    processingElement NoDumpVcd (peConfig binaryName) -< (mm, jtagIdle)
+    processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   Fwd link <- gatherUnitWbC gatherConfig -< (wbGu, wbGuCal)
   scatterUnitWbC scatterConfig link -< (wbSu, wbSuCal)
   idC -< uartTx
- where
-  peConfig binary = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> binary
-    pure
-      PeConfig
-        { cpu = vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr elfPath
-        , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData elfPath
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
-{-# OPAQUE dutWithBinary #-}
+{-# OPAQUE dutWithPeConfig #-}
 
 type IMemWords = DivRU (16 * 1024) 4
 type DMemWords = DivRU (16 * 1024) 4
