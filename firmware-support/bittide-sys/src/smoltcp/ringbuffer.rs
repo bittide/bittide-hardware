@@ -33,7 +33,7 @@ use bittide_hal::manual_additions::ringbuffer::{
 };
 
 use crc::{Crc, CRC_32_ISCSI};
-use log::{debug, trace, warn};
+use log::{debug, error, trace, warn};
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
@@ -119,6 +119,11 @@ where
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // Disable RX buffer to prevent it from advancing while we process the buffer contents
+        if !(self.rx_buffer.buffer.get_enable()) {
+            error!("RX buffer is enabled at start of receive - this should not happen. Enabling and returning None.");
+            self.rx_buffer.buffer.set_enable(true);
+            return None;
+        }
         self.rx_buffer.buffer.set_enable(false);
         core::sync::atomic::fence(core::sync::atomic::Ordering::AcqRel);
 
@@ -135,7 +140,7 @@ where
             core::sync::atomic::fence(core::sync::atomic::Ordering::AcqRel);
             // Check if this is the same packet we saw before (based on CRC)
             if crc == self.last_crc {
-                trace!("Detected repeated packet with CRC {}", crc);
+                debug!("Detected repeated packet with CRC {}", crc);
                 self.rx_buffer.buffer.set_enable(true);
                 return None;
             }
@@ -152,11 +157,9 @@ where
 
             // Calculate total packet size: header + payload
             let total_len = PACKET_HEADER_SIZE + packet_len;
-            trace!(
+            debug!(
                 "rx packet seq {} len {} total {}",
-                seq_num,
-                packet_len,
-                total_len
+                seq_num, packet_len, total_len
             );
 
             // Create slice directly from hardware buffer for CRC validation
@@ -168,7 +171,7 @@ where
 
             core::sync::atomic::fence(core::sync::atomic::Ordering::AcqRel);
             if calculated_crc != crc {
-                trace!("CRC validation failed for packet seq {}", seq_num);
+                debug!("CRC validation failed for packet seq {}", seq_num);
                 self.rx_buffer.buffer.set_enable(true);
                 return None;
             }

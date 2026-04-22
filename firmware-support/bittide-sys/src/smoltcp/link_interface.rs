@@ -142,6 +142,7 @@ where
     /// This should be called regularly in the main loop to process
     /// incoming packets, retransmissions, and connection state changes.
     pub fn poll(&mut self) {
+        debug!("Polling LinkInterface (last state: {:?})", self.last_state);
         let timestamp = to_smoltcp_instant(self.timer.now());
         self.iface
             .poll(timestamp, &mut self.device, &mut self.sockets);

@@ -16,6 +16,8 @@ pub trait TransmitRingbufferInterface {
     /// Enable transmission of frames to the network. When disabled, will transmit zeroes.
     fn set_enable(&self, enabled: bool);
 
+    fn get_enable(&self) -> bool;
+
     /// Write a slice to the transmit buffer at the given offset. The slice must not exceed the buffer length when combined with the offset.
     fn write_slice(&self, src: &[[u8; 8]], offset: usize) {
         assert!(src.len() + offset <= Self::DATA_LEN);
@@ -134,6 +136,7 @@ pub trait ReceiveRingbufferInterface {
     fn set_clear_at_count(&self, count: usize);
 
     fn set_enable(&self, enabled: bool);
+    fn get_enable(&self) -> bool;
 
     /// Read a slice from the receive buffer at the given offset. The slice must not exceed the buffer length when combined with the offset.
     fn read_slice(&self, dst: &mut [[u8; 8]], offset: usize) {
@@ -196,6 +199,9 @@ macro_rules! impl_ringbuffer_interfaces {
             fn set_enable(&self, enabled: bool) {
                 <$rx>::set_enable(self, enabled);
             }
+            fn get_enable(&self) -> bool {
+                <$rx>::enable(self)
+            }
         }
 
         impl TransmitRingbufferInterface for $tx {
@@ -206,6 +212,9 @@ macro_rules! impl_ringbuffer_interfaces {
             }
             fn set_enable(&self, enabled: bool) {
                 <$tx>::set_enable(self, enabled);
+            }
+            fn get_enable(&self) -> bool {
+                <$tx>::enable(self)
             }
         }
     };
@@ -226,6 +235,7 @@ enum AlignPhase {
     Unaligned,
     FindingAlignment,
     AcknowledgingAlignment,
+    WaitingForZeroes,
     Aligned,
 }
 
@@ -283,15 +293,24 @@ where
         let ack_pattern = [ALIGNMENT_ACKNOWLEDGE.to_le_bytes()];
         tx.write_slice(&ack_pattern, 0);
 
-        let mut acknowledged = false;
-        while !acknowledged {
-            // Read directly from hardware buffer
+        loop {
             let data_buf = unsafe { self.buffer.base_ptr().read_volatile() };
             let value = u64::from_le_bytes(data_buf);
-            acknowledged = value == ALIGNMENT_ACKNOWLEDGE;
+            if value == ALIGNMENT_ACKNOWLEDGE {
+                break;
+            }
+        }
+        debug!("Partner acknowledged, disabling TX");
+        tx.set_enable(false);
+
+        loop {
+            let data_buf = unsafe { self.buffer.base_ptr().read_volatile() };
+            let value = u64::from_le_bytes(data_buf);
+            if value == 0 {
+                break;
+            }
         }
         debug!("Alignment complete");
-        tx.set_enable(false);
         self.buffer.set_enable(false);
         self.tx_reference = tx.base_ptr() as *const _ as usize;
         self.phase = AlignPhase::Aligned;
@@ -336,11 +355,20 @@ where
                 let data_buf = unsafe { self.buffer.base_ptr().read_volatile() };
                 let value = u64::from_le_bytes(data_buf);
                 if value == ALIGNMENT_ACKNOWLEDGE {
+                    debug!("Partner acknowledged, disabling TX");
+                    tx.set_enable(false);
+                    self.phase = AlignPhase::WaitingForZeroes;
+                }
+                false
+            }
+            AlignPhase::WaitingForZeroes => {
+                let data_buf = unsafe { self.buffer.base_ptr().read_volatile() };
+                let value = u64::from_le_bytes(data_buf);
+                if value == 0 {
                     debug!("Alignment complete");
+                    self.buffer.set_enable(false);
                     self.tx_reference = tx.base_ptr() as *const _ as usize;
                     self.phase = AlignPhase::Aligned;
-                    tx.set_enable(false);
-                    self.buffer.set_enable(false);
                     return true;
                 }
                 false

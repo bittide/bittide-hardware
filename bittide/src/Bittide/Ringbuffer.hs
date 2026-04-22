@@ -78,7 +78,7 @@ transmitRingbuffer primitive SNat = circuit $ \wb -> do
  where
   transmitEnableConfig =
     (registerConfig "enable")
-      { access = WriteOnly
+      { access = ReadWrite
       , description = "Enable signal that controls transmission of frames to the network"
       }
   regConfig =
@@ -145,7 +145,7 @@ receiveRingbuffer primitive SNat = circuit $ \(wb, Fwd frames) -> do
 
   receiveEnableConfig =
     (registerConfig "enable")
-      { access = WriteOnly
+      { access = ReadWrite
       , description = "Enable signal for receiving frames from the network"
       }
   regConfig =
