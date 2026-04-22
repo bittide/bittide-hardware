@@ -282,43 +282,15 @@ driverTcp testName targets = do
               <> ", but got: "
               <> show (L.length <$> allTapInfos)
 
-      gdbStarts = liftIO <$> fmap (const Gdb.start) targets
-      gdbCleanupAction gdb = do
-        putStrLn "Retrieving final CPU state"
-        Gdb.interruptCommand gdb
-        Gdb.runCommand gdb
-          . unlines
-          $ [ "printf \"Final CPU state\\n\""
-            , "i r"
-            , "bt"
-            ]
-        Gdb.stop gdb
-
-    brackets gdbStarts (liftIO . gdbCleanupAction) $ \ccGdbs -> do
-      -- Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
-      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
-
-      brackets gdbStarts (liftIO . gdbCleanupAction) $ \muGdbs -> do
-        -- Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "smoltcp-demo") muGdbs muTapInfos targets
+      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "smoltcp-demo") muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-
-          -- _ <- liftIO $ do
-          --   mapConcurrently
-          --     ( \gdb -> do
-          --         Gdb.setBreakpoints gdb ["_start_trap_rust"]
-          --         Gdb.setBreakpointHook gdb
-          --     )
-          --     muGdbs
-
-          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue muGdbs
-
+          liftIO $ mapConcurrently_ Gdb.continue (ccGdbs <> muGdbs)
           liftIO
             $ T.tryWithTimeoutOn
               T.PrintActionTime
