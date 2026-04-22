@@ -119,6 +119,8 @@ fn main() -> ! {
     rx_aligned.align(&tx);
 
     tx.clear();
+    rx_aligned.buffer.set_enable(true);
+    tx.set_enable(true);
     let pattern_d: [[u8; 8]; LEN] = core::array::from_fn(|i| (0x1000 + i as u64).to_le_bytes());
     tx.write_slice(&pattern_d, 0);
     wait(&timer);
