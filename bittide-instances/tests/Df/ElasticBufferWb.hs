@@ -7,6 +7,7 @@
 module Df.ElasticBufferWb where
 
 import Bittide.Instances.Tests.ElasticBufferWb
+import Bittide.ProcessingElement (PeConfig)
 import Clash.Explicit.Prelude
 import Data.Char (chr)
 import Data.Maybe (catMaybes, mapMaybe)
@@ -16,18 +17,22 @@ import Protocols.MemoryMap
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+import VexRiscv (DumpVcd)
 
 -- | Simulate the UART output of the elastic buffer test
 sim :: IO ()
-sim = putStr simResult
+sim = do
+  dumpVcd <- getDumpVcd
+  peConfig <- peConfigSim
+  putStr $ simResult dumpVcd peConfig
 
-simResult :: (HasCallStack) => String
-simResult = chr . fromIntegral <$> catMaybes uartStream
+simResult :: (HasCallStack) => DumpVcd -> PeConfig 5 -> String
+simResult dumpVcd peConfig = chr . fromIntegral <$> catMaybes uartStream
  where
   uartStream = sampleC def{timeoutAfter = 300_000} testCircuit
 
   testCircuit :: Circuit () (Df XilinxSystem (BitVector 8))
-  testCircuit = idleSource |> ignoreMM |> dut
+  testCircuit = idleSource |> ignoreMM |> dut dumpVcd peConfig
 
 {- | Test whether the elastic buffer can be controlled via Wishbone.
 The firmware runs multiple tests and outputs a result for each and ends with
@@ -35,14 +40,18 @@ The firmware runs multiple tests and outputs a result for each and ends with
 -}
 case_elastic_buffer_wb_test :: Assertion
 case_elastic_buffer_wb_test = do
+  dumpVcd <- getDumpVcd
+  peConfig <- peConfigSim
+  let
+    uartString = simResult dumpVcd peConfig
+    msg = "Received the following from the CPU over UART:\n" <> uartString
   assertBool
     msg
-    (firstTrue $ mapMaybe checkLine (lines simResult))
+    (firstTrue $ mapMaybe checkLine $ lines uartString)
  where
   firstTrue (True : _) = True
   firstTrue _ = False
 
-  msg = "Received the following from the CPU over UART:\n" <> simResult
   checkLine :: String -> Maybe Bool
   checkLine line
     | line == "All elastic buffer tests passed" = Just True
