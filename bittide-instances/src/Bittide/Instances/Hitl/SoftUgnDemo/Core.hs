@@ -77,8 +77,8 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , depthI = SNat @(Div (8 * 16 * 1024) 4) -- One RAMB18E2 is 16KB, this uses 8 of them.
-    , depthD = SNat @(Div (8 * 16 * 1024) 4) -- One RAMB18E2 is 16KB, this uses 8  of them.
+    , depthI = SNat @(Div (10 * 16 * 1024) 4) -- One RAMB18E2 is 16KB, this uses 10 of them.
+    , depthD = SNat @(Div (10 * 16 * 1024) 4) -- One RAMB18E2 is 16KB, this uses 10 of them.
     , initI = Nothing
     , initD = Nothing
     , iBusTimeout = d0
