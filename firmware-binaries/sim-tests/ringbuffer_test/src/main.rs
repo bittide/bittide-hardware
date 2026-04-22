@@ -116,8 +116,7 @@ fn main() -> ! {
 
     // Test 6: AlignedReceiveBuffer::align — after alignment, TX[i] arrives at RX[i] exactly.
     let mut rx_aligned = AlignedReceiveBuffer::new(rx);
-    rx_aligned.align(&tx);
-
+    while !rx_aligned.align_step(&tx) {}
     tx.clear();
     rx_aligned.buffer.set_enable(true);
     tx.set_enable(true);

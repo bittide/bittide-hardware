@@ -221,10 +221,18 @@ impl_ringbuffer_interfaces! {
     tx: crate::hals::soft_ugn_demo_mu::devices::TransmitRingbuffer
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlignPhase {
+    Unaligned,
+    FindingAlignment,
+    AcknowledgingAlignment,
+    Aligned,
+}
+
 pub struct AlignedReceiveBuffer<Rx, Tx> {
     pub buffer: Rx,
-    rx_aligned: bool,
     tx_reference: usize,
+    phase: AlignPhase,
     _tx: core::marker::PhantomData<Tx>,
 }
 
@@ -237,14 +245,14 @@ where
         debug!("ringbuffer aligned receive buffer new");
         Self {
             buffer,
-            rx_aligned: false,
             tx_reference: 0,
+            phase: AlignPhase::Unaligned,
             _tx: core::marker::PhantomData,
         }
     }
 
     pub fn is_aligned(&self) -> bool {
-        self.rx_aligned
+        self.phase == AlignPhase::Aligned
     }
 
     pub fn align(&mut self, tx: &Tx) {
@@ -255,16 +263,16 @@ where
         self.buffer.set_enable(true);
         tx.write_slice(&announce_pattern, 0);
 
-        while !self.rx_aligned {
+        let mut aligned = false;
+        while !aligned {
             for rx_idx in 0..Rx::DATA_LEN {
-                // Read directly from hardware buffer
                 let data_buf = unsafe { self.buffer.base_ptr().add(rx_idx).read_volatile() };
                 let value = u64::from_le_bytes(data_buf);
 
                 if value == ALIGNMENT_ANNOUNCE || value == ALIGNMENT_ACKNOWLEDGE {
                     debug!("ringbuffer align marker at rx_idx {}", rx_idx);
                     if rx_idx == 0 {
-                        self.rx_aligned = true;
+                        aligned = true;
                     } else {
                         self.buffer.set_clear_at_count(rx_idx);
                     }
@@ -286,11 +294,63 @@ where
         tx.set_enable(false);
         self.buffer.set_enable(false);
         self.tx_reference = tx.base_ptr() as *const _ as usize;
+        self.phase = AlignPhase::Aligned;
+    }
+
+    /// Perform one step of the alignment procedure. Returns `true` when alignment
+    /// is fully complete (including acknowledgement).
+    pub fn align_step(&mut self, tx: &Tx) -> bool {
+        match self.phase {
+            AlignPhase::Unaligned => {
+                debug!("ringbuffer align_start");
+                assert_eq!(self.phase, AlignPhase::Unaligned);
+                tx.clear();
+                let announce_pattern = [ALIGNMENT_ANNOUNCE.to_le_bytes()];
+                tx.set_enable(true);
+                self.buffer.set_enable(true);
+                tx.write_slice(&announce_pattern, 0);
+                self.phase = AlignPhase::FindingAlignment;
+                false
+            }
+            AlignPhase::Aligned => true,
+            AlignPhase::FindingAlignment => {
+                for rx_idx in 0..Rx::DATA_LEN {
+                    let data_buf = unsafe { self.buffer.base_ptr().add(rx_idx).read_volatile() };
+                    let value = u64::from_le_bytes(data_buf);
+
+                    if value == ALIGNMENT_ANNOUNCE || value == ALIGNMENT_ACKNOWLEDGE {
+                        debug!("ringbuffer align marker at rx_idx {}", rx_idx);
+                        if rx_idx == 0 {
+                            let ack_pattern = [ALIGNMENT_ACKNOWLEDGE.to_le_bytes()];
+                            tx.write_slice(&ack_pattern, 0);
+                            self.phase = AlignPhase::AcknowledgingAlignment;
+                            return false;
+                        } else {
+                            self.buffer.set_clear_at_count(rx_idx);
+                        }
+                    }
+                }
+                false
+            }
+            AlignPhase::AcknowledgingAlignment => {
+                let data_buf = unsafe { self.buffer.base_ptr().read_volatile() };
+                let value = u64::from_le_bytes(data_buf);
+                if value == ALIGNMENT_ACKNOWLEDGE {
+                    debug!("Alignment complete");
+                    self.tx_reference = tx.base_ptr() as *const _ as usize;
+                    self.phase = AlignPhase::Aligned;
+                    tx.set_enable(false);
+                    self.buffer.set_enable(false);
+                    return true;
+                }
+                false
+            }
+        }
     }
 
     pub fn clear_alignment(&mut self) {
         debug!("ringbuffer clear alignment");
-        self.rx_aligned = false;
         self.tx_reference = 0;
+        self.phase = AlignPhase::Unaligned;
     }
 }
