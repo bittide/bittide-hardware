@@ -120,6 +120,7 @@ where
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // Disable RX buffer to prevent it from advancing while we process the buffer contents
         self.rx_buffer.buffer.set_enable(false);
+        core::sync::atomic::fence(core::sync::atomic::Ordering::AcqRel);
 
         // Get direct pointer to hardware buffer (base pointer points to array of [u8; 8])
         let hw_buffer_ptr = self.rx_buffer.buffer.base_ptr() as *const u8;
@@ -131,6 +132,7 @@ where
             let seq_num = *(hw_buffer_ptr.add(4) as *const u16);
             let packet_len = *(hw_buffer_ptr.add(6) as *const u16) as usize;
 
+            core::sync::atomic::fence(core::sync::atomic::Ordering::AcqRel);
             // Check if this is the same packet we saw before (based on CRC)
             if crc == self.last_crc {
                 trace!("Detected repeated packet with CRC {}", crc);
@@ -163,6 +165,8 @@ where
 
             // Validate CRC
             let calculated_crc = CRC.checksum(&packet_bytes[4..]);
+
+            core::sync::atomic::fence(core::sync::atomic::Ordering::AcqRel);
             if calculated_crc != crc {
                 trace!("CRC validation failed for packet seq {}", seq_num);
                 self.rx_buffer.buffer.set_enable(true);
