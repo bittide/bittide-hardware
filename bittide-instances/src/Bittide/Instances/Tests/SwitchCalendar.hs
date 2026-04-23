@@ -4,16 +4,15 @@
 module Bittide.Instances.Tests.SwitchCalendar where
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam (
-  ContentType (Vec),
+import Bittide.Instances.Common (
+  PeConfigElfSource (NameOnly),
+  dumpVcdFromEnvVar,
+  emptyPeConfig,
+  peConfigFromElf,
  )
 import Bittide.Instances.Domains (Basic200)
 import Bittide.Instances.Pnr.Switch
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util (
-  vecFromElfData,
-  vecFromElfInstr,
- )
 import Bittide.SharedTypes
 import Bittide.Wishbone hiding (MemoryMap)
 import Clash.Explicit.Prelude
@@ -23,40 +22,44 @@ import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Project.FilePath (
   CargoBuildType (..),
-  findParentContaining,
-  firmwareBinariesDir,
  )
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import System.Environment (lookupEnv)
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
-import VexRiscv (DumpVcd (DumpVcd, NoDumpVcd))
+import VexRiscv (DumpVcd (NoDumpVcd))
 
 memoryMap :: (HasCallStack) => MemoryMap
-memoryMap = (\(SimOnly mm, _) -> mm) $ toSignals dut ((), pure $ deepErrorX "memoryMap")
+memoryMap =
+  getMMAny
+    $ dut NoDumpVcd
+    $ emptyPeConfig
+      (SNat @IMemWords)
+      (SNat @DMemWords)
+      d0
+      d0
+      False
+      vexRiscv0
 
 main :: IO ()
 main = sim
 
 sim :: IO ()
-sim = putStrLn simResult
+sim = do
+  dumpVcd <- getDumpVcd
+  peConfig <- peConfigSim
+  putStrLn $ simResult dumpVcd peConfig
 
-simResult :: String
-simResult = chr . fromIntegral <$> catMaybes uartStream
+simResult :: DumpVcd -> PeConfig 4 -> String
+simResult dumpVcd peConfig = chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def dut0
+  uartStream = sampleC def $ unMemmap $ dut dumpVcd peConfig
 
-  dut0 :: Circuit () (Df Basic200 (BitVector 8))
-  dut0 = Circuit $ ((),) . snd . toSignals dut . ((),) . snd
-
-dut :: Circuit (ToConstBwd Mm) (Df Basic200 (BitVector 8))
-dut =
+dut :: DumpVcd -> PeConfig 4 -> Circuit (ToConstBwd Mm, ()) (Df Basic200 (BitVector 8))
+dut dumpVcd peConfig =
   withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
-    $ \mm -> do
+    $ \(mm, _unit) -> do
       (uartRx, jtag) <- idleSource
       [uartBus, (switchMm, switchCalWb)] <-
         processingElement dumpVcd peConfig -< (mm, jtag)
@@ -64,37 +67,22 @@ dut =
       _switchResult <-
         switchExample clockGen (resetGenN d2) -< (switchMm, (Fwd (repeat $ pure 0), switchCalWb))
       idC -< uartTx
- where
-  dumpVcd =
-    unsafePerformIO $ do
-      mVal <- lookupEnv "SWITCHCALENDAR_DUMP_VCD"
-      case mVal of
-        Just s -> pure (DumpVcd s)
-        _ -> pure NoDumpVcd
-
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "switch_calendar_test"
-    pure
-      PeConfig
-        { cpu = vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr elfPath
-        , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData elfPath
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
 {-# OPAQUE dut #-}
 
 type IMemWords = DivRU (8 * 1024) 4
 type DMemWords = DivRU (16 * 1024) 4
+
+getDumpVcd :: IO DumpVcd
+getDumpVcd = dumpVcdFromEnvVar "SWITCHCALENDAR_DUMP_VCD"
+
+peConfigSim :: IO (PeConfig 4)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "switch_calendar_test")
+    Release
+    d0
+    d0
+    False
+    vexRiscv0
