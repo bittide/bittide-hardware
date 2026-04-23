@@ -10,13 +10,12 @@ import Clash.Prelude (withClockResetEnable)
 
 -- Local
 import Bittide.Axi4
-import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
 import Bittide.Wishbone
 import Project.FilePath
 
 -- Other
+import Bittide.Instances.Common (PeConfigElfSource (NameOnly), peConfigFromElf)
 import Bittide.SharedTypes (withLittleEndian)
 import Control.Monad (forM_)
 import Data.Char
@@ -26,10 +25,7 @@ import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Idle
 import Protocols.MemoryMap
-import qualified Protocols.ToConst as ToConst
 import Protocols.Wishbone
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -38,39 +34,43 @@ import Text.Parsec.String
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- Qualified
-
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.DfConv as DfConv
+import qualified Protocols.ToConst as ToConst
 
 -- {-# ANN module "HLint: Missing NOINLINE pragma" #-}
 
 sim :: IO ()
-sim =
+sim = do
+  peConfig <- peConfigSim
   putStr
     $ fmap (chr . fromIntegral)
-    $ catMaybes (sampleC def dut)
+    $ catMaybes (sampleC def $ dut peConfig)
 
 {- | Run the axi module self test with processingElement and inspect it's uart output.
 The test returns names of tests and a boolean indicating if the test passed.
 -}
 case_axi_stream_rust_self_test :: Assertion
-case_axi_stream_rust_self_test =
+case_axi_stream_rust_self_test = do
+  peConfig <- peConfigSim
+  let
+    uartStream = sampleC def $ dut peConfig
+    simResult = chr . fromIntegral <$> catMaybes uartStream
   -- Run the test with HUnit
   case parseTestResults simResult of
     Left errMsg -> assertFailure $ show errMsg <> "\n" <> simResult
     Right results -> do
       forM_ results $ \result -> assertResult result
  where
-  assertResult (TestResult name (Just errMsg)) = assertFailure ("Test " <> name <> " failed with error \"" <> errMsg <> "\"")
+  assertResult (TestResult name (Just errMsg)) =
+    assertFailure ("Test " <> name <> " failed with error \"" <> errMsg <> "\"")
   assertResult (TestResult _ Nothing) = return ()
-  simResult = chr . fromIntegral <$> catMaybes uartStream
-  uartStream = sampleC def dut
 
 {- | A simple instance containing just VexRisc and UART as peripheral.
 Runs the `hello` binary from `firmware-binaries`.
 -}
-dut :: Circuit () (Df System (BitVector 8))
-dut =
+dut :: PeConfig 5 -> Circuit () (Df System (BitVector 8))
+dut peConfig =
   withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
@@ -98,25 +98,22 @@ dut =
       idC -< uartRx
  where
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
-    pure
-      PeConfig
-        { cpu = Riscv32imc.vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
 {-# OPAQUE dut #-}
 
 type IMemWords = DivRU (8 * 1024) 4
 type DMemWords = DivRU (8 * 1024) 4
+
+peConfigSim :: IO (PeConfig 5)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "axi_stream_self_test")
+    Release
+    d0
+    d0
+    False
+    Riscv32imc.vexRiscv0
 
 data TestResult = TestResult String (Maybe String) deriving (Show, Eq)
 
