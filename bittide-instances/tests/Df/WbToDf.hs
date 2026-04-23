@@ -5,6 +5,7 @@ module Df.WbToDf where
 
 import Bittide.Instances.Tests.WbToDf
 import Clash.Explicit.Prelude
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Char
 import Hedgehog
 import Protocols
@@ -17,12 +18,14 @@ import Test.Tasty.TH
 
 -- | Test whether the wbToDf component correctly converts wishbone writes to Df stream transactions
 prop_wb_to_df_test :: Property
-prop_wb_to_df_test = propWithModel eOpts (pure []) model impl prop
+prop_wb_to_df_test = property $ do
+  dumpVcd <- liftIO getDumpVcd
+  peConfig <- liftIO peConfigSim
+  let
+    impl :: Circuit (Df System ()) (Df System SomeAdt, Df System (BitVector 8))
+    impl = idleSink |> (unMemmap $ dut dumpVcd peConfig)
+  propWithModelT eOpts (pure []) model impl prop
  where
-  -- We can not make a `Test` instance for `()`, so we use `Df System ()` as placeholder
-  impl :: Circuit (Df System ()) (Df System SomeAdt, Df System (BitVector 8))
-  impl = idleSink |> ignoreMM |> dut
-
   eOpts =
     defExpectOptions
       { eoSampleMax = 1_000_000
