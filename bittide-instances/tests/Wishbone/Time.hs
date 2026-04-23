@@ -8,13 +8,16 @@ module Wishbone.Time where
 import Clash.Prelude
 
 -- Local
-import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains
+import Bittide.Instances.Domains (Basic50)
+import Bittide.Instances.Tests.TimeWb (
+  dMemWords,
+  dMemWordsC,
+  dutNoMm,
+  iMemWords,
+  iMemWordsC,
+  peConfigSim,
+ )
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withLittleEndian)
-import Bittide.Wishbone
-import Project.FilePath
 
 -- Other
 import Control.Monad (forM_, when)
@@ -22,73 +25,40 @@ import Data.Char
 import Data.List (isInfixOf)
 import Data.Maybe
 import Protocols
-import Protocols.Idle
-import Protocols.MemoryMap
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
-import VexRiscv (DumpVcd (NoDumpVcd))
-
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 
 sim :: IO ()
-sim = putStrLn simResult
+sim = do
+  peConfig <- peConfigSim iMemWords dMemWords "time_self_test"
+  putStrLn $ simResult peConfig
 
-simResult :: String
-simResult = chr . fromIntegral <$> catMaybes uartStream
+simResult :: PeConfig 4 -> String
+simResult peConfig = chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def dut
+  uartStream =
+    sampleC def
+      $ withClockResetEnable @Basic50 clockGen resetGen enableGen
+      $ dutNoMm peConfig
 
 {- | Run the timing module self test with processingElement and inspect it's uart output.
 The test returns names of tests and a boolean indicating if the test passed.
 -}
 case_time_rust_self_test :: Assertion
-case_time_rust_self_test =
+case_time_rust_self_test = do
+  peConfig <- peConfigSim iMemWords dMemWords "time_self_test"
+  let simOutput = simResult peConfig
   -- Run the test with HUnit
-  case parseTestResults simResult of
-    Left err -> assertFailure $ show err <> "\n" <> simResult
+  case parseTestResults simOutput of
+    Left err -> assertFailure $ show err <> "\n" <> simOutput
     Right results -> do
       forM_ results $ \result -> assertResult result
  where
   assertResult (TestResult name (Just err)) = assertFailure ("Test " <> name <> " failed with error" <> err)
   assertResult (TestResult _ Nothing) = return ()
-
-{- | A simple instance containing just VexRisc and UART as peripheral.
-Runs the `hello` binary from `firmware-binaries`.
--}
-dut :: Circuit () (Df Basic50 (BitVector 8))
-dut = withLittleEndian
-  $ withClockResetEnable clockGen (resetGenN d2) enableGen
-  $ circuit
-  $ \_unit -> do
-    (uartRx, jtag) <- idleSource
-    [uartBus, (mmTime, timeBus)] <-
-      processingElement NoDumpVcd peConfig -< (mm, jtag)
-    mm <- ignoreMM
-    (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-    _localCounter <- timeWb Nothing -< (mmTime, timeBus)
-    idC -< uartTx
- where
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "time_self_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
-    pure
-      PeConfig
-        { cpu = Riscv32imc.vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
-{-# OPAQUE dut #-}
 
 type IMemWords = DivRU (8 * 1024) 4
 type DMemWords = DivRU (4 * 1024) 4
@@ -125,6 +95,13 @@ This test validates that the C HAL for the timer peripheral works correctly.
 -}
 case_time_c_test :: Assertion
 case_time_c_test = do
+  peConfig <- peConfigSim iMemWordsC dMemWordsC "c_timer_wb"
+  let
+    uartStreamC =
+      sampleC def{timeoutAfter = 300_000}
+        $ withClockResetEnable @Basic50 clockGen (resetGenN d2) enableGen
+        $ dutNoMm peConfig
+    simResultC = chr . fromIntegral <$> catMaybes uartStreamC
   when (not $ "=== All tests PASSED! ===" `isInfixOf` simResultC)
     $ assertFailure
     $ "C timer test did not report all tests PASSED\n"
@@ -137,45 +114,6 @@ case_time_c_test = do
     $ assertFailure
     $ "C timer test reported a failure\n"
     <> simResultC
- where
-  simResultC = chr . fromIntegral <$> catMaybes uartStreamC
-  uartStreamC = sampleC def{timeoutAfter = 300_000} dutC
-
-{- | A simple instance containing just VexRisc and UART as peripheral.
-Runs the `c_timer_wb` binary from `firmware-binaries/test-cases`.
--}
-dutC :: Circuit () (Df Basic50 (BitVector 8))
-dutC = withLittleEndian
-  $ withClockResetEnable clockGen (resetGenN d2) enableGen
-  $ circuit
-  $ \_unit -> do
-    (uartRx, jtag) <- idleSource
-    [uartBus, timeBus] <-
-      processingElement NoDumpVcd peConfigC -< (mm, jtag)
-    mm <- ignoreMM
-    (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-    _localCounter <- timeWb Nothing -< timeBus
-    idC -< uartTx
- where
-  peConfigC = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "c_timer_wb"
-    (iMem, dMem) <- vecsFromElf @IMemWordsC @DMemWordsC elfPath Nothing
-    pure
-      PeConfig
-        { cpu = Riscv32imc.vexRiscv0
-        , depthI = SNat @IMemWordsC
-        , depthD = SNat @DMemWordsC
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
-{-# OPAQUE dutC #-}
-
-type IMemWordsC = DivRU (4 * 1024) 4
-type DMemWordsC = DivRU (4 * 1024) 4
 
 tests :: TestTree
 tests = $(testGroupGenerator)
