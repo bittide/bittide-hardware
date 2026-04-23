@@ -281,15 +281,15 @@ testHandshakeUgnCapture = property $ do
 testMetadataParsing :: Assertion
 testMetadataParsing = do
   let regularWord = unpack 0 :: (BitVector 64)
-  let metadataWord = unpack $ magicConstant @BittideWordSize ++# (0b1110_0000 :: BitVector 8)
-  let metadata = Meta True True True 0
+  let metadataWord = unpack $ magicConstant @BittideWordSize ++# (0b111 :: BitVector 3)
+  let metadata = Meta True True True
 
-  assertEqual "Parsing regular word returns Nothing" Nothing (wordToMetadata regularWord)
-  assertEqual "Parsing metadata word returns Just xxx" (Just metadata) (wordToMetadata metadataWord)
+  assertEqual "Parsing regular word returns Nothing" Nothing (wordToMeta regularWord)
+  assertEqual "Parsing metadata word returns Just xxx" (Just metadata) (wordToMeta metadataWord)
   assertEqual
     "id ~ fromWord . toWord"
     (Just metadata)
-    (wordToMetadata $ metadataToWord @BittideWordSize metadata)
+    (wordToMeta $ metaToWord @BittideWordSize metadata)
 
 tests :: TestTree
 tests =

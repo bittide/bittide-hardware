@@ -155,10 +155,9 @@ core ::
     , Jtag Bittide
     , "MASK" ::: CSignal Bittide (BitVector LinkCount)
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
-    , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
+    , "RXS" ::: Vec LinkCount (CSignal GthRx (BitVector 64))
     )
     ( CSignal Bittide (Maybe SpeedChange)
-    , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
@@ -304,7 +303,6 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
-         , Fwd localCounter
          , Fwd (dflipflop bitClk <$> (unbundle txs))
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
