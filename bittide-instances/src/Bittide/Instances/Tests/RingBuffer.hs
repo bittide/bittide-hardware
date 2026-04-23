@@ -19,6 +19,7 @@ import Data.Maybe (catMaybes)
 import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
+import Protocols.Extra (fmapC)
 import Protocols.Df.Extra (tdpbramRamOp)
 import Protocols.Idle
 import Protocols.MemoryMap
@@ -32,6 +33,7 @@ import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
 import qualified Data.List as L
+import qualified Protocols.Vec as Vec
 
 createDomain vSystem{vName = "Slow", vPeriod = hzToPeriod 1_000_000}
 
@@ -47,21 +49,33 @@ dutMM =
       (dutWithPeConfig d0 (emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0))
       ((), pure $ deepErrorX "memoryMap")
 
+replicateC :: forall n a b. SNat n -> Circuit a b -> Circuit (Vec n a) (Vec n b)
+replicateC SNat c = repeatC c
+
 -- | Parameterized DUT that loads a specific firmware binary with configurable latency.
 dutWithPeConfig ::
   (HasCallStack, HiddenClockResetEnable dom, 1 <= DomainPeriod dom, KnownNat latency) =>
   SNat latency ->
-  PeConfig 6 ->
+  PeConfig 8 ->
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
 dutWithPeConfig latency peConfig = withLittleEndian $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
-  [uartBus, wbTx, wbRx, timeBus] <-
-    processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
+  ([uartBus, timeBus], wbTxs0, wbRxs0) <-
+    Vec.split3
+      <| processingElement NoDumpVcd peConfig
+      -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
-  txOut <- transmitRingBuffer (tdpbramRamOp tdpbram hasClock hasClock) memDepth -< wbTx
-  txOutDelayed <- applyC (toSignal . delayN latency 0 . fromSignal) id -< txOut
-  receiveRingBuffer (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth
-    -< (wbRx, txOutDelayed)
+  txOuts <-
+    replicateC
+      d2
+      (transmitRingBuffer (tdpbramRamOp tdpbram hasClock hasClock) memDepth)
+      -< wbTxs0
+  -- Add configurable latency between TX and RX ringbuffers
+  txOutDelayeds <- fmapC (applyC (toSignal . delayN latency 0 . fromSignal) id) -< txOuts
+  idleSink
+    <| fmapC (receiveRingBuffer (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth)
+    <| Vec.zip
+    -< (wbRxs0, txOutDelayeds)
   _cnt <- timeWb Nothing -< timeBus
   idC -< uartTx
 {-# OPAQUE dutWithPeConfig #-}
@@ -69,7 +83,7 @@ dutWithPeConfig latency peConfig = withLittleEndian $ circuit $ \mm -> do
 type IMemWords = DivRU (64 * 1024) 4
 type DMemWords = DivRU (64 * 1024) 4
 
-peConfigFromBinaryName :: String -> IO (PeConfig 6)
+peConfigFromBinaryName :: String -> IO (PeConfig 8)
 peConfigFromBinaryName binaryName = do
   peConfigFromElf
     (SNat @IMemWords)

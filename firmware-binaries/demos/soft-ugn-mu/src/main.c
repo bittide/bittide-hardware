@@ -98,6 +98,8 @@ int c_main(void) {
   PRINT_INIT_INFO(uart, &ugn_ctx, BUFFER_SIZE, SEND_PERIOD, RECEIVE_PERIOD,
                   NUM_PORTS);
 
+  // Align ring_buffers before starting event loop. After alignment, all
+  // subsequent messages arrive at offset 0 in the receive ring_buffer.
   align_ring_buffers(&ugn_ctx, uart);
 
   // Event loop variables

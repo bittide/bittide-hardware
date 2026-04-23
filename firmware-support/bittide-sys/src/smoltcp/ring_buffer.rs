@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-//! smoltcp [`Device`] implementation for aligned ringbuffers.
+//! smoltcp [`Device`] implementation for aligned ring_buffers.
 //!
 //! Provides point-to-point IP communication using scatter/gather units
-//! as ringbuffers. The ringbuffers must be aligned using the alignment
-//! protocol before constructing a [`RingbufferDevice`].
+//! as ring_buffers. The ring_buffers must be aligned using the alignment
+//! protocol before constructing a [`RingBufferDevice`].
 //!
 //! # Packet format
 //!
@@ -18,12 +18,12 @@
 //!
 //! # Volatile buffer handling
 //!
-//! The receive ringbuffer contents can change at any time due to incoming
+//! The receive ring_buffer contents can change at any time due to incoming
 //! data. To handle this safely, [`Device::receive`] disables the buffer,
 //! validates the CRC, and re-enables it after consumption. Sequence
 //! numbers detect repeated packets.
-use bittide_hal::manual_additions::ringbuffer::{
-    AlignedReceiveBuffer, ReceiveRingbufferInterface, TransmitRingbufferInterface,
+use bittide_hal::manual_additions::ring_buffer::{
+    AlignedReceiveBuffer, ReceiveRingBufferInterface, TransmitRingBufferInterface,
 };
 
 use crc::{Crc, CRC_32_ISCSI};
@@ -38,11 +38,11 @@ const MIN_IP_PACKET_SIZE: usize = 20;
 
 const CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
-/// smoltcp [`Device`] backed by a pair of aligned ringbuffers.
+/// smoltcp [`Device`] backed by a pair of aligned ring_buffers.
 ///
 /// MTU is derived from the smaller of the RX/TX buffer sizes (in bytes),
 /// minus the 8-byte packet header, capped at 1500.
-pub struct RingbufferDevice<Rx, Tx> {
+pub struct RingBufferDevice<Rx, Tx> {
     rx_buffer: AlignedReceiveBuffer<Rx, Tx>,
     tx_buffer: Tx,
     mtu: usize,
@@ -51,17 +51,17 @@ pub struct RingbufferDevice<Rx, Tx> {
     tx_seq_num: u16,
 }
 
-impl<Rx, Tx> RingbufferDevice<Rx, Tx>
+impl<Rx, Tx> RingBufferDevice<Rx, Tx>
 where
-    Rx: ReceiveRingbufferInterface + 'static,
-    Tx: TransmitRingbufferInterface + 'static,
+    Rx: ReceiveRingBufferInterface + 'static,
+    Tx: TransmitRingBufferInterface + 'static,
 {
-    /// Create a new ringbuffer device from an already-aligned buffer pair.
+    /// Create a new ring_buffer device from an already-aligned buffer pair.
     pub fn new(rx_buffer: AlignedReceiveBuffer<Rx, Tx>, tx_buffer: Tx) -> Self {
         let mtu = (Rx::DATA_LEN * 8).min(1500).min(Tx::DATA_LEN * 8) - PACKET_HEADER_SIZE;
         assert!(rx_buffer.is_aligned(), "RX buffer is not aligned");
         debug!(
-            "ringbuffer device init rx_words {} tx_words {} mtu {}",
+            "ring_buffer device init rx_words {} tx_words {} mtu {}",
             Rx::DATA_LEN,
             Tx::DATA_LEN,
             mtu
@@ -81,10 +81,10 @@ where
     }
 }
 
-impl<Rx, Tx> Device for RingbufferDevice<Rx, Tx>
+impl<Rx, Tx> Device for RingBufferDevice<Rx, Tx>
 where
-    Rx: ReceiveRingbufferInterface + 'static,
-    Tx: TransmitRingbufferInterface + 'static,
+    Rx: ReceiveRingBufferInterface + 'static,
+    Tx: TransmitRingBufferInterface + 'static,
 {
     type RxToken<'a>
         = RxToken<'a, Rx>
@@ -186,12 +186,12 @@ where
 /// Receive token that reads a packet directly from the hardware buffer.
 ///
 /// Re-enables the RX buffer after the packet is consumed.
-pub struct RxToken<'a, Rx: ReceiveRingbufferInterface> {
+pub struct RxToken<'a, Rx: ReceiveRingBufferInterface> {
     rx_buffer: &'a Rx,
     packet_len: usize,
 }
 
-impl<Rx: ReceiveRingbufferInterface> phy::RxToken for RxToken<'_, Rx> {
+impl<Rx: ReceiveRingBufferInterface> phy::RxToken for RxToken<'_, Rx> {
     fn consume<R, F>(self, f: F) -> R
     where
         F: FnOnce(&[u8]) -> R,
@@ -224,7 +224,7 @@ impl<Rx: ReceiveRingbufferInterface> phy::RxToken for RxToken<'_, Rx> {
 /// Transmit token that writes a packet directly into the hardware buffer.
 pub struct TxToken<'a, Tx>
 where
-    Tx: TransmitRingbufferInterface,
+    Tx: TransmitRingBufferInterface,
 {
     tx_buffer: &'a mut Tx,
     mtu: usize,
@@ -233,7 +233,7 @@ where
 
 impl<Tx> phy::TxToken for TxToken<'_, Tx>
 where
-    Tx: TransmitRingbufferInterface,
+    Tx: TransmitRingBufferInterface,
 {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where

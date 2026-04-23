@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-//! TCP communication layer over aligned ringbuffers.
+//! TCP communication layer over aligned ring_buffers.
 //!
 //! [`LinkInterface`] wraps a smoltcp TCP socket and a
-//! [`RingbufferDevice`](super::ringbuffer::RingbufferDevice) into a
+//! [`RingBufferDevice`](super::ring_buffer::RingBufferDevice) into a
 //! single abstraction for exchanging data with a direct neighbor.
 //!
 //! Both sides use TCP *simultaneous open* (both connect to the same
@@ -18,8 +18,8 @@
 //! link.connect(); // must not move the struct after this
 //! ```
 
-use bittide_hal::manual_additions::ringbuffer::{
-    AlignedReceiveBuffer, ReceiveRingbufferInterface, TransmitRingbufferInterface,
+use bittide_hal::manual_additions::ring_buffer::{
+    AlignedReceiveBuffer, ReceiveRingBufferInterface, TransmitRingBufferInterface,
 };
 use bittide_hal::manual_additions::timer::{Duration, Instant};
 use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
@@ -31,7 +31,7 @@ use core::mem::MaybeUninit;
 use log::debug;
 
 use crate::smoltcp::link_protocol::{WireDecode, WireEncode};
-use crate::smoltcp::ringbuffer::RingbufferDevice;
+use crate::smoltcp::ring_buffer::RingBufferDevice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecvError {
@@ -51,7 +51,7 @@ pub enum SendError {
 const LINK_IP: IpAddress = IpAddress::v4(100, 100, 100, 100);
 const LINK_PORT: u16 = 8080;
 
-/// TCP communication over a pair of ringbuffers.
+/// TCP communication over a pair of ring_buffers.
 ///
 /// Construction is two-phase to allow the struct to own its TCP buffers:
 /// 1. `new()` — allocates buffers, stores the device and timer
@@ -66,7 +66,7 @@ pub struct LinkInterface<RxRb, TxRb, const BUF_SIZE: usize> {
     socket_storage: MaybeUninit<[SocketStorage<'static>; 1]>,
 
     // Always initialized
-    device: RingbufferDevice<RxRb, TxRb>,
+    device: RingBufferDevice<RxRb, TxRb>,
     timer: bittide_hal::shared_devices::Timer,
 
     // Initialized by connect()
@@ -78,8 +78,8 @@ pub struct LinkInterface<RxRb, TxRb, const BUF_SIZE: usize> {
 
 impl<RxRb, TxRb, const BUF_SIZE: usize> LinkInterface<RxRb, TxRb, BUF_SIZE>
 where
-    RxRb: ReceiveRingbufferInterface + 'static,
-    TxRb: TransmitRingbufferInterface + 'static,
+    RxRb: ReceiveRingBufferInterface + 'static,
+    TxRb: TransmitRingBufferInterface + 'static,
 {
     pub fn new(
         rx_aligned: AlignedReceiveBuffer<RxRb, TxRb>,
@@ -90,7 +90,7 @@ where
             tcp_rx_buffer: [0; BUF_SIZE],
             tcp_tx_buffer: [0; BUF_SIZE],
             socket_storage: MaybeUninit::uninit(),
-            device: RingbufferDevice::new(rx_aligned, tx_buffer),
+            device: RingBufferDevice::new(rx_aligned, tx_buffer),
             timer,
             iface: MaybeUninit::uninit(),
             sockets: MaybeUninit::uninit(),

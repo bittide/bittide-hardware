@@ -71,7 +71,7 @@ fn main() -> ! {
     // Initialize peripherals
     let timer = INSTANCES.timer;
     // TODO: Use EthMacStatus instead of MacStatus
-    let _mac = INSTANCES.mac_status;
+    let mut _mac = INSTANCES.mac_status;
 
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
@@ -151,8 +151,11 @@ fn main() -> ! {
             if !socket.is_active() {
                 mac_status = unsafe { MAC_ADDR.read_volatile() };
                 debug!(
-                    "Connecting from {:?}:1234 to {SERVER_IP}:{SERVER_PORT}",
+                    "Connecting from {:?}:{} to {}:{}",
                     my_ip.unwrap().octets(),
+                    1234,
+                    SERVER_IP,
+                    SERVER_PORT
                 );
                 match socket.connect(cx, (SERVER_IP, SERVER_PORT), 1234) {
                     Ok(_) => debug!("Connected to {SERVER_IP}:{SERVER_PORT}"),
