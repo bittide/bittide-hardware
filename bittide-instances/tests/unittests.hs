@@ -9,7 +9,6 @@ import Prelude
 
 import Data.String.Interpolate (i)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
-import System.IO.Unsafe (unsafePerformIO)
 import System.Process (cwd, proc, readCreateProcessWithExitCode, readProcess)
 import Test.Tasty
 import Test.Tasty.HUnit (assertFailure, testCase)
@@ -58,39 +57,41 @@ run cmd0 args cwd = do
         #{stdErr}
     |]
 
-tests :: TestTree
-tests =
-  dependentTestGroup
-    "bittide-instances"
-    AllSucceed
-    [ testGroup
-        "Build Rust crates"
-        [ testCase "release" (run "./cargo.sh" ["build", "--release"] (Just gitRoot))
-        , testCase "debug" (run "./cargo.sh" ["build"] (Just gitRoot))
-        ]
-    , testGroup
-        "Unittests"
-        [ AddressableBytesWb.tests
-        , Axi.tests
-        , CaptureUgn.tests
-        , ClockControlWb.tests
-        , DnaPortE2.tests
-        , ElasticBufferWb.tests
-        , MemoryMap.tests
-        , NestedInterconnect.tests
-        , OpenOcd.tests
-        , Picocom.tests
-        , ScatterGather.tests
-        , SwitchDemoProcessingElement.tests
-        , Time.tests
-        , RegisterWb.tests
-        , Watchdog.tests
-        , Wishbone.SwitchCalendar.tests
-        , WbToDf.tests
-        ]
-    ]
- where
-  gitRoot = unsafePerformIO getGitRoot
+prepareTests :: IO TestTree
+prepareTests = do
+  gitRoot <- getGitRoot
+  return $
+    dependentTestGroup
+      "bittide-instances"
+      AllSucceed
+      [ testGroup
+          "Build Rust crates"
+          [ testCase "release" (run "./cargo.sh" ["build", "--release"] (Just gitRoot))
+          , testCase "debug" (run "./cargo.sh" ["build"] (Just gitRoot))
+          ]
+      , testGroup
+          "Unittests"
+          [ AddressableBytesWb.tests
+          , Axi.tests
+          , CaptureUgn.tests
+          , ClockControlWb.tests
+          , DnaPortE2.tests
+          , ElasticBufferWb.tests
+          , MemoryMap.tests
+          , NestedInterconnect.tests
+          , OpenOcd.tests
+          , Picocom.tests
+          , ScatterGather.tests
+          , SwitchDemoProcessingElement.tests
+          , Time.tests
+          , RegisterWb.tests
+          , Watchdog.tests
+          , Wishbone.SwitchCalendar.tests
+          , WbToDf.tests
+          ]
+      ]
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  tests <- prepareTests
+  defaultMain tests
