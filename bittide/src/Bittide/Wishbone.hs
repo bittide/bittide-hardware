@@ -17,7 +17,6 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
 import Clash.Explicit.Prelude (noReset)
 import Clash.Functor.Extra ((<<$>>))
-import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
 import Data.Bool (bool)
 import Data.Maybe
@@ -42,7 +41,6 @@ import Bittide.SharedTypes
 import qualified Data.List as L
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as Mm
-import qualified Protocols.ToConst as ToConst
 import qualified Protocols.Vec as Vec
 import qualified Protocols.Wishbone as Wishbone
 
@@ -399,18 +397,11 @@ uartBytes = Circuit go
     ((ack, pure $ Ack True), (rxByte, txByte))
 
 {- | Wishbone accessible UART interface with configurable FIFO buffers.
-  It takes the depths of the transmit and receive buffers and the uart implementation
-  as parameters. By explicitly passing the uart implementation, the user can choose
-  to either use a 'uartDf' circuit for actual serial communication or use `uartBytes`
-  for simulation purposes. Alongside the uart interface, the component produces
-  a 'CSignal' tuple indicating the status of the transmit and receive buffers.
-
-  The register layout is as follows:
-  - Address 0 (BitVector 8): UART data register (read/write)
-  - Address 4 (BitVector 2): UART status register (read-only)
-    Relevant masks:
-    - 0b01: Transmit buffer full
-    - 0b10: Receive buffer empty
+It takes the depths of the transmit and receive buffers and the uart implementation
+as parameters. By explicitly passing the uart implementation, the user can choose
+to either use a 'uartDf' circuit for actual serial communication or use `uartBytes`
+for simulation purposes. Alongside the uart interface, the component produces
+a 'CSignal' tuple indicating the status of the transmit and receive buffers.
 -}
 uartInterfaceWb ::
   forall dom addrW nBytes transmitBufferDepth receiveBufferDepth uartIn uartOut.
@@ -421,6 +412,7 @@ uartInterfaceWb ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
+  , ?byteOrder :: ByteOrder
   ) =>
   {- | Recommended value: 16. This seems to be a good balance between resource
   usage and usability.
@@ -435,136 +427,52 @@ uartInterfaceWb ::
   Circuit
     ((ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes), uartIn)
     (uartOut, CSignal dom (Bool, Bool))
-uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartRx) -> do
-  (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
-  (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
+uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(bus, uartRx) -> do
+  [dataWb, rxEmptyWb, txFullWb] <- Mm.deviceWbI (Mm.deviceConfig "Uart") -< bus
+
+  let txFifoIn = Mm.busActivityWrite <$> regOutActivity
+  (txFifoOut, Fwd txFifoMeta) <- fifoWithMeta txDepth <| unsafeToDf -< Fwd txFifoIn
+
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
+
   (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
-  ToConst.toBwd memMap -< mm
-  idC -< (uartTx, uartStatus)
- where
-  memMap =
-    SimOnly
-      $ Mm.MemoryMap
-        { tree = Mm.DeviceInstance Mm.locCaller "Uart"
-        , deviceDefs = Mm.deviceSingleton deviceDef
+  Fwd regIn <- unsafeFromDf -< (rxFifoOut, Fwd (fmap Ack busRead))
+
+  let
+    rxEmpty = fmap isNothing regIn
+    txFull = fmap (.fifoFull) txFifoMeta
+    busRead = fmap (isJust . Mm.busActivityRead) regOutActivity
+    busWrite = fmap (isJust . Mm.busActivityWrite) regOutActivity
+    regOutAck = busWrite .&&. (fmap not txFull) .||. busRead .&&. (fmap not rxEmpty)
+
+  Fwd regOutActivity <- unsafeFromDf -< (regOutActivityDf, Fwd (fmap Ack regOutAck))
+
+  (_regOut, regOutActivityDf) <-
+    Mm.registerWbDfI
+      (registerConfig "data")
+        { Mm.access = Mm.ReadWrite
+        , Mm.description = ""
         }
+      0
+      -< (dataWb, Fwd regIn)
 
-  deviceDef =
-    Mm.DeviceDefinition
-      { registers =
-          [ Mm.NamedLoc
-              { name = Mm.Name "data" ""
-              , loc = Mm.locHere
-              , value =
-                  Mm.Register
-                    { reset = Nothing
-                    , fieldType = Mm.regType @(Bytes 1)
-                    , address = 0
-                    , access = Mm.ReadWrite
-                    , tags = []
-                    }
-              }
-          , Mm.NamedLoc
-              { name = Mm.Name "status" ""
-              , loc = Mm.locHere
-              , value =
-                  Mm.Register
-                    { reset = Nothing
-                    , fieldType = Mm.regType @(Bytes 1)
-                    , address = 4
-                    , access = Mm.ReadOnly
-                    , tags = []
-                    }
-              }
-          ]
-      , deviceName =
-          Mm.Name "Uart" "Wishbone accessible UART interface with configurable FIFO buffers."
-      , definitionLoc = Mm.locHere
-      , tags = []
+  registerWbI_
+    (registerConfig "receive_buffer_empty")
+      { Mm.access = Mm.ReadOnly
+      , Mm.description = "Whether the receive buffer is empty."
       }
+    True
+    -< (rxEmptyWb, Fwd (Just <$> rxEmpty))
 
-  wbToDf ::
-    Circuit
-      ( Wishbone dom 'Standard addrW nBytes
-      , Df dom (BitVector 8)
-      , CSignal dom (FifoMeta txFifoDepth)
-      )
-      ( Df dom (BitVector 8)
-      , CSignal dom (Bool, Bool) -- (rxEmpty, txFull)
-      )
-  wbToDf = Circuit go0
-   where
-    go0 ((m2s, dfDataIn, fifoMeta), (ackIn, _)) =
-      ((s2m, ack, ()), (dfOut, status))
-     where
-      (s2m, ack, dfOut, status) = unbundle (fmap go1 (bundle (m2s, dfDataIn, fifoMeta, ackIn)))
+  registerWbI_
+    (registerConfig "transmit_buffer_full")
+      { Mm.access = Mm.ReadOnly
+      , Mm.description = "Whether the transmit buffer is full."
+      }
+    False
+    -< (txFullWb, Fwd (Just <$> txFull))
 
-    go1
-      ( WishboneM2S{addr, busCycle, strobe, writeData, writeEnable}
-        , rxData
-        , (.fifoFull) -> txFull
-        , Ack txAck
-        )
-        -- not in cycle
-        | not (busCycle && strobe) =
-            ( (emptyWishboneS2M @0){readData = invalidReq}
-            , Ack False
-            , Nothing
-            , status
-            )
-        -- illegal addr
-        | not addrLegal =
-            ( (emptyWishboneS2M @0){err = True, readData = invalidReq}
-            , Ack False
-            , Nothing
-            , status
-            )
-        -- read at 0
-        | not writeEnable && internalAddr == 0 =
-            ( (emptyWishboneS2M @0)
-                { acknowledge = True
-                , readData = resize $ fromMaybe 0 rxData
-                }
-            , Ack True
-            , Nothing
-            , status
-            )
-        -- write at 0
-        | writeEnable && internalAddr == 0 =
-            ( (emptyWishboneS2M @0)
-                { acknowledge = txAck
-                , readData = invalidReq
-                }
-            , Ack False
-            , Just $ resize writeData
-            , status
-            )
-        -- read at 1
-        | not writeEnable && internalAddr == 1 =
-            ( (emptyWishboneS2M @0)
-                { acknowledge = True
-                , readData = resize $ pack status
-                }
-            , Ack False
-            , Nothing
-            , status
-            )
-        | otherwise = (emptyWishboneS2M{err = True}, Ack False, Nothing, status)
-       where
-        internalAddr = bitCoerce $ resize addr :: Index 2
-        addrLegal = addr <= 1
-        rxEmpty = isNothing rxData
-        status = (rxEmpty, txFull)
-        invalidReq =
-          deepErrorX
-            [i|uartInterfaceWb: Invalid request.
-          BUS: {busCycle}
-          STR: {strobe}
-          ADDR: {addr}
-          WE:{writeEnable}
-          ACK:{acknowledge}
-          ERR:{err}|]
+  idC -< (uartTx, Fwd (bundle (rxEmpty, txFull)))
 
 -- | State record for the FIFO circuit.
 data FifoState depth = FifoState

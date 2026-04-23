@@ -143,7 +143,7 @@ vexRiscGmiiC sysClk sysRst rxClk rxRst txClk txRst peConfig =
       txClkEna
       rxClkEna
   macStatIf = wcre $ macStatusInterfaceWb d16
-  uart = wcre $ uartInterfaceWb d32 d2 (uartDf baud)
+  uart = withLittleEndian $ wcre $ uartInterfaceWb d32 d2 (uartDf baud)
   pe = withLittleEndian $ wcre processingElement NoDumpVcd peConfig
   wbToAxi4StreamTx' = wcre wbToAxi4StreamTx
   wbAxiRxBuffer = wcre wbAxisRxBufferCircuit (SNat @2048)

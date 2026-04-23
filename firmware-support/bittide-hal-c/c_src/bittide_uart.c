@@ -5,16 +5,8 @@
 #include "bittide_uart.h"
 #include "shared_devices/uart.h"
 
-int uart_tx_full(Uart uart) {
-  return uart_get_status(uart) & UART_STATUS_TX_FULL;
-}
-
-int uart_rx_empty(Uart uart) {
-  return uart_get_status(uart) & UART_STATUS_RX_EMPTY;
-}
-
 void uart_putc(Uart uart, char c) {
-  while (uart_tx_full(uart)) {
+  while (uart_get_transmit_buffer_full(uart)) {
     // Wait for TX buffer to be ready
   }
   uart_set_data(uart, c);
@@ -27,7 +19,7 @@ void uart_puts(Uart uart, const char *s) {
 }
 
 char uart_getc(Uart uart) {
-  while (uart_rx_empty(uart)) {
+  while (uart_get_receive_buffer_empty(uart)) {
     // Wait for RX buffer to have data
   }
   return uart_get_data(uart);
