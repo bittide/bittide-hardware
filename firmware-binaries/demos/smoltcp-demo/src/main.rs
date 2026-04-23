@@ -149,7 +149,7 @@ fn main() -> ! {
     while !rx_aligned
         .iter_mut()
         .zip(tx_buffers.iter())
-        .fold(true, |done, (rx, tx)| rx.align_step(tx) && done)
+        .all(|(rx, tx)| rx.align_step(tx))
     {}
     let stop_time = INSTANCES.timer.now();
     uwriteln!(
