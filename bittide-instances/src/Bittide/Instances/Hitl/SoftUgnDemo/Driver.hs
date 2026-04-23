@@ -286,10 +286,9 @@ driverTcp testName targets = do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "smoltcp-demo") muGdbs muTapInfos targets
-        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
-
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
           let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) (ccGdbs <> muGdbs)
           liftIO $ mapConcurrently_ Gdb.continue (ccGdbs <> muGdbs)
           liftIO
             $ T.tryWithTimeoutOn
