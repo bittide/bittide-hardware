@@ -25,123 +25,132 @@ nextLfsr current
   | lsb current == 1 = (current `shiftR` 1) `xor` 0xB8
   | otherwise = current `shiftR` 1
 
-{- The handshake itself is independent of the representation of a metadata word
-in bit form. The representation itself is only relevant to `wordToMetadata` and
-`metadataToWord`. Currently, we just generate a magic constant based on a shift
-register.
+{- Magic 'BitVector' used to detect whether a handshake is currently active.
 -}
 magicConstant :: forall n. (KnownNat n) => BitVector n
 magicConstant = resize $ pack num
  where
   num = iterateI nextLfsr 0xAB :: Vec (n `DivRU` 8) (BitVector 8)
 
-{- | Meta information send along with the PRBS and alignment symbols. See
-"Bittide.Transceiver" documentation for more information.
+{- | Meta information send along with 'magicConstant'. Used to negotiate a common start
+word. In practice, this is used to allow hardware UGN capture and ring buffer alignment.
 -}
-data Meta = Meta
+data Meta a = Meta
   { readyToReceive :: Bool
   -- ^ Ready to receive user data
-  , readyToTransmit :: Bool
-  -- ^ Ready to transmit user data
-  , lastMetadataWord :: Bool
-  -- ^ Next word will be user data
-  , padding :: Unsigned 5
-  -- ^ Padding up to 1 byte (due to Meta still being used by transceiver for now)
+  , lastMetaWord :: Bool
+  -- ^ Next transceiver word will be user data, i.e., it won't contain this 'Meta' anymore
+  , softwareMeta :: a
+  -- ^ Additional information transmitted to the software
   }
   deriving (Generic, NFDataX, BitPack, Eq, Show)
 
-{- | Given a @BitVector n@, where @n@ is a positive multiple of @8@,
-convert it to a @Just metadata@ (or @Nothing@ if the BitVector does
-not fit the metadata format).
--}
-wordToMetadata ::
-  forall n.
-  (KnownNat n, BitSize Meta <= n) =>
-  BitVector n ->
-  Maybe Meta
-wordToMetadata word =
-  let (header, meta) = split @_ @(n - 8) word
-   in if (header == magicConstant)
-        then Just $ unpack meta
-        else Nothing
+emptyMeta :: a -> Meta a
+emptyMeta softwareMeta =
+  Meta
+    { softwareMeta
+    , readyToReceive = False
+    , lastMetaWord = False
+    }
 
-{- | Given a @Meta@, convert it to a @BitVector n@, where @n@ is a positive
-multiple of @8@.
+{- | Given a @BitVector n@, parse the least @BitSize Meta@ bits as 'Meta', but only if the
+rest of the bits correspond to 'magicConstant'.
 -}
-metadataToWord ::
-  forall n.
-  (KnownNat n, BitSize Meta <= n) =>
-  Meta ->
+wordToMeta ::
+  forall a n.
+  (KnownNat n, BitSize (Meta a) <= n) =>
+  BitVector n ->
+  Maybe (Meta a)
+wordToMeta word
+  | header == magicConstant = Just $ unpack meta
+  | otherwise = Nothing
+ where
+  (header, meta) = split @_ @(n - BitSize Meta) word
+
+{- | Given a @Meta@, convert it to a @BitVector n@. The resulting 'BitVector' will have
+its LSBs set to @Meta@, with its MSBs set to 'magicConstant'.
+-}
+metaToWord ::
+  forall a n.
+  (KnownNat n, BitSize (Meta a) <= n) =>
+  Meta a ->
   BitVector n
-metadataToWord meta = magicConstant @(n - 8) ++# (pack meta)
+metaToWord meta = magicConstant @(n - BitSize Meta) ++# pack meta
+
+data Input dom = Input
+  { fromNeighbor :: Signal dom (BitVector 64)
+  , fromCore :: Signal dom (BitVector 64)
+  }
+
+instance Protocol (Input dom) where
+  type Fwd (Input dom) = Input dom
+  type Bwd (Input dom) = ()
+
+data Output dom = Output
+  { toNeighbor :: Signal dom (BitVector 64)
+  , toNeighborLast :: Signal dom Bool
+  , toNeighborDone :: Signal dom Bool
+  , toCore :: Signal dom (BitVector 64)
+  , toCoreLast :: Signal dom Bool
+  , toCoreDone :: Signal dom Bool
+  }
+
+instance Protocol (Output dom) where
+  type Fwd (Output dom) = Output dom
+  type Bwd (Output dom) = ()
 
 handshake ::
   ( KnownNat n
-  , BitSize Meta <= n
+  , BitSize (Meta a) <= n
   , HiddenClockResetEnable dom
   ) =>
   -- | From transceiver
   Signal dom (BitVector n) ->
-  -- | From ugn capture
-  Signal dom (BitVector n) ->
-  -- | Read, Write enable regs
-  Signal dom (Bool, Bool) ->
-  ( -- \| To UGN capture
-    Signal dom (BitVector n)
-  , -- \| To transceiver
+  -- | Receive OK?
+  Signal dom Bool ->
+  -- | Additional meta data to send to the other side
+  Signal dom a ->
+  ( -- \| To transceiver
     Signal dom (BitVector n)
   , -- \| Tuple of (txLast, rxLast), which indicates to ugnCapture when to send/receive the UGN.
     Signal dom (Bool, Bool)
   )
 handshake rxWordIn txWordIn regs = (rxWordOut, txWordOut, bundle (txLast, rxLast))
  where
-  neighborMetadata = wordToMetadata <$> rxWordIn
+  neighborMetadata = wordToMeta <$> rxWordIn
 
   (metadata, rxLastS) = handshakeStateMachine neighborMetadata regs
 
-  lastMetadataWordSticky = sticky $ metadata.lastMetadataWord
-  txLast = isRising False lastMetadataWordSticky
+  lastMetaWordSticky = sticky $ metadata.lastMetaWord
+  txLast = isRising False lastMetaWordSticky
   rxLast = isRising False $ sticky $ rxLastS
 
-  handshakeFinished = not <$> lastMetadataWordSticky
+  handshakeFinished = not <$> lastMetaWordSticky
 
   -- Words out
   txWordOut =
     mux
       (register False handshakeFinished)
-      (metadataToWord <$> metadata)
+      (metaToWord <$> metadata)
       txWordIn
   rxWordOut = rxWordIn
 
-{- | The following properties should be observed by the state machine
-1) A txReady should only be sent after both rxReady and rxNeighborReady
--}
-handshakeStateMachine ::
-  (HiddenClockResetEnable dom) =>
-  -- | Neighbor state
-  Signal dom (Maybe Meta) ->
-  -- | txEn, rxEn regs
-  Signal dom (Bool, Bool) ->
-  -- | New state of node
-  ( Signal dom Meta
-  , Signal dom Bool
-  )
-handshakeStateMachine neighborState enableRegs = mooreB updateState id initState (neighborState, enableRegs)
- where
-  initState = (Meta False False False 0, False)
+mkMeta :: Meta a -> a -> Bool -> Meta a
+mkMeta neighborMeta softwareMeta readyToReceive =
+  Meta
+    { softwareMeta
+    , readyToReceive
+    , -- Note: we don't send the last word until we're ready to receive a word ourselves. We
+      -- do this, because if we'd send the last word we'd have no way to communicate whether
+      -- we're ready anymore.
+      lastMetaWord = neighborMeta.readyToReceive && readyToReceive
+    }
 
-  updateState hState (Nothing, _) = hState
-  updateState
-    -- \| Current state
-    (meta, rxLast)
-    -- \| Neighbor state
-    (Just neighborMeta, (txEn, rxEn)) =
-      ((Meta newRxReady newTxReady newTxLast 0), newRxLast)
-     where
-      newTxReady = meta.readyToTransmit || txEn
-      newRxReady = meta.readyToReceive || ((rxEn && txEn) && neighborMeta.readyToTransmit)
-      newTxLast = (neighborMeta.readyToReceive && rxEn) || meta.lastMetadataWord
-      newRxLast = neighborMeta.lastMetadataWord || rxLast
+data Mode
+  = -- | Register data from the core to the neighbor and vice versa.
+    PassThrough
+  | -- | Waiting for handshake to finish. When done, revert to 'PassThrough'.
+    Armed
 
 handshakeWb ::
   forall dom addrW nBytes.
