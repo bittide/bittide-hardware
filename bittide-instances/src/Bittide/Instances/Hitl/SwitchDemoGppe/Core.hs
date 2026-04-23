@@ -12,7 +12,7 @@ on the topic.
 module Bittide.Instances.Hitl.SwitchDemoGppe.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, hasClock, hasReset, withClockResetEnable)
 import Protocols
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
@@ -31,15 +31,18 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
-import Bittide.ScatterGather
+import Bittide.RingBuffer (receiveRingBuffer, transmitRingBuffer)
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Switch (switchC)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx (withXilinx)
+import Clash.Cores.Xilinx.BlockRam (tdpbram)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
+import Protocols.Df.Extra (tdpbramRamOp)
 import Protocols.Extra
+import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone.Extra (delayWishbone)
 import VexRiscv (DumpVcd (..), Jtag)
@@ -69,13 +72,11 @@ type NmuInternalBusses = 3 + PeInternalBusses
 type PeripheralsPerLink = 2
 
 {- External busses:
-    - Scatter calendar
-    - Gather calendar
     - Switch calendar
     - Transceivers
     - Callisto
 -}
-type NmuExternalBusses = 5 + (LinkCount * PeripheralsPerLink)
+type NmuExternalBusses = 3 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
 
 muConfig ::
@@ -176,24 +177,23 @@ gppe ::
   Signal dom (BitVector 64) ->
   Circuit
     ( ToConstBwd Mm
-    , Vec 2 ((BitboneMm dom NmuRemBusWidth))
     , Jtag dom
     )
     ( CSignal dom (BitVector 64)
     , Df dom (BitVector 8)
     )
-gppe externalCounter maybeDna linkIn = circuit $ \(mm, nmuWbs, jtag) -> do
+gppe externalCounter maybeDna linkIn = circuit $ \(mm, jtag) -> do
   -- Core and interconnect
-  [scatterBus, gatherBus, timeBus, uartBus, dnaBus] <-
+  [rxBufferBus, txBufferBus, timeBus, uartBus, dnaBus] <-
     processingElement NoDumpVcd gppeConfig -< (mm, jtag)
 
-  -- Synthesis fails on timing check unless these signals are registered. Remove as soon
-  -- as possible.
-  [scatterCalendarBus, gatherCalendarBus] <- repeatC (fmapC delayWishbone) -< nmuWbs
-
-  -- Scatter Gather units
-  scatterUnitWbC scatterConfig linkIn -< (scatterBus, scatterCalendarBus)
-  linkOut <- gatherUnitWbC gatherConfig -< (gatherBus, gatherCalendarBus)
+  -- RingBuffers
+  let
+    bufferDepth = d1024
+    rxPrim ena = blockRamU hasClock hasReset ena NoClearOnReset bufferDepth
+    txPrim = tdpbramRamOp tdpbram hasClock hasClock
+  idleSink <| receiveRingBuffer rxPrim bufferDepth -< (rxBufferBus, Fwd linkIn)
+  linkOut <- transmitRingBuffer txPrim bufferDepth -< txBufferBus
 
   -- Peripherals
   _cnt <- timeWb (Just externalCounter) -< timeBus
@@ -202,12 +202,6 @@ gppe externalCounter maybeDna linkIn = circuit $ \(mm, nmuWbs, jtag) -> do
 
   -- Output
   idC -< (linkOut, uart)
- where
-  scatterConfig = ScatterConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  gatherConfig = GatherConfig (SNat @1024) (CalendarConfig maxCalDepth repetitionBits sgCal sgCal)
-  maxCalDepth = d1024
-  repetitionBits = d12
-  sgCal = ValidEntry 0 1000 :> Nil
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
 calendarConfig :: CalendarConfig 25 (Vec 8 (Index 9))
@@ -276,12 +270,11 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (muSgWbs, muWbs3) <- Vec.split -< muWbs2
     [ (switchMm, switchWb)
       , muTransceiverBus
       , muCallistoBus
       ] <-
-      idC -< muWbs3
+      idC -< muWbs2
     -- Stop management unit
 
     -- Start internal links
@@ -309,7 +302,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
 
     -- Start general purpose processing element
     (gppeTx, gppeUartBytesBittide) <-
-      withBittideClockResetEnable gppe localCounter maybeDna gppeRx -< (gppeMm, muSgWbs, gppeJtag)
+      withBittideClockResetEnable gppe localCounter maybeDna gppeRx -< (gppeMm, gppeJtag)
     -- Stop general purpose processing element
 
     -- Start clock control

@@ -132,15 +132,6 @@ driver testName targets = do
           _ <- liftIO $ do
             putStrLn "\n=== Hardware UGN Roundtrip Latencies ==="
             mapM print hardwareRoundtrips
-          liftIO
-            $ T.tryWithTimeoutOn
-              T.PrintActionTime
-              "Waiting for calendar initialization"
-              (30_000_000)
-              goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico "[MU] All calendars initialized"
 
           softwareUgnsPerNode <-
             liftIO

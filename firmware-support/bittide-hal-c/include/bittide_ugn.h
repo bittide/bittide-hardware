@@ -86,9 +86,9 @@ typedef struct {
 // ============================================================================
 // Holds all state needed for UGN discovery protocol
 typedef struct {
-  // Scatter and gather units (one per port)
-  ScatterUnit *scatter_units;
-  GatherUnit *gather_units;
+  // Receive and transmit ring_buffers (one per port)
+  ReceiveRingBuffer *receive_ring_buffers;
+  TransmitRingBuffer *transmit_ring_buffers;
   uint32_t num_ports;
 
   // UGN edge lists (dynamically sized based on max_degree)
@@ -194,14 +194,13 @@ static inline void ugn_edge_init(UgnEdge *edge) {
 // ============================================================================
 
 // Initialize UGN protocol context
-static inline void ugn_context_init(UgnContext *ctx, ScatterUnit *scatter_units,
-                                    GatherUnit *gather_units,
-                                    uint32_t num_ports, uint32_t node_id,
-                                    UgnEdge *incoming_list,
-                                    UgnEdge *outgoing_list,
-                                    uint32_t max_degree) {
-  ctx->scatter_units = scatter_units;
-  ctx->gather_units = gather_units;
+static inline void
+ugn_context_init(UgnContext *ctx, ReceiveRingBuffer *receive_ring_buffers,
+                 TransmitRingBuffer *transmit_ring_buffers, uint32_t num_ports,
+                 uint32_t node_id, UgnEdge *incoming_list,
+                 UgnEdge *outgoing_list, uint32_t max_degree) {
+  ctx->receive_ring_buffers = receive_ring_buffers;
+  ctx->transmit_ring_buffers = transmit_ring_buffers;
   ctx->num_ports = num_ports;
   ctx->node_id = node_id;
   ctx->incoming_link_ugn_list = incoming_list;
@@ -250,22 +249,22 @@ static inline bool all_ports_done(UgnContext *ctx) {
 // Future changes to the offset calculation (e.g., for non-trivial calendar
 // configurations) only need to be updated here.
 
-// Calculate scatter buffer offset for a given event time and port
-static inline uint32_t ugn_calculate_scatter_offset(const UgnContext *ctx,
+// Calculate receive buffer offset for a given event time and port
+static inline uint32_t ugn_calculate_receive_offset(const UgnContext *ctx,
                                                     uint32_t port,
                                                     uint64_t event_time) {
   (void)ctx;
   (void)port; // Unused in this implementation
-  return (uint32_t)(event_time % SCATTER_UNIT_SCATTER_MEMORY_LEN);
+  return (uint32_t)(event_time % RECEIVE_RING_BUFFER_DATA_LEN);
 }
 
-// Calculate gather buffer offset for a given event time and port
-static inline uint32_t ugn_calculate_gather_offset(const UgnContext *ctx,
-                                                   uint32_t port,
-                                                   uint64_t event_time) {
+// Calculate transmit buffer offset for a given event time and port
+static inline uint32_t ugn_calculate_transmit_offset(const UgnContext *ctx,
+                                                     uint32_t port,
+                                                     uint64_t event_time) {
   (void)ctx;
   (void)port; // Unused in this implementation
-  return (uint32_t)(event_time % GATHER_UNIT_GATHER_MEMORY_LEN);
+  return (uint32_t)(event_time % TRANSMIT_RING_BUFFER_DATA_LEN);
 }
 
 // ============================================================================
@@ -292,11 +291,11 @@ static inline uint32_t ugn_decode_port(uint64_t encoded) {
   return port_plus_one - 1;
 }
 
-// Read a complete message from scatter buffer
-static inline bool ugn_read_message(ScatterUnit *unit, uint32_t offset,
+// Read a complete message from receive buffer
+static inline bool ugn_read_message(ReceiveRingBuffer *unit, uint32_t offset,
                                     UgnMessage *msg) {
   uint64_t data[6];
-  scatter_unit_read_slice_wrapping(*unit, data, offset, 6);
+  receive_ring_buffer_read_slice(*unit, data, offset, 6);
 
   if (data[0] != BT_MAGIC_LO || data[1] != BT_MAGIC_HI) {
     return false;
@@ -349,10 +348,10 @@ static inline bool process_ugn_message(const UgnMessage *msg,
 // Send UGN to a specific port
 static inline bool send_ugn_to_port(UgnContext *ctx, Timer timer,
                                     Event *event) {
-  GatherUnit *unit = &ctx->gather_units[event->port];
+  TransmitRingBuffer *unit = &ctx->transmit_ring_buffers[event->port];
   uint32_t port = event->port;
-  uint32_t offset = ugn_calculate_gather_offset(ctx, port, event->event_time);
-  uint64_t deadline = event->event_time + GATHER_UNIT_GATHER_MEMORY_LEN;
+  uint32_t offset = ugn_calculate_transmit_offset(ctx, port, event->event_time);
+  uint64_t deadline = event->event_time + TRANSMIT_RING_BUFFER_DATA_LEN;
 
   if (port >= ctx->num_ports)
     return false;
@@ -380,7 +379,7 @@ static inline bool send_ugn_to_port(UgnContext *ctx, Timer timer,
   buffer[5] = ugn_encode_node_port(msg.node_id, msg.port);
 
   timer_wait_until_cycles(timer, event->event_time);
-  gather_unit_write_slice_wrapping(*unit, buffer, offset, 6);
+  transmit_ring_buffer_write_slice(*unit, buffer, offset, 6);
   CompareResult cmp_result = timer_compare_cycles(timer, deadline);
 
   if (cmp_result == COMPARE_LESS) {
@@ -399,7 +398,7 @@ static inline bool send_ugn_to_port(UgnContext *ctx, Timer timer,
 // Check incoming buffer for a specific port
 static inline bool check_incoming_buffer(UgnContext *ctx, Timer timer,
                                          Event *event) {
-  ScatterUnit *unit = &ctx->scatter_units[event->port];
+  ReceiveRingBuffer *unit = &ctx->receive_ring_buffers[event->port];
   if (event->port >= ctx->num_ports)
     return false;
 
@@ -412,8 +411,8 @@ static inline bool check_incoming_buffer(UgnContext *ctx, Timer timer,
   UgnEdge edge_in;
   UgnEdge edge_out;
   uint32_t offset =
-      ugn_calculate_scatter_offset(ctx, event->port, event->event_time);
-  uint64_t deadline = event->event_time + SCATTER_UNIT_SCATTER_MEMORY_LEN;
+      ugn_calculate_receive_offset(ctx, event->port, event->event_time);
+  uint64_t deadline = event->event_time + RECEIVE_RING_BUFFER_DATA_LEN;
 
   timer_wait_until_cycles(timer, event->event_time);
   bool message_available = ugn_read_message(unit, offset, &msg);
@@ -446,12 +445,12 @@ static inline bool check_incoming_buffer(UgnContext *ctx, Timer timer,
   return (cmp_result == COMPARE_LESS);
 }
 
-// Invalidate old scatter buffer data for a specific port
+// Invalidate old receive buffer data for a specific port
 static inline void invalidate_port(UgnContext *ctx, Timer timer, Event *event) {
   uint32_t port = event->port;
-  GatherUnit *gather_unit = &ctx->gather_units[port];
-  uint64_t deadline = event->event_time + GATHER_UNIT_GATHER_MEMORY_LEN;
-  uint32_t offset = ugn_calculate_gather_offset(ctx, port, event->event_time);
+  TransmitRingBuffer *transmit_unit = &ctx->transmit_ring_buffers[port];
+  uint64_t deadline = event->event_time + TRANSMIT_RING_BUFFER_DATA_LEN;
+  uint32_t offset = ugn_calculate_transmit_offset(ctx, port, event->event_time);
 
   if (port >= ctx->num_ports)
     return;
@@ -459,7 +458,7 @@ static inline void invalidate_port(UgnContext *ctx, Timer timer, Event *event) {
   uint64_t zeros[6] = {0, 0, 0, 0, 0, 0};
 
   timer_wait_until_cycles(timer, event->event_time);
-  gather_unit_write_slice_wrapping(*gather_unit, zeros, offset, 6);
+  transmit_ring_buffer_write_slice(*transmit_unit, zeros, offset, 6);
   CompareResult cmp_result = timer_compare_cycles(timer, deadline);
 
   if (cmp_result == COMPARE_LESS) {
