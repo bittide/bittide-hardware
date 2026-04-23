@@ -5,11 +5,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::{
-    hals::soft_ugn_demo_mu::DeviceInstances, manual_additions::calendar::RingbufferCalendar,
-    shared_devices::Uart,
-};
-use bittide_sys::{link_startup::LinkStartup, stability_detector::Stability};
+use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
+use bittide_sys::link_startup::LinkStartup;
+use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
@@ -21,41 +19,6 @@ use riscv_rt::entry;
 // Declare the external C main function
 extern "C" {
     fn c_main() -> !;
-}
-
-/// Initialize scatter and gather calendars with incrementing counter entries.
-/// Each calendar entry has a duration of 0 (no repeat), with 4000 entries total.
-#[no_mangle]
-#[inline(never)]
-fn initialize_calendars(uart: &mut Uart) {
-    const NUM_ENTRIES: usize = 4000;
-
-    let calendars = [
-        // Scatter calendars
-        &INSTANCES.scatter_calendar_0,
-        &INSTANCES.scatter_calendar_1,
-        &INSTANCES.scatter_calendar_2,
-        &INSTANCES.scatter_calendar_3,
-        &INSTANCES.scatter_calendar_4,
-        &INSTANCES.scatter_calendar_5,
-        &INSTANCES.scatter_calendar_6,
-        // Gather calendars
-        &INSTANCES.gather_calendar_0,
-        &INSTANCES.gather_calendar_1,
-        &INSTANCES.gather_calendar_2,
-        &INSTANCES.gather_calendar_3,
-        &INSTANCES.gather_calendar_4,
-        &INSTANCES.gather_calendar_5,
-        &INSTANCES.gather_calendar_6,
-    ];
-    uwriteln!(uart, "  Initializing {} calendars", calendars.len()).unwrap();
-    let mut i = 0;
-    let _ = calendars.map(|cal| {
-        cal.initialize_as_ringbuffer(NUM_ENTRIES);
-        uwriteln!(uart, "    Initialized calendar {}", i).unwrap();
-        i += 1;
-    });
-    uwriteln!(uart, "All calendars initialized").unwrap();
 }
 
 #[cfg_attr(not(test), entry)]
@@ -131,19 +94,11 @@ fn main() -> ! {
         .unwrap();
     }
     uwriteln!(uart, "Printed all hardware UGNs").unwrap();
-
-    // Initialize scatter/gather calendars with incrementing counters
-    uwriteln!(uart, "Initializing scatter/gather calendars").unwrap();
-    initialize_calendars(&mut uart);
-    uwriteln!(uart, "All calendars initialized").unwrap();
-
     uwriteln!(uart, "Calling C..").unwrap();
     unsafe { c_main() }
 }
 
 #[panic_handler]
 fn panic_handler(_: &PanicInfo) -> ! {
-    loop {
-        continue;
-    }
+    loop {}
 }
