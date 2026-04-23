@@ -25,7 +25,7 @@ features = ["log", "medium-ip", "medium-ethernet", "proto-ipv4", "socket-tcp"]
 
 [dependencies.log]
 version = "0.4.21"
-features = ["max_level_trace", "release_max_level_info"]
+features = ["max_level_trace", "release_max_level_debug"]
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
