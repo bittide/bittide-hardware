@@ -10,25 +10,14 @@ module Bittide.Instances.Tests.NestedInterconnect where
 import Clash.Prelude
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam (
-  ContentType (Vec),
- )
 import Bittide.Instances.Domains (Basic50)
 import Bittide.ProcessingElement (
   PeConfig (..),
   processingElement,
  )
-import Bittide.ProcessingElement.Util (
-  vecFromElfData,
-  vecFromElfInstr,
- )
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (singleMasterInterconnectC, uartBytes, uartInterfaceWb)
-import Project.FilePath (
-  CargoBuildType (Release),
-  findParentContaining,
-  firmwareBinariesDir,
- )
+import Project.FilePath (CargoBuildType (Release))
 
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Sized.Vector.Extra
@@ -44,11 +33,10 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb_,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty.HUnit (HasCallStack)
 import VexRiscv (DumpVcd (NoDumpVcd))
 
+import Bittide.Instances.Common (PeConfigElfSource (NameOnly), emptyPeConfig, peConfigFromElf)
 import qualified Protocols.ToConst as ToConst
 import qualified Protocols.Vec as Vec
 
@@ -75,36 +63,12 @@ simplePeripheral name = withName name $ circuit $ \(mm, wb) -> do
  where
   noWrite = pure Nothing
 
--- | Processing element configuration
-peConfig :: PeConfig 7
-peConfig = unsafePerformIO $ do
-  root <- findParentContaining "cabal.project"
-  let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "nested_interconnect_test"
-  pure
-    PeConfig
-      { cpu = vexRiscv0
-      , depthI = SNat @IMemWords
-      , depthD = SNat @DMemWords
-      , initI =
-          Just
-            $ Vec @IMemWords
-            $ unsafePerformIO
-            $ vecFromElfInstr elfPath
-      , initD =
-          Just
-            $ Vec @DMemWords
-            $ unsafePerformIO
-            $ vecFromElfData elfPath
-      , iBusTimeout = d0
-      , dBusTimeout = d0
-      , includeIlaWb = False
-      }
-
 -- | DUT with nested singleMasterInterconnect (for memory map generation)
 dut ::
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
+  PeConfig 7 ->
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
-dut = withLittleEndian $ circuit $ \mm -> do
+dut peConfig = withLittleEndian $ circuit $ \mm -> do
   (uartRx, jtag) <- idleSource
   ([uartBus, preInterconnectBus0], unNestedBusses) <-
     Vec.split
@@ -135,27 +99,42 @@ dut = withLittleEndian $ circuit $ \mm -> do
   prefixes1 = incrementWithBlacklist @_ @_ @4 Nil
 
 -- | DUT for simulation (uses ignoreMM)
-top :: Circuit () (Df Basic50 (BitVector 8))
-top = withLittleEndian
+top :: PeConfig 7 -> Circuit () (Df Basic50 (BitVector 8))
+top peConfig = withLittleEndian
   $ withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do
     mm <- ignoreMM
-    dut -< mm
+    dut peConfig -< mm
 
 type IMemWords = DivRU (8 * 1024) 4
 type DMemWords = DivRU (16 * 1024) 4
+
+-- | Processing element configuration
+peConfigSim :: IO (PeConfig 7)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "nested_interconnect_test")
+    Release
+    d0
+    d0
+    False
+    vexRiscv0
 
 -- | Memory map for the nested interconnect test
 nestedInterconnectMm :: MemoryMap
 nestedInterconnectMm = mm
  where
   Circuit circFn =
-    withClockResetEnable clockGen resetGen enableGen $ dut @System
+    withClockResetEnable clockGen resetGen enableGen
+      $ dut @System
+      $ emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
   (SimOnly mm, _) = circFn ((), pure (Ack False))
 
 -- | Simulation result
-simResult :: String
-simResult = chr . fromIntegral <$> catMaybes uartStream
+simResult :: PeConfig 7 -> String
+simResult peConfig = chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def{timeoutAfter = 500_000} top
+  uartStream = sampleC def{timeoutAfter = 500_000} $ top peConfig
