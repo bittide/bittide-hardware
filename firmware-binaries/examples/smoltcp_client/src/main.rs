@@ -11,7 +11,7 @@ use bittide_hal::manual_additions::timer::{Duration, Instant};
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
-use bittide_sys::smoltcp::{set_local, set_unicast};
+use bittide_sys::smoltcp::mac::{set_local, set_unicast};
 use bittide_sys::uart::log::LOGGER;
 use log::{debug, info, LevelFilter};
 
