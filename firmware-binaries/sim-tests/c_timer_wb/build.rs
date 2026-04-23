@@ -6,7 +6,7 @@ use memmap_generate::build_utils::standard_memmap_build;
 
 fn main() {
     // Generate memory.x linker script
-    standard_memmap_build("TimeWb.json", "DataMemory", "InstructionMemory");
+    standard_memmap_build("TimeWbC.json", "DataMemory", "InstructionMemory");
 
     // Use C headers from auto-generated bittide-hal-c
     let hal_c_headers = bittide_hal_c::generated_dir();

@@ -7,17 +7,17 @@
 
 use ufmt::uwriteln;
 
-use bittide_hal::manual_additions::timer::self_test::self_test;
-use bittide_hal::shared_devices::timer::Timer;
-use bittide_hal::shared_devices::uart::Uart;
+use bittide_hal::{hals::time_wb as hal, manual_additions::timer::self_test::self_test};
 #[cfg(not(test))]
 use riscv_rt::entry;
+
+const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let mut uart = unsafe { Uart::new((0b010 << 29) as *mut u8) };
-    let timer = unsafe { Timer::new((0b011 << 29) as *mut u8) };
+    let mut uart = INSTANCES.uart;
+    let timer = INSTANCES.timer;
     let test_results = self_test(timer);
     uwriteln!(uart, "Start time self test").unwrap();
     for (name, result) in test_results {

@@ -4,7 +4,7 @@
 
 #include "bittide_timer.h"
 #include "bittide_uart.h"
-#include "hals/time_wb/device_instances.h"
+#include "hals/time_wb_c/device_instances.h"
 
 // Helper to report test failure and halt
 static void test_fail(Uart uart, const char *message) {
