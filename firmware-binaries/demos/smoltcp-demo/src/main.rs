@@ -58,15 +58,6 @@ fn main() -> ! {
         INSTANCES.capture_ugn_5,
         INSTANCES.capture_ugn_6,
     ];
-    // Pseudocode setup:
-    // 1) Initialize MU peripherals and scatter/gather calendars for ring_buffers.
-    // 2) Align ring_buffers on all ports (two-phase protocol).
-    // 3) Run LinkStartup per port to bring up physical links and capture UGNs.
-    // 4) Wait for clock stability; stop auto-centering and record EB deltas.
-    // 5) For each port, create RingBufferDevice + smoltcp Interface with static IP.
-    // 6) Run manager state machines to connect to neighbors and request UGNs.
-    // 7) Collect UGN edges over TCP and aggregate locally.
-
     info!("Bringing up links...");
     let mut link_startups = [LinkStartup::new(); LINK_COUNT];
     while !link_startups.iter().all(|ls| ls.is_done()) {
@@ -113,7 +104,6 @@ fn main() -> ! {
         );
     }
 
-    // Create rx/tx buffer arrays
     let rx_buffers = [
         INSTANCES.receive_ring_buffer_0,
         INSTANCES.receive_ring_buffer_1,
@@ -142,7 +132,7 @@ fn main() -> ! {
     )
     .unwrap();
 
-    // Create aligned receive buffers for all links and align them
+    // Align ringbuffers on all links
     let start_time = INSTANCES.timer.now();
     let mut rx_aligned = rx_buffers.map(AlignedReceiveBuffer::new);
     while !rx_aligned
@@ -158,7 +148,6 @@ fn main() -> ! {
     )
     .unwrap();
 
-    // Create all LinkInterfaces
     info!("Creating LinkInterfaces");
     let timer = INSTANCES.timer;
     let make_timer = || unsafe { bittide_hal::shared_devices::Timer::new(INSTANCES.timer.0) };
@@ -186,9 +175,6 @@ fn main() -> ! {
     info!("Step 2: Exchanging DNA and ports with all neighbors...");
     debug!("  Our DNA: {:02X?}", dna);
 
-    // Prepare DNA and port data to send
-    let port_bytes: [[u8; 4]; LINK_COUNT] = core::array::from_fn(|i| (i as u32).to_le_bytes());
-
     // Track what we've sent and received
     let mut dna_sent = [false; LINK_COUNT];
     let mut port_sent = [false; LINK_COUNT];
@@ -207,7 +193,7 @@ fn main() -> ! {
         for (i, link) in links.iter_mut().enumerate() {
             link.poll();
 
-            // Try receiving partner DNA if we haven't already
+            // Try to receive partner DNA
             if partner_dnas[i].is_none() {
                 let mut dna_buf = [0u8; 12];
                 match link.try_recv_bytes(&mut dna_buf) {
@@ -222,25 +208,25 @@ fn main() -> ! {
                 }
             }
 
-            // Try receiving partner port if we received their DNA and haven't received their port yet
+            // Try to receive partner port (only after DNA)
             if partner_dnas[i].is_some() && !port_received[i] {
-                if let Ok(port) = link.try_recv::<u32>() {
+                if let Ok(port) = link.try_recv() {
                     partner_ports[i] = port;
                     port_received[i] = true;
                     debug!("  Link {}: received partner port: {}", i, partner_ports[i]);
                 }
             }
 
-            // Try sending our DNA if we haven't already
+            // Try to send our DNA
             if !dna_sent[i] && link.try_send_bytes(&dna).is_ok() {
                 debug!("  Link {}: sent our DNA", i);
                 dna_sent[i] = true;
             }
 
-            // Try sending our port if we sent our DNA and haven't sent our port yet.
-            if dna_sent[i] && !port_sent[i] && link.try_send_bytes(&port_bytes[i]).is_ok() {
+            // Try to send our port (only after DNA)
+            if dna_sent[i] && !port_sent[i] {
                 debug!("  Link {}: sent our port {}", i, i);
-                port_sent[i] = true;
+                port_sent[i] = link.try_send(&i).is_ok();
             }
         }
         if partner_dnas.iter().all(|dna| dna.is_some()) && port_received.iter().all(|&r| r) {
@@ -267,7 +253,6 @@ fn main() -> ! {
         }
     }
 
-    // Step 3: Build complete UGN report from all neighbor information
     info!("Step 3: Building UGN report...");
 
     let partner_info: [Option<(&[u8; 12], u32)>; LINK_COUNT] =
@@ -276,7 +261,7 @@ fn main() -> ! {
     let mut report: UgnReport = build_complete_report(&dna, &partner_info, &capture_ugns);
     info!("  Built report with {} edges", report.count);
 
-    // Step 4: Execute role-specific protocol
+    // Execute role-specific UGN collection protocol
     if is_manager {
         info!("Step 4: Manager collecting reports from subordinates...");
 
@@ -304,7 +289,6 @@ fn main() -> ! {
         info!("  Complete UGN graph: {} edges", report.count);
         writeln!(uart, "  Final UGN Report: {:?}", report).unwrap();
     } else {
-        // Subordinate role: wait for manager command, then send report
         info!("Step 4: Subordinate waiting for manager command...");
         let mut manager_idx = None;
 
@@ -346,7 +330,7 @@ fn main() -> ! {
     }
 
     uwriteln!(uart, "Demo complete.").unwrap();
-    // Keep polling links to ensure all transmissions complete
+    // Keep polling to flush remaining TCP transmissions
     loop {
         links.iter_mut().for_each(|l| l.poll());
     }

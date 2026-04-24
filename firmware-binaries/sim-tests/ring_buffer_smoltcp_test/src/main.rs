@@ -5,13 +5,12 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(sync_unsafe_cell)]
 
-use bittide_hal::manual_additions::ring_buffer::AlignedReceiveBuffer;
-use bittide_hal::ring_buffer_test::DeviceInstances;
-use bittide_sys::net_state::{UgnEdge, UgnReport};
+use bittide_hal::manual_additions::ringbuffer::AlignedReceiveBuffer;
+use bittide_hal::ringbuffer_test::DeviceInstances;
 use bittide_sys::smoltcp::link_interface::LinkInterface;
-use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
+use bittide_sys::smoltcp::link_protocol::{Command, UgnEdge, UgnReport};
 use core::fmt::Write;
-use log::{info, LevelFilter};
+use log::{debug, error, info, LevelFilter};
 use ufmt::uwriteln;
 
 #[cfg(not(test))]
@@ -24,7 +23,6 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let timer = INSTANCES.timer;
 
-    // Set up logging
     unsafe {
         use bittide_sys::uart::log::LOGGER;
         let logger = &mut (*LOGGER.get());
@@ -74,154 +72,100 @@ fn main() -> ! {
         link_subordinate.poll();
 
         if link_manager.is_established() && link_subordinate.is_established() {
-            info!("  Both links established!");
+            debug!("  Both links established!");
             break;
         }
     }
 
     if !link_manager.is_established() || !link_subordinate.is_established() {
-        info!("  FAILURE: Connection timeout!");
+        error!("  FAILURE: Connection timeout!");
         uwriteln!(uart, "=== Test Failed ===").unwrap();
         loop {
             continue;
         }
     }
 
-    // Step 4: Exchange DNA
-    info!("Step 4: Exchanging DNA...");
+    // Step 4: Exchange DNA and port numbers
+    info!("Step 4: Exchanging DNA and port numbers...");
     let manager_dna: [u8; 12] = core::array::from_fn(|i| (i + 100) as u8);
     let subordinate_dna: [u8; 12] = core::array::from_fn(|i| i as u8);
+    let manager_port = 0u32;
+    let subordinate_port = 1u32;
 
-    // Both sides send their DNA
-    link_manager.send(&manager_dna);
-    link_subordinate.send(&subordinate_dna);
+    let (mut mgr_dna_sent, mut mgr_port_sent) = (false, false);
+    let (mut sub_dna_sent, mut sub_port_sent) = (false, false);
+    let mut mgr_partner_dna = None::<[u8; 12]>;
+    let mut sub_partner_dna = None::<[u8; 12]>;
+    let mut mgr_partner_port = None::<u32>;
+    let mut sub_partner_port = None::<u32>;
 
-    // Both sides receive partner DNA using try_recv_bytes in polling loop
-    let mut manager_partner_buf = [0u8; 12];
-    let mut subordinate_partner_buf = [0u8; 12];
-    let mut manager_received = false;
-    let mut subordinate_received = false;
-
-    for _ in 0..500 {
+    for _ in 0..1000 {
         link_manager.poll();
         link_subordinate.poll();
 
-        // Manager: try to receive partner DNA
-        if !manager_received {
-            match link_manager.try_recv_bytes(&mut manager_partner_buf) {
-                Ok(12) => {
-                    info!(
-                        "  Manager received partner DNA: {:02X?}",
-                        &manager_partner_buf
-                    );
-                    manager_received = true;
-                }
-                Ok(n) if n > 0 => {
-                    info!("  FAILURE: Manager received partial DNA: {} bytes", n);
-                    uwriteln!(uart, "=== Test Failed ===").unwrap();
-                    loop {
-                        continue;
-                    }
-                }
-                _ => {}
+        // Send DNA, then port (ordering matters on the TCP stream)
+        if !mgr_dna_sent {
+            mgr_dna_sent = link_manager.try_send_bytes(&manager_dna).is_ok();
+        }
+        if mgr_dna_sent && !mgr_port_sent {
+            mgr_port_sent = link_manager.try_send(&manager_port).is_ok();
+        }
+        if !sub_dna_sent && link_subordinate.try_send_bytes(&subordinate_dna).is_ok() {
+            sub_dna_sent = true;
+        }
+        if sub_dna_sent && !sub_port_sent {
+            sub_port_sent = link_subordinate.try_send(&subordinate_port).is_ok();
+        }
+
+        // Receive DNA, then port (must match send order)
+        if mgr_partner_dna.is_none() {
+            let mut buf = [0u8; 12];
+            if let Ok(12) = link_manager.try_recv_bytes(&mut buf) {
+                debug!("  Manager received partner DNA: {:02X?}", buf);
+                mgr_partner_dna = Some(buf);
             }
         }
-
-        // Subordinate: try to receive partner DNA
-        if !subordinate_received {
-            match link_subordinate.try_recv_bytes(&mut subordinate_partner_buf) {
-                Ok(12) => {
-                    info!(
-                        "  Subordinate received partner DNA: {:02X?}",
-                        &subordinate_partner_buf
-                    );
-                    subordinate_received = true;
-                }
-                Ok(n) if n > 0 => {
-                    info!("  FAILURE: Subordinate received partial DNA: {} bytes", n);
-                    uwriteln!(uart, "=== Test Failed ===").unwrap();
-                    loop {
-                        continue;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        // Break when both sides received
-        if manager_received && subordinate_received {
-            break;
-        }
-    }
-
-    if !manager_received || !subordinate_received {
-        info!(
-            "  FAILURE: DNA exchange failed! Manager={}, Subordinate={}",
-            manager_received, subordinate_received
-        );
-        uwriteln!(uart, "=== Test Failed ===").unwrap();
-        loop {
-            continue;
-        }
-    }
-
-    info!("  DNA exchange complete!");
-
-    // Step 4b: Exchange port numbers
-    info!("Step 4b: Exchanging port numbers...");
-    let manager_port: u32 = 0;
-    let subordinate_port: u32 = 1;
-
-    // Both sides send their port number
-    link_manager.send(&manager_port.to_le_bytes());
-    link_subordinate.send(&subordinate_port.to_le_bytes());
-
-    // Both sides receive partner port number
-    let mut manager_partner_port = [0u8; 4];
-    let mut subordinate_partner_port = [0u8; 4];
-    let mut manager_port_received = false;
-    let mut subordinate_port_received = false;
-
-    for _ in 0..500 {
-        link_manager.poll();
-        link_subordinate.poll();
-
-        // Manager: try to receive partner port
-        if !manager_port_received {
-            if let Ok(4) = link_manager.try_recv_bytes(&mut manager_partner_port) {
-                let port = u32::from_le_bytes(manager_partner_port);
+        if mgr_partner_dna.is_some() && mgr_partner_port.is_none() {
+            if let Ok(port) = link_manager.try_recv() {
                 info!("  Manager received partner port: {}", port);
-                manager_port_received = true;
+                mgr_partner_port = Some(port);
             }
         }
-
-        // Subordinate: try to receive partner port
-        if !subordinate_port_received {
-            if let Ok(4) = link_subordinate.try_recv_bytes(&mut subordinate_partner_port) {
-                let port = u32::from_le_bytes(subordinate_partner_port);
+        if sub_partner_dna.is_none() {
+            let mut buf = [0u8; 12];
+            if let Ok(12) = link_subordinate.try_recv_bytes(&mut buf) {
+                debug!("  Subordinate received partner DNA: {:02X?}", buf);
+                sub_partner_dna = Some(buf);
+            }
+        }
+        if sub_partner_dna.is_some() && sub_partner_port.is_none() {
+            if let Ok(port) = link_subordinate.try_recv() {
                 info!("  Subordinate received partner port: {}", port);
-                subordinate_port_received = true;
+                sub_partner_port = Some(port);
             }
         }
 
-        // Break when both sides received
-        if manager_port_received && subordinate_port_received {
+        if mgr_partner_dna.is_some()
+            && mgr_partner_port.is_some()
+            && sub_partner_dna.is_some()
+            && sub_partner_port.is_some()
+        {
             break;
         }
     }
 
-    if !manager_port_received || !subordinate_port_received {
-        info!(
-            "  FAILURE: Port exchange failed! Manager={}, Subordinate={}",
-            manager_port_received, subordinate_port_received
-        );
+    if mgr_partner_dna.is_none()
+        || sub_partner_dna.is_none()
+        || mgr_partner_port.is_none()
+        || sub_partner_port.is_none()
+    {
+        error!("  FAILURE: DNA/port exchange incomplete!");
         uwriteln!(uart, "=== Test Failed ===").unwrap();
         loop {
             continue;
         }
     }
-
-    info!("  Port exchange complete!");
+    info!("  DNA and port exchange complete!");
 
     // Step 5: Manager requests UGN report
     info!("Step 5: Manager requesting UGN report...");
@@ -230,8 +174,6 @@ fn main() -> ! {
     // Phase 1: Manager sends command, subordinate receives it
     info!("  Phase 1: Command exchange");
 
-    // Send command using zerocopy with try_send
-    let cmd_wire: CommandWire = Command::RequestUgnReport.into();
     let mut command_sent = false;
     let mut command_received = false;
 
@@ -239,15 +181,11 @@ fn main() -> ! {
         link_manager.poll();
         link_subordinate.poll();
 
-        // Manager: try to send command
-        if !command_sent {
-            if let Ok(()) = link_manager.try_send(&cmd_wire) {
-                info!("    Manager: sent RequestUgnReport command");
-                command_sent = true;
-            }
+        if !command_sent && link_manager.try_send(&Command::RequestUgnReport).is_ok() {
+            debug!("    Manager: sent RequestUgnReport command");
+            command_sent = true;
         }
 
-        // Subordinate: try to receive command
         if !command_received {
             if let Ok(wire) = link_subordinate.try_recv::<CommandWire>() {
                 if let Ok(Command::RequestUgnReport) = link.try_recv::<Command>() {
@@ -261,14 +199,13 @@ fn main() -> ! {
             }
         }
 
-        // Break when both sides are done
         if command_sent && command_received {
             break;
         }
     }
 
     if !command_sent || !command_received {
-        info!(
+        error!(
             "  FAILURE: Command exchange failed! Sent={}, Received={}",
             command_sent, command_received
         );
@@ -280,41 +217,36 @@ fn main() -> ! {
 
     // Phase 2: Subordinate sends count, manager receives it
     info!("  Phase 2: Count exchange");
-    let count_byte = subordinate_report.count.to_le_bytes();
     let mut count_sent = false;
     let mut count_received = false;
-    let mut manager_count: u8 = 0;
+    let mut manager_count: u32 = 0;
 
     for _ in 0..100 {
         link_manager.poll();
         link_subordinate.poll();
 
-        // Subordinate: try to send count
         if !count_sent {
-            count_sent = link_subordinate.try_send_bytes(&count_byte).is_ok();
+            count_sent = link_subordinate.try_send(&subordinate_report.count).is_ok();
             if count_sent {
-                info!("    Subordinate: sent count={}", subordinate_report.count);
+                debug!("    Subordinate: sent count={}", subordinate_report.count);
             }
         }
 
-        // Manager: try to receive count
         if !count_received {
-            let mut count_buf = [0u8; 1];
-            if let Ok(1) = link_manager.try_recv_bytes(&mut count_buf) {
-                manager_count = count_buf[0];
-                info!("    Manager: received count={}", manager_count);
+            if let Ok(count) = link_manager.try_recv::<u32>() {
+                manager_count = count;
+                debug!("    Manager: received count={}", manager_count);
                 count_received = true;
             }
         }
 
-        // Break when both sides are done
         if count_sent && count_received {
             break;
         }
     }
 
     if !count_sent || !count_received {
-        info!(
+        error!(
             "  FAILURE: Count exchange failed! Sent={}, Received={}",
             count_sent, count_received
         );
@@ -324,8 +256,7 @@ fn main() -> ! {
         }
     }
 
-    // Phase 3: Subordinate sends edges, manager receives them using zerocopy
-    info!("  Phase 3: Edges exchange");
+    info!("  Phase 3: Edge exchange");
     let mut received_edges: [Option<UgnEdge>; 64] = [None; 64];
     let mut subordinate_sent_edges = 0;
     let mut manager_received_edges = 0;
@@ -334,28 +265,23 @@ fn main() -> ! {
         link_manager.poll();
         link_subordinate.poll();
 
-        // Subordinate: send next edge if any remain using zerocopy
         if subordinate_sent_edges < subordinate_report.count as usize {
             if let Some(edge) = subordinate_report.edges[subordinate_sent_edges] {
-                let wire: UgnEdgeWire = edge.into();
-                if let Ok(()) = link_subordinate.try_send(&wire) {
-                    info!("    Subordinate: sent edge {}", subordinate_sent_edges);
+                if link_subordinate.try_send(&edge).is_ok() {
+                    debug!("    Subordinate: sent edge {}", subordinate_sent_edges);
                     subordinate_sent_edges += 1;
                 }
             }
         }
 
-        // Manager: try to receive next edge using zerocopy
         if manager_received_edges < manager_count as usize {
-            if let Ok(wire) = link_manager.try_recv::<UgnEdgeWire>() {
-                let edge: UgnEdge = wire.into();
-                info!("    Manager: received edge {}", manager_received_edges);
+            if let Ok(edge) = link_manager.try_recv::<UgnEdge>() {
+                debug!("    Manager: received edge {}", manager_received_edges);
                 received_edges[manager_received_edges] = Some(edge);
                 manager_received_edges += 1;
             }
         }
 
-        // Break when both sides are done
         if subordinate_sent_edges >= subordinate_report.count as usize
             && manager_received_edges >= manager_count as usize
         {
@@ -365,7 +291,7 @@ fn main() -> ! {
     }
 
     if manager_received_edges != manager_count as usize {
-        info!(
+        error!(
             "  FAILURE: Manager received {} edges but expected {}!",
             manager_received_edges, manager_count
         );
@@ -379,9 +305,9 @@ fn main() -> ! {
     info!("Step 6: Verifying results...");
 
     if manager_count == 0 {
-        info!("  FAILURE: No UGN edges received!");
-        info!("  Manager link state: {:?}", link_manager.state());
-        info!("  Subordinate link state: {:?}", link_subordinate.state());
+        error!("  FAILURE: No UGN edges received!");
+        error!("  Manager link state: {:?}", link_manager.state());
+        error!("  Subordinate link state: {:?}", link_subordinate.state());
     } else {
         info!("  SUCCESS: Manager received {} UGN edges", manager_count);
         for (idx, edge_opt) in received_edges
