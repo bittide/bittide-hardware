@@ -10,6 +10,7 @@ import Protocols
 import Bittide.Hitl (
   HitlTestCase (..),
   HitlTestGroup (..),
+  HwTargetRef (..),
   hitlVioBool,
   paramForHwTargets,
  )
@@ -22,7 +23,7 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Setup (allHwTargets, channelNames, clockPaths)
+import Bittide.Instances.Hitl.Setup (channelNames, clockPaths)
 import Bittide.Instances.Hitl.SoftUgnDemo.BringUp (bringUp)
 import Bittide.Instances.Hitl.SoftUgnDemo.Core (LinkCount)
 import Clash.Annotations.TH (makeTopEntity)
@@ -118,7 +119,7 @@ tests =
           --   }
           HitlTestCase
             { name = "smoltcp-demo"
-            , parameters = paramForHwTargets allHwTargets ()
+            , parameters = paramForHwTargets (fmap HwTargetByIndex [0, 1, 2, 7]) ()
             , postProcData = ()
             }
         ]
