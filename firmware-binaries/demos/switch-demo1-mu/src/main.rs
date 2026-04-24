@@ -61,7 +61,7 @@ fn main() -> ! {
             stable: cc.links_stable()[0],
             settled: 0,
         };
-        let all_stable = stability.all_stable();
+        let all_stable = stability.all_stable(cc.n_links() as usize);
         if all_stable {
             break;
         }

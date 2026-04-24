@@ -5,8 +5,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::hals::switch_demo_gppe_mu::DeviceInstances;
 use bittide_hal::shared_devices::Transceivers;
+use bittide_hal::hals::switch_demo_gppe_mu::DeviceInstances;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
@@ -68,7 +68,7 @@ fn main() -> ! {
             stable: stable[0],
             settled: 0,
         };
-        if stability.all_stable() {
+        if stability.all_stable(cc.n_links() as usize) {
             uwriteln!(uart, "All links stable").unwrap();
             break;
         }

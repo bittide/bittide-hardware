@@ -31,20 +31,12 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
         &INSTANCES.elastic_buffer_2,
-        &INSTANCES.elastic_buffer_3,
-        &INSTANCES.elastic_buffer_4,
-        &INSTANCES.elastic_buffer_5,
-        &INSTANCES.elastic_buffer_6,
     ];
 
     let capture_ugns = [
         INSTANCES.capture_ugn_0,
         INSTANCES.capture_ugn_1,
         INSTANCES.capture_ugn_2,
-        INSTANCES.capture_ugn_3,
-        INSTANCES.capture_ugn_4,
-        INSTANCES.capture_ugn_5,
-        INSTANCES.capture_ugn_6,
     ];
 
     let mut link_startups = [LinkStartup::new(); 7];
@@ -68,7 +60,7 @@ fn main() -> ! {
             stable: cc.links_stable()[0],
             settled: 0,
         };
-        let all_stable = stability.all_stable();
+        let all_stable = stability.all_stable(cc.n_links() as usize);
         if all_stable {
             break;
         }

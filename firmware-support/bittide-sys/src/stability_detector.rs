@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::{
-    manual_additions::timer::{Duration, Instant},
-    shared_devices::clock_control::ClockControl,
+use bittide_hal::manual_additions::{
+    clock_control::ClockControlInterface,
+    timer::{Duration, Instant},
 };
 use itertools::izip;
 use ufmt::derive::uDebug;
@@ -13,19 +13,12 @@ fn test_bit(bv: u8, i: usize) -> bool {
     (bv & (1 << i)) != 0
 }
 
-pub struct StabilityDetector {
-    /// Reference data counts -- sampled at some point in time and used to
-    /// compare against the current data counts to determine stability.
-    data_counts: [i32; ClockControl::DATA_COUNTS_LEN],
-    /// Start time of the current stability window for each link.
-    starts: [Option<Instant>; ClockControl::DATA_COUNTS_LEN],
-    /// Margin of error for the data counts to be considered stable.
+pub struct StabilityDetector<const N: usize> {
+    data_counts: [i32; N],
+    starts: [Option<Instant>; N],
     margin: u32,
-    // Time frame size for stability checks.
     frame_size: Duration,
-    // Stabilities of the links at the last update. Used to reset stored data
-    // counts when moving from an unstable to a stable state.
-    prev_stabilities: [bool; ClockControl::DATA_COUNTS_LEN],
+    prev_stabilities: [bool; N],
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, uDebug)]
@@ -39,21 +32,21 @@ pub struct Stability {
 }
 
 impl Stability {
-    pub fn all_stable(&self) -> bool {
-        self.stable == (1 << ClockControl::DATA_COUNTS_LEN) - 1
+    pub fn all_stable(&self, n_links: usize) -> bool {
+        self.stable == (1 << n_links) - 1
     }
 }
 
 /// Picks the current data counts and wait for `frame_size` to pass without
 /// the data counts changing more than `margin`.
-impl StabilityDetector {
+impl<const N: usize> StabilityDetector<N> {
     pub fn new(margin: u32, frame_size: Duration) -> Self {
         Self {
-            data_counts: [0; ClockControl::DATA_COUNTS_LEN],
-            starts: [None; ClockControl::DATA_COUNTS_LEN],
+            data_counts: [0; N],
+            starts: [None; N],
             margin,
             frame_size,
-            prev_stabilities: [false; ClockControl::DATA_COUNTS_LEN],
+            prev_stabilities: [false; N],
         }
     }
 
@@ -62,7 +55,7 @@ impl StabilityDetector {
         self.prev_stabilities.iter().all(|&stable| stable)
     }
 
-    pub fn update(&mut self, cc: &ClockControl, now: Instant) -> Stability {
+    pub fn update(&mut self, cc: &impl ClockControlInterface, now: Instant) -> Stability {
         let mut stables: u32 = 0;
         let mut settleds: u32 = 0;
         let link_mask_rev = cc.link_mask_rev();

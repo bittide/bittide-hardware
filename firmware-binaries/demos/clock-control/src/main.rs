@@ -8,6 +8,7 @@
 use core::panic::PanicInfo;
 use itertools::izip;
 
+use bittide_hal::shared_devices::ClockControl;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::manual_additions::timer::WaitResult;
@@ -42,7 +43,8 @@ fn main() -> ! {
     let mut callisto = Callisto::new(cc.config().callisto);
 
     // Initialize stability detector
-    let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
+    let mut stability_detector =
+        StabilityDetector::<{ ClockControl::DATA_COUNTS_LEN }>::new(4, Duration::from_secs(2));
 
     // Store samples every _n_ updates. Currently set to 20 ms (50 Hz) times a
     // second (20 ms / 200 us = 100). Set to '1' for perfect storage -- not yet
@@ -87,7 +89,7 @@ fn main() -> ! {
         }
 
         // Emit stability information over UART
-        let all_stable = stability.all_stable();
+        let all_stable = stability.all_stable(cc.n_links() as usize);
         if !prev_all_stable && all_stable {
             uwriteln!(uart, "All links stable").unwrap();
         } else if prev_all_stable && !all_stable {

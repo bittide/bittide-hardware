@@ -18,7 +18,7 @@ use riscv::register::{mcause, mepc, mtval};
 use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const LINK_COUNT: usize = 7;
+const LINK_COUNT: usize = 3;
 const MANAGER_DNA: [u8; 12] = [133, 129, 48, 4, 64, 192, 105, 1, 1, 0, 2, 64];
 
 #[cfg(not(test))]
@@ -44,19 +44,11 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
         &INSTANCES.elastic_buffer_2,
-        &INSTANCES.elastic_buffer_3,
-        &INSTANCES.elastic_buffer_4,
-        &INSTANCES.elastic_buffer_5,
-        &INSTANCES.elastic_buffer_6,
     ];
     let capture_ugns = [
         INSTANCES.capture_ugn_0,
         INSTANCES.capture_ugn_1,
         INSTANCES.capture_ugn_2,
-        INSTANCES.capture_ugn_3,
-        INSTANCES.capture_ugn_4,
-        INSTANCES.capture_ugn_5,
-        INSTANCES.capture_ugn_6,
     ];
     info!("Bringing up links...");
     let mut link_startups = [LinkStartup::new(); LINK_COUNT];
@@ -108,19 +100,11 @@ fn main() -> ! {
         INSTANCES.receive_ring_buffer_0,
         INSTANCES.receive_ring_buffer_1,
         INSTANCES.receive_ring_buffer_2,
-        INSTANCES.receive_ring_buffer_3,
-        INSTANCES.receive_ring_buffer_4,
-        INSTANCES.receive_ring_buffer_5,
-        INSTANCES.receive_ring_buffer_6,
     ];
     let tx_buffers = [
         INSTANCES.transmit_ring_buffer_0,
         INSTANCES.transmit_ring_buffer_1,
         INSTANCES.transmit_ring_buffer_2,
-        INSTANCES.transmit_ring_buffer_3,
-        INSTANCES.transmit_ring_buffer_4,
-        INSTANCES.transmit_ring_buffer_5,
-        INSTANCES.transmit_ring_buffer_6,
     ];
 
     let dna = INSTANCES.dna.dna();
@@ -132,7 +116,7 @@ fn main() -> ! {
     )
     .unwrap();
 
-    // Align ringbuffers on all links
+    // Align ring_buffers on all links
     let start_time = INSTANCES.timer.now();
     let mut rx_aligned = rx_buffers.map(AlignedReceiveBuffer::new);
     while !rx_aligned

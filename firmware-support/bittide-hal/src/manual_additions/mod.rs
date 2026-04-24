@@ -6,12 +6,15 @@ pub mod addressable_buffer;
 pub mod aligned;
 pub mod calendar;
 pub mod capture_ugn;
+pub mod clock_control;
 pub mod dna;
 pub mod elastic_buffer;
+pub mod freeze;
 pub mod ring_buffer;
 pub mod scatter_gather_pe;
 pub mod si539x_spi;
 pub mod timer;
+pub mod transceivers;
 pub mod uart;
 
 // Sealing the `FromAs` and `IntoAs` traits with a supertrait

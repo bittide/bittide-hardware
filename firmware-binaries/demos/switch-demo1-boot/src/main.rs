@@ -8,8 +8,8 @@
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
-use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
 use bittide_hal::shared_devices::Transceivers;
+use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
 use bittide_hal::switch_demo_boot::DeviceInstances;
 use bittide_macros::load_clock_config_csv;
 

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::shared_devices::freeze::Freeze;
+use bittide_hal::manual_additions::freeze::FreezeInterface;
 use bittide_hal::shared_devices::sample_memory::SampleMemory;
 
 use crate::stability_detector::Stability;
@@ -32,7 +32,7 @@ impl SampleStore {
     /// function 'store' does 'store_samples_every' boundary checking.
     fn do_store(
         &mut self,
-        freeze: &Freeze,
+        freeze: &impl FreezeInterface,
         bump_counter: bool,
         stability: Stability,
         net_speed_change: i32,
@@ -86,7 +86,12 @@ impl SampleStore {
     /// Store the contents of 'Freeze' to memory. Whether or not a store actually
     /// happens depends on whether we're at a 'store_sample_every' boundary. Returns
     /// true if a sample was stored, false if this was a dry run.
-    pub fn store(&mut self, freeze: &Freeze, stability: Stability, net_speed_change: i32) -> bool {
+    pub fn store(
+        &mut self,
+        freeze: &impl FreezeInterface,
+        stability: Stability,
+        net_speed_change: i32,
+    ) -> bool {
         self.counter += 1;
 
         let bump_counter = self.counter >= self.store_samples_every;

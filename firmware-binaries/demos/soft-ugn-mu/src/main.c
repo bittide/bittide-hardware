@@ -57,16 +57,16 @@ int c_main(void) {
 
   Uart uart = hal.uart;
   ReceiveRingBuffer receive_ring_buffers[NUM_PORTS] = {
-      hal.receive_ring_buffer_0, hal.receive_ring_buffer_1,
-      hal.receive_ring_buffer_2, hal.receive_ring_buffer_3,
-      hal.receive_ring_buffer_4, hal.receive_ring_buffer_5,
-      hal.receive_ring_buffer_6};
+      hal.receive_ring_buffer_0,
+      hal.receive_ring_buffer_1,
+      hal.receive_ring_buffer_2,
+  };
 
   TransmitRingBuffer transmit_ring_buffers[NUM_PORTS] = {
-      hal.transmit_ring_buffer_0, hal.transmit_ring_buffer_1,
-      hal.transmit_ring_buffer_2, hal.transmit_ring_buffer_3,
-      hal.transmit_ring_buffer_4, hal.transmit_ring_buffer_5,
-      hal.transmit_ring_buffer_6};
+      hal.transmit_ring_buffer_0,
+      hal.transmit_ring_buffer_1,
+      hal.transmit_ring_buffer_2,
+  };
 
   for (uint32_t port = 0; port < NUM_PORTS; port++) {
     receive_ring_buffer_set_enable(receive_ring_buffers[port], true);
