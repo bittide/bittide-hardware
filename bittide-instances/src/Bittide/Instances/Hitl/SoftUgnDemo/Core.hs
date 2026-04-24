@@ -6,7 +6,7 @@
 communicating with a host PC. The accompanying driver function is still used program the
 CPUs and checks that the software and hardware captured UGNs match.
 -}
-module Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, core) where
+module Bittide.Instances.Hitl.SoftUgnDemo.Core (LinkCount, InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -18,7 +18,6 @@ import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockCont
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
-import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
@@ -49,6 +48,7 @@ import qualified Protocols.Vec as Vec
 -- | The number of CPUs in 'core'
 type InternalCpuCount = 2
 
+type LinkCount = 3
 type FifoSize = 5 -- = 2^5 = 32
 
 {- Internal busses:

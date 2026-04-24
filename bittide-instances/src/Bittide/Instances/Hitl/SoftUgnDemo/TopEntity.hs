@@ -22,8 +22,9 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Setup (LinkCount, allHwTargets, channelNames, clockPaths)
+import Bittide.Instances.Hitl.Setup (allHwTargets, channelNames, clockPaths)
 import Bittide.Instances.Hitl.SoftUgnDemo.BringUp (bringUp)
+import Bittide.Instances.Hitl.SoftUgnDemo.Core (LinkCount)
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import System.FilePath ((</>))
@@ -78,6 +79,8 @@ softUgnDemoTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx sync
 
   testReset :: Reset Basic125
   testReset = unsafeFromActiveLow testStart `orReset` refRst
+  channelNames1 = fmap (channelNames !!) ((0 :: Int) :> 1 :> 6 :> Nil)
+  clockPaths1 = fmap (clockPaths !!) ((0 :: Int) :> 1 :> 6 :> Nil)
 
   ( (_memoryMaps, jtagOut, (txs, txns, txps))
     , ( spiM2S
@@ -88,7 +91,7 @@ softUgnDemoTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx sync
     ) =
       toSignals
         (bringUp refClk testReset)
-        ( (repeat (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
+        ( (repeat (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames1, clockPaths1))
         , (spiS2M, syncIn, (), ())
         )
 {-# OPAQUE softUgnDemoTest #-}

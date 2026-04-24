@@ -21,8 +21,7 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Setup (LinkCount)
-import Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, core)
+import Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, LinkCount, core)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..))
 import Bittide.SharedTypes (Byte, withLittleEndian)
