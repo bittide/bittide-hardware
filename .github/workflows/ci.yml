@@ -118,6 +118,22 @@ jobs:
       - name: Check that relevant Cabal files have a common header
         run: .github/scripts/check_consistent_cabal_common.py
 
+      - name: Check that no Cabal or Haskell files use forbidden pragmas
+        run: |
+          FORBIDDEN_PRAGMAS=("RecordWildCards")
+
+          __ensure_pragmas_absent() {
+            local GITROOT
+            local PRAGMA
+            GITROOT="$(git rev-parse --show-toplevel)"
+            for PRAGMA in "${FORBIDDEN_PRAGMAS[@]}"
+            do
+              [ -z "$(rg "\{-# ?LANGUAGE "$PRAGMA" ?#-\}" "$GITROOT")" ] || return 1
+            done
+          }
+
+          __ensure_pragmas_absent
+
   build:
     name: Build Haskell+Rust
     runs-on: [self-hosted, compute]
