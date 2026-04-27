@@ -6,10 +6,9 @@
 codegen-units = 1
 incremental = false
 lto = true
+# Optimize for size
 opt-level = "z"
 panic = "abort"
-split-debuginfo = "packed"
-strip = "symbols"
 
 [profile.release]
 codegen-units = 1
