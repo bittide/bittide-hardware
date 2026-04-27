@@ -18,7 +18,8 @@ use riscv::register::{mcause, mepc, mtval};
 use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const LINK_COUNT: usize = 3;
+const LINKS: [usize; 3] = [0, 1, 6];
+const LINK_COUNT: usize = LINKS.len();
 const MANAGER_DNA: [u8; 12] = [133, 129, 48, 4, 64, 192, 105, 1, 1, 0, 2, 64];
 
 #[cfg(not(test))]
@@ -56,7 +57,7 @@ fn main() -> ! {
         for (i, link_startup) in link_startups.iter_mut().enumerate() {
             link_startup.next(
                 transceivers,
-                i,
+                LINKS[i],
                 elastic_buffers[i],
                 capture_ugns[i].has_captured(),
             );
