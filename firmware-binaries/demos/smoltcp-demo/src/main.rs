@@ -69,6 +69,14 @@ fn main() -> ! {
         let stable = cc.links_stable()[0];
         if stable != 0 {
             break;
+        } else {
+            debug!("  Links not stable yet...");
+            debug!("    link_mask: {:08b}", cc.link_mask()[0]);
+            debug!("    link_mask_pop_count: {}", cc.link_mask_pop_count());
+            debug!("    link_mask_rev: {:08b}", cc.link_mask_rev()[0]);
+            debug!("    links_ok: {:08b}", cc.links_ok()[0]);
+            debug!("    links_stable: {:08b}", cc.links_stable()[0]);
+            debug!("    links_settled: {:08b}", cc.links_settled()[0]);
         }
     }
 
