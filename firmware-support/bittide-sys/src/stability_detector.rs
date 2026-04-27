@@ -71,42 +71,43 @@ impl<const N: usize> StabilityDetector<N> {
             )
             .enumerate()
         {
-            let active = test_bit(link_mask_rev[0], i);
-            let diff0 = data_count_stored.abs_diff(min_seen);
-            let diff1 = data_count_stored.abs_diff(max_seen);
-            let height_violated = diff0 > self.margin || diff1 > self.margin;
-
-            let (stable, settled) = if height_violated || !active {
-                // Reset everything, as we violated the window height or if this
-                // link is inactive. The latter prevents inactive links from
-                // being considered stable.
-                *maybe_start = Some(now);
-                *data_count_stored = data_count;
-                cc.set_clear_data_counts_seen(true);
-                (false, false)
-            } else {
-                let start = *maybe_start.get_or_insert(now);
-                let stable = (now - start) > self.frame_size;
-                let settled = data_count_stored.unsigned_abs() < self.margin;
-                (stable, stable && settled)
-            };
-
             stables <<= 1;
-            stables |= stable as u32;
-
             settleds <<= 1;
-            settleds |= settled as u32;
+            let active = test_bit(link_mask_rev[0], i);
+            if active {
+                let diff0 = data_count_stored.abs_diff(min_seen);
+                let diff1 = data_count_stored.abs_diff(max_seen);
+                let height_violated = diff0 > self.margin || diff1 > self.margin;
 
-            // If a link has become stable, we store the current data count and
-            // clear the data counts seen. This is to prevent a link from being
-            // considered unstable again immediately after it has become stable,
-            // if it happened to stabilize very close to its margins and, just
-            // by "luck", the next sample pushes it over the edge.
-            if !*prev_stable && stable {
-                *data_count_stored = data_count;
-                cc.set_clear_data_counts_seen(true);
+                let (stable, settled) = if height_violated || !active {
+                    // Reset everything, as we violated the window height or if this
+                    // link is inactive. The latter prevents inactive links from
+                    // being considered stable.
+                    *maybe_start = Some(now);
+                    *data_count_stored = data_count;
+                    cc.set_clear_data_counts_seen(true);
+                    (false, false)
+                } else {
+                    let start = *maybe_start.get_or_insert(now);
+                    let stable = (now - start) > self.frame_size;
+                    let settled = data_count_stored.unsigned_abs() < self.margin;
+                    (stable, stable && settled)
+                };
+
+                stables |= stable as u32;
+                settleds |= settled as u32;
+
+                // If a link has become stable, we store the current data count and
+                // clear the data counts seen. This is to prevent a link from being
+                // considered unstable again immediately after it has become stable,
+                // if it happened to stabilize very close to its margins and, just
+                // by "luck", the next sample pushes it over the edge.
+                if !*prev_stable && stable {
+                    *data_count_stored = data_count;
+                    cc.set_clear_data_counts_seen(true);
+                }
+                *prev_stable = stable;
             }
-            *prev_stable = stable;
         }
 
         // XXX: These values are currently hardcoded to 8 bits, which would
