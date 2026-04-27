@@ -4,11 +4,11 @@ SPDX-FileCopyrightText: 2025 Google LLC
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# RingBuffer Alignment Protocol
+# Ring Buffer Alignment Protocol
 
 ## Definitions
-*   **Transmitting RingBuffer (TX):** Local memory written by CPU, read by hardware using a wrapping counter.
-*   **Receiving RingBuffer (RX):** Local memory written by hardware using a wrapping counter, read by CPU.
+*   **Transmitting Ring Buffer (TX):** Local memory written by CPU, read by hardware using a wrapping counter.
+*   **Receiving Ring Buffer (RX):** Local memory written by hardware using a wrapping counter, read by CPU.
 
 ## Context
 In a bittide system, nodes operate in a globally synchronous manner despite being asynchronous devices with unknown start times. Communication occurs via ringbuffers. When TX and RX ringbuffers are the same size, the address mapping between them is constant, determined by (logical) network latency and the start time difference between nodes.
@@ -25,11 +25,11 @@ Determine the constant offset between the transmit address (TX) and receive addr
 6.  **Confirm:** The CPU monitors the RX ringbuffer until it receives `ALIGNMENT_RECEIVED` from its neighbor.
 7.  **Finalize:** Once the CPU has received `ALIGNMENT_RECEIVED`, the link is aligned. The offset is stored for future communication and we proceed to normal operation.
 
-## Resulting Interface: AlignedRingBuffer
-Upon successful alignment, the system can instantiate an `AlignedRingBuffer` abstraction. This interface handles the offset calculations transparently, allowing the CPU to read and write to the ringbuffers without concern for alignment.
+## Resulting Interface: AlignedRing Buffer
+Upon successful alignment, the system can instantiate an `AlignedRing Buffer` abstraction. This interface handles the offset calculations transparently, allowing the CPU to read and write to the ringbuffers without concern for alignment.
 
 ## Communication Challenges
-While the `AlignedRingBuffer` provides logical connectivity, the physical link remains unreliable due to the interaction between the read/write counters of the ringbuffers and asynchronous CPU access:
+While the `AlignedRing Buffer` provides logical connectivity, the physical link remains unreliable due to the interaction between the read/write counters of the ringbuffers and asynchronous CPU access:
 
 1.  **Continuous Hardware Operation:** The hardware continuously cycles through the ringbuffers at the network link speed.
 2.  **Asynchronous CPU Access:** The CPU operates asynchronously and often slower than the network link.
@@ -41,4 +41,4 @@ This leads to specific failure modes:
 *   **Data Loss:** If the CPU does not read from the RX ringbuffer every iteration, the hardware will overwrite unread data.
 *   **Data duplication:** If the CPU does not write to the TX ringbuffer every iteration, the hardware will resend old data.
 
-Reliable communication requires a higher-level protocol to handle these errors. See the [Asynchronous Communication Protocol](asynchronous-communication.md) for a proposed solution using the `smoltcp` library to implement a reliable TCP/IP layer over the `AlignedRingBuffer`.
+Reliable communication requires a higher-level protocol to handle these errors. See the [Asynchronous Communication Protocol](asynchronous-communication.md) for a proposed solution using the `smoltcp` library to implement a reliable TCP/IP layer over the `AlignedRing Buffer`.
