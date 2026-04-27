@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 -- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
 

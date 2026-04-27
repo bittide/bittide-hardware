@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
-
 module Bittide.ClockControl.Si5391A where
 
 import Clash.Prelude
@@ -16,7 +14,7 @@ type Si5391ARegisterMap = Si539xRegisterMap 2 427 3
 
 -- | Configuration for Si5391A with all output clocks disabled.
 testConfigA :: Si5391ARegisterMap
-testConfigA = Si539xRegisterMap{..}
+testConfigA = Si539xRegisterMap{config, configPostamble, configPreamble}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> Nil
   configPostamble = (0x00, 0x1C, 0x01) :> (0x0B, 0x24, 0xC3) :> (0x0B, 0x25, 0x02) :> Nil
@@ -454,7 +452,7 @@ testConfigA = Si539xRegisterMap{..}
 divider N0.
 -}
 testConfigB :: Si5391ARegisterMap
-testConfigB = Si539xRegisterMap{..}
+testConfigB = Si539xRegisterMap{config, configPostamble, configPreamble}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> Nil
   configPostamble = (0x00, 0x1C, 0x01) :> (0x0B, 0x24, 0xC3) :> (0x0B, 0x25, 0x02) :> Nil

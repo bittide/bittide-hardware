@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- Don't warn about partial functions: this is a test, so we'll see it fail.
 {-# OPTIONS_GHC -Wno-x-partial #-}
@@ -341,7 +340,7 @@ wbStorageRangeErrors = property $ do
         upperBound <- Gen.choice $ fmap pure [size, 0]
         WB.genWishboneTransfer (Range.constant 0 upperBound)
 
-  model (Read addr _) s2m@WishboneS2M{..} st0
+  model (Read addr _) s2m@WishboneS2M{acknowledge, err} st0
     | addr >= fromIntegral st0 && err = Right st0
     | addr >= fromIntegral st0 && not err =
         Left
@@ -360,7 +359,7 @@ wbStorageRangeErrors = property $ do
           <> showHex st0 ""
           <> " - "
           <> show s2m
-  model (Write addr _ _) s2m@WishboneS2M{..} st0
+  model (Write addr _ _) s2m@WishboneS2M{acknowledge, err} st0
     | addr >= fromIntegral st0 && err = Right st0
     | addr >= fromIntegral st0 && not err =
         Left
@@ -402,7 +401,7 @@ wbStorageProtocolsModel = property $ do
       -- only generate valid requests here
       WB.genWishboneTransfer (Range.constant 0 (size - 1))
 
-  model (Read addr sel) s2m@WishboneS2M{..} st0
+  model (Read addr sel) s2m@WishboneS2M{err, readData, retry} st0
     | err || retry =
         Left
           $ "An in-range read should be ACK'd "
@@ -427,7 +426,7 @@ wbStorageProtocolsModel = property $ do
                 <> showHex readData ""
    where
     modelAddr = fromIntegral addr
-  model (Write addr sel wr) s2m@WishboneS2M{..} st0
+  model (Write addr sel wr) s2m@WishboneS2M{err, retry} st0
     | err || retry =
         Left
           $ "An in-range write should be ACK'd "

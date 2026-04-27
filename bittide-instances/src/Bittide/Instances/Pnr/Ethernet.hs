@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -fplugin=Protocols.Plugin #-}
 
@@ -185,9 +184,9 @@ vexRiscEthernet ::
   , Signal Basic625 Lvds
   )
 vexRiscEthernet peConfig sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
-  (jtagOut, uartOut, bridgeLvdsOut)
+  (jtagOut, uartOut, b.bridgeLvdsOut)
  where
-  BridgeOutput{..} = bridge sgmiiIn gmiiOut
+  b@BridgeOutput{} = bridge sgmiiIn gmiiOut
   signalDetect = pure True
   anRestart = pure False
   conf = pure def{cAutoNegEnable = True}
@@ -200,14 +199,14 @@ vexRiscEthernet peConfig sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
         , cPhyLinkStatus = True
         }
   bridge = gmiiSgmiiBridge sgmiiPhyClk bridgeRst signalDetect conf anConf anRestart
-  rxClk = bridgeClk125 :: Clock Basic125A
-  rxRst = bridgeRst125
+  rxClk = b.bridgeClk125 :: Clock Basic125A
+  rxRst = b.bridgeRst125
   bridgeRst = unsafeResetDesynchronizer sysClk sysRst
   circFn = toSignals $ vexRiscGmiiC sysClk sysRst rxClk rxRst rxClk rxRst peConfig
 
   ( ((SimOnly _mm, (_, _, jtagOut)))
     , (uartOut, gmiiOut)
-    ) = circFn (((), (uartIn, bridgeGmiiRx, jtagin)), ((), ()))
+    ) = circFn (((), (uartIn, b.bridgeGmiiRx, jtagin)), ((), ()))
 
 {- | Take a synchronous reset from one domain and convert it to an asynchronous reset.
 This inserts a register in the source domain to prevent glitching and then converts the domain.

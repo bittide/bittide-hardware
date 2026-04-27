@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 --
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
@@ -319,13 +318,13 @@ interconnect = Circuit go
     WishboneM2S addrWidth nBytes ->
     Vec n (WishboneS2M nBytes) ->
     (WishboneS2M nBytes, Vec n (WishboneM2S (addrWidth - CLog 2 n) nBytes))
-  inner prefixes m2s@WishboneM2S{..} s2ms
-    | not (busCycle && strobe) = (emptyWishboneS2M, m2ss)
+  inner prefixes m2s@WishboneM2S{} s2ms
+    | not (m2s.busCycle && m2s.strobe) = (emptyWishboneS2M, m2ss)
     -- no valid index selected
     | Nothing <- selected = (emptyWishboneS2M{err = True}, m2ss)
     | Just idx <- selected = (s2ms !! idx, replace idx m2sStripped m2ss)
    where
     m2ss = repeat emptyWishboneM2S
     m2sStripped = m2s{addr = internalAddr}
-    (compIdx, internalAddr) = split @_ @(CLog 2 n) @(addrWidth - CLog 2 n) addr
+    (compIdx, internalAddr) = split @_ @(CLog 2 n) @(addrWidth - CLog 2 n) m2s.addr
     selected = elemIndex compIdx prefixes

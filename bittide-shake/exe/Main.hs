@@ -7,7 +7,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -17,11 +16,6 @@ module Main where
 
 import Prelude
 
-import Bittide.Hitl (
-  HitlTestGroup (..),
-  TestStepResult (..),
-  hwTargetRefsFromHitlTestGroup,
- )
 import Bittide.Instances.Hitl.Tests (ClashTargetName, hitlTests)
 import Clash.DataFiles (tclConnector)
 import Clash.Shake.Extra
@@ -43,6 +37,7 @@ import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.Process (readProcess)
 
+import qualified Bittide.Hitl as Hitl
 import qualified Clash.Util.Interpolate as I
 import qualified Paths.Bittide.Shake as Shake (getDataFileName)
 import qualified System.Directory as Directory
@@ -133,7 +128,7 @@ data Target = Target
   -- ^ TemplateHaskell reference to top entity to synthesize
   , targetHasVio :: Bool
   -- ^ Whether target has one or more VIOs
-  , targetTest :: Maybe HitlTestGroup
+  , targetTest :: Maybe Hitl.HitlTestGroup
   {- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
   loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
   -}
@@ -155,21 +150,21 @@ defTarget name =
     , targetExternalHdl = []
     }
 
-testTarget :: HitlTestGroup -> Target
-testTarget test@(HitlTestGroup{..}) =
+testTarget :: Hitl.HitlTestGroup -> Target
+testTarget test@Hitl.HitlTestGroup{} =
   Target
-    { targetName = topEntity
+    { targetName = test.topEntity
     , targetHasVio = True
     , targetTest = Just test
-    , targetXdcs = targetXdcs
-    , targetExternalHdl = externalHdl
+    , targetXdcs = test.targetXdcs
+    , targetExternalHdl = test.externalHdl
     }
 
 enforceValidTarget :: Target -> Target
-enforceValidTarget target@Target{..}
-  | isJust targetTest && not targetHasVio =
+enforceValidTarget target@Target{}
+  | isJust target.targetTest && not target.targetHasVio =
       error $
-        show targetName
+        show target.targetName
           <> " should have set 'targetHasVio', because"
           <> " the target has a test ('targetTest')."
   | otherwise = target
@@ -272,15 +267,15 @@ main = do
 
   shakeArgsWith shakeOpts customFlags $ \flags shakeTargets -> pure $ Just $ do
     let
-      Options{..} = foldl (&) defaultOptions flags
+      Options{forceTestRerun} = foldl (&) defaultOptions flags
 
       rules = do
         _ <- addOracle $ \(ForceTestRerun _) -> return forceTestRerun
 
         -- 'all' builds all targets defined below
         phony "all" $ do
-          for_ targets $ \Target{..} -> do
-            need [entityName targetName <> ":synth"]
+          for_ targets $ \t@Target{} -> do
+            need [entityName t.targetName <> ":synth"]
 
         (dataFilesDir </> "**") %> \_ -> do
           Stdout out <-
@@ -319,12 +314,12 @@ main = do
 
         -- For each target, generate a user callable command (PHONY). Run with
         -- '--help' to list them.
-        for_ targets $ \Target{..} -> do
+        for_ targets $ \t@Target{} -> do
           let
             -- TODO: Dehardcode these paths. They're currently hardcoded in both the
             --       TCL and here, which smells.
-            manifestPath = getManifestLocation clashBuildDir targetName
-            synthesisDir = vivadoBuildDir </> show targetName
+            manifestPath = getManifestLocation clashBuildDir t.targetName
+            synthesisDir = vivadoBuildDir </> show t.targetName
             checkpointsDir = synthesisDir </> "checkpoints"
             netlistDir = synthesisDir </> "netlist"
             reportDir = synthesisDir </> "reports"
@@ -364,7 +359,7 @@ main = do
               -- Generate RTL
               let
                 (buildTool, buildToolArgs) =
-                  defaultClashCmd clashBuildDir targetName
+                  defaultClashCmd clashBuildDir t.targetName
               command_ [] buildTool buildToolArgs
 
               -- Clash messes up ANSI escape codes, leaving the rest of the terminal
@@ -392,9 +387,9 @@ main = do
                 "false" -> need [manifestPath, connector]
                 _ -> error $ "Unknown value for environment variable 'CI': " <> ci
 
-              let xdcPaths = map ((dataFilesDir </> "constraints") </>) targetXdcs
+              let xdcPaths = map ((dataFilesDir </> "constraints") </>) t.targetXdcs
               constraints <-
-                if not (null targetXdcs)
+                if not (null t.targetXdcs)
                   then do
                     need xdcPaths
                     pure xdcPaths
@@ -409,7 +404,7 @@ main = do
                   False -- Out of context run
                   synthesisPart -- Part we're synthesizing for
                   constraints -- List of filenames with constraints
-                  targetExternalHdl -- List of external HDL files to be included in synthesis
+                  t.targetExternalHdl -- List of external HDL files to be included in synthesis
                   locatedManifest
                   connector -- Path to tclConnector script
 
@@ -424,6 +419,7 @@ main = do
                 liftIO $ runPlaceAndRoute synthesisDir
 
                 -- Design should meet design rule checks (DRC).
+                let ttn = t.targetName
                 liftIO $
                   unlessM
                     (meetsTiming postRouteMethodologyPath &&^ meetsTiming postRouteTimingSummaryPath)
@@ -443,7 +439,7 @@ main = do
 
                   You can recreate the files (locally) using:
 
-                    shake #{targetName}:pnr
+                    shake #{ttn}:pnr
 
                 |]
                     )
@@ -470,7 +466,7 @@ main = do
 
                   You can recreate the files (locally) using:
 
-                    shake #{targetName}:pnr
+                    shake #{ttn}:pnr
 
                 |]
                     )
@@ -491,11 +487,11 @@ main = do
               when forceRerun alwaysRerun
               command_ [Cwd "firmware-binaries"] "cargo" ["build", "--release"]
               command_ [Cwd "firmware-binaries"] "cargo" ["build"]
-              need [entityName targetName <> ":program"]
+              need [entityName t.targetName <> ":program"]
               url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
               exitCode <-
                 liftIO $
-                  runHitlTest (fromJust targetTest) url probesFilePath ilaDataDir
+                  runHitlTest (fromJust t.targetTest) url probesFilePath ilaDataDir
               writeFileChanged path (show exitCode)
 
               shortenNamesPy <-
@@ -504,22 +500,22 @@ main = do
               command_ [] "python3" [shortenNamesPy]
 
           -- User friendly target names
-          phony (entityName targetName <> ":hdl") $ do
+          phony (entityName t.targetName <> ":hdl") $ do
             need [manifestPath]
 
-          phony (entityName targetName <> ":synth") $ do
+          phony (entityName t.targetName <> ":synth") $ do
             need [postSynthCheckpointPath]
 
-          phony (entityName targetName <> ":pnr") $ do
+          phony (entityName t.targetName <> ":pnr") $ do
             need [postRouteCheckpointPath]
 
-          when (not $ null targetXdcs) $ do
-            phony (entityName targetName <> ":bitstream") $ do
-              when targetHasVio $ need [probesFilePath]
+          when (not $ null t.targetXdcs) $ do
+            phony (entityName t.targetName <> ":bitstream") $ do
+              when t.targetHasVio $ need [probesFilePath]
               need [bitstreamPath]
 
             -- Write bitstream to hardware target(s)
-            phony (entityName targetName <> ":program") $ do
+            phony (entityName t.targetName <> ":program") $ do
               -- The Shake target ':program' does not depend on a respective bitstream and
               -- probes file being build. The programming itself does, so error if either
               -- doesn't exist.
@@ -527,47 +523,47 @@ main = do
                 unlessM
                   (Directory.doesFileExist bitstreamPath)
                   (error $ "Could not program device, missing bitstream file: " <> bitstreamPath)
-              when targetHasVio $
+              when t.targetHasVio $
                 liftIO $
                   unlessM
                     ((Directory.doesFileExist probesFilePath))
                     (error $ "Could not program device, missing probes file: " <> probesFilePath)
               let hwTRefs =
-                    hwTargetRefsFromHitlTestGroup $
+                    Hitl.hwTargetRefsFromHitlTestGroup $
                       fromMaybe
                         ( error $
                             "Asked to program target "
-                              ++ show targetName
+                              ++ show t.targetName
                               ++ " while the "
                                 <> "hardware targets to program could not be found as this target does not "
                                 <> "have a HITL test associated with it."
                         )
-                        targetTest
+                        t.targetTest
               url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
-              liftIO $ programBitstream synthesisDir hwTRefs url targetHasVio
+              liftIO $ programBitstream synthesisDir hwTRefs url t.targetHasVio
 
-            when (isJust targetTest) $ do
-              phony (entityName targetName <> ":test") $ do
+            when (isJust t.targetTest) $ do
+              phony (entityName t.targetName <> ":test") $ do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
-                when (isJust ((.mPostProc) =<< targetTest)) $ do
-                  res <- liftIO $ (fromJust $ (.mPostProc) =<< targetTest) ilaDataDir exitCode
+                when (isJust ((.mPostProc) =<< t.targetTest)) $ do
+                  res <- liftIO $ (fromJust $ (.mPostProc) =<< t.targetTest) ilaDataDir exitCode
                   checkTestStep res
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
-              when (isJust ((.mPostProc) =<< targetTest)) $ do
-                phony (entityName targetName <> ":post-process") $ do
+              when (isJust ((.mPostProc) =<< t.targetTest)) $ do
+                phony (entityName t.targetName <> ":post-process") $ do
                   need [testExitCodePath]
                   exitCode <- read <$> readFile' testExitCodePath
-                  res <- liftIO $ (fromJust ((.mPostProc) =<< targetTest)) ilaDataDir exitCode
+                  res <- liftIO $ (fromJust ((.mPostProc) =<< t.targetTest)) ilaDataDir exitCode
                   checkTestStep res
 
     if null shakeTargets
       then rules
       else want shakeTargets >> withoutActions rules
 
-checkTestStep :: (MonadFail m, HasCallStack) => TestStepResult a -> m a
+checkTestStep :: (MonadFail m, HasCallStack) => Hitl.TestStepResult a -> m a
 checkTestStep res = case res of
-  TestStepFailure err -> error err
-  TestStepSuccess x -> return x
+  Hitl.TestStepFailure err -> error err
+  Hitl.TestStepSuccess x -> return x

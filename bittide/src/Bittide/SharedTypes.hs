@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Bittide.SharedTypes (
@@ -33,14 +32,36 @@ updateM2SAddr ::
   BitVector addressWidthNew ->
   WishboneM2S addressWidthOld selWidth ->
   WishboneM2S addressWidthNew selWidth
-updateM2SAddr newAddr WishboneM2S{..} = WishboneM2S{addr = newAddr, ..}
+updateM2SAddr newAddr m@WishboneM2S{} =
+  WishboneM2S
+    { addr = newAddr
+    , burstTypeExtension = m.burstTypeExtension
+    , busCycle = m.busCycle
+    , busSelect = m.busSelect
+    , cycleTypeIdentifier = m.cycleTypeIdentifier
+    , lock = m.lock
+    , strobe = m.strobe
+    , writeData = m.writeData
+    , writeEnable = m.writeEnable
+    }
 
 -- | Resize 'WishboneM2S's 'addr' field.
 resizeM2SAddr ::
   (KnownNat addressWidthOld, KnownNat addressWidthNew) =>
   WishboneM2S addressWidthOld selWidth ->
   WishboneM2S addressWidthNew selWidth
-resizeM2SAddr WishboneM2S{..} = WishboneM2S{addr = resize addr, ..}
+resizeM2SAddr m@WishboneM2S{} =
+  WishboneM2S
+    { addr = resize m.addr
+    , burstTypeExtension = m.burstTypeExtension
+    , busCycle = m.busCycle
+    , busSelect = m.busSelect
+    , cycleTypeIdentifier = m.cycleTypeIdentifier
+    , lock = m.lock
+    , strobe = m.strobe
+    , writeData = m.writeData
+    , writeEnable = m.writeEnable
+    }
 
 -- | A single byte.
 type Byte = BitVector 8

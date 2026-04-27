@@ -6,7 +6,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -498,14 +497,14 @@ verifyHitlVio v paramBitSize = do
          | paramBitSize /= 0
          ]
   verifyHitlProbe :: VioProbeInfo -> [HwProbe] -> IO ()
-  verifyHitlProbe VioProbeInfo{..} vioProbes = do
-    let simpleName = last (split (== '/') probeName)
+  verifyHitlProbe vpi@VioProbeInfo{} vioProbes = do
+    let simpleName = last (split (== '/') vpi.probeName)
     let probe = case filter (('/' : simpleName) `isSuffixOf`) (show <$> vioProbes) of
           [p] -> p
           ps ->
             error $
               "Exactly one probe named '"
-                <> probeName
+                <> vpi.probeName
                 <> "' "
                 <> "must be present but "
                 <> show (length ps)
@@ -514,22 +513,22 @@ verifyHitlVio v paramBitSize = do
       v
       "set"
       [ simpleName
-      , "[get_hw_probes -of_objects [get_hw_vios] " <> probeName <> "]"
+      , "[get_hw_probes -of_objects [get_hw_vios] " <> vpi.probeName <> "]"
       ]
     typeProp <- execCmd v "get_property" ["type", "$" <> simpleName]
-    unless (typeProp == probeType) $
+    unless (typeProp == vpi.probeType) $
       error $
         "Probe '"
           <> probe
           <> "' must have type "
-          <> probeType
+          <> vpi.probeType
           <> " but has '"
           <> typeProp
           <> "'."
     widthProp <- execCmd v "get_property" ["width", "$" <> simpleName]
-    unless (widthProp == probeWidth) $
+    unless (widthProp == vpi.probeWidth) $
       error $
-        "Probe '" <> probe <> "' must have width " <> probeWidth <> " but it is " <> widthProp
+        "Probe '" <> probe <> "' must have width " <> vpi.probeWidth <> " but it is " <> widthProp
 
 {- | Observed instances of property CELL_NAME of an hw_ila object include:
 - "Bittide_Instances_Hitl_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla_callistoResult/ilaPlot/ilaPlot"
@@ -676,10 +675,10 @@ the probe_test_done probe. Returns whether the test case was successful.
 -}
 waitTestCaseEnd ::
   VivadoHandle -> HitlTestCase (HwTarget, DeviceInfo) a b -> FilePath -> IO ExitCode
-waitTestCaseEnd v HitlTestCase{..} probesFilePath = do
+waitTestCaseEnd v htc@HitlTestCase{} probesFilePath = do
   startTime <- getTime Monotonic
   let calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
-  exitCodes <- forM (keys parameters) $ \(hwT, _) -> do
+  exitCodes <- forM (keys htc.parameters) $ \(hwT, _) -> do
     openHwTarget v hwT
     execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
     pollTestDone startTime testTimeoutMs v hwT
@@ -688,7 +687,7 @@ waitTestCaseEnd v HitlTestCase{..} probesFilePath = do
   timeSpentMs <- calcTimeSpentMs
   putStrLn $
     "HITL test case'"
-      <> name
+      <> htc.name
       <> "' passed on "
       <> show (length (filter (== ExitSuccess) exitCodes))
       <> " out of "
@@ -756,16 +755,16 @@ runHitlTest test@HitlTestGroup{topEntity, testCases, mDriverProc} url probesFile
     execCmd_ v "connect_hw_server" ["-url " <> url]
     refToHwTMap <- resolveHwTRefs v (hwTargetRefsFromHitlTestGroup test)
 
-    testResults <- forM (zip [1 :: Int ..] testCases) $ \(nr, HitlTestCase{..}) -> do
+    testResults <- forM (zip [1 :: Int ..] testCases) $ \(nr, htc@HitlTestCase{}) -> do
       putStrLn $
         "Starting HITL test case "
           <> show nr
           <> " out of "
           <> show (length testCases)
           <> " named '"
-          <> name
+          <> htc.name
           <> "'..."
-      let requestedIds = map idFromHwTRef (Map.keys parameters)
+      let requestedIds = map idFromHwTRef (Map.keys htc.parameters)
       when (anySame requestedIds) $
         error $
           "Multiple references to the same hardware target: "
@@ -775,15 +774,16 @@ runHitlTest test@HitlTestGroup{topEntity, testCases, mDriverProc} url probesFile
       let
         resolvedTestCase =
           HitlTestCase
-            { parameters = mapKeys (\k -> (lookupHwT k, lookupDeviceInfo k)) parameters
-            , ..
+            { parameters = mapKeys (\k -> (lookupHwT k, lookupDeviceInfo k)) htc.parameters
+            , name = htc.name
+            , postProcData = htc.postProcData
             }
         lookupHwT key = fromJust $ Map.lookup key refToHwTMap
         lookupDeviceInfo key = deviceInfoFromHwTRef key
 
       exitCode <-
         runHitlTestCase v resolvedTestCase mDriverProc probesFilePath ilaDataDir
-      pure (name, exitCode)
+      pure (htc.name, exitCode)
 
     let failedTestCaseNames = fst <$> filter ((/= ExitSuccess) . snd) testResults
     if null failedTestCaseNames

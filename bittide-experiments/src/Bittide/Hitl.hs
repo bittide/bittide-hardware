@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
 
 {- | Tooling to define hardware-in-the-loop (HITL) tests. HITL tests in the
 Bittide project involve FPGA designs that incorporate a
@@ -258,7 +257,7 @@ class MayHavePostProcData b where
 instance MayHavePostProcData a where
   mGetPPD cases =
     Map.fromList
-      [(name, Just postProcData) | HitlTestCase{..} <- cases]
+      [(c.name, Just c.postProcData) | c@HitlTestCase{} <- cases]
 
 instance MayHavePostProcData () where
   mGetPPD = Map.fromList . map ((,Nothing) . (.name))

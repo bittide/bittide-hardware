@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
 
 -- | Infrastructure for post processing of ILA data
 module Bittide.Instances.Hitl.Post.PostProcess where
@@ -34,10 +33,10 @@ data FlattenedIlaCsvPath = FlattenedIlaCsvPath
   }
 
 addIlaCsvPath :: NestedIlaCsvPaths -> FlattenedIlaCsvPath -> NestedIlaCsvPaths
-addIlaCsvPath m FlattenedIlaCsvPath{..} = Map.alter goTestName testName m
+addIlaCsvPath m p@FlattenedIlaCsvPath{} = Map.alter goTestName p.testName m
  where
-  goTestName = Just . Map.alter goFpgaNum fpgaNum . fromMaybe Map.empty
-  goFpgaNum = Just . Map.insert ilaName csvPath . fromMaybe Map.empty
+  goTestName = Just . Map.alter goFpgaNum p.fpgaNum . fromMaybe Map.empty
+  goFpgaNum = Just . Map.insert p.ilaName p.csvPath . fromMaybe Map.empty
 
 {- | Convert a String of the format "{idx}_{fpga_id}" to an FpgaNum. idx is
 either the index of the FPGA board in the demo rack, or 'X' if it was
@@ -71,7 +70,7 @@ toFlattenedIlaCsvPathList ::
 toFlattenedIlaCsvPathList ilaDataDir = map go
  where
   go :: FilePath -> FlattenedIlaCsvPath
-  go csvPath = FlattenedIlaCsvPath{..}
+  go csvPath = FlattenedIlaCsvPath{csvPath, fpgaNum, ilaName, testName}
    where
     relativeCsvPath = makeRelative ilaDataDir csvPath
     (testName, toFpgaNum -> fpgaNum, takeBaseName -> ilaName) =

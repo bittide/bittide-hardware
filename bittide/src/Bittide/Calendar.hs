@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=100 #-}
 
@@ -239,63 +238,73 @@ calendar SNat bootstrapActive bootstrapShadow ctrl = calOut
       , CalendarOutput maxCalDepth (ValidEntry a repetitionBits)
       )
     )
-  go CalendarState{..} (CalendarControl{..}, bufAIn, bufBIn) =
-    (calState, (bufCtrl1, calOut1))
-   where
-    selectedBuffer1
-      | swapCalendars && lastCycle = swapAorB selectedBuffer
-      | otherwise = selectedBuffer
+  go
+    CalendarState
+      { calDepthA
+      , calDepthB
+      , entryTracker
+      , firstCycle
+      , repetitionCounter
+      , selectedBuffer
+      , swapCalendars
+      }
+    (CalendarControl{armCalendarSwap, newShadowDepth, newShadowEntry, shadowReadAddr}, bufAIn, bufBIn) =
+      (calState, (bufCtrl1, calOut1))
+     where
+      selectedBuffer1
+        | swapCalendars && lastCycle = swapAorB selectedBuffer
+        | otherwise = selectedBuffer
 
-    lastCycle = not entryStillValid && entryTracker == activeDepth
+      lastCycle = not entryStillValid && entryTracker == activeDepth
 
-    entryStillValid = repetitionCounter < veRepeat
+      entryStillValid = repetitionCounter < veRepeat
 
-    entryTracker1
-      | entryStillValid = entryTracker
-      | not lastCycle = satSucc SatWrap entryTracker
-      | otherwise = 0
+      entryTracker1
+        | entryStillValid = entryTracker
+        | not lastCycle = satSucc SatWrap entryTracker
+        | otherwise = 0
 
-    repetitionCounter1
-      | entryStillValid = satSucc SatWrap repetitionCounter
-      | otherwise = 0
+      repetitionCounter1
+        | entryStillValid = satSucc SatWrap repetitionCounter
+        | otherwise = 0
 
-    (activeEntry1, shadowEntry)
-      | A <- selectedBuffer = (bufAIn, bufBIn)
-      | B <- selectedBuffer = (bufBIn, bufAIn)
+      (activeEntry1, shadowEntry)
+        | A <- selectedBuffer = (bufAIn, bufBIn)
+        | B <- selectedBuffer = (bufBIn, bufAIn)
 
-    (activeDepth, shadowDepth)
-      | A <- selectedBuffer = (calDepthA, calDepthB)
-      | B <- selectedBuffer = (calDepthB, calDepthA)
+      (activeDepth, shadowDepth)
+        | A <- selectedBuffer = (calDepthA, calDepthB)
+        | B <- selectedBuffer = (calDepthB, calDepthA)
 
-    (calDepthA1, calDepthB1) =
-      case (selectedBuffer, newShadowDepth) of
-        (A, Just newDepthB) -> (calDepthA, newDepthB)
-        (B, Just newDepthA) -> (newDepthA, calDepthB)
-        _ -> (calDepthA, calDepthB)
+      (calDepthA1, calDepthB1) =
+        case (selectedBuffer, newShadowDepth) of
+          (A, Just newDepthB) -> (calDepthA, newDepthB)
+          (B, Just newDepthA) -> (newDepthA, calDepthB)
+          _ -> (calDepthA, calDepthB)
 
-    (readA, writeA, readB, writeB) =
-      case (selectedBuffer1, isJust newShadowEntry) of
-        (A, True) -> (entryTracker1, Nothing, shadowReadAddr, newShadowEntry)
-        (A, _) -> (entryTracker1, Nothing, shadowReadAddr, Nothing)
-        (B, True) -> (shadowReadAddr, newShadowEntry, entryTracker1, Nothing)
-        (B, _) -> (shadowReadAddr, Nothing, entryTracker1, Nothing)
+      (readA, writeA, readB, writeB) =
+        case (selectedBuffer1, isJust newShadowEntry) of
+          (A, True) -> (entryTracker1, Nothing, shadowReadAddr, newShadowEntry)
+          (A, _) -> (entryTracker1, Nothing, shadowReadAddr, Nothing)
+          (B, True) -> (shadowReadAddr, newShadowEntry, entryTracker1, Nothing)
+          (B, _) -> (shadowReadAddr, Nothing, entryTracker1, Nothing)
 
-    activeEntry@(ValidEntry{..})
-      | firstCycle = bootstrapA !! (0 :: Index 1)
-      | otherwise = activeEntry1
+      activeEntry@(ValidEntry{veRepeat})
+        | firstCycle = bootstrapA !! (0 :: Index 1)
+        | otherwise = activeEntry1
 
-    bufCtrl1 = BufferControl{readA, writeA, readB, writeB}
-    calOut1 = CalendarOutput{activeEntry, lastCycle, shadowEntry, shadowDepth}
-    calState =
-      CalendarState
-        { firstCycle = False
-        , selectedBuffer = selectedBuffer1
-        , entryTracker = entryTracker1
-        , repetitionCounter = repetitionCounter1
-        , calDepthA = calDepthA1
-        , calDepthB = calDepthB1
-        , swapCalendars = armCalendarSwap || (not lastCycle && swapCalendars)
-        }
+      bufCtrl1 = BufferControl{readA, writeA, readB, writeB}
+      calOut1 = CalendarOutput{activeEntry, lastCycle, shadowEntry, shadowDepth}
+      calState =
+        CalendarState
+          { firstCycle = False
+          , selectedBuffer = selectedBuffer1
+          , entryTracker = entryTracker1
+          , repetitionCounter = repetitionCounter1
+          , calDepthA = calDepthA1
+          , calDepthB = calDepthB1
+          , swapCalendars = armCalendarSwap || (not lastCycle && swapCalendars)
+          }
 
 data CalendarControl calDepth calEntry = CalendarControl
   { newShadowDepth :: Maybe (Index calDepth)

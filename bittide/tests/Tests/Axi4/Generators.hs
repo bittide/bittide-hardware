@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Tests.Axi4.Generators where
 
@@ -57,7 +56,7 @@ genAxisM2S SNat SNat SNat byteTypes lastValues genUser = do
   _tid <- genUnsigned Range.constantBounded
   _tdest <- genUnsigned Range.constantBounded
   _tuser <- genUser
-  pure $ Axi4StreamM2S{..}
+  pure $ Axi4StreamM2S{_tdata, _tdest, _tid, _tlast, _tkeep, _tstrb, _tuser}
 
 prop_genAxisM2S :: Property
 prop_genAxisM2S = property $ do
