@@ -10,6 +10,7 @@ import Clash.Prelude (withClock)
 import Bittide.Counter
 import Bittide.Instances.Domains
 import Bittide.Instances.Hacks
+import Clash.Cores.Xilinx (withXilinx)
 
 counter ::
   Clock Basic200 ->
@@ -18,8 +19,7 @@ counter ::
   Reset Basic200 ->
   Signal Basic200 () ->
   Signal Basic200 (Signed 32, Bool)
-counter clk0 rst0 clk1 rst1 _ =
-  domainDiffCounter clk0 rst0 clk1 rst1
+counter clk0 rst0 clk1 rst1 _ = withXilinx $ domainDiffCounter clk0 rst0 clk1 rst1
 
 counterReducedPins :: Clock Basic200 -> Signal Basic200 Bit
 counterReducedPins clk =

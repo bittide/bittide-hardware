@@ -43,8 +43,7 @@ import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Class.Counter (Counter (countSuccOverflow))
-import Clash.Cores.Xilinx.Xpm (xpmCdcSingle, xpmCdcSyncRst)
-import Clash.Cores.Xilinx.Xpm.Cdc.SyncRst (Asserted (..))
+
 import Clash.Explicit.Signal.Extra (changepoints)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -53,6 +52,8 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWb,
  )
+
+import qualified Clash.Class.Cdc as Cdc
 
 type SyncOutGeneratorHalfPeriod = Milliseconds 5
 
@@ -78,11 +79,13 @@ filtered and synchronized to the clock domain of the circuit. The glitch filter
 is hardcoded to 128 clock cycles.
 -}
 syncInCounterC ::
-  forall n dom.
+  forall n dom vendor.
   ( KnownDomain dom
   , HasSynchronousReset dom
   , KnownNat n
   , DomainInitBehavior dom ~ 'Defined
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidBit vendor Bool dom dom
   ) =>
   Clock dom ->
   Reset dom ->
@@ -99,7 +102,7 @@ syncInCounterC clk rst = Circuit go
       unsafeToActiveLow
         $ resetGlitchFilter (SNat @128) clk
         $ unsafeFromActiveLow
-        $ xpmCdcSingle clk clk
+        $ Cdc.bit @vendor @Bool @dom @dom clk clk
         $ fmap bitToBool syncIn
     syncInChange = changepoints clk rst enableGen syncInFiltered
     syncInChangeRst = unsafeFromActiveHigh syncInChange
@@ -128,13 +131,15 @@ is a registered output, i.e., it can directly be connected to a pin. On the
 wishbone bus, a single register is exposed: whether this component is active.
 -}
 syncOutGenerateWbC ::
-  forall dom counterDom aw.
+  forall dom counterDom aw vendor.
   ( KnownDomain dom
   , HasSynchronousReset dom
   , HasSynchronousReset counterDom
   , HasCallStack
   , KnownNat aw
   , ?byteOrder :: ByteOrder
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidSyncRst vendor dom counterDom
   ) =>
   -- | Clock domain of the wishbone bus, typically the controlled domain.
   Clock dom ->
@@ -150,7 +155,9 @@ syncOutGenerateWbC clk rst counterClk counterRst = circuit $ \(mm, wb) -> do
   (Fwd active, _activity) <- registerWb clk rst config False -< (activeWb, Fwd noWrite)
   let
     syncOutRst0 = rst `orReset` unsafeFromActiveLow active
-    syncOutRst1 = counterRst `orReset` xpmCdcSyncRst Asserted clk counterClk syncOutRst0
+    syncOutRst1 =
+      orReset counterRst
+        $ Cdc.syncRst @vendor (Cdc.defaultAssert @vendor) clk counterClk syncOutRst0
   syncOut <- syncOutGeneratorC counterClk syncOutRst1
   idC -< syncOut
  where

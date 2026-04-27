@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE ImplicitParams #-}
 
 module Bittide.Counter (
   Active,
@@ -13,7 +14,6 @@ import Protocols
 
 import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC (ByteOrder)
-import Clash.Cores.Xilinx.Xpm (xpmCdcGray)
 import Clash.Functor.Extra ((<<$>>))
 import Clash.Sized.Extra (concatUnsigneds, unsignedToSigned)
 import GHC.Stack (HasCallStack)
@@ -26,6 +26,8 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWb_,
  )
+
+import qualified Clash.Class.Cdc as Cdc
 
 -- | State of 'domainDiffCounter'
 data DdcState
@@ -75,9 +77,11 @@ __N.B.__:
       zero ever so often.
 -}
 domainDiffCounter ::
-  forall src dst.
+  forall src dst vendor.
   ( KnownDomain src
   , KnownDomain dst
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidGray vendor 8 src dst
   ) =>
   Clock src ->
   Reset src ->
@@ -89,7 +93,7 @@ domainDiffCounter clkSrc rstSrc clkDst rstDst =
   mealy clkDst rstDst enableGen go DdcInReset counter
  where
   -- 64 bits is enough for approximately 3 millenia @ 200 MHz
-  counter = synchronizedSuccCounter @64 clkSrc rstSrc clkDst rstDst
+  counter = Cdc.withVendor ?vendorName $ synchronizedSuccCounter @64 clkSrc rstSrc clkDst rstDst
 
   go :: DdcState -> Unsigned 64 -> (DdcState, (Signed 32, Bool))
   go DdcInReset c1
@@ -106,8 +110,9 @@ only be read from. See 'domainDiffCounter' for more information on domain
 difference counters in general.
 -}
 domainDiffCountersWbC ::
-  forall src dst n addrW.
-  ( HasCallStack
+  forall src dst n addrW vendor.
+  ( Cdc.GrayConstraints vendor 8 src dst
+  , HasCallStack
   , KnownDomain src
   , KnownDomain dst
   , HasSynchronousReset src
@@ -115,6 +120,8 @@ domainDiffCountersWbC ::
   , KnownNat n
   , KnownNat addrW
   , ?byteOrder :: ByteOrder
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidGray vendor 8 src dst
   ) =>
   Vec n (Clock src) ->
   Vec n (Reset src) ->
@@ -123,7 +130,7 @@ domainDiffCountersWbC ::
   Circuit
     (BitboneMm dst addrW)
     (CSignal dst (Vec n (Signed 32, Active)))
-domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
+domainDiffCountersWbC srcClocks srcResets clk rst = Cdc.withVendor ?vendorName $ circuit $ \bus -> do
   [enableWb, countersWb, activesWb] <- deviceWb clk rst (deviceConfig "DomainDiffCounters") -< bus
 
   (Fwd enables, _a) <-
@@ -166,11 +173,14 @@ __N.B.__: This function uses an 8-bit Gray counter internally, and will therefor
           only work properly if both clock speeds are pretty close to one another.
 -}
 synchronizedSuccCounter ::
-  forall n src dst.
+  forall n src dst vendor.
   ( KnownDomain src
   , KnownDomain dst
   , KnownNat n
   , 8 <= n
+  , Cdc.HiddenVendor vendor
+  , Cdc.Gray vendor
+  , Cdc.GrayConstraints vendor 8 src dst
   ) =>
   Clock src ->
   Reset src ->
@@ -179,7 +189,8 @@ synchronizedSuccCounter ::
   Signal dst (Unsigned n)
 synchronizedSuccCounter clkSrc rstSrc clkDst rstDst =
   extendSuccCounter @8 @(n - 8) clkDst rstDst
-    $ xpmCdcGray @8 clkSrc clkDst counter
+    $ Cdc.withVendor ?vendorName
+    $ Cdc.gray @vendor @8 @src @dst clkSrc clkDst counter
  where
   counter :: Signal src (Unsigned 8)
   counter = register clkSrc rstSrc enableGen 0 (counter + 1)

@@ -9,6 +9,7 @@ FINC and FDEC pins.
 module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Cores.Xilinx (withXilinx)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
@@ -108,7 +109,7 @@ goFincFdecTests clk rst clkControlled testSelect spiS2M =
       -- reset much earlier than 'rstTest'. Doing it the "proper" way would
       -- therefore introduce extra complexity, without adding to the test's
       -- coverage.
-      domainDiffCounter clkControlled rstControlled clk rstTest
+      (withXilinx domainDiffCounter) clkControlled rstControlled clk rstTest
 
   fIncDec = unbundle $ speedChangeToFincFdec clk rstTest fIncDecRequest
 
