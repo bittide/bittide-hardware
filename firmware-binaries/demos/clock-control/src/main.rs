@@ -8,7 +8,7 @@
 use core::panic::PanicInfo;
 use itertools::izip;
 
-use bittide_hal::shared_devices::ClockControl;
+use bittide_hal::hals::switch_demo_cc::devices::ClockControl;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::manual_additions::timer::WaitResult;
@@ -21,7 +21,6 @@ use bittide_sys::stability_detector::StabilityDetector;
 use ufmt::uwriteln;
 
 use bittide_sys::callisto::Callisto;
-use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -137,9 +136,7 @@ fn test_bit(bv: u8, i: usize) -> bool {
 }
 
 #[panic_handler]
-fn panic_handler(info: &PanicInfo) -> ! {
-    let mut uart = INSTANCES.uart;
-    writeln!(uart, "Panicked! #{info}").unwrap();
+fn panic_handler(_info: &PanicInfo) -> ! {
     loop {
         continue;
     }

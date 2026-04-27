@@ -158,4 +158,11 @@ macro_rules! impl_transceivers_interface {
     };
 }
 
-impl_transceivers_interface!(crate::shared_devices::Transceivers);
+impl_transceivers_interface!(crate::hals::soft_ugn_demo_boot::devices::Transceivers);
+impl_transceivers_interface!(crate::hals::soft_ugn_demo_mu::devices::Transceivers);
+impl_transceivers_interface!(crate::hals::switch_demo_boot::devices::Transceivers);
+impl_transceivers_interface!(crate::hals::switch_demo_mu::devices::Transceivers);
+impl_transceivers_interface!(crate::hals::switch_demo_gppe_boot::devices::Transceivers);
+impl_transceivers_interface!(crate::hals::switch_demo_gppe_mu::devices::Transceivers);
+impl_transceivers_interface!(crate::hals::wire_demo_boot::devices::Transceivers);
+impl_transceivers_interface!(crate::hals::wire_demo_mu::devices::Transceivers);

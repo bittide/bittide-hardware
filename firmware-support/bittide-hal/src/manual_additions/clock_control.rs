@@ -127,4 +127,12 @@ macro_rules! impl_clock_control_interface {
     };
 }
 
-impl_clock_control_interface!(crate::shared_devices::ClockControl);
+impl_clock_control_interface!(crate::hals::clock_control_wb::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::soft_ugn_demo_cc::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::soft_ugn_demo_mu::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::switch_demo_cc::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::switch_demo_mu::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::switch_demo_gppe_cc::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::switch_demo_gppe_mu::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::wire_demo_cc::devices::ClockControl);
+impl_clock_control_interface!(crate::hals::wire_demo_mu::devices::ClockControl);

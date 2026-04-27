@@ -54,4 +54,8 @@ macro_rules! impl_freeze_interface {
     };
 }
 
-impl_freeze_interface!(crate::shared_devices::Freeze);
+impl_freeze_interface!(crate::hals::freeze::devices::Freeze);
+impl_freeze_interface!(crate::hals::soft_ugn_demo_cc::devices::Freeze);
+impl_freeze_interface!(crate::hals::switch_demo_cc::devices::Freeze);
+impl_freeze_interface!(crate::hals::switch_demo_gppe_cc::devices::Freeze);
+impl_freeze_interface!(crate::hals::wire_demo_cc::devices::Freeze);

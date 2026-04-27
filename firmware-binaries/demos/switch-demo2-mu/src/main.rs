@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::shared_devices::Transceivers;
+use bittide_hal::hals::switch_demo_gppe_mu::devices::Transceivers;
 use bittide_hal::hals::switch_demo_gppe_mu::DeviceInstances;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
