@@ -31,6 +31,7 @@ import qualified Bittide.Instances.Tests.ClockControlWb as ClockControlWb
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.NestedInterconnect as NestedInterconnect
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
+import qualified Bittide.Instances.Tests.RingBuffer as RingBuffer
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
 import qualified Bittide.Instances.Tests.TimeWb as TimeWb
@@ -53,6 +54,7 @@ $( do
            , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)
            , ("ProcessingElement", vexRiscvUartHelloMM)
            , ("RegisterWb", RegisterWb.memoryMap)
+           , ("RingBufferTest", RingBuffer.dutMM)
            , ("ScatterGatherPe", ScatterGather.dutMM)
            , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
            , ("SoftUgnDemoBoot", SoftUgnDemo.boot)

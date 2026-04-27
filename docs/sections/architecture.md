@@ -99,15 +99,15 @@ These two pieces, together, ensure the UGNs are captured between each node. The 
 </script>
 
 #### Option 2: Soft UGN capture
-Soft UGN capture is done by using the Management Unit (MU) CPU to read the RingBuffer (RB). The benefit of this approach is we can re-use an existing component instead of creating a new one, saving space on the hardware.
+Soft UGN capture is done by using the Management Unit (MU) CPU to read the Ring Buffer (RB). The benefit of this approach is we can re-use an existing component instead of creating a new one, saving space on the hardware.
 
 However, the CPU approach comes with a major limitation - unlike the UGN Capture component, the MU cannot inspect every bittide word the same cycle it comes in.[^1] Therefore, we need to do two things:
 1) let the MU know which element in the Rx RB corresponds to the start of the Tx RB.
 2) have the neighbor node send the clock cycle sometime at the start of the Tx RB.
 
-[^1]: This difference occurs because the RingBuffer (RB) only supports accessing one address per cycle. The UGN Capture sits before the RingBuffer (RB) in the data pipeline, while the MU CPU sits behind the RB. So UGN capture can inspect every new word, while the MU needs to know which RB element to inspect. If the MU were to scan the entire RB, it would find the right element, but it would then not know on which clock cycle the element was put into the RB.
+[^1]: This difference occurs because the Ring Buffer (RB) only supports accessing one address per cycle. The UGN Capture sits before the Ring Buffer (RB) in the data pipeline, while the MU CPU sits behind the RB. So UGN capture can inspect every new word, while the MU needs to know which RB element to inspect. If the MU were to scan the entire RB, it would find the right element, but it would then not know on which clock cycle the element was put into the RB.
 
-This way, the MU does not need to inspect every element in the RB for the clock cycle, it just needs to inspect the one entry it knows the clock cycle will eventually be in. For more detail, see the [Ringbuffer alignment](ringbuffer-alignment.html) section.
+This way, the MU does not need to inspect every element in the RB for the clock cycle, it just needs to inspect the one entry it knows the clock cycle will eventually be in. For more detail, see the [Ring Buffer alignment](ringbuffer-alignment.html) section.
 
 Once the relationship has been mapped, the sending node can send a "UGN event" (5 bittide words), which will be read by the receiving MU.
 
