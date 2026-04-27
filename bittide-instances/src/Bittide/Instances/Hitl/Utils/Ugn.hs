@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE LambdaCase #-}
 
 {- |
 Utilities for collecting and comparing UGN edges in a HITL test. UGN edges represent
