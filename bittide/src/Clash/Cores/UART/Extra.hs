@@ -13,9 +13,9 @@ import Clash.Prelude
 import Protocols
 
 import Clash.Cores.UART
+import Clash.Functor.Extra ((<<$>>))
 import Data.Char
 import Data.Maybe
-import GHC.IO
 import Protocols.Df hiding (catMaybes, pure, sample)
 import System.IO
 
@@ -51,6 +51,16 @@ uartIO ::
   -- | The IO action that performs simulation.
   IO ()
 uartIO inputHandle outputHandle baud uartCircuit = do
+  allInputs <- sequence $ ioList inputHandle
+  let
+    input = fromIntegral . ord <<$>> allInputs
+
+    ioCircuit :: Circuit () (Df dom (BitVector 8))
+    ioCircuit = circuit $ \_n -> do
+      (receivedByte, txBit) <- uartWithLists baud input -< rxBit
+      rxBit <- uartCircuit -< txBit
+      unsafeToDf -< receivedByte
+
   printList . catMaybes $ Df.sample def $ ioCircuit
  where
   printList :: [(BitVector 8)] -> IO ()
@@ -66,12 +76,6 @@ uartIO inputHandle outputHandle baud uartCircuit = do
     if charReady
       then (fmap Just) $ hGetChar h
       else pure Nothing
-
-  input = fmap (fmap (fromIntegral . ord) . unsafePerformIO) $ ioList inputHandle
-  ioCircuit = circuit $ \_n -> do
-    (receivedByte, txBit) <- uartWithLists baud input -< rxBit
-    rxBit <- uartCircuit -< txBit
-    unsafeToDf -< receivedByte
 
 {- | A simulation function for circuits that expose a UART connection.
 This function transforms a list into its respective uart driver, it also returns
