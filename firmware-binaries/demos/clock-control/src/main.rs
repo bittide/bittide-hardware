@@ -21,6 +21,7 @@ use bittide_sys::stability_detector::StabilityDetector;
 use ufmt::uwriteln;
 
 use bittide_sys::callisto::Callisto;
+use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -136,7 +137,9 @@ fn test_bit(bv: u8, i: usize) -> bool {
 }
 
 #[panic_handler]
-fn panic_handler(_info: &PanicInfo) -> ! {
+fn panic_handler(info: &PanicInfo) -> ! {
+    let mut uart = INSTANCES.uart;
+    writeln!(uart, "Panicked! #{info}").unwrap();
     loop {
         continue;
     }
