@@ -3,10 +3,12 @@
   {"top": "elasticBufferWb",               "stage": "pnr",   "cc_report": false},
   {"top": "freeze",                        "stage": "pnr",   "cc_report": false},
   {"top": "gatherUnit1KReducedPins",       "stage": "pnr",   "cc_report": false},
+  {"top": "receiveRingBufferPnr",          "stage": "pnr",   "cc_report": false},
   {"top": "safeDffSynchronizer",           "stage": "pnr",   "cc_report": false},
   {"top": "scatterUnit1KReducedPins",      "stage": "pnr",   "cc_report": false},
   {"top": "si5391Spi",                     "stage": "pnr",   "cc_report": false},
   {"top": "switchExampleReducedPins",      "stage": "pnr",   "cc_report": false},
+  {"top": "transmitRingBufferPnr",         "stage": "pnr",   "cc_report": false},
 
   {"top": "asciiDebugMux",                 "stage": "hdl",   "cc_report": false},
   {"top": "gatherUnit1K",                  "stage": "hdl",   "cc_report": false},

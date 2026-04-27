@@ -223,6 +223,7 @@ library
     Bittide.Instances.Pnr.Ethernet
     Bittide.Instances.Pnr.Freeze
     Bittide.Instances.Pnr.ProcessingElement
+    Bittide.Instances.Pnr.RingBuffer
     Bittide.Instances.Pnr.ScatterGather
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.Switch

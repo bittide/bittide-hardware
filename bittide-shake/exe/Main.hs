@@ -188,6 +188,8 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferPnr"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferPnr"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget $ mkName "Bittide.Instances.Pnr.StabilityChecker.stabilityhecker_3_1M"
