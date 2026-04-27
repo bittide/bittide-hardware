@@ -10,14 +10,15 @@ import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase)
 import Test.Tasty.TH (testGroupGenerator)
 
-import Bittide.Instances.Tests.NestedInterconnect (simResult)
+import Bittide.Instances.Tests.NestedInterconnect (peConfigSim, simResult)
 
 import qualified Text.Parsec as P
 import qualified Text.Parsec.String as P
 
 case_sim :: Assertion
-case_sim =
-  case parseResultLine simResult of
+case_sim = do
+  peConfig <- peConfigSim
+  case parseResultLine $ simResult peConfig of
     Left err ->
       assertFailure $ "Parse error: " <> show err
     Right (Just err) ->

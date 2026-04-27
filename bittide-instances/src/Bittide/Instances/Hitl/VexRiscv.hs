@@ -18,7 +18,7 @@ import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Data.Maybe (fromMaybe)
+import Project.FilePath (CargoBuildType (Release))
 import Protocols
 import Protocols.MemoryMap (Access (WriteOnly), Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -29,30 +29,24 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
  )
 import Protocols.MemoryMap.TypeDescription.TH
-import System.Environment (lookupEnv)
 import VexRiscv
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam (
-  ContentType (Vec),
- )
 import Bittide.Hitl
+import Bittide.Instances.Common (
+  PeConfigElfSource (TryEnv, backup, envVar),
+  emptyPeConfig,
+  peConfigFromElf,
+ )
 import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Driver.VexRiscv
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Cores.UART.Extra
 
 import GHC.Stack (HasCallStack)
-import Project.FilePath (
-  CargoBuildType (Release),
-  findParentContaining,
-  firmwareBinariesDir,
- )
 import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 
 import qualified Protocols.MemoryMap as Mm
 
@@ -74,17 +68,32 @@ type Baud = 921_600
 baud :: SNat Baud
 baud = SNat
 
+peConfigRtl :: PeConfig 5
+peConfigRtl = emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
+
+peConfigSim :: IO (PeConfig 5)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    TryEnv{envVar = "TEST_BINARY_NAME", backup = "vexriscv-hello"}
+    Release
+    d0
+    d0
+    False
+    vexRiscv0
+
 -- | To use this function, change the initial contents of the iMem and dMem
 sim :: IO ()
-sim =
-  uartIO stdin stdout baud
-    $ withClockResetEnable clockGen (resetGenN d2) enableGen
-    $ Circuit go
- where
-  go (uartRx, _) = ((), uartTx)
-   where
-    (_, (_, uartTx)) =
-      toSignals (vexRiscvTestC @Basic125) (((), (pure $ unpack 0, uartRx)), ((), ()))
+sim = do
+  peConfig <- peConfigSim
+  let
+    go (uartRx, _) = ((), uartTx)
+     where
+      (_, (_, uartTx)) =
+        withClockResetEnable clockGen (resetGenN d2) enableGen
+          $ toSignals (vexRiscvTestC @Basic125 peConfig) (((), (pure $ unpack 0, uartRx)), ((), ()))
+  uartIO stdin stdout baud (Circuit go)
 
 {- | Wishbone accessible status register. Used to communicate the test status
 from the CPU to the outside world through VIOs.
@@ -117,7 +126,7 @@ vexRiscvTestMM :: Mm.MemoryMap
 vexRiscvTestMM =
   getMMAny
     $ withClockResetEnable clockGen resetGen enableGen
-    $ vexRiscvTestC @Basic125
+    $ vexRiscvTestC @Basic125 peConfigRtl
 
 vexRiscvTestC ::
   forall dom.
@@ -126,10 +135,11 @@ vexRiscvTestC ::
   , 1 <= DomainPeriod dom
   , ValidBaud dom Baud
   ) =>
+  PeConfig 5 ->
   Circuit
     (ToConstBwd Mm, (Jtag dom, CSignal dom UartRx))
     (CSignal dom TestStatus, CSignal dom UartTx)
-vexRiscvTestC =
+vexRiscvTestC peConfig =
   withLittleEndian
     $ circuit
     $ \(mm, (jtag, uartRx)) -> do
@@ -145,45 +155,6 @@ vexRiscvTestC =
 
       testResult <- statusRegister -< statusRegisterBus
       idC -< (testResult, uartTx)
- where
-  peConfig, peConfigSim, peConfigRtl :: PeConfig 5
-  peConfig
-    | clashSimulation = peConfigSim
-    | otherwise = peConfigRtl
-
-  peConfigSim = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> fromMaybe "vexriscv-hello" maybeBinaryName
-    pure
-      peConfigRtl
-        { depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr @IMemWords elfPath
-        , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData @DMemWords elfPath
-        , includeIlaWb = False
-        }
-  peConfigRtl =
-    PeConfig
-      { cpu = vexRiscv0
-      , depthI = SNat @IMemWords
-      , depthD = SNat @DMemWords
-      , initI = Nothing
-      , initD = Nothing
-      , iBusTimeout = d0
-      , dBusTimeout = d0
-      , includeIlaWb = True
-      }
 
 type IMemWords = DivRU (2 * 1024) 4
 type DMemWords = DivRU (4 * 1024) 4
@@ -211,7 +182,7 @@ vexRiscvTest diffClk jtagIn uartRx = (testStatusDone, testStatusSuccess, jtagOut
   ((_mm, (jtagOut, _)), (testStatus, uartTx)) =
     withClockResetEnable clk reset enableGen
       $ toSignals
-        (vexRiscvTestC @Basic125)
+        (vexRiscvTestC @Basic125 peConfigRtl)
         (((), (jtagIn, uartRx)), ((), ()))
 
   reset = orReset clkStableRst (unsafeFromActiveLow testStarted)

@@ -8,114 +8,84 @@ import Clash.Prelude
 
 -- Local
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam (
-  ContentType (Vec),
-  wbStorage,
+import Bittide.DoubleBufferedRam (wbStorage)
+import Bittide.Instances.Common (
+  PeConfigElfSource (NameOnly),
+  dumpVcdFromEnvVar,
+  emptyPeConfig,
+  peConfigFromElf,
  )
 import Bittide.Instances.Domains (Basic50)
 import Bittide.ProcessingElement (
   PeConfig (..),
   processingElement,
  )
-import Bittide.ProcessingElement.Util (
-  vecFromElfData,
-  vecFromElfInstr,
- )
 import Bittide.SharedTypes (withByteOrder)
 import Bittide.Wishbone (uartBytes, uartInterfaceWb)
-import Project.FilePath (
-  CargoBuildType (Release),
-  findParentContaining,
-  firmwareBinariesDir,
- )
-
 import Clash.Class.BitPackC (ByteOrder (LittleEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
+import Project.FilePath (CargoBuildType (Release))
 import Protocols
 import Protocols.Idle (idleSource)
-import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
-import System.Environment (lookupEnv)
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
+import Protocols.MemoryMap (MemoryMap, Mm, getMMAny, unMemmap)
 import Test.Tasty.HUnit (HasCallStack)
-import VexRiscv (DumpVcd (DumpVcd, NoDumpVcd))
+import VexRiscv (DumpVcd (NoDumpVcd))
+
+peConfigSim :: IO (PeConfig 4)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "addressable_bytes_wb_test")
+    Release
+    d0
+    d0
+    False
+    vexRiscv0
+
+getDumpVcd :: IO DumpVcd
+getDumpVcd = dumpVcdFromEnvVar "ADDRESSABLE_BYTES_WB_DUMP_VCD"
 
 sim :: IO ()
 sim = do
+  dumpVcd <- getDumpVcd
+  peConfig <- peConfigSim
+  let simResult = dutUartStream dumpVcd peConfig
   -- Print the UART output to terminal for debugging
   putStrLn "=== UART Output ==="
   putStrLn simResult
   putStrLn "=================="
 
-simResult :: String
-simResult = chr . fromIntegral <$> catMaybes uartStream
+dutUartStream :: (HasCallStack) => DumpVcd -> PeConfig 4 -> String
+dutUartStream dumpVcd peConfig = chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def{timeoutAfter = 1000000} dut0
-
-  dut0 :: Circuit () (Df Basic50 (BitVector 8))
-  dut0 = Circuit $ ((),) . snd . toSignals dut . ((),) . snd
-
-{- | An instance connecting a VexRiscv to a UART and an addressable buffer device.
-Uses the Rust test binary.
--}
-dut :: Circuit (ToConstBwd Mm) (Df Basic50 (BitVector 8))
-dut = dutWithBinary "addressable_bytes_wb_test"
+  uartStream =
+    sampleC def{timeoutAfter = 1000000} $ unMemmap $ dutWithVcdAndPeConfig dumpVcd peConfig
 
 -- | Parameterized DUT that loads a specific firmware binary.
-dutWithBinary ::
+dutWithVcdAndPeConfig ::
   (HasCallStack) =>
-  String ->
-  Circuit (ToConstBwd Mm) (Df Basic50 (BitVector 8))
-dutWithBinary binaryName =
+  DumpVcd ->
+  PeConfig 4 ->
+  Circuit (ToConstBwd Mm, ()) (Df Basic50 (BitVector 8))
+dutWithVcdAndPeConfig dumpVcd peConfig =
   withByteOrder LittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
-    $ \mm -> do
+    $ \(mm, _unit) -> do
       (uartRx, jtag) <- idleSource
-      [uartBus, addressableBus] <- processingElement dumpVcd (peConfig binaryName) -< (mm, jtag)
+      [uartBus, addressableBus] <- processingElement dumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
       wbStorage "AddressableBuffer" d8 Nothing -< addressableBus
       idC -< uartTx
- where
-  dumpVcd =
-    unsafePerformIO $ do
-      mVal <- lookupEnv "ADDRESSABLE_BYTES_WB_DUMP_VCD"
-      case mVal of
-        Just s -> pure (DumpVcd s)
-        _ -> pure NoDumpVcd
-
-  peConfig binary = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> binary
-    pure
-      PeConfig
-        { cpu = vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr elfPath
-        , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData elfPath
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
-{-# OPAQUE dutWithBinary #-}
+{-# OPAQUE dutWithVcdAndPeConfig #-}
 
 memoryMap :: MemoryMap
-memoryMap = getMMAny dut0
- where
-  dut0 :: Circuit (ToConstBwd Mm, Df System ()) ()
-  dut0 = circuit $ \(mm, _df) -> do
-    _uart <- dut -< mm
-    idC
+memoryMap =
+  getMMAny
+    $ dutWithVcdAndPeConfig NoDumpVcd
+    $ emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
 
 type IMemWords = DivRU (16 * 1024) 4
 type DMemWords = DivRU (16 * 1024) 4

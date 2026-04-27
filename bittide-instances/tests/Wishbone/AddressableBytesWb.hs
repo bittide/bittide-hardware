@@ -11,12 +11,16 @@ import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (Assertion, assertBool, testCase)
 import Test.Tasty.TH (testGroupGenerator)
 
-import Bittide.Instances.Tests.AddressableBytesWb (simResult)
+import Bittide.Instances.Tests.AddressableBytesWb (dutUartStream, getDumpVcd, peConfigSim)
 
 case_sim :: Assertion
-case_sim = assertBool msg ("RESULT: OK" `isInfixOf` simResult)
- where
-  msg = "Received the following from the CPU over UART:\n" <> simResult
+case_sim = do
+  dumpVcd <- getDumpVcd
+  peConfig <- peConfigSim
+  let
+    simResult = dutUartStream dumpVcd peConfig
+    msg = "Received the following from the CPU over UART:\n" <> simResult
+  assertBool msg ("RESULT: OK" `isInfixOf` simResult)
 
 tests :: TestTree
 tests = $(testGroupGenerator)

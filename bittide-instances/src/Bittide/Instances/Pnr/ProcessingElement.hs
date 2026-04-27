@@ -8,34 +8,47 @@ module Bittide.Instances.Pnr.ProcessingElement where
 import Clash.Prelude
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
+import Bittide.Instances.Common (
+  PeConfigElfSource (TryEnv, backup, envVar),
+  emptyPeConfig,
+  peConfigFromElf,
+ )
+import Bittide.Instances.Domains
+import Bittide.ProcessingElement
+import Bittide.SharedTypes (withLittleEndian)
+import Bittide.Wishbone
 import Clash.Annotations.TH
 import Clash.Cores.UART (ValidBaud)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
-import Data.Maybe (fromMaybe)
+import Project.FilePath
 import Protocols
 import Protocols.MemoryMap as Mm
-import System.Environment (lookupEnv)
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv
-
-import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains
-import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes (withLittleEndian)
-import Bittide.Wishbone
-import Project.FilePath
 
 baudRate :: SNat 921600
 baudRate = SNat
+
+peConfigSim :: IO (PeConfig 4)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    TryEnv{envVar = "TEST_BINARY_NAME", backup = "vexriscv-hello"}
+    Debug
+    d0
+    d0
+    False
+    vexRiscv0
+
+peConfigRtl :: PeConfig 4
+peConfigRtl = emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
 
 vexRiscvUartHelloMM :: Mm.MemoryMap
 vexRiscvUartHelloMM =
   getMMAny
     $ withClockResetEnable clockGen resetGen enableGen
-    $ vexRiscvUartHelloC @Basic200 baudRate
+    $ vexRiscvUartHelloC @Basic200 baudRate peConfigRtl
 
 vexRiscvUartHelloC ::
   forall dom baud.
@@ -44,53 +57,15 @@ vexRiscvUartHelloC ::
   , ValidBaud dom baud
   ) =>
   SNat baud ->
+  PeConfig 4 ->
   Circuit
     (ToConstBwd Mm, (CSignal dom Bit, Jtag dom))
     (CSignal dom Bit)
-vexRiscvUartHelloC baudSnat = withLittleEndian $ circuit $ \(mm, (uartRx, jtag)) -> do
+vexRiscvUartHelloC baudSnat peConfig = withLittleEndian $ circuit $ \(mm, (uartRx, jtag)) -> do
   [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d16 (uartDf baudSnat) -< (uartBus, uartRx)
   _localCounter <- timeWb Nothing -< timeBus
   idC -< uartTx
- where
-  peConfig
-    | clashSimulation = peConfigSim
-    | otherwise = peConfigRtl
-
-  peConfigSim = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Debug
-      elfPath = elfDir </> fromMaybe "vexrscv-hello" maybeBinaryName
-    pure
-      peConfigRtl
-        { initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr @IMemWords elfPath
-        , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData @DMemWords elfPath
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , includeIlaWb = False
-        }
-
-  peConfigRtl =
-    PeConfig
-      { cpu = vexRiscv0
-      , depthI = SNat @IMemWords
-      , depthD = SNat @DMemWords
-      , initI = Nothing
-      , initD = Nothing
-      , iBusTimeout = d0
-      , dBusTimeout = d0
-      , includeIlaWb = True
-      }
 
 {- | A simple instance containing just VexRisc and UART as peripheral.
 Runs the `hello` binary from `firmware-binaries`.
@@ -114,7 +89,7 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
   let circuitFn =
         toSignals
           $ withClockResetEnable clk200 rst200 enableGen
-          $ vexRiscvUartHelloC baudRate
+          $ vexRiscvUartHelloC baudRate peConfigRtl
    in case circuitFn (((), (uartTx, jtagIn)), ()) of
         ((_mm, a), b) -> (a, b)
  where

@@ -8,10 +8,9 @@ import Clash.Prelude
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.DoubleBufferedRam
+import Bittide.Instances.Common (PeConfigElfSource (NameOnly), emptyPeConfig, peConfigFromElf)
 import Bittide.Instances.Hitl.Setup hiding (linkMask)
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone hiding (MemoryMap)
 import GHC.Stack (HasCallStack)
@@ -19,8 +18,6 @@ import Project.FilePath
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 linkMask :: BitVector LinkCount
@@ -35,10 +32,26 @@ dataCounts = iterateI (satSucc SatWrap) 0
 type IMemWords = DivRU (8 * 1024) 4
 type DMemWords = DivRU (8 * 1024) 4
 
+peConfigSim :: IO (PeConfig 4)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "clock-control-wb")
+    Release
+    d0
+    d0
+    False
+    vexRiscv0
+
+peConfigEmpty :: PeConfig 4
+peConfigEmpty = emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
+
 dut ::
   (HasCallStack) =>
+  PeConfig 4 ->
   Circuit (ToConstBwd Mm, ()) (Df System (BitVector 8), CSignal System (Maybe SpeedChange))
-dut =
+dut peConfig =
   withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
@@ -59,45 +72,14 @@ dut =
 
       idC -< (uartTx, ccd)
  where
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "clock-control-wb"
-    pure
-      PeConfig
-        { cpu = vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr elfPath
-        , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData elfPath
-        , iBusTimeout = d0
-        , dBusTimeout = d0
-        , includeIlaWb = False
-        }
+
 {-# OPAQUE dut #-}
 
 dutMm :: (HasCallStack) => MemoryMap
-dutMm = getMMAny dut
-
--- dutMm = mm
---  where
--- Circuit circuitFn = dut
--- (SimOnly mm, _) = circuitFn ((), (pure $ deepErrorX "uart_bwd", ()))
+dutMm = getMMAny $ dut peConfigEmpty
 
 dutNoMm ::
-  (HasCallStack) => Circuit () (Df System (BitVector 8), CSignal System (Maybe SpeedChange))
-dutNoMm = unMemmap dut
-
--- dutNoMm = Circuit circuitFnNoMm
---  where
--- Circuit circuitFn = dut
--- circuitFnNoMm (fwdL, bwdR) = let (_, fwdR) = circuitFn (fwdL, bwdR) in ((), fwdR)
+  (HasCallStack) =>
+  PeConfig 4 ->
+  Circuit () (Df System (BitVector 8), CSignal System (Maybe SpeedChange))
+dutNoMm = unMemmap . dut

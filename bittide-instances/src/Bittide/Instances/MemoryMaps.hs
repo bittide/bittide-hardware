@@ -67,6 +67,7 @@ $( do
            , ("SwitchDemoGppeCc", SwitchDemoGppe.cc)
            , ("SwitchDemoGppeGppe", SwitchDemoGppe.gppe)
            , ("TimeWb", TimeWb.timeWbMm)
+           , ("TimeWbC", TimeWb.timeWbMmC)
            , ("WbToDfTest", WbToDf.dutMM)
            , ("WireDemoBoot", WireDemo.boot)
            , ("WireDemoMu", WireDemo.mu)

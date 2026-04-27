@@ -20,8 +20,6 @@ import Project.FilePath
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -29,9 +27,8 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.CaptureUgn
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
-import Bittide.DoubleBufferedRam
+import Bittide.Instances.Common (PeConfigElfSource (NameOnly), peConfigFromElf)
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
@@ -39,7 +36,41 @@ import Bittide.Wishbone
 peripheral.
 -}
 case_capture_ugn_self_test :: Assertion
-case_capture_ugn_self_test =
+case_capture_ugn_self_test = do
+  peConfig <- peConfigSim
+  let
+    msg =
+      "Received local counter 0x"
+        <> showHex actualLocalCounter ""
+        <> " and remote counter 0x"
+        <> showHex actualRemoteCounter ""
+        <> " are not equal to expected counters 0x"
+        <> showHex expectedLocalCounter ""
+        <> " and 0x"
+        <> showHex expectedRemoteCounter ""
+    -- Note we do 'succ' on the "expectedLocalCounter" to account for the
+    -- dflipflop inserted on captureUgn's link input
+    (succ -> expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
+    (actualLocalCounter, actualRemoteCounter) = parseResult simResult
+    clk = clockGen
+    rst = resetGenN d2
+    ena = enableGen
+    simResult = chr . fromIntegral <$> catMaybes uartStream
+    uartStream =
+      sampleC def
+        $ withClockResetEnable clk rst enableGen
+        $ dut @System peConfig eb localCounter
+
+    {- The local counter starts counting up from 0x1122334411223344. The elastic buffer
+    outputs Nothing for 1000 cycles, after which it will  start outputting a decreasing
+    counter starting at 0xaabbccddeeff1234.
+    -}
+    localCounter = register clk rst ena 0xaabbccddeeff1234 (localCounter + 1)
+    eb = regEn clk rst ena Nothing remoteStarted (Just . pack <$> remoteCounter)
+     where
+      remoteCounter = register clk rst ena (0x1122334411223344 :: Unsigned 64) (remoteCounter - 1)
+      remoteStarted = counter .==. pure maxBound
+      counter = register clk rst ena (0 :: Index 1000) (satSucc SatBound <$> counter)
   assertBool
     msg
     ( actualLocalCounter
@@ -47,39 +78,6 @@ case_capture_ugn_self_test =
         && actualRemoteCounter
         == expectedRemoteCounter
     )
- where
-  msg =
-    "Received local counter 0x"
-      <> showHex actualLocalCounter ""
-      <> " and remote counter 0x"
-      <> showHex actualRemoteCounter ""
-      <> " are not equal to expected counters 0x"
-      <> showHex expectedLocalCounter ""
-      <> " and 0x"
-      <> showHex expectedRemoteCounter ""
-  -- Note we do 'succ' on the "expectedLocalCounter" to account for the
-  -- dflipflop inserted on captureUgn's link input
-  (succ -> expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
-  (actualLocalCounter, actualRemoteCounter) = parseResult simResult
-  clk = clockGen
-  rst = resetGenN d2
-  ena = enableGen
-  simResult = chr . fromIntegral <$> catMaybes uartStream
-  uartStream =
-    sampleC def
-      $ withClockResetEnable clk rst enableGen
-      $ dut @System eb localCounter
-
-  {- The local counter starts counting up from 0x1122334411223344. The elastic buffer
-  outputs Nothing for 1000 cycles, after which it will  start outputting a decreasing
-  counter starting at 0xaabbccddeeff1234.
-  -}
-  localCounter = register clk rst ena 0xaabbccddeeff1234 (localCounter + 1)
-  eb = regEn clk rst ena Nothing remoteStarted (Just . pack <$> remoteCounter)
-   where
-    remoteCounter = register clk rst ena (0x1122334411223344 :: Unsigned 64) (remoteCounter - 1)
-    remoteStarted = counter .==. pure maxBound
-    counter = register clk rst ena (0 :: Index 1000) (satSucc SatBound <$> counter)
 
 {- | A simulation-only instance containing just VexRisc with UART and the captureUgn
 peripheral which runs the `capture_ugn_test` binary from `firmware-binaries`.
@@ -87,12 +85,13 @@ peripheral which runs the `capture_ugn_test` binary from `firmware-binaries`.
 dut ::
   forall dom.
   (HiddenClockResetEnable dom) =>
+  PeConfig 4 ->
   -- | Elastic buffer
   Signal dom (Maybe (BitVector 64)) ->
   -- | Local sequence counter
   Signal dom (Unsigned 64) ->
   Circuit () (Df dom (BitVector 8))
-dut eb localCounter = withLittleEndian $ circuit $ do
+dut peConfig eb localCounter = withLittleEndian $ circuit $ do
   (uartRx, jtagIdle) <- idleSource
   [uartBus, ugnBus] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
@@ -100,25 +99,21 @@ dut eb localCounter = withLittleEndian $ circuit $ do
   mm <- ignoreMM
   _bittideData <- captureUgn localCounter (Data <$> eb) -< ugnBus
   idC -< uartTx
- where
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
-    pure
-      PeConfig
-        { cpu = Riscv32imc.vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
 
 type IMemWords = DivRU (4 * 1024) 4
 type DMemWords = DivRU (4 * 1024) 4
+
+peConfigSim :: IO (PeConfig 4)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "capture_ugn_test")
+    Release
+    d0
+    d0
+    False
+    Riscv32imc.vexRiscv0
 
 {- | Simulation function which matches the remote counter to the correct sample
 of the local counter.

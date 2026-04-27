@@ -43,14 +43,19 @@ data SerialResult = SerialResult
 
 -- | Simulate the serial output of the cpu
 sim :: IO ()
-sim =
+sim = do
+  peConfig <- peConfigSim
   putStr
     $ fmap (chr . fromIntegral)
     $ catMaybes
-    $ fst (sampleC def dutNoMm)
+    $ fst (sampleC def $ dutNoMm peConfig)
 
 case_clock_control_wb_self_test :: Assertion
 case_clock_control_wb_self_test = do
+  peConfig <- peConfigSim
+  let
+    (uartStream, ccData) = sampleC def $ dutNoMm peConfig
+    uartString = chr . fromIntegral <$> catMaybes uartStream
   case parse resultParser "" uartString of
     Left err -> do
       print err
@@ -73,9 +78,6 @@ case_clock_control_wb_self_test = do
                   <$> catMaybes ccData
             }
       assertEqual "Expected and actual differ" expected actual
- where
-  uartString = chr . fromIntegral <$> catMaybes uartStream
-  (uartStream, ccData) = sampleC def dutNoMm
 
 type Margin = SNat 2
 type Framesize = PeriodToCycles System (Seconds 1)

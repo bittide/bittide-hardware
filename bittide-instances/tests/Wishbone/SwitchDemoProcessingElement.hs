@@ -14,16 +14,13 @@ import Project.FilePath
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 import VexRiscv (DumpVcd (NoDumpVcd))
 
-import Bittide.DoubleBufferedRam
+import Bittide.Instances.Common (PeConfigElfSource (NameOnly), peConfigFromElf)
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.SwitchDemoProcessingElement
 import Bittide.Wishbone
@@ -35,16 +32,18 @@ takeWhileInclusive _ [] = []
 takeWhileInclusive p (x : xs) = x : if p x then takeWhileInclusive p xs else []
 
 sim :: IO ()
-sim = putStr simResult
+sim = do
+  peConfig <- peConfigSim
+  putStr $ simResult peConfig
 
-simResult :: String
-simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
+simResult :: PeConfig 6 -> String
+simResult peConfig = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
  where
   uartString = chr . fromIntegral <$> catMaybes uartStream
   uartStream =
     sampleC def{timeoutAfter = 200_000}
       $ withClockResetEnable clk reset enable
-      $ dut @System dnaA dnaB
+      $ dut @System peConfig dnaA dnaB
 
   clk = clockGen
   reset = resetGenN d2
@@ -53,21 +52,23 @@ simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
   dnaB = pure 0xBBBB_0123_4567_89AB_CDEF_0001
 
 case_switch_demo_pe_test :: Assertion
-case_switch_demo_pe_test = assertBool msg (receivedString == expectedString)
- where
-  msg =
-    "Received string "
-      <> receivedString
-      <> " not equal to expected string "
-      <> expectedString
-  -- Filter the 'debugging' prints, which are prefixed with 'INFO'
-  receivedString = unlines . filter (not . isPrefixOf "INFO") . lines $ simResult
-  expectedString =
-    unlines
-      [ "Buffer A: [(0x10100, 0xBBBB0123456789ABCDEF0001), (0x10000, 0xAAAA0123456789ABCDEF0001)]"
-      , "Buffer B: [(0x10000, 0xAAAA0123456789ABCDEF0001), (0xABBAABBAABBA0003, 0xABBAABBAABBA0005ABBAABBAABBA0004)]"
-      , "Finished"
-      ]
+case_switch_demo_pe_test = do
+  peConfig <- peConfigSim
+  let
+    msg =
+      "Received string "
+        <> receivedString
+        <> " not equal to expected string "
+        <> expectedString
+    -- Filter the 'debugging' prints, which are prefixed with 'INFO'
+    receivedString = unlines . filter (not . isPrefixOf "INFO") . lines $ simResult peConfig
+    expectedString =
+      unlines
+        [ "Buffer A: [(0x10100, 0xBBBB0123456789ABCDEF0001), (0x10000, 0xAAAA0123456789ABCDEF0001)]"
+        , "Buffer B: [(0x10000, 0xAAAA0123456789ABCDEF0001), (0xABBAABBAABBA0003, 0xABBAABBAABBA0005ABBAABBAABBA0004)]"
+        , "Finished"
+        ]
+  assertBool msg (receivedString == expectedString)
 
 {- | A simulation-only design containing two `switchDemoPeWb`s connected to a single
 VexRiscV. The VexRiscV runs the `switch_demo_pe_test` binary from `firmware-binaries`.
@@ -77,12 +78,14 @@ dut ::
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
   ) =>
+  -- | Procesing element configuration
+  PeConfig 6 ->
   -- | Fake DNA (used to identify the different PEs)
   Signal dom (BitVector 96) ->
   -- | Fake DNA (used to identify the different PEs)
   Signal dom (BitVector 96) ->
   Circuit () (Df dom (BitVector 8))
-dut dnaA dnaB = withLittleEndian $ circuit $ do
+dut peConfig dnaA dnaB = withLittleEndian $ circuit $ do
   (uartRx, jtagIdle) <- idleSource
   [ uartBus
     , (mmTime, timeBus)
@@ -98,27 +101,21 @@ dut dnaA dnaB = withLittleEndian $ circuit $ do
 
   Fwd linkBA <- switchDemoPeWb d2 localCounter (Just <$> dnaB) linkAB -< (mmB, peBusB)
   idC -< uartTx
- where
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "switch_demo_pe_test"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
-    pure
-      PeConfig
-        { cpu = Riscv32imc.vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
 
 type IMemWords = DivRU (16 * 1024) 4
 type DMemWords = DivRU (16 * 1024) 4
+
+peConfigSim :: IO (PeConfig 6)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "switch_demo_pe_test")
+    Release
+    d0
+    d0
+    False
+    Riscv32imc.vexRiscv0
 
 tests :: TestTree
 tests = $(testGroupGenerator)

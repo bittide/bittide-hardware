@@ -8,9 +8,13 @@ import Clash.Prelude (withClockResetEnable)
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.Df
-import Bittide.DoubleBufferedRam
+import Bittide.Instances.Common (
+  PeConfigElfSource (NameOnly),
+  dumpVcdFromEnvVar,
+  emptyPeConfig,
+  peConfigFromElf,
+ )
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Class.BitPackC
@@ -22,9 +26,6 @@ import Protocols.Idle
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Registers.WishboneStandard
 import Protocols.MemoryMap.TypeDescription.TH
-import System.Environment (lookupEnv)
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (..))
 
 data SomeAdt
@@ -48,7 +49,8 @@ unSimOnly :: SimOnly a -> a
 unSimOnly (SimOnly x) = x
 
 dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
-dutMM = unSimOnly $ fst (toSignals dut (deepErrorX "memoryMap"))
+dutMM =
+  getMMAny $ dut NoDumpVcd $ emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
 
 {- | A simulation-only instance containing VexRisc with UART, a register to hold
 a vector of input values and a wbToDf component to send out values over `Df`.
@@ -57,18 +59,24 @@ register to the `Df` output and also sends some debug messages over UART.
 -}
 dut ::
   (HasCallStack) =>
-  Circuit (ToConstBwd Mm) (Df System SomeAdt, Df System (BitVector 8))
-dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen $ circuit $ \mm -> do
-  (uartRx, jtagIdle) <- idleSource
-  [srcBus, dfBus, uartBus] <-
-    processingElement @_ dumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
+  DumpVcd ->
+  PeConfig 5 ->
+  Circuit (ToConstBwd Mm, ()) (Df System SomeAdt, Df System (BitVector 8))
+dut dumpVcd peConfig =
+  withLittleEndian
+    $ withClockResetEnable clockGen (resetGenN d2) enableGen
+    $ circuit
+    $ \(mm, _unit) -> do
+      (uartRx, jtagIdle) <- idleSource
+      [srcBus, dfBus, uartBus] <-
+        processingElement @_ dumpVcd peConfig -< (mm, jtagIdle)
+      (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
 
-  [refWb] <- deviceWbI (deviceConfig "WbToDfReference") -< srcBus
-  registerWbI_ refCfg testValue -< (refWb, Fwd (pure Nothing))
+      [refWb] <- deviceWbI (deviceConfig "WbToDfReference") -< srcBus
+      registerWbI_ refCfg testValue -< (refWb, Fwd (pure Nothing))
 
-  df <- wbToDf "WbToDfTest" -< dfBus
-  idC -< (df, uartTx)
+      df <- wbToDf "WbToDfTest" -< dfBus
+      idC -< (df, uartTx)
  where
   refCfg =
     (registerConfig "value")
@@ -76,37 +84,20 @@ dut = withLittleEndian $ withClockResetEnable clockGen (resetGenN d2) enableGen 
       , access = ReadOnly
       }
 
-  dumpVcd =
-    unsafePerformIO $ do
-      mVal <- lookupEnv "WBTODF_DUMP_VCD"
-      case mVal of
-        Just s -> pure (DumpVcd s)
-        _ -> pure NoDumpVcd
-
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
-      elfPath = elfDir </> "wb_to_df_test"
-    pure
-      PeConfig
-        { cpu = vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr elfPath
-        , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData elfPath
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
-
 type IMemWords = DivRU (1 * 1024) 4
 type DMemWords = DivRU (4 * 1024) 4
+
+getDumpVcd :: IO DumpVcd
+getDumpVcd = dumpVcdFromEnvVar "WBTODF_DUMP_VCD"
+
+peConfigSim :: IO (PeConfig 5)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "wb_to_df_test")
+    Release
+    d0
+    d0
+    False
+    vexRiscv0

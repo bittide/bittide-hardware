@@ -10,10 +10,9 @@ module Wishbone.Watchdog where
 import Clash.Prelude
 
 -- Local
-import Bittide.DoubleBufferedRam
+import Bittide.Instances.Common (PeConfigElfSource (NameOnly), peConfigFromElf)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Project.FilePath
@@ -24,9 +23,6 @@ import Data.Maybe
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import qualified Protocols.ToConst as ToConst
-import System.FilePath
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -36,29 +32,32 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Data.List as L
+import qualified Protocols.ToConst as ToConst
 
 sim :: IO ()
-sim = putStrLn simResult
+sim = do
+  peConfig <- peConfigSim
+  putStrLn $ simResult peConfig
 
-simResult :: String
-simResult = chr . fromIntegral <$> catMaybes uartStream
+simResult :: PeConfig 6 -> String
+simResult peConfig = chr . fromIntegral <$> catMaybes uartStream
  where
-  uartStream = sampleC def dut
+  uartStream = sampleC def $ dut peConfig
 
 {- | Run the timing module self test with processingElement and inspect it's uart output.
 The test returns names of tests and a boolean indicating if the test passed.
 -}
 case_time_rust_self_test :: Assertion
 case_time_rust_self_test = do
-  let result = L.head $ lines simResult
+  peConfig <- peConfigSim
+  let result = L.head $ lines $ simResult peConfig
   assertEqual "Measured timeout wrong " "Timeout took 50 microseconds" result
 
 {- | A simple instance containing just VexRisc and UART as peripheral.
 Runs the `hello` binary from `firmware-binaries`.
 -}
-dut ::
-  Circuit () (Df Basic200 (BitVector 8))
-dut = withLittleEndian
+dut :: PeConfig 6 -> Circuit () (Df Basic200 (BitVector 8))
+dut peConfig = withLittleEndian
   $ withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do
@@ -83,27 +82,22 @@ dut = withLittleEndian
     (uartTx, _uartStatus) <-
       (uartInterfaceWb @_ @_ @4) d2 d2 uartBytes -< (uartBus, uartRx)
     idC -< uartTx
- where
-  peConfig = unsafePerformIO $ do
-    root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "watchdog_test"
-
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords elfPath Nothing
-    pure
-      $ PeConfig
-        { cpu = Riscv32imc.vexRiscv0
-        , depthI = SNat @IMemWords
-        , depthD = SNat @DMemWords
-        , initI = Just (Vec iMem)
-        , initD = Just (Vec dMem)
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
-        , includeIlaWb = False
-        }
 {-# OPAQUE dut #-}
 
 type IMemWords = DivRU (4 * 1024) 4
 type DMemWords = DivRU (4 * 1024) 4
+
+peConfigSim :: IO (PeConfig 6)
+peConfigSim =
+  peConfigFromElf
+    (SNat @IMemWords)
+    (SNat @DMemWords)
+    (NameOnly "watchdog_test")
+    Release
+    d0
+    d0
+    False
+    Riscv32imc.vexRiscv0
 
 tests :: TestTree
 tests = $(testGroupGenerator)
