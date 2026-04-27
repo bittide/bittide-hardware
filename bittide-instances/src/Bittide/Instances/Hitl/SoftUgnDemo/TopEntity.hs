@@ -114,12 +114,12 @@ tests =
     , testCases =
         [ -- HitlTestCase
           --   { name = "soft-ugn-demo"
-          --   , parameters = paramForHwTargets (fmap HwTargetByIndex [0, 1, 2, 7]) ()
+          --   , parameters = paramForHwTargets (fmap HwTargetByIndex [0, 1, 2, 3]) ()
           --   , postProcData = ()
           --   }
           HitlTestCase
             { name = "smoltcp-demo"
-            , parameters = paramForHwTargets (fmap HwTargetByIndex [0, 1, 2, 7]) ()
+            , parameters = paramForHwTargets (fmap HwTargetByIndex [0, 1, 2, 3]) ()
             , postProcData = ()
             }
         ]
