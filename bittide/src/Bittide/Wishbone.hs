@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 module Bittide.Wishbone where
@@ -134,7 +133,7 @@ singleMasterInterconnect (fmap pack -> config) =
   go (masterS, slavesS) =
     fmap unbundle . unbundle $ route <$> masterS <*> bundle slavesS
 
-  route master@(WishboneM2S{..}) slaves =
+  route master@(WishboneM2S{addr, busCycle, strobe}) slaves =
     ( strictV slaves `seqX` strictV toSlaves `seqX` toMaster
     , toSlaves
     )
@@ -501,60 +500,65 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
      where
       (s2m, ack, dfOut, status) = unbundle (fmap go1 (bundle (m2s, dfDataIn, fifoMeta, ackIn)))
 
-    go1 (WishboneM2S{..}, rxData, (.fifoFull) -> txFull, Ack txAck)
-      -- not in cycle
-      | not (busCycle && strobe) =
-          ( (emptyWishboneS2M @0){readData = invalidReq}
-          , Ack False
-          , Nothing
-          , status
-          )
-      -- illegal addr
-      | not addrLegal =
-          ( (emptyWishboneS2M @0){err = True, readData = invalidReq}
-          , Ack False
-          , Nothing
-          , status
-          )
-      -- read at 0
-      | not writeEnable && internalAddr == 0 =
-          ( (emptyWishboneS2M @0)
-              { acknowledge = True
-              , readData = resize $ fromMaybe 0 rxData
-              }
-          , Ack True
-          , Nothing
-          , status
-          )
-      -- write at 0
-      | writeEnable && internalAddr == 0 =
-          ( (emptyWishboneS2M @0)
-              { acknowledge = txAck
-              , readData = invalidReq
-              }
-          , Ack False
-          , Just $ resize writeData
-          , status
-          )
-      -- read at 1
-      | not writeEnable && internalAddr == 1 =
-          ( (emptyWishboneS2M @0)
-              { acknowledge = True
-              , readData = resize $ pack status
-              }
-          , Ack False
-          , Nothing
-          , status
-          )
-      | otherwise = (emptyWishboneS2M{err = True}, Ack False, Nothing, status)
-     where
-      internalAddr = bitCoerce $ resize addr :: Index 2
-      addrLegal = addr <= 1
-      rxEmpty = isNothing rxData
-      status = (rxEmpty, txFull)
-      invalidReq =
-        deepErrorX
-          [i|uartInterfaceWb: Invalid request.
+    go1
+      ( WishboneM2S{addr, busCycle, strobe, writeData, writeEnable}
+        , rxData
+        , (.fifoFull) -> txFull
+        , Ack txAck
+        )
+        -- not in cycle
+        | not (busCycle && strobe) =
+            ( (emptyWishboneS2M @0){readData = invalidReq}
+            , Ack False
+            , Nothing
+            , status
+            )
+        -- illegal addr
+        | not addrLegal =
+            ( (emptyWishboneS2M @0){err = True, readData = invalidReq}
+            , Ack False
+            , Nothing
+            , status
+            )
+        -- read at 0
+        | not writeEnable && internalAddr == 0 =
+            ( (emptyWishboneS2M @0)
+                { acknowledge = True
+                , readData = resize $ fromMaybe 0 rxData
+                }
+            , Ack True
+            , Nothing
+            , status
+            )
+        -- write at 0
+        | writeEnable && internalAddr == 0 =
+            ( (emptyWishboneS2M @0)
+                { acknowledge = txAck
+                , readData = invalidReq
+                }
+            , Ack False
+            , Just $ resize writeData
+            , status
+            )
+        -- read at 1
+        | not writeEnable && internalAddr == 1 =
+            ( (emptyWishboneS2M @0)
+                { acknowledge = True
+                , readData = resize $ pack status
+                }
+            , Ack False
+            , Nothing
+            , status
+            )
+        | otherwise = (emptyWishboneS2M{err = True}, Ack False, Nothing, status)
+       where
+        internalAddr = bitCoerce $ resize addr :: Index 2
+        addrLegal = addr <= 1
+        rxEmpty = isNothing rxData
+        status = (rxEmpty, txFull)
+        invalidReq =
+          deepErrorX
+            [i|uartInterfaceWb: Invalid request.
           BUS: {busCycle}
           STR: {strobe}
           ADDR: {addr}
@@ -614,12 +618,12 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
     ( FifoState depth
     , (Index depth, Maybe (Index depth, a), Maybe a, Bool, FifoMeta depth)
     )
-  go state@FifoState{..} (False, _, _, _) = (state, (readPointer, Nothing, Nothing, False, fifoMeta))
+  go state@FifoState{dataCount, readPointer} (False, _, _, _) = (state, (readPointer, Nothing, Nothing, False, fifoMeta))
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
     fifoMeta = FifoMeta{fifoEmpty, fifoFull, fifoDataCount = dataCount}
-  go FifoState{..} (True, fifoIn, Ack readyIn, bramOut) = (nextState, output)
+  go FifoState{dataCount, readPointer} (True, fifoIn, Ack readyIn, bramOut) = (nextState, output)
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
@@ -672,16 +676,16 @@ wbToVec ::
   ( Vec nRegisters (Maybe (Bytes nBytes))
   , WishboneS2M nBytes
   )
-wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
+wbToVec readableData m@WishboneM2S{} = (writtenData, wbS2M)
  where
-  masterActive = strobe && busCycle
-  err = masterActive && (addr > resize (pack (maxBound :: Index nRegisters)))
+  masterActive = m.strobe && m.busCycle
+  err = masterActive && (m.addr > resize (pack (maxBound :: Index nRegisters)))
   acknowledge = masterActive && not err
-  wbWriting = writeEnable && acknowledge
-  wbAddr = unpack $ resize addr :: Index nRegisters
+  wbWriting = m.writeEnable && acknowledge
+  wbAddr = unpack $ resize m.addr :: Index nRegisters
   readData = readableData !! wbAddr
   writtenData
-    | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
+    | wbWriting = replace wbAddr (Just m.writeData) (repeat Nothing)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @4){acknowledge, readData, err}
 
@@ -834,7 +838,20 @@ extendAddressWidthWb ::
   Circuit (Wishbone dom mode awIn nBytes) (Wishbone dom mode awOut nBytes)
 extendAddressWidthWb = Circuit (unbundle . fmap go . bundle)
  where
-  go (WishboneM2S{..}, s2m) = (s2m, WishboneM2S{addr = resize addr, ..})
+  go (m@WishboneM2S{}, s2m) =
+    ( s2m
+    , WishboneM2S
+        { addr = resize m.addr
+        , burstTypeExtension = m.burstTypeExtension
+        , busCycle = m.busCycle
+        , busSelect = m.busSelect
+        , cycleTypeIdentifier = m.cycleTypeIdentifier
+        , lock = m.lock
+        , strobe = m.strobe
+        , writeData = m.writeData
+        , writeEnable = m.writeEnable
+        }
+    )
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit

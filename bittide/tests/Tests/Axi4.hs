@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -238,7 +237,7 @@ catKeepBytes ::
   (KnownNat (DataWidth conf)) =>
   Axi4StreamM2S conf userType ->
   Vec (DataWidth conf) (Maybe (Unsigned 8, Bool))
-catKeepBytes Axi4StreamM2S{..} = orNothing <$> _tkeep <*> zip _tdata _tstrb
+catKeepBytes Axi4StreamM2S{_tdata, _tkeep, _tstrb} = orNothing <$> _tkeep <*> zip _tdata _tstrb
 
 prop_axiOperations :: Property
 prop_axiOperations = property $ do

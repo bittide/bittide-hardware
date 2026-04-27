@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
-
 module Bittide.ScatterGather (
   scatterUnitWb,
   scatterUnitWbC,
@@ -143,18 +141,18 @@ wbInterface ::
   Bytes nBytes ->
   -- | (slave - master data, read address memory element, write data memory element)
   (WishboneS2M nBytes, Index addresses, Maybe (Bytes nBytes))
-wbInterface WishboneM2S{..} readData =
+wbInterface m@WishboneM2S{} readData =
   ( (emptyWishboneS2M @nBytes){readData, acknowledge, err}
   , wbAddr
   , writeOp
   )
  where
-  masterActive = strobe && busCycle
+  masterActive = m.strobe && m.busCycle
   maxAddress = resize $ pack (maxBound :: Index addresses)
-  err = masterActive && (addr > maxAddress)
+  err = masterActive && (m.addr > maxAddress)
   acknowledge = masterActive && not err
-  wbAddr = unpack . resize $ pack addr
-  writeOp = orNothing (strobe && writeEnable && not err) writeData
+  wbAddr = unpack . resize $ pack m.addr
+  writeOp = orNothing (m.strobe && m.writeEnable && not err) m.writeData
 
 {- | Adds a stalling address to the 'wbInterface' by demanding an extra address on type level.
 When this address is accessed, the outgoing 'WishboneS2M' bus' acknowledge is replaced
@@ -187,7 +185,7 @@ addStalling ::
   , Index memAddresses
   , Maybe a
   )
-addStalling endOfMetacycle metacycleCount (incomingBus@WishboneS2M{..}, wbAddr, writeOp0) =
+addStalling endOfMetacycle metacycleCount (incomingBus@WishboneS2M{acknowledge}, wbAddr, writeOp0) =
   (slaveToMaster1, memAddr, writeOp1)
  where
   stalledBus = incomingBus{acknowledge = endOfMetacycle}

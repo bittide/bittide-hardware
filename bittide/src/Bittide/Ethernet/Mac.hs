@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
-
 module Bittide.Ethernet.Mac where
 
 import Clash.Explicit.Prelude hiding ((:<))
@@ -307,7 +305,8 @@ makeAxi ::
   Bool ->
   Bool ->
   Maybe (Axi4StreamM2S ('Axi4StreamConfig n 0 0) Bool)
-makeAxi _tvalid _tdata _tkeep _tuser _tlast = orNothing _tvalid Axi4StreamM2S{..}
+makeAxi _tvalid _tdata _tkeep _tuser _tlast =
+  orNothing _tvalid Axi4StreamM2S{_tdata, _tdest, _tid, _tlast, _tkeep, _tuser, _tstrb}
  where
   _tid = 0
   _tdest = 0
@@ -327,7 +326,18 @@ makeEthStatus
   rxBadFcs
   rxFifoOverflow
   rxFifoBadFrame
-  rxFifoGoodFrame = EthMacStatus{..}
+  rxFifoGoodFrame =
+    EthMacStatus
+      { rxBadFcs
+      , rxBadFrame
+      , rxFifoBadFrame
+      , rxFifoGoodFrame
+      , rxFifoOverflow
+      , txFifoBadFrame
+      , txFifoGoodFrame
+      , txFifoOverflow
+      , txFifoUnderflow
+      }
 
 -- | 1G Ethernet MAC with TX and RX FIFOs
 ethMac1GFifoBb ::

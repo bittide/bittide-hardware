@@ -4,7 +4,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
@@ -60,7 +59,7 @@ data TclException = TclException
 
 instance Show TclException where
   show :: TclException -> String
-  show (TclException{..}) =
+  show (TclException{cmd, errMsg, logPath, prettyLogPath, retCode, stdout}) =
     "TclException: "
       <> [__i|
     Got return code #{retCode} while executing:
@@ -249,7 +248,16 @@ with f = do
             \(fromJust -> stdin) (fromJust -> stdout) _stderr process -> do
               IO.hSetBuffering stdout IO.LineBuffering
               IO.hSetBuffering stdin IO.LineBuffering
-              let v = VivadoHandle{..}
+              let v =
+                    VivadoHandle
+                      { logHandle
+                      , logPath
+                      , prettyLogHandle
+                      , prettyLogPath
+                      , process
+                      , stdin
+                      , stdout
+                      }
               f v
       )
       -- finally:

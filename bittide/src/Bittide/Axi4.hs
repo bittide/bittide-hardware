@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Axi4 (
   -- * Scaling circuits
@@ -342,8 +341,15 @@ wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
       )
     )
   go
-    WbAxisRxBufferState{..}
-    ~(WishboneM2S{..}, maybeAxisM2S, wbData) =
+    WbAxisRxBufferState
+      { abortPacket
+      , bufferFull
+      , packetComplete
+      , packetLength
+      , readingBuffer
+      , writeCounter
+      }
+    ~(WishboneM2S{addr, busCycle, strobe, writeData, writeEnable}, maybeAxisM2S, wbData) =
       (newState, output)
      where
       masterActive = busCycle && strobe
@@ -510,7 +516,7 @@ rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
  where
   go
     (bufState, readState :: ReadStateMachine fifoDepth)
-    ~(WishboneS2M{..}, Axi4StreamS2M{..}) = (nextState, (wbM2S, axiM2S))
+    ~(WishboneS2M{acknowledge, readData}, Axi4StreamS2M{_tready}) = (nextState, (wbM2S, axiM2S))
      where
       -- Driving wishbone signals
       (writeEnable, addr) = case readState of
@@ -520,7 +526,18 @@ rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
         ClearingPacketLength -> (True, natToNum @fifoDepth)
         ReadingPacket i -> (False, checkedResize (pack i))
 
-      wbM2S = WishboneM2S{..}
+      wbM2S =
+        WishboneM2S
+          { addr
+          , burstTypeExtension
+          , busCycle
+          , busSelect
+          , cycleTypeIdentifier
+          , lock
+          , strobe
+          , writeData
+          , writeEnable
+          }
       busCycle = True
       strobe = True
       writeData = 0
@@ -538,7 +555,7 @@ rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
         _ -> (repeat True, False)
 
       axiM2S = case (readState, acknowledge) of
-        (ReadingPacket _, True) -> Just Axi4StreamM2S{..}
+        (ReadingPacket _, True) -> Just Axi4StreamM2S{_tdata, _tdest, _tid, _tkeep, _tlast, _tstrb, _tuser}
         _ -> Nothing
 
       -- Statemachine control
@@ -604,7 +621,7 @@ wbToAxi4StreamTx ::
     (Axi4Stream dom (AxiStreamBytesOnly nBytes) ())
 wbToAxi4StreamTx = Circuit $ unbundle . fmap go . bundle
  where
-  go (WishboneM2S{..}, Axi4StreamS2M{..}) =
+  go (WishboneM2S{addr, busCycle, busSelect, strobe, writeData, writeEnable}, Axi4StreamS2M{_tready}) =
     (WishboneS2M{readData, err, acknowledge, retry, stall}, axiM2S)
    where
     masterActive = busCycle && strobe
@@ -624,7 +641,9 @@ wbToAxi4StreamTx = Circuit $ unbundle . fmap go . bundle
     _tuser = ()
     _tdata = reverse $ unpack writeData
     axiM2S :: Maybe (Axi4StreamM2S (AxiStreamBytesOnly nBytes) ())
-    axiM2S = orNothing (masterActive && not err) $ Axi4StreamM2S{..}
+    axiM2S =
+      orNothing (masterActive && not err)
+        $ Axi4StreamM2S{_tdata, _tdest, _tid, _tkeep, _tlast, _tstrb, _tuser}
 
 data AxiPacketFifoState maxPackets = AxiPacketFifoState
   { packetCount :: Index (maxPackets + 1)
@@ -673,7 +692,7 @@ axiStreamPacketFifo SNat fifoDepth@SNat = AS.forceResetSanity |> Circuit goCircu
     initState = AxiPacketFifoState 0 (repeat False) False :: AxiPacketFifoState maxPackets
     (consumeAxi, produceFifo) = mealyB go initState (lhsM2S, fifoOut0, fifoReady, outputReady)
 
-    go s@AxiPacketFifoState{..} (inpM2S, fifoOut1, fifoReady1, outReady) =
+    go s@AxiPacketFifoState{dumpPacket, newPacketSr, packetCount} (inpM2S, fifoOut1, fifoReady1, outReady) =
       (nextState, (consumeInp, produceOut))
      where
       addPacket = maybe False _tlast inpM2S && consumeInp && fifoReady1
@@ -796,7 +815,7 @@ True
 False
 -}
 isPackedTransfer :: (KnownNat (DataWidth conf)) => Axi4StreamM2S conf a -> Bool
-isPackedTransfer Axi4StreamM2S{..}
+isPackedTransfer Axi4StreamM2S{_tkeep, _tlast}
   | _tlast = not $ hasGaps _tkeep
   | otherwise = and _tkeep
  where

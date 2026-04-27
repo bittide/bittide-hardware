@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 module Tests.Wishbone (tests, simpleSlave, simpleSlave', wbRead) where
@@ -77,27 +76,28 @@ uartMachine ::
     (Wishbone dom 'Standard addrW 1, Df dom (BitVector 8))
 uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
  where
-  go ReadStatus (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
+  go ReadStatus (_, ~(s@WishboneS2M{}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
    where
-    (rxEmpty, txFull) = unpack (resize readData)
-    nextState = case (acknowledge, err, (rxEmpty, txFull)) of
+    (rxEmpty, txFull) = unpack (resize s.readData)
+    nextState = case (s.acknowledge, s.err, (rxEmpty, txFull)) of
       (True, False, (False, _)) -> ReadByte
       (True, False, (True, False)) -> WriteByte
       _ -> ReadStatus
     wbOut = (emptyWishboneM2S @30){addr = 1, busCycle = True, strobe = True}
-  go ReadByte (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
+  go ReadByte (_, ~(s@WishboneS2M{}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
    where
-    nextState = case (acknowledge, err) of
-      (True, False) -> OutputByte (resize readData)
+    nextState = case (s.acknowledge, s.err) of
+      (True, False) -> OutputByte (resize s.readData)
       _ -> ReadByte
     wbOut = (emptyWishboneM2S @30){addr = 0, busCycle = True, strobe = True}
   go (OutputByte byte) (_, ~(_, Ack dfAck)) =
     (nextState, (Ack False, (emptyWishboneM2S, Just byte)))
    where
     nextState = if dfAck then ReadStatus else (OutputByte byte)
-  go (WriteByte) (Just dfData, ~(WishboneS2M{..}, _)) = (nextState, (Ack dfAck, (wbOut, Nothing)))
+  go (WriteByte) (Just dfData, ~(s@WishboneS2M{}, _)) = (nextState, (Ack dfAck, (wbOut, Nothing)))
    where
-    (nextState, dfAck) = if acknowledge && not err then (ReadStatus, True) else (WriteByte, False)
+    (nextState, dfAck) =
+      if s.acknowledge && not s.err then (ReadStatus, True) else (WriteByte, False)
     wbOut =
       (emptyWishboneM2S @30 @1)
         { addr = 0
@@ -208,7 +208,7 @@ readingSlaves = property $ do
     Vec nSlaves (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
     WishboneM2S 30 4 ->
     WishboneS2M 4
-  getExpected config ranges WishboneM2S{..}
+  getExpected config ranges m@WishboneM2S{}
     | not commAttempt = emptyWishboneS2M
     | Nothing <- maybeIndex = emptyWishboneS2M{err = True}
     | Just index <- maybeIndex, not (inRange index) = emptyWishboneS2M{err = True}
@@ -218,9 +218,9 @@ readingSlaves = property $ do
           , readData = unpack $ resize indexBV
           }
    where
-    commAttempt = busCycle && strobe
+    commAttempt = m.busCycle && m.strobe
     maybeIndex = elemIndex (unpack indexBV) config
-    (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split addr
+    (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split m.addr
     inRange index = restAddr <= (ranges !! index)
 
 {- | Creates a memory map with 'simpleSlave' devices and a list of write addresses and checks
@@ -297,20 +297,20 @@ writingSlaves = property $ do
     Vec nSlaves (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
     WishboneM2S 30 4 ->
     WishboneS2M 4
-  getExpected config ranges WishboneM2S{..}
+  getExpected config ranges m@WishboneM2S{}
     | not commAttempt = emptyWishboneS2M
     | Nothing <- maybeIndex = emptyWishboneS2M{err = True}
     | Just index <- maybeIndex, not (inRange index) = emptyWishboneS2M{err = True}
-    | writeEnable = emptyWishboneS2M{acknowledge = True}
+    | m.writeEnable = emptyWishboneS2M{acknowledge = True}
     | otherwise =
         (emptyWishboneS2M @4)
           { acknowledge = True
           , readData = resize restAddr
           }
    where
-    commAttempt = busCycle && strobe
+    commAttempt = m.busCycle && m.strobe
     maybeIndex = elemIndex (unpack indexBV) config
-    (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split addr
+    (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split m.addr
     inRange index = restAddr <= (ranges !! index)
 
 -- | transforms an address to a 'WishboneM2S' read operation.
@@ -390,19 +390,19 @@ simpleSlave' range readDataInit =
   forceResetSanityGeneric
     |> Circuit (\(wbIn, ()) -> (mealy go readDataInit wbIn, ()))
  where
-  go readData1 WishboneM2S{..} =
+  go readData1 m@WishboneM2S{} =
     (readData2, (emptyWishboneS2M @nBytes){readData, acknowledge, err})
    where
-    masterActive = busCycle && strobe
-    addrInRange = addr <= range
+    masterActive = m.busCycle && m.strobe
+    addrInRange = m.addr <= range
     acknowledge = masterActive && addrInRange
     err = masterActive && not addrInRange
-    writeOp = acknowledge && writeEnable
+    writeOp = acknowledge && m.writeEnable
     readData2
-      | writeOp = writeData
+      | writeOp = m.writeData
       | otherwise = readData1
     readData
-      | writeOp = writeData
+      | writeOp = m.writeData
       | otherwise = readData1
 
 {- | Simple wishbone slave that responds to addresses [0..range], it responds by returning

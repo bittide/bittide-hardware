@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
-
 module Tests.Shared where
 
 import Clash.Prelude
@@ -55,17 +53,17 @@ data Transaction addrW nBytes
 
 -- | Show Instance for 'Transaction' that hides fields irrelevant for the transaction.
 instance (KnownNat addrW, KnownNat nBytes) => Show (Transaction addrW nBytes) where
-  show (WriteSuccess WishboneM2S{..} _) =
+  show (WriteSuccess m@WishboneM2S{} _) =
     "WriteSuccess: (addr: "
-      <> show addr
+      <> show m.addr
       <> ", writeData:"
-      <> show writeData
+      <> show m.writeData
       <> ")"
-  show (ReadSuccess WishboneM2S{..} WishboneS2M{..}) =
+  show (ReadSuccess m@WishboneM2S{} s@WishboneS2M{}) =
     "ReadSuccess: ("
-      <> show addr
+      <> show m.addr
       <> ", "
-      <> show readData
+      <> show s.readData
       <> ")"
   show (Error _) = "Error"
   show (Retry _) = "Retry"
@@ -75,17 +73,17 @@ instance (KnownNat addrW, KnownNat nBytes) => Show (Transaction addrW nBytes) wh
 
 -- | Show Instance for 'Transaction' that hides fields irrelevant for the transaction.
 instance (KnownNat addrW, KnownNat nBytes) => ShowX (Transaction addrW nBytes) where
-  showX (WriteSuccess WishboneM2S{..} _) =
+  showX (WriteSuccess m@WishboneM2S{} _) =
     "WriteSuccess: (addr: "
-      <> showX addr
+      <> showX m.addr
       <> ", writeData:"
-      <> showX writeData
+      <> showX m.writeData
       <> ")"
-  showX (ReadSuccess WishboneM2S{..} WishboneS2M{..}) =
+  showX (ReadSuccess m@WishboneM2S{} s@WishboneS2M{}) =
     "ReadSuccess: ("
-      <> showX addr
+      <> showX m.addr
       <> ", "
-      <> showX readData
+      <> showX s.readData
       <> ")"
   showX (Error _) = "Error"
   showX (Retry _) = "Retry"
@@ -129,14 +127,14 @@ wbToTransaction ::
   [WishboneM2S addressWidth nBytes] ->
   [WishboneS2M nBytes] ->
   [Transaction addressWidth nBytes]
-wbToTransaction (m@WishboneM2S{..} : restM@(nextM : _)) (s@WishboneS2M{..} : restS)
-  | not strobe || not busCycle = nextTransaction
-  | hasMultipleTrues [acknowledge, err, retry, stall] = Illegal m s : nextTransaction
-  | acknowledge && writeEnable = WriteSuccess m s : nextTransaction
-  | acknowledge = ReadSuccess m s : nextTransaction
-  | err = Error m : nextTransaction
-  | retry = Retry m : nextTransaction
-  | stall = Stall m : nextTransaction
+wbToTransaction (m@WishboneM2S{} : restM@(nextM : _)) (s@WishboneS2M{} : restS)
+  | not m.strobe || not m.busCycle = nextTransaction
+  | hasMultipleTrues [s.acknowledge, s.err, s.retry, s.stall] = Illegal m s : nextTransaction
+  | s.acknowledge && m.writeEnable = WriteSuccess m s : nextTransaction
+  | s.acknowledge = ReadSuccess m s : nextTransaction
+  | s.err = Error m : nextTransaction
+  | s.retry = Retry m : nextTransaction
+  | s.stall = Stall m : nextTransaction
   | Wb.busCycle nextM && Wb.strobe nextM = nextTransaction
   | otherwise = Ignored m : nextTransaction
  where

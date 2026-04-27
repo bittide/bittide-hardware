@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Bittide.Calculator where
@@ -447,7 +446,8 @@ chainConfigurationWorker _ fpgaConfig ugnParts writeOffset =
         , writeOffset = wO
         , readMetacycle = rM
         , readOffset = rO
-        , ..
+        , readForN
+        , writeForN
         }
 
     nextStartReadAt = mapCycle startWriteAt node nextNode

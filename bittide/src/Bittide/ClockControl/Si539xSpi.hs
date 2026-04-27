@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Bittide.ClockControl.Si539xSpi where
@@ -297,64 +296,69 @@ si539xSpi ::
   , Signal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
   , Signal dom Spi.M2S
   )
-si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation s2m =
-  (configByte, configBusy, configState, spiM2S)
- where
-  (driverByte, driverBusy, spiM2S) = withReset driverReset si539xSpiDriver minTargetPs spiOperation s2m
-  driverReset = forceReset $ holdTrue d3 $ flip fmap configState $ \case
-    ResetDriver _ -> True
-    _ -> False
-
-  romOut = rom (configPreamble ++ config ++ configPostamble) romAddress
-  romAddress = bitCoerce . getStateAddress <$> configState
-
-  (configState, spiOperation, configBusy, configByte) =
-    mealyB go (WaitForReady False) (romOut, externalOperation, driverByte, driverBusy)
-
-  go currentState ((page, address, byte), extSpi, spiByte, spiBusy) =
-    (nextState, (currentState, spiOp, busy, returnedByte))
+si539xSpi
+  Si539xRegisterMap{config, configPostamble, configPreamble}
+  minTargetPs@SNat
+  externalOperation
+  s2m =
+    (configByte, configBusy, configState, spiM2S)
    where
-    isConfigEntry i =
-      (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
-    nextState = case (currentState, spiByte) of
-      (WaitForReady False, Just 0x0F) -> ResetDriver True
-      (WaitForReady True, Just 0x0F) -> FetchReg 0
-      (WaitForReady _, Just _) -> ResetDriver False
-      (ResetDriver b, _) -> WaitForReady b
-      (FetchReg i, _) -> WriteEntry i
-      (WriteEntry i, Just _)
-        | i == maxBound -> WaitForLock
-        | i == (natToNum @preambleEntries - 1) -> Wait @dom 0 i
-        | isConfigEntry i -> ReadEntry i
-        | otherwise -> FetchReg (succ i)
-      (ReadEntry i, Just b)
-        | b == byte -> FetchReg (succ i)
-        | otherwise -> Error i
-      (Wait ((== maxBound) -> True) i, _) -> FetchReg (succ i)
-      (Wait j i, _) -> Wait (succ j) i
-      (WaitForLock, Just 0) -> Finished
-      (WaitForReady _, _) -> currentState
-      (WaitForLock, _) -> currentState
-      (WriteEntry _, _) -> currentState
-      (ReadEntry _, _) -> currentState
-      (Finished, _) -> currentState
-      (Error _, _) -> currentState
+    (driverByte, driverBusy, spiM2S) =
+      withReset driverReset si539xSpiDriver minTargetPs spiOperation s2m
+    driverReset = forceReset $ holdTrue d3 $ flip fmap configState $ \case
+      ResetDriver _ -> True
+      _ -> False
 
-    spiOp = case currentState of
-      WaitForReady _ -> Just RegisterOperation{page = 0x00, address = 0xFE, write = Nothing}
-      ResetDriver _ -> Nothing
-      FetchReg _ -> Nothing
-      WriteEntry _ -> Just RegisterOperation{page, address, write = Just byte}
-      ReadEntry _ -> Just RegisterOperation{page, address, write = Nothing}
-      Wait _ _ -> Nothing
-      WaitForLock -> Just RegisterOperation{page = 0, address = 0x0C, write = Nothing}
-      Finished -> extSpi
-      Error _ -> extSpi
+    romOut = rom (configPreamble ++ config ++ configPostamble) romAddress
+    romAddress = bitCoerce . getStateAddress <$> configState
 
-    (busy, returnedByte) = case currentState of
-      Finished -> (spiBusy, spiByte)
-      Error _ -> (spiBusy, spiByte)
-      _ -> (True, Nothing)
+    (configState, spiOperation, configBusy, configByte) =
+      mealyB go (WaitForReady False) (romOut, externalOperation, driverByte, driverBusy)
+
+    go currentState ((page, address, byte), extSpi, spiByte, spiBusy) =
+      (nextState, (currentState, spiOp, busy, returnedByte))
+     where
+      isConfigEntry i =
+        (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
+      nextState = case (currentState, spiByte) of
+        (WaitForReady False, Just 0x0F) -> ResetDriver True
+        (WaitForReady True, Just 0x0F) -> FetchReg 0
+        (WaitForReady _, Just _) -> ResetDriver False
+        (ResetDriver b, _) -> WaitForReady b
+        (FetchReg i, _) -> WriteEntry i
+        (WriteEntry i, Just _)
+          | i == maxBound -> WaitForLock
+          | i == (natToNum @preambleEntries - 1) -> Wait @dom 0 i
+          | isConfigEntry i -> ReadEntry i
+          | otherwise -> FetchReg (succ i)
+        (ReadEntry i, Just b)
+          | b == byte -> FetchReg (succ i)
+          | otherwise -> Error i
+        (Wait ((== maxBound) -> True) i, _) -> FetchReg (succ i)
+        (Wait j i, _) -> Wait (succ j) i
+        (WaitForLock, Just 0) -> Finished
+        (WaitForReady _, _) -> currentState
+        (WaitForLock, _) -> currentState
+        (WriteEntry _, _) -> currentState
+        (ReadEntry _, _) -> currentState
+        (Finished, _) -> currentState
+        (Error _, _) -> currentState
+
+      spiOp = case currentState of
+        WaitForReady _ -> Just RegisterOperation{page = 0x00, address = 0xFE, write = Nothing}
+        ResetDriver _ -> Nothing
+        FetchReg _ -> Nothing
+        WriteEntry _ -> Just RegisterOperation{page, address, write = Just byte}
+        ReadEntry _ -> Just RegisterOperation{page, address, write = Nothing}
+        Wait _ _ -> Nothing
+        WaitForLock -> Just RegisterOperation{page = 0, address = 0x0C, write = Nothing}
+        Finished -> extSpi
+        Error _ -> extSpi
+
+      (busy, returnedByte) = case currentState of
+        Finished -> (spiBusy, spiByte)
+        Error _ -> (spiBusy, spiByte)
+        _ -> (True, Nothing)
 
 {- | Keeps track of the current 'Page' and 'Address' of the @Si539x@ chip as well as
 the current communication cycle.
@@ -444,42 +448,51 @@ si539xSpiDriver SNat incomingOpS s2m = (fromSlave, decoderBusy, spiM2S)
 
   go currentState@DriverState{currentOp = Nothing} (incomingOp, _, _, _) =
     (currentState{currentOp = incomingOp}, (Nothing, False, currentState.storedByte))
-  go currentState@DriverState{..} (_, spiBusy, spiAck, receivedBytes) =
-    (nextState, (output, True, storedByte))
-   where
-    op = fromJust currentOp
-    samePage = currentPage == Just op.page
-    sameAddr = currentAddress == Just op.address
+  go
+    currentState@DriverState
+      { commandAcknowledged
+      , currentAddress
+      , currentOp
+      , currentPage
+      , idleCycles
+      , storedByte
+      }
+    (_, spiBusy, spiAck, receivedBytes) =
+      (nextState, (output, True, storedByte))
+     where
+      op = fromJust currentOp
+      samePage = currentPage == Just op.page
+      sameAddr = currentAddress == Just op.address
 
-    (spiCommand, nextOp, outBytes) = case (samePage, sameAddr, op.write) of
-      (True, True, Just byte) -> (WriteData byte, Nothing, receivedBytes)
-      (True, True, Nothing) -> (ReadData, Nothing, receivedBytes)
-      (True, False, _) -> (SetAddress op.address, currentOp, Nothing)
-      (False, _, _)
-        | currentAddress == Just 1 -> (WriteData op.page, currentOp, Nothing)
-        | otherwise -> (SetAddress 1, currentOp, Nothing)
+      (spiCommand, nextOp, outBytes) = case (samePage, sameAddr, op.write) of
+        (True, True, Just byte) -> (WriteData byte, Nothing, receivedBytes)
+        (True, True, Nothing) -> (ReadData, Nothing, receivedBytes)
+        (True, False, _) -> (SetAddress op.address, currentOp, Nothing)
+        (False, _, _)
+          | currentAddress == Just 1 -> (WriteData op.page, currentOp, Nothing)
+          | otherwise -> (SetAddress 1, currentOp, Nothing)
 
-    (nextPage, nextAddress) = case (currentPage, currentAddress, spiCommand) of
-      (_, Just 1, WriteData newPage) -> (Just newPage, currentAddress)
-      (_, _, SetAddress newAddr) -> (currentPage, Just newAddr)
-      _ -> (currentPage, currentAddress)
+      (nextPage, nextAddress) = case (currentPage, currentAddress, spiCommand) of
+        (_, Just 1, WriteData newPage) -> (Just newPage, currentAddress)
+        (_, _, SetAddress newAddr) -> (currentPage, Just newAddr)
+        _ -> (currentPage, currentAddress)
 
-    updateIdleCycles
-      | spiBusy = idleCycles
-      | otherwise = satPred SatZero idleCycles
+      updateIdleCycles
+        | spiBusy = idleCycles
+        | otherwise = satPred SatZero idleCycles
 
-    nextState
-      | commandAcknowledged && not spiBusy && isNothing storedByte =
-          DriverState nextPage nextAddress nextOp False (fmap resize outBytes) maxBound
-      | otherwise =
-          currentState
-            { commandAcknowledged = spiAck || commandAcknowledged
-            , idleCycles = updateIdleCycles
-            , storedByte = fmap resize outBytes
-            }
+      nextState
+        | commandAcknowledged && not spiBusy && isNothing storedByte =
+            DriverState nextPage nextAddress nextOp False (fmap resize outBytes) maxBound
+        | otherwise =
+            currentState
+              { commandAcknowledged = spiAck || commandAcknowledged
+              , idleCycles = updateIdleCycles
+              , storedByte = fmap resize outBytes
+              }
 
-    spiBytes = spiCommandToBytes spiCommand
-    output = orNothing (not commandAcknowledged && idleCycles == 0) spiBytes
+      spiBytes = spiCommandToBytes spiCommand
+      output = orNothing (not commandAcknowledged && idleCycles == 0) spiBytes
 {-# OPAQUE si539xSpiDriver #-}
 
 -- TODO: Look into replacing dcFifo with XPM_CDC_Handshake.
@@ -536,7 +549,7 @@ spiFrequencyController
         (pure Nothing)
         (Just <$> speedChange)
 
-    FifoOut{..} =
+    FifoOut{fifoData, isEmpty} =
       dcFifo (defConfig @4) clkCallisto rstCallisto clkSpi rstSpi fifoIn readEnable
 
     (spiOp, readEnable) =

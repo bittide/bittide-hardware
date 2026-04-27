@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {- | Tests whether the transceiver link setup matches with the
 configuration defined in 'Bittide.Instances.Hitl.Setup.fpgaSetup'.

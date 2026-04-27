@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
-
 module Bittide.Instances.Pnr.ProcessingElement where
 
 import Clash.Prelude

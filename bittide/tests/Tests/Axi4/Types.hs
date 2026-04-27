@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
-
 module Tests.Axi4.Types where
 
 import Clash.Prelude
@@ -35,7 +33,7 @@ type Strobe = Bool
 
 -- | Get a list of bytes for a given Axi4StreamM2S transaction
 getTransferBytes :: Axi4StreamM2S conf a -> Vec (DataWidth conf) AxiByte
-getTransferBytes Axi4StreamM2S{..} = zipWith3 getByte _tkeep _tstrb _tdata
+getTransferBytes m@Axi4StreamM2S{} = zipWith3 getByte m._tkeep m._tstrb m._tdata
 
 -- | Get a byte based on a keep, strobe and data value
 getByte :: Keep -> Strobe -> Unsigned 8 -> AxiByte
@@ -69,11 +67,12 @@ axiStreamToPackets ::
   [Packet]
 axiStreamToPackets = L.reverse . snd . L.foldl go ([], [])
  where
-  go (partialPacket, packets) Axi4StreamM2S{..}
-    | _tlast = ([], L.reverse newPartial : packets)
+  go (partialPacket, packets) m@Axi4StreamM2S{}
+    | m._tlast = ([], L.reverse newPartial : packets)
     | otherwise = (newPartial, packets)
    where
-    newPartial = L.reverse (catMaybes (toList $ orNothing <$> _tkeep <*> _tdata)) <> partialPacket
+    newPartial =
+      L.reverse (catMaybes (toList $ orNothing <$> m._tkeep <*> m._tdata)) <> partialPacket
 
 -- Transform a 'Packet' into a list of Axi Stream operations.
 packetToAxiStream ::

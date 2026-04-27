@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2026 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
-
 module Bittide.RingBuffer where
 
 import Clash.Prelude

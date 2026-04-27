@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 -- | Generate a JSON representation of a 'MemoryMapValid'
 module Protocols.MemoryMap.Json where
@@ -299,15 +298,15 @@ location loc = do
       pure $ toJSON n
 
 locToJson :: SrcLoc -> Value
-locToJson SrcLoc{..} =
+locToJson sloc@SrcLoc{} =
   object
-    [ "package" .= srcLocPackage
-    , "module" .= srcLocModule
-    , "file" .= srcLocFile
-    , "start_line" .= srcLocStartLine
-    , "start_col" .= srcLocStartCol
-    , "end_line" .= srcLocEndLine
-    , "end_col" .= srcLocEndCol
+    [ "package" .= sloc.srcLocPackage
+    , "module" .= sloc.srcLocModule
+    , "file" .= sloc.srcLocFile
+    , "start_line" .= sloc.srcLocStartLine
+    , "start_col" .= sloc.srcLocStartCol
+    , "end_line" .= sloc.srcLocEndLine
+    , "end_col" .= sloc.srcLocEndCol
     ]
 
 genTags :: [(SrcLoc, String)] -> JsonGenerator Value
