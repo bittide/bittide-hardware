@@ -12,9 +12,9 @@ The Software UGN (Uninterpretable Garbage Number) Discovery Procedure is a distr
 
 The procedure operates by exchanging timestamped messages between neighbors. By measuring the time difference between when a message is sent and when it is received (and acknowledged), nodes can calculate the round-trip time.
 
-The procedure relies on the underlying scatter/gather units being configured as **ringbuffers**. Specifically:
-*   The calendars of the scatter and gather units are of equal size and contain incrementing indices such that a link that starts at a gather unit and is terminated by a scatter unit functions as a ringbuffer.
-*   The alignment of this ringbuffer (where data starting at address `0` in a gather memory arrives at address `n` in a scatter memory) is unknown at the start and is measured by the [Ring Buffer Alignment Procedure](../ringbuffer-alignment.md).
+The procedure relies on the underlying ring buffers. Specifically:
+*   The transmit and receive ring buffers are of equal size and operate as ring buffers with free-running hardware counters.
+*   The alignment of the ring buffers (where data starting at address `0` in a transmit ring buffer arrives at address `n` in a receive ring buffer) is unknown at the start and is measured by the [Ring Buffer Alignment Procedure](../ringbuffer-alignment.md).
 
 ## Message Types
 
@@ -43,29 +43,21 @@ Events are scheduled according to the send and receive periods:
 
 ### Preconditions
 
-*   `memory_size == scatter_memory_size == gather_memory_size` to preserve the ringbuffer alignment.
+*   `memory_size == rx_memory_size == tx_memory_size` to preserve the ringbuffer alignment.
 *   Since we are limited by compute resources, we can only process one port per event. For this reason `receive_period / memory_size` and `send_period / memory_size` need to be coprime to make sure we cover all possible overlaps between ports. We divide by `memory_size` because we know exactly where to write and read messages in our memories based on the ringbuffer alignment.
 
 ## Procedure Operation
 
 1.  **Initialization**:
-    *   The MU configures scatter/gather calendars to 1:1 mapping (ringbuffer mode).
-    *   The MU aligns its software pointers to the hardware buffer positions leveraging the [Ring Buffer Alignment Procedure](../ringbuffer-alignment.md).
+    *   The MU aligns the ring buffers  leveraging the [Ring Buffer Alignment Procedure](../ringbuffer-alignment.md).
     *   Initial `SEND` and `RECEIVE` events are scheduled for all ports.
 
 2.  **Discovery Loop**:
-    *   **Sending**: When a `SEND` event triggers, the node writes a message to the gather unit.
-    *   **Receiving**: When a `RECEIVE` event triggers, the node inspects the scatter unit.
+    *   **Sending**: When a `SEND` event triggers, the node writes a message to the transmit ring buffer.
+    *   **Receiving**: When a `RECEIVE` event triggers, the node inspects the receive ring buffer.
         *   If an `ANNOUNCE` is received: The node records the arrival time and schedules an `ACKNOWLEDGE` message to be sent back.
         *   If an `ACKNOWLEDGE` is received: The node uses the comprehensive timing data (send time, receive time, ack transmit time, ack arrival time) to calculate the UGN.
 
 3.  **UGN Calculation**:
     *   By exchanging messages that contain transmission timestamps, nodes can collect and communicate the necessary timing information to compute the UGN.
     *   The UGN represents the propagation delay between nodes.
-
-## Hardware dependency
-
-The protocol strictly depends on the underlying hardware abstraction:
-*   **Gather Units**: Used to transmit data. In ringbuffer mode, writing to memory offset $X$ means the data will be sent on the link at $ringbuffer iteration * memory\_size + X$.
-*   **Scatter Units**: Used to receive data. Reading from memory offset $Y$ allows the software to see what was received on the link at $ringbuffer iteration * memory\_size + Y$.
-*   **Hardware counter**: The system uses a hardware timer to determine arrival times and deadlines for the events. The hardware counter is then used to wait for the arrival time of an event and verify that the event has been processed before its deadline.

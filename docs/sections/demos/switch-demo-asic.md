@@ -50,15 +50,14 @@ Components:
 - Crossbar calendar
 - Null link
 - ASIC processing element
-- 1x scatter/gather units
+- 1x transmit/receive ring buffers
 
 ### Management unit
 - Timer
 - UART (for debugging)
 - FPGA DNA register
 
-The management unit has access to and is responsible for all scatter/gather calendars in
-the node, as well as the crossbar calendar.
+The management unit has access to and is responsible for all ring buffers in the node, as well as the crossbar calendar.
 
 To change the binary run on this CPU, one may either:
 - Edit `bittide-instances/src/bittide/Instances/Hitl/SwitchDemo/Driver.hs`, line 500
