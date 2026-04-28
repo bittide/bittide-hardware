@@ -4,7 +4,7 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-use bittide_hal::shared_devices::TransmitRingBuffer;
+use bittide_hal::ring_buffer_test::devices::TransmitRingBuffer;
 use bittide_hal::{
     manual_additions::{
         ring_buffer::{
@@ -29,7 +29,7 @@ fn make_pattern(base: u8) -> [[u8; 8]; LEN] {
     })
 }
 
-fn read_rx(rx: &bittide_hal::shared_devices::ReceiveRingBuffer) -> [[u8; 8]; LEN] {
+fn read_rx(rx: &bittide_hal::ring_buffer_test::devices::ReceiveRingBuffer) -> [[u8; 8]; LEN] {
     let mut buf = [[0u8; 8]; LEN];
     rx.read_slice(&mut buf, 0);
     buf
@@ -45,8 +45,8 @@ fn verify_loopback(tx: &[[u8; 8]; LEN], rx: &[[u8; 8]; LEN]) -> bool {
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let timer = INSTANCES.timer;
-    let tx = INSTANCES.transmit_ring_buffer;
-    let rx = INSTANCES.receive_ring_buffer;
+    let tx = INSTANCES.transmit_ring_buffer_0;
+    let rx = INSTANCES.receive_ring_buffer_0;
 
     let mut all_passed = true;
 

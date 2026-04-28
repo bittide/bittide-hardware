@@ -29,18 +29,16 @@ Components:
 ### Management unit
 Components:
 - RISCV core
-- Scatter unit
-- Gather unit
+- Transmit ring buffer
+- Receive ring buffer
 - UART (For debugging)
 
 The management unit has access to, and is responsible for all calendars in the node.
 
 Calendars:
 - Switch calendar
-- Management unit scatter calendar
-- Management unit gather calendar
-- GPPE scatter unit
-- GPPE gather unit
+- Transmit ring buffers
+- Receive ring buffers
 
 ## Debugging related
 - UART arbiter

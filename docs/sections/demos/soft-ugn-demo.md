@@ -11,6 +11,9 @@ is able to determine the UGNs to its neighbors without communicating with a host
 is able to read all of the information from each of the nodes in the system. This is
 accomplished through the firmware on the management unit (MU).
 
+The same hardware design is also used by the [Smoltcp Demo](smoltcp-demo.md), which demonstrates
+reliable TCP/IP communication over the ring buffers.
+
 ## Architecture
 {{#drawio path="diagrams/softUgnDemo.drawio" page=0}}
 
@@ -34,7 +37,7 @@ accomplished through the firmware on the management unit (MU).
     5. Waits for clocks to be considered stable
     6. Stops auto-centering the elastic buffers
     7. Prints UGNs captured by hardware component to UART.
-    8. Initializes the [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md).
+    8. Aligns the [transmit](../components/transmit-ring-buffer.md)/[receive](../components/receive-ring-buffer.md) ring buffers.
     9. Calls the "c_main" and runs the software UGN discovery protocol
 
 ### Domain related
@@ -49,7 +52,7 @@ Components:
 ### Node related
 Components:
 - Management unit (MU)
-- 7 [scatter](../components/scatter-unit.md) and [gather](../components/gather-unit.md) units, one of each per elastic buffer
+- 7 [transmit](../components/transmit-ring-buffer.md) and [receive](../components/receive-ring-buffer.md) ring buffers, one of each per link
 
 ### Management unit
 Connected components:
@@ -57,9 +60,7 @@ Connected components:
 - UART (for debugging)
 - FPGA DNA register
 
-The management unit has access to and is responsible for all [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md) in
-the node. In this demo, it programs the calendars with increasing values (0, 1, 2, ...), effectively creating a transparent link for the MU to access the scatter/gather units directly. It also centers the elastic buffers to ensure stable communication.
-Finally it runs a distributed protocol to discover the Uninterpretable Garbage Numbers (UGNs) of the network links. For a detailed description of the procedure, see [Software UGN Discovery Procedure](soft-ugn-procedure.md). It uses the scatter/gather units (enabled by the MU) to exchange timestamped messages with neighbors, calculating the propagation delays in software.
+The management unit is connected to the bittide interconnect network via [transmit](../components/transmit-ring-buffer.md)/[receive](../components/receive-ring-buffer.md) ring buffers. In this demo the management unit runs a distributed protocol to discover the Uninterpretable Garbage Numbers (UGNs) of the network links. The protocol uses the aligned ring buffers to exchange timestamped messages with neighbors, calculating the propagation delays in software. For a detailed description of the procedure, see [Software UGN Discovery Procedure](soft-ugn-procedure.md).
 
 To change the binary run on this CPU, one may either:
 - Edit `bittide-instances/src/bittide/Instances/Hitl/SoftUgnDemo/Driver.hs`, line 215 (at
@@ -82,11 +83,6 @@ One may specifically run the software UGN demo test by making a
   {"top": "softUgnDemoTest",       "stage": "test", "cc_report": true}
 ]
 ```
-
-At the time of writing, the clock control CPU stabilizes system. The driver running
-on the host (`bittide-instances/src/bittide/Instances/Hitl/SoftUgnDemo/Driver.hs`)
-then releases the reset of the management unit CPU. In turn, this CPU will center
-the elastic buffers, initialize the scatter/gather calendars, and print out the UGNs captured using the hardware UGN capture component over UART. Finally, the general purpose processing element is started. It executes the software UGN discovery protocol and prints the results over UART. The host driver then compares the hardware-captured UGNs with the software-discovered UGNs to verify correctness.
 
 Tests are configured to run the following binaries on the system's CPUs:
 - Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)

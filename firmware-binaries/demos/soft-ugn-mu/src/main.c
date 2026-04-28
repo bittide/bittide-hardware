@@ -5,10 +5,10 @@
 #include "hals/soft_ugn_demo_mu/device_instances.h"
 
 #include "bittide_dna.h"
-#include "bittide_gather.h"  // Linter says we dont need this include, but we do
-#include "bittide_scatter.h" // Linter says we dont need this include, but we do
+#include "bittide_ring_receive.h"
+#include "bittide_ring_transmit.h"
 #include "bittide_timer.h"
-#include "bittide_ugn.h" // Requires the `bittide_scatter.h` and `bittide_gather.h`
+#include "bittide_ugn.h"
 
 #include "messages.h"
 #include "priority_queue.h"
@@ -21,7 +21,6 @@
 // Application Configuration
 // ============================================================================
 
-ScatterUnit su;
 // Number of event loop iterations
 #define NUM_PERIODS 1000
 #define NUM_PORTS 7
@@ -57,15 +56,22 @@ int c_main(void) {
   // Initialize all peripherals
 
   Uart uart = hal.uart;
-  ScatterUnit scatter_units[NUM_PORTS] = {
-      hal.scatter_unit_0, hal.scatter_unit_1, hal.scatter_unit_2,
-      hal.scatter_unit_3, hal.scatter_unit_4, hal.scatter_unit_5,
-      hal.scatter_unit_6};
+  ReceiveRingBuffer receive_ring_buffers[NUM_PORTS] = {
+      hal.receive_ring_buffer_0, hal.receive_ring_buffer_1,
+      hal.receive_ring_buffer_2, hal.receive_ring_buffer_3,
+      hal.receive_ring_buffer_4, hal.receive_ring_buffer_5,
+      hal.receive_ring_buffer_6};
 
-  GatherUnit gather_units[NUM_PORTS] = {hal.gather_unit_0, hal.gather_unit_1,
-                                        hal.gather_unit_2, hal.gather_unit_3,
-                                        hal.gather_unit_4, hal.gather_unit_5,
-                                        hal.gather_unit_6};
+  TransmitRingBuffer transmit_ring_buffers[NUM_PORTS] = {
+      hal.transmit_ring_buffer_0, hal.transmit_ring_buffer_1,
+      hal.transmit_ring_buffer_2, hal.transmit_ring_buffer_3,
+      hal.transmit_ring_buffer_4, hal.transmit_ring_buffer_5,
+      hal.transmit_ring_buffer_6};
+
+  for (uint32_t port = 0; port < NUM_PORTS; port++) {
+    receive_ring_buffer_set_enable(receive_ring_buffers[port], true);
+    transmit_ring_buffer_set_enable(transmit_ring_buffers[port], true);
+  }
   Timer timer = hal.timer;
   dna_t dna;
   dna_read(hal.dna, dna);
@@ -84,16 +90,17 @@ int c_main(void) {
   UgnEdge outgoing_link_ugn_list[NUM_PORTS];
 
   UgnContext ugn_ctx;
-  ugn_context_init(&ugn_ctx, scatter_units, gather_units, NUM_PORTS, node_id,
-                   incoming_link_ugn_list, outgoing_link_ugn_list, NUM_PORTS);
+  ugn_context_init(&ugn_ctx, receive_ring_buffers, transmit_ring_buffers,
+                   NUM_PORTS, node_id, incoming_link_ugn_list,
+                   outgoing_link_ugn_list, NUM_PORTS);
 
   // Print consolidated initialization information
   PRINT_INIT_INFO(uart, &ugn_ctx, BUFFER_SIZE, SEND_PERIOD, RECEIVE_PERIOD,
                   NUM_PORTS);
 
-  // Align ring_buffers before starting event loop
-  int16_t incoming_offsets[NUM_PORTS] = {0};
-  align_ring_buffers(&ugn_ctx, incoming_offsets, uart);
+  // Align ring_buffers before starting event loop. After alignment, all
+  // subsequent messages arrive at offset 0 in the receive ring_buffer.
+  align_ring_buffers(&ugn_ctx, uart);
 
   // Event loop variables
   FixedIntPriorityQueue event_queue;
@@ -114,8 +121,7 @@ int c_main(void) {
     uint64_t send_time = start_cycles_write + port * SEND_SPACING;
     uint32_t send_offset = send_time % BUFFER_SIZE;
 
-    uint64_t receive_time =
-        start_cycles_read + port * RECEIVE_SPACING + incoming_offsets[port];
+    uint64_t receive_time = start_cycles_read + port * RECEIVE_SPACING;
     uint32_t receive_offset = receive_time % BUFFER_SIZE;
 
     Event send_event = make_send_event(MSG_TYPE_ANNOUNCE, send_offset, port);

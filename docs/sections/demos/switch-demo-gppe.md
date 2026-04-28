@@ -49,15 +49,14 @@ Components:
 - Crossbar calendar
 - Null link
 - 1x general purpose processing element (PE)
-- 1x scatter/gather units
+- 1x transmit/receive ring buffers
 
 ### Management unit
 - Timer
 - UART (for debugging)
 - FPGA DNA register
 
-The management unit has access to and is responsible for all scatter/gather calendars in
-the node, as well as the crossbar calendar.
+The management unit has access to and is responsible for all ring buffers in the node, as well as the crossbar calendar.
 
 To change the binary run on this CPU, one may either:
 - Edit `bittide-instances/src/bittide/Instances/Hitl/SwitchDemoGppe/Driver.hs`, line 215
@@ -67,10 +66,10 @@ To change the binary run on this CPU, one may either:
 
 ### General purpose processing element
 This component is labeled as "PE" in the diagram above. Connected components:
-- 7 scatter and gather units, one of each per elastic buffer
+- 7 transmit and receive ring buffers, one of each per elastic buffer
 - UART (for debugging)
 - Timer
-- Scatter/gather unit connection to crossbar output
+- Ring buffer connection to crossbar output
 - FPGA DNA register
 
 The general purpose processing element is a drop-in replacement of the ASIC processing element. It has no functionality other than printing "Hello!" over UART.

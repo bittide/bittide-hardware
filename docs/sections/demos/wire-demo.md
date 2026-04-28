@@ -49,7 +49,7 @@ Components:
 ### Node related
 Components:
 - Management unit (MU)
-- 7 [scatter](../components/scatter-unit.md) and [gather](../components/gather-unit.md) units, one of each per elastic buffer
+- 7 [transmit](../components/transmit-ring-buffer.md) and [receive](../components/receive-ring-buffer.md) ring buffers, one of each per elastic buffer
 - Programmable mux
 - WireDemoPe, a processing elemenent specific for this demo
 - WireDemoPeConfig, a bus accessible device with a writable configuration for the processing element
@@ -60,7 +60,7 @@ Connected components:
 - UART (for debugging)
 - FPGA DNA register
 
-The management unit has access to and is responsible for all [scatter](../components/scatter-unit.md)/[gather](../components/gather-unit.md) [calendars](../components/calendar.md) in the node. In this demo these calendars are not used.
+The management unit has access to and is responsible for all [transmit](../components/transmit-ring-buffer.md)/[receive](../components/receive-ring-buffer.md) ring buffers in the node. In this demo these are not used.
 
 To change the binary run on this CPU, one may either:
 - Edit `bittide-instances/src/bittide/Instances/Hitl/WireDemo/Driver.hs`, line 215 (at
