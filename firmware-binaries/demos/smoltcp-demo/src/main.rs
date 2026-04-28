@@ -20,7 +20,7 @@ use ufmt::uwriteln;
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 const LINKS: [usize; 3] = [0, 1, 2];
 const LINK_COUNT: usize = LINKS.len();
-const MANAGER_DNA: [u8; 12] = [133, 129, 48, 4, 64, 192, 105, 1, 1, 0, 2, 64];
+const MANAGER_DNA: [u8; 12] = [197, 100, 65, 4, 64, 192, 105, 1, 1, 0, 2, 64];
 
 #[cfg(not(test))]
 use riscv_rt::entry;
