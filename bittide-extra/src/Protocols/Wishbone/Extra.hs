@@ -1,11 +1,13 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE MultiWayIf #-}
 
 module Protocols.Wishbone.Extra (
   delayWishbone,
   xpmCdcHandshakeWb,
   increaseBusWidth,
+  decreaseBusWidth,
 ) where
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (xpmCdcHandshakeDf)
@@ -255,3 +257,98 @@ increaseBusWidth SNat = Circuit (unbundle . fmap go . bundle)
     newWriteData = pack (repeat m2sLeft.writeData)
     newBusSelect = shiftL (resize m2sLeft.busSelect) bitShift
     newReadData = resize (shiftR (s2mRight.readData) (8 * bitShift))
+
+data DecreaseBusState power width
+  = DecreaseBusState
+  { addrLsbs :: BitVector power
+  -- ^ Track the lower bits of the address to know where we are in the wider bus transaction.
+  , dataReg :: BitVector (2 ^ power * width * 8)
+  -- ^ Register to hold the read/write data as we shift it in/out over multiple cycles.
+  , maskReg :: BitVector (2 ^ power * width)
+  -- ^ Register to hold the bus select mask as we shift it out over multiple cycles.
+  }
+  deriving (Generic, NFDataX, Show, ShowX, Eq, BitPack)
+
+{- | Converts a bus of `2 ^ power * width` bytes wide to bus of `width` bytes wide based on
+the `busSelect` mask. It uses internal state to keep start at the lowest non-zero byte lane and
+then perform operations on consecutive byte lanes until the entire transaction is complete.
+-}
+decreaseBusWidth ::
+  forall dom mode aw width power.
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat width, KnownNat power, power <= aw, 1 <= power) =>
+  SNat power ->
+  Circuit
+    (Wishbone dom mode (aw - power) (2 ^ power * width))
+    (Wishbone dom mode aw width)
+decreaseBusWidth SNat = Circuit (unbundle . mealy go initState . bundle)
+ where
+  initState :: DecreaseBusState power width
+  initState = DecreaseBusState 0 0 0
+  go state (m2sLeft, s2mRight) = (newState1, (s2mLeft, m2sRight))
+   where
+    storedValid = state.maskReg /= 0
+    masterActive = m2sLeft.busCycle && m2sLeft.strobe
+    firstCycle = masterActive && not storedValid
+
+    nextLsbs
+      | m2sLeft.writeEnable = satSucc SatZero addrLsbs
+      | otherwise = satPred SatZero addrLsbs
+
+    nextDataReg
+      | firstCycle && m2sLeft.writeEnable =
+          resize (shiftR m2sLeft.writeData (natToNum @(width * 8)))
+      | m2sLeft.writeEnable =
+          state.dataReg `shiftR` (natToNum @(width * 8))
+      | otherwise =
+          resize (state.dataReg ++# s2mRight.readData)
+
+    nextMaskReg
+      | firstCycle = resize (shiftR m2sLeft.busSelect (natToNum @width))
+      | otherwise = state.maskReg `shiftR` (natToNum @width)
+
+    lastSubTransaction = nextMaskReg == 0
+    transactionDone = lastSubTransaction || s2mRight.err || s2mRight.retry
+
+    newState1
+      | masterActive && hasTerminateFlag s2mRight && transactionDone = initState
+      | masterActive && hasTerminateFlag s2mRight =
+          DecreaseBusState nextLsbs nextDataReg nextMaskReg
+      | masterActive = state
+      | otherwise = initState
+
+    -- On the first cycle of a transaction, we propagate the lower portion of all relevant fields
+    -- to the rhs and store the rest in our state.
+
+    -- wrap a vector of indices into Maybe's based on the bus select, then find the left most (highest) index.
+    -- lastAddress :: Maybe (BitVector power)
+    combine (bv :: BitVector width) idx
+      | bv == 0 = Nothing
+      | otherwise = Just (resize $ pack idx)
+
+    lastAddress = fold (<|>) (zipWith combine (unpack m2sLeft.busSelect) (reverse indicesI) :< Nothing)
+
+    newAddress = m2sLeft.addr ++# addrLsbs
+    addrLsbs
+      | firstCycle && not m2sLeft.writeEnable = fromMaybe 0 lastAddress
+      | otherwise = state.addrLsbs
+
+    newWriteData
+      | storedValid = resize state.dataReg
+      | otherwise = resize m2sLeft.writeData
+
+    newBusSelect
+      | storedValid = resize state.maskReg
+      | otherwise = resize m2sLeft.busSelect
+
+    m2sRight =
+      m2sLeft
+        { addr = newAddress
+        , writeData = newWriteData
+        , busSelect = newBusSelect
+        }
+
+    newReadData = resize (state.dataReg ++# s2mRight.readData)
+    s2mLeft
+      | masterActive && hasTerminateFlag s2mRight && transactionDone =
+          s2mRight{readData = newReadData}
+      | otherwise = emptyWishboneS2M

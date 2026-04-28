@@ -1,18 +1,20 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Tests.Clash.Protocols.Wishbone.Extra (tests) where
+module Tests.Clash.Protocols.Wishbone.Extra (tests, stallStandard) where
 
 import Clash.Explicit.Prelude
+import Clash.Prelude (withClockResetEnable)
 
 import Bittide.DoubleBufferedRam (
   ContentType (Vec),
   wbStorage,
  )
 import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
-import Clash.Prelude (withClockResetEnable)
+import Clash.Signal.Internal as S
 import Data.Map (Map)
 import Data.String.Interpolate (i)
 import Hedgehog (Gen, Property, property)
@@ -20,7 +22,7 @@ import Protocols
 import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
-import Protocols.Wishbone.Extra (increaseBusWidth, xpmCdcHandshakeWb)
+import Protocols.Wishbone.Extra (decreaseBusWidth, increaseBusWidth, xpmCdcHandshakeWb)
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   wishbonePropWithModel,
@@ -35,6 +37,7 @@ import qualified Data.Map as Map
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import qualified Protocols.Wishbone.Standard.Hedgehog as Wb
 
 type AddressWidth = 4
 
@@ -136,13 +139,13 @@ prop_xpmCdcHandshakeWb = property $ do
   genBoundedIntegral :: forall a. (Integral a, Bounded a) => Gen a
   genBoundedIntegral = Gen.integral Range.constantBounded
 
-testIncreaseBuswidth ::
+testIncreaseBusWidth ::
   forall power nBytes.
   -- \| We are restricted by our 4 byte wide `wbStorage` backend.
   (KnownNat power, (2 ^ power) * nBytes ~ 4, nBytes ~ 4 `DivRU` (2 ^ power)) =>
   SNat power ->
   Property
-testIncreaseBuswidth power = property $ do
+testIncreaseBusWidth power = property $ do
   let
     eOpts = defExpectOptions
 
@@ -178,13 +181,85 @@ testIncreaseBuswidth power = property $ do
   ena = enableGen
 
 prop_increaseBusWidth_0 :: Property
-prop_increaseBusWidth_0 = testIncreaseBuswidth d0
+prop_increaseBusWidth_0 = testIncreaseBusWidth d0
 
 prop_increaseBusWidth_1 :: Property
-prop_increaseBusWidth_1 = testIncreaseBuswidth d1
+prop_increaseBusWidth_1 = testIncreaseBusWidth d1
 
 prop_increaseBusWidth_2 :: Property
-prop_increaseBusWidth_2 = testIncreaseBuswidth d2
+prop_increaseBusWidth_2 = testIncreaseBusWidth d2
+
+testDecreaseBusWidth ::
+  forall power width.
+  -- \| We are restricted by our 4 byte wide `wbStorage` backend.
+  ( KnownNat power
+  , 1 <= power
+  , KnownNat width
+  , 1 <= width
+  , width <= 4
+  ) =>
+  SNat power ->
+  SNat width ->
+  Property
+testDecreaseBusWidth power SNat = property $ do
+  stalls <- H.forAll $ Gen.list (Range.linear 0 100) $ Gen.integral (Range.linear 0 10)
+  earlyStrobe <- H.forAll Gen.bool
+  let
+    eOpts = defExpectOptions
+
+    -- Depth is half the number of addresses to also tests error on out-of-range accesses.
+    depth = SNat @(2 ^ (AddressWidth - 2))
+    lastAddress = snatToNum $ predSNat depth
+    lastAddressSmall = lastAddress * (natToNum @(2 ^ power))
+    genAddr = Gen.integral (Range.linear 0 lastAddressSmall)
+    genInputs = Gen.list (Range.linear 1 10) (genWishboneTransfer genAddr)
+
+    dutMem :: Circuit (Wishbone System 'Standard (AddressWidth + power) width) ()
+    dutMem =
+      withClockResetEnable clk rst ena
+        $ unMemmap
+        $ wbStorage "test" depth (Just (Vec (repeat 0)))
+
+    dut :: Circuit (Wishbone System 'Standard AddressWidth (2 ^ power * width)) ()
+    dut =
+      withClockResetEnable
+        clk
+        rst
+        ena
+        (decreaseBusWidth power |> Wb.validatorCircuit |> stallStandard earlyStrobe stalls |> dutMem)
+
+  H.footnote [i| Depth: #{snatToInteger depth}, Last Address: #{lastAddress}|]
+
+  withClockResetEnable clk rst ena
+    $ wishbonePropWithModel
+      @System
+      eOpts
+      (memoryModel (fromIntegral lastAddressSmall))
+      dut
+      genInputs
+      (Map.fromList (L.zip [0 .. lastAddressSmall] (L.repeat 0)))
+ where
+  clk = clockGen
+  rst = noReset
+  ena = enableGen
+
+prop_decreaseBusWidth_1_1 :: Property
+prop_decreaseBusWidth_1_1 = testDecreaseBusWidth d1 d1
+
+prop_decreaseBusWidth_2_1 :: Property
+prop_decreaseBusWidth_2_1 = testDecreaseBusWidth d2 d1
+
+prop_decreaseBusWidth_3_1 :: Property
+prop_decreaseBusWidth_3_1 = testDecreaseBusWidth d3 d1
+
+prop_decreaseBusWidth_1_2 :: Property
+prop_decreaseBusWidth_1_2 = testDecreaseBusWidth d1 d2
+
+prop_decreaseBusWidth_2_2 :: Property
+prop_decreaseBusWidth_2_2 = testDecreaseBusWidth d2 d2
+
+prop_decreaseBusWidth_3_2 :: Property
+prop_decreaseBusWidth_3_2 = testDecreaseBusWidth d3 d2
 
 prop_memoryModel :: Property
 prop_memoryModel = property $ do
