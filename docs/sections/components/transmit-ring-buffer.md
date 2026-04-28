@@ -10,6 +10,8 @@ The Transmit Ring Buffer is a hardware component designed to transmit data frame
 
 ### Architecture
 
+{{#drawio path="diagrams/components.drawio" page=4}}
+
 The Transmit Ring Buffer consists of:
 -   **Memory Buffer**: A single memory buffer written by the CPU and read by hardware.
 -   **Free-Running Read Counter**: A hardware counter that increments each cycle, wrapping around the buffer. When the ring buffer is enabled, data at the address indicated by this counter is transmitted over the Bittide link.
