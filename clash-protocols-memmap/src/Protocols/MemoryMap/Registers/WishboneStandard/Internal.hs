@@ -57,6 +57,11 @@ busActivityWrite :: Maybe (BusActivity a) -> Maybe a
 busActivityWrite (Just (BusWrite a)) = Just a
 busActivityWrite _ = Nothing
 
+-- | Filters out only 'BusRead's, mapping any other bus activity to 'Nothing'.
+busActivityRead :: Maybe (BusActivity a) -> Maybe a
+busActivityRead (Just (BusRead a)) = Just a
+busActivityRead _ = Nothing
+
 {- | Type synonym for all the information needed to create a Wishbone register with
 auto-assigned offsets.
 -}

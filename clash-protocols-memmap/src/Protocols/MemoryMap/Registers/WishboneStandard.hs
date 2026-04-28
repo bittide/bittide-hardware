@@ -29,6 +29,7 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   addressableBytesWb,
 
   -- * Supporting types and functions
+  busActivityRead,
   busActivityWrite,
   BusReadBehavior (..),
   BusActivity (..),
