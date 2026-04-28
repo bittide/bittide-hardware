@@ -19,8 +19,8 @@ import Data.Maybe (catMaybes)
 import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
-import Protocols.Extra (fmapC)
 import Protocols.Df.Extra (tdpbramRamOp)
+import Protocols.Extra (fmapC)
 import Protocols.Idle
 import Protocols.MemoryMap
 import VexRiscv (DumpVcd (NoDumpVcd))

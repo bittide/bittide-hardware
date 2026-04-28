@@ -394,9 +394,9 @@ enum RingBufferAlignState {
     uart_puts(UART, "] P");                                                    \
     uart_putdec(UART, (uint64_t)(PORT));                                       \
     uart_puts(UART, ": state=");                                               \
-    if ((STATE) == RING_BUFFER_ALIGN_ANNOUNCE)                                  \
+    if ((STATE) == RING_BUFFER_ALIGN_ANNOUNCE)                                 \
       uart_puts(UART, "ANNOUNCE");                                             \
-    else if ((STATE) == RING_BUFFER_ALIGN_ACKNOWLEDGE)                          \
+    else if ((STATE) == RING_BUFFER_ALIGN_ACKNOWLEDGE)                         \
       uart_puts(UART, "ACK");                                                  \
     else                                                                       \
       uart_puts(UART, "EMPTY");                                                \

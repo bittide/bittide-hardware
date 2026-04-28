@@ -42,11 +42,12 @@
  */
 static inline void
 receive_ring_buffer_read_slice_unchecked(ReceiveRingBuffer unit, uint64_t *dst,
-                                        uint32_t offset, uint32_t len) {
+                                         uint32_t offset, uint32_t len) {
 #ifdef HAL_SOFT_UGN_DEMO_MU_DEVICE_RECEIVE_RING_BUFFER_H
   // For soft_ugn_demo_mu: use byte-oriented API with 8-byte chunks
   for (uint32_t i = 0; i < len; i++) {
-    receive_ring_buffer_get_data_unchecked(unit, offset + i, (uint8_t *)&dst[i]);
+    receive_ring_buffer_get_data_unchecked(unit, offset + i,
+                                           (uint8_t *)&dst[i]);
   }
 #else
   // For scatter/gather units: use direct memory access
@@ -71,8 +72,9 @@ receive_ring_buffer_read_slice_unchecked(ReceiveRingBuffer unit, uint64_t *dst,
  * invalid
  */
 static inline bool receive_ring_buffer_read_slice(ReceiveRingBuffer unit,
-                                                 uint64_t *dst, uint32_t offset,
-                                                 uint32_t len) {
+                                                  uint64_t *dst,
+                                                  uint32_t offset,
+                                                  uint32_t len) {
   // Validate parameters
   if (dst == 0 || offset + len > RECEIVE_RING_BUFFER_DATA_LEN) {
     return false;

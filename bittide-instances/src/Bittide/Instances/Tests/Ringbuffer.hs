@@ -46,9 +46,9 @@ memDepth = SNat
 
 dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
 dutMM =
-  (\(SimOnly mm, _) -> mm)
-    $ withClockResetEnable @Slow clockGen (resetGenN d2) enableGen
-    $ toSignals (dutWithBinary d0 "") ((), pure $ deepErrorX "memoryMap")
+  (\(SimOnly mm, _) -> mm) $
+    withClockResetEnable @Slow clockGen (resetGenN d2) enableGen $
+      toSignals (dutWithBinary d0 "") ((), pure $ deepErrorX "memoryMap")
 
 replicateC :: forall n a b. SNat n -> Circuit a b -> Circuit (Vec n a) (Vec n b)
 replicateC SNat c = repeatC c
@@ -91,15 +91,15 @@ dutWithBinary latency binaryName = withLittleEndian $ circuit $ \mm -> do
         , depthI = SNat @IMemWords
         , depthD = SNat @DMemWords
         , initI =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfInstr elfPath
+            Just $
+              Vec $
+                unsafePerformIO $
+                  vecFromElfInstr elfPath
         , initD =
-            Just
-              $ Vec
-              $ unsafePerformIO
-              $ vecFromElfData elfPath
+            Just $
+              Vec $
+                unsafePerformIO $
+                  vecFromElfData elfPath
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
@@ -128,9 +128,9 @@ simResultRingbuffer lat = takeUntilList "=== Test Complete ===" $ chr . fromInte
   dutNoMM latency = circuit $ do
     mm <- ignoreMM
     uartTx <-
-      withClockResetEnable clockGen (resetGenN d2) enableGen
-        $ (dutWithBinary latency "ringbuffer_test")
-        -< mm
+      withClockResetEnable clockGen (resetGenN d2) enableGen $
+        (dutWithBinary latency "ringbuffer_test")
+          -< mm
     idC -< uartTx
 
 simSmolTcp :: IO ()
@@ -145,7 +145,7 @@ simResultSmolTcp lat = takeUntilList "=== Test Complete ===" $ chr . fromIntegra
   dutNoMM latency = circuit $ do
     mm <- ignoreMM
     uartTx <-
-      withClockResetEnable clockGen (resetGenN d2) enableGen
-        $ (dutWithBinary latency "ringbuffer_smoltcp_test")
-        -< mm
+      withClockResetEnable clockGen (resetGenN d2) enableGen $
+        (dutWithBinary latency "ringbuffer_smoltcp_test")
+          -< mm
     idC -< uartTx
