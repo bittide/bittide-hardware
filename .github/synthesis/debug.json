@@ -3,6 +3,6 @@
   {"top": "switchDemoTest",                "stage": "test",  "cc_report": true},
   {"top": "switchDemoGppeTest",            "stage": "test",  "cc_report": true},
   {"top": "wireDemoTest",                  "stage": "test",  "cc_report": true},
-  {"top": "transmitRingbufferPnr",         "stage": "hdl",   "cc_report": false},
-  {"top": "receiveRingbufferPnr",          "stage": "hdl",   "cc_report": false}
+  {"top": "transmitRingBufferPnr",         "stage": "hdl",   "cc_report": false},
+  {"top": "receiveRingBufferPnr",          "stage": "hdl",   "cc_report": false}
 ]
