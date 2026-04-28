@@ -13,10 +13,10 @@ SPDX-License-Identifier: Apache-2.0
 ## Context
 In a bittide system, nodes operate in a globally synchronous manner despite being asynchronous devices with unknown start times. Communication occurs via ring buffers. When TX and RX ring buffers are the same size, the address mapping between them is constant, determined by (logical) network latency and the start time difference between nodes.
 
-Because nodes start at different times, data written to TX index `0` by one node may arrive at an arbitrary RX index on the neighbor. The alignment protocol measures this offset and uses the hardware `clear_at_count` register to physically realign the RX write counter so that TX index `0` maps to RX index `0`.
+Because nodes start at different times, data written to TX index `0` by one node may arrive at an arbitrary RX index on the neighbor. The alignment protocol measures this offset and uses the hardware `clear_at_count` register to realign the RX write counter so that TX index `0` maps to RX index `0`.
 
 ## Objective
-Physically synchronize the TX and RX hardware counters on each link so that corresponding indices map to each other, enabling reliable asynchronous communication without software-level offset tracking.
+Synchronize the TX and RX hardware counters on each link so that corresponding indices map to each other, enabling reliable asynchronous communication without software-level offset tracking.
 
 ## Alignment Algorithm
 
