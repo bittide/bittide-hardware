@@ -5,25 +5,20 @@
 module Wishbone.SwitchDemoProcessingElement where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (withClockResetEnable)
 
 import Data.Char (chr)
 import Data.List (isPrefixOf)
 import Data.Maybe (catMaybes)
 import Project.FilePath
 import Protocols
-import Protocols.Idle
-import Protocols.MemoryMap
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
-import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.Instances.Common (PeConfigElfSource (NameOnly), peConfigFromElf)
+import Bittide.Instances.Tests.SwitchDemoProcessingElement (DMemWords, IMemWords, dut)
 import Bittide.ProcessingElement
-import Bittide.SharedTypes (withLittleEndian)
-import Bittide.SwitchDemoProcessingElement
-import Bittide.Wishbone
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 
@@ -56,9 +51,9 @@ case_switch_demo_pe_test = do
   peConfig <- peConfigSim
   let
     msg =
-      "Received string "
+      "Received string\n"
         <> receivedString
-        <> " not equal to expected string "
+        <> "not equal to expected string\n"
         <> expectedString
     -- Filter the 'debugging' prints, which are prefixed with 'INFO'
     receivedString = unlines . filter (not . isPrefixOf "INFO") . lines $ simResult peConfig
@@ -69,41 +64,6 @@ case_switch_demo_pe_test = do
         , "Finished"
         ]
   assertBool msg (receivedString == expectedString)
-
-{- | A simulation-only design containing two `switchDemoPeWb`s connected to a single
-VexRiscV. The VexRiscV runs the `switch_demo_pe_test` binary from `firmware-binaries`.
--}
-dut ::
-  forall dom.
-  ( HiddenClockResetEnable dom
-  , 1 <= DomainPeriod dom
-  ) =>
-  -- | Procesing element configuration
-  PeConfig 6 ->
-  -- | Fake DNA (used to identify the different PEs)
-  Signal dom (BitVector 96) ->
-  -- | Fake DNA (used to identify the different PEs)
-  Signal dom (BitVector 96) ->
-  Circuit () (Df dom (BitVector 8))
-dut peConfig dnaA dnaB = withLittleEndian $ circuit $ do
-  (uartRx, jtagIdle) <- idleSource
-  [ uartBus
-    , (mmTime, timeBus)
-    , (mmA, peBusA)
-    , (mmB, peBusB)
-    ] <-
-    processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
-  mm <- ignoreMM
-  Fwd localCounter <- timeWb Nothing -< (mmTime, timeBus)
-
-  Fwd linkAB <- switchDemoPeWb d2 localCounter (Just <$> dnaA) linkBA -< (mmA, peBusA)
-
-  Fwd linkBA <- switchDemoPeWb d2 localCounter (Just <$> dnaB) linkAB -< (mmB, peBusB)
-  idC -< uartTx
-
-type IMemWords = DivRU (16 * 1024) 4
-type DMemWords = DivRU (16 * 1024) 4
 
 peConfigSim :: IO (PeConfig 6)
 peConfigSim =

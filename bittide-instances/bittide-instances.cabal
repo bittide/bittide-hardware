@@ -236,6 +236,7 @@ library
     Bittide.Instances.Tests.RingBuffer
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
+    Bittide.Instances.Tests.SwitchDemoProcessingElement
     Bittide.Instances.Tests.TimeWb
     Bittide.Instances.Tests.WbToDf
     Paths.Bittide.Instances
