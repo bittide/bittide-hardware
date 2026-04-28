@@ -11,6 +11,7 @@
 // files that aren't yet generated.
 // (and if we want to style check generated files anyway?..)
 #[rustfmt::skip]
+#[allow(clippy::zero_ptr)]
 pub mod hals;
 
 pub use hals::*;

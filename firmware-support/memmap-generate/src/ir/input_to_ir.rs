@@ -204,11 +204,7 @@ impl IrCtx {
         mappings: &mut IrInputMapping<'input>,
         to_do_and_patch: &mut Vec<(Handle<TypeRef>, &'input [input::TypeRef])>,
     ) {
-        loop {
-            let Some((patch_handle, to_do)) = to_do_and_patch.pop() else {
-                break;
-            };
-
+        while let Some((patch_handle, to_do)) = to_do_and_patch.pop() {
             let mut range = HandleRange::build();
 
             for ty_ref in to_do {
@@ -414,11 +410,7 @@ impl IrCtx {
         let (top_handle, _top_ty_handle) =
             self.add_tree_elem(mapping, desc, tree, &mut to_do_and_patch);
 
-        loop {
-            let Some((handle, to_do)) = to_do_and_patch.pop() else {
-                break;
-            };
-
+        while let Some((handle, to_do)) = to_do_and_patch.pop() {
             let mut range = HandleRange::build();
 
             for thing in to_do {
