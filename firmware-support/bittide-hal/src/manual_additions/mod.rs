@@ -8,6 +8,7 @@ pub mod calendar;
 pub mod capture_ugn;
 pub mod clock_control;
 pub mod dna;
+pub mod domain_diff_counters;
 pub mod elastic_buffer;
 pub mod freeze;
 pub mod ring_buffer;

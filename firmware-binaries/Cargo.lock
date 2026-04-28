@@ -187,18 +187,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clock-control"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-sys",
- "itertools",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
-
-[[package]]
 name = "clock-control-wb"
 version = "0.1.0"
 dependencies = [
@@ -729,6 +717,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "soft-ugn-cc"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+]
+
+[[package]]
 name = "soft-ugn-mu"
 version = "0.1.0"
 dependencies = [
@@ -751,6 +749,26 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 name = "subst_macros"
 version = "0.1.0"
 source = "git+https://github.com/QBayLogic/subst_macros.git?rev=1273588cd7b854b8b6294cf54c7e238f77778ac4#1273588cd7b854b8b6294cf54c7e238f77778ac4"
+
+[[package]]
+name = "switch-demo-cc"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+]
+
+[[package]]
+name = "switch-demo-gppe-cc"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+]
 
 [[package]]
 name = "switch-demo1-boot"
@@ -930,6 +948,16 @@ dependencies = [
  "memmap-generate",
  "riscv-rt 0.11.0",
  "ufmt",
+]
+
+[[package]]
+name = "wire-demo-cc"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
 ]
 
 [[package]]

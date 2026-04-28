@@ -46,8 +46,11 @@ members = [
   "hitl-tests/vexriscv-hello",
   "hitl-tests/clock-board",
 
-  "demos/clock-control",
+  "demos/soft-ugn-cc",
   "demos/soft-ugn-mu",
+  "demos/switch-demo-cc",
+  "demos/switch-demo-gppe-cc",
+  "demos/wire-demo-cc",
   "demos/smoltcp-demo",
   "demos/switch-demo1-boot",
   "demos/switch-demo1-mu",

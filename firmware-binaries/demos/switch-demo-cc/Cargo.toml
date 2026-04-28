@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2026 Google LLC
 #
 # SPDX-License-Identifier: CC0-1.0
 
 [package]
-name = "clock-control"
+name = "switch-demo-cc"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -12,14 +12,10 @@ authors = ["Google LLC"]
 [lints]
 workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 riscv-rt = "0.11.0"
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
-ufmt = "0.2.0"
-itertools = { version = "0.14.0", default-features = false }
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }

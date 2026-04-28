@@ -9,6 +9,7 @@
 
 pub mod axi;
 pub mod callisto;
+pub mod clock_control_main;
 pub mod link_startup;
 pub mod mac;
 pub mod program_stream;

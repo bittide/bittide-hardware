@@ -18,6 +18,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Sync (SyncOutGeneratorHalfPeriod)
 import Control.Concurrent.Async (forConcurrently)
 import Data.Binary.Get (Get)
+import Data.Bits (testBit)
 import Data.ByteString.Lazy (ByteString)
 import Data.Int (Int32)
 import Data.Word (Word32, Word64, Word8)
@@ -50,21 +51,24 @@ data Sample = Sample
   , numberOfSyncPulsesSeen :: !Word32
   , cyclesSinceSyncPulse :: !Word32
   , netSpeedChange :: !Int32
-  , buffers :: !(C.Vec 7 Buffer)
+  , buffers :: ![Buffer]
   }
   deriving (Show, Eq, Generic)
 
 -- | Parse a single sample in a 'Get' monad
-parse1 :: Get Sample
-parse1 = do
+parse1 :: Int -> Get Sample
+parse1 nLinks = do
   localClockCounter <- Get.getWord64le
   numberOfSyncPulsesSeen <- Get.getWord32le
   cyclesSinceSyncPulse <- Get.getWord32le
-  stables <- C.unpack . C.truncateB . C.pack <$> Get.getWord8
-  settleds <- C.unpack . C.truncateB . C.pack <$> Get.getWord8
-  _ <- Get.getByteString 2 -- padding
+  stablesByte <- Get.getWord8
+  settledsByte <- Get.getWord8
+  _ <- Get.getByteString 2
   netSpeedChange <- Get.getInt32le
-  ebCounters <- sequence (C.repeat Get.getInt32le)
+  ebCounters <- sequence (replicate nLinks Get.getInt32le)
+
+  let stables = [testBit stablesByte i | i <- [0 .. nLinks - 1]]
+      settleds = [testBit settledsByte i | i <- [0 .. nLinks - 1]]
 
   return
     Sample
@@ -72,26 +76,32 @@ parse1 = do
       , numberOfSyncPulsesSeen
       , cyclesSinceSyncPulse
       , netSpeedChange
-      , buffers = C.zipWith3 Buffer stables settleds ebCounters
+      , buffers = zipWith3 Buffer stables settleds ebCounters
       }
 
 {- | Parse as many samples as possible from a 'ByteStringLazy.ByteString'. Any
 remaining bytes that do not form a complete sample are ignored.
 -}
-parse :: ByteString -> [Sample]
-parse bytes
+parseWith :: Int -> ByteString -> [Sample]
+parseWith nLinks bytes
   | ByteStringLazy.null bytes = []
-  | Left (_, _, _) <- result = []
-  | Right (rest, _, sample) <- result = sample : parse rest
+  | Left _ <- result = []
+  | Right (rest, _, sample) <- result = sample : parseWith nLinks rest
  where
-  result = Get.runGetOrFail parse1 bytes
+  result = Get.runGetOrFail (parse1 nLinks) bytes
 
 {- | Parse a file containing samples. The file is expected to be in the same
 format as produced by the `parse` function. Any remaining bytes that do not
 form a complete sample are ignored.
 -}
 parseFile :: (HasCallStack) => FilePath -> IO [Sample]
-parseFile filePath = parse <$> ByteStringLazy.readFile filePath
+parseFile filePath = do
+  bytes <- ByteStringLazy.readFile filePath
+  let (nLinks, rest) =
+        Get.runGet
+          ((,) <$> (fromIntegral <$> Get.getWord32le) <*> Get.getRemainingLazyByteString)
+          bytes
+  pure (parseWith nLinks rest)
 
 parseDirectory ::
   (HasCallStack) => FilePath -> IO (CcConf Topology, C.Vec FpgaCount [Sample])
@@ -116,16 +126,18 @@ toNamedRecord# sample =
     : ("number_of_sync_pulses_seen", Csv.toField sample.numberOfSyncPulsesSeen)
     : ("cycles_since_sync_pulse", Csv.toField sample.cyclesSinceSyncPulse)
     : ("net_speed_change", Csv.toField sample.netSpeedChange)
-    : ("stables", Csv.toField stables)
-    : ("settleds", Csv.toField settleds)
-    : (zipWith go [0 ..] (C.toList (C.lazyV sample.buffers)))
+    : ("stables", Csv.toField stablesByte)
+    : ("settleds", Csv.toField settledsByte)
+    : zipWith go [0 ..] sample.buffers
  where
   go :: Int -> Buffer -> (Csv.Name, Csv.Field)
   go i buffer = ("eb_counter_" <> Char8.pack (show i), Csv.toField buffer.dataCount)
 
-  stables, settleds :: Word8
-  stables = C.unpack $ C.extend $ C.pack $ fmap (.stable) sample.buffers
-  settleds = C.unpack $ C.extend $ C.pack $ fmap (.settled) sample.buffers
+  stablesByte, settledsByte :: Word8
+  stablesByte =
+    foldr (\(i, b) acc -> if b.stable then acc + 2 ^ i else acc) 0 (zip [(0 :: Int) ..] sample.buffers)
+  settledsByte =
+    foldr (\(i, b) acc -> if b.settled then acc + 2 ^ i else acc) 0 (zip [(0 :: Int) ..] sample.buffers)
 
 instance Csv.ToNamedRecord Sample where
   toNamedRecord = Csv.namedRecord . toNamedRecord#

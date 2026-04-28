@@ -9,8 +9,9 @@ module Bittide.Instances.Hitl.SwitchDemo.Driver where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
+import Bittide.ClockControl.Config (CcConf (topology), defCcConf, saveCcConfig)
 import Bittide.ClockControl.Topology (Topology)
+import qualified Bittide.ClockControl.Topology as Topology
 import Bittide.Hitl
 import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
@@ -104,16 +105,17 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
   go :: (HasCallStack) => Gdb -> FilePath -> IO Word
   go gdb dumpPath = do
     nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb sampleMemoryBase
+    nLinks <- Gdb.readLe @(Unsigned 32) gdb (sampleMemoryBase + 4)
 
     let
-      bytesPerSample = 13
+      wordsPerSample = 6 + fromIntegral nLinks
       bytesPerWord = 4
 
       dumpStart = sampleMemoryBase + bytesPerWord
-      dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * bytesPerSample
+      dumpEnd = dumpStart + bytesPerWord + fromIntegral nSamplesWritten * bytesPerWord * wordsPerSample
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
-  ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
+  ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. Topology.size ccConf.topology - 1]]
 
 initGdb ::
   FilePath ->
@@ -416,7 +418,7 @@ driver testName targets = do
                 <> show (L.length <$> allTapInfos)
 
       Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo-cc") ccGdbs ccTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
         Gdb.withGdbs (L.length targets) $ \muGdbs -> do

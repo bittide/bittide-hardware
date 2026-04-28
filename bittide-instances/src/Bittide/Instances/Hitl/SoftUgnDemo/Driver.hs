@@ -9,7 +9,7 @@ import Clash.Prelude
 
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup (FpgaCount)
+import Bittide.Instances.Hitl.Setup ()
 import Bittide.Instances.Hitl.SwitchDemo.Driver (
   dumpCcSamples,
   initGdb,
@@ -109,7 +109,7 @@ driverSoftUgn testName targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-cc") ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
@@ -117,7 +117,7 @@ driverSoftUgn testName targets = do
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf 4) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
 
@@ -285,11 +285,11 @@ driverTcp testName targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-cc") ccGdbs ccTapInfos targets
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "smoltcp-demo") muGdbs muTapInfos targets
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf 4) ccGdbs
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) (ccGdbs <> muGdbs)
           liftIO $ mapConcurrently_ Gdb.continue (ccGdbs <> muGdbs)
           liftIO

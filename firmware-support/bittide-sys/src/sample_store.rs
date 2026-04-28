@@ -7,19 +7,26 @@ use bittide_hal::shared_devices::sample_memory::SampleMemory;
 
 use crate::stability_detector::Stability;
 
-const WORDS_PER_SAMPLE: usize = 13;
-
 /// State machinery for storing clock control samples in memory.
-pub struct SampleStore {
+///
+/// The `EB_COUNT` const generic determines how many elastic buffer counters
+/// are stored per sample. This must match the number of EB counters provided
+/// by the `FreezeInterface` implementation used with this store.
+pub struct SampleStore<const EB_COUNT: usize> {
     memory: SampleMemory,
     store_samples_every: usize,
     counter: usize,
 }
 
-impl SampleStore {
+impl<const EB_COUNT: usize> SampleStore<EB_COUNT> {
+    const FIXED_WORDS: usize = 6;
+    const WORDS_PER_SAMPLE: usize = Self::FIXED_WORDS + EB_COUNT;
+
     pub fn new(memory: SampleMemory, store_samples_every: usize) -> Self {
-        // First memory location is reserved for the number of samples stored.
+        // Word 0: number of samples stored
         memory.set_data(0, 0u32.to_le_bytes());
+        // Word 1: number of EB counters per sample (link count)
+        memory.set_data(1, (EB_COUNT as u32).to_le_bytes());
 
         Self {
             memory,
@@ -38,7 +45,7 @@ impl SampleStore {
         net_speed_change: i32,
     ) {
         let n_samples_stored: usize = u32::from_ne_bytes(self.memory.data(0).unwrap()) as usize;
-        let start_index = n_samples_stored * WORDS_PER_SAMPLE + 1;
+        let start_index = n_samples_stored * Self::WORDS_PER_SAMPLE + 2;
 
         // Store local clock counter
         let local_clock: u64 = freeze.local_clock_counter();
@@ -77,7 +84,12 @@ impl SampleStore {
 
         // Bump number of samples stored, but only if we're running "for real"
         // and the data actually fits in memory.
-        if bump_counter && self.memory.data(start_index + WORDS_PER_SAMPLE).is_some() {
+        if bump_counter
+            && self
+                .memory
+                .data(start_index + Self::WORDS_PER_SAMPLE)
+                .is_some()
+        {
             self.memory
                 .set_data(0, ((n_samples_stored + 1) as u32).to_le_bytes());
         }

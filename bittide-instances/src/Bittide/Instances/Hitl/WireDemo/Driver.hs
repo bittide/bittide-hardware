@@ -256,7 +256,7 @@ driver testName targets = do
               <> show (L.length <$> allTapInfos)
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "wire-demo-cc") ccGdbs ccTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
