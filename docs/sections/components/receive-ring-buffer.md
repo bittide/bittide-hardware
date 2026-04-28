@@ -10,6 +10,8 @@ The Receive Ring Buffer is a hardware component designed to receive data frames 
 
 ### Architecture
 
+{{#drawio path="diagrams/components.drawio" page=3}}
+
 The Receive Ring Buffer consists of:
 -   **Memory Buffer**: A single memory buffer written by hardware and read by the CPU.
 -   **Free-Running Write Counter**: A hardware counter that increments each cycle, wrapping around the buffer. When the ring buffer is enabled, incoming frames are written at the address indicated by this counter.
