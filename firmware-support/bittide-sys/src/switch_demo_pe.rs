@@ -11,93 +11,75 @@ pub struct NodeData {
     pub dna: u128,
 }
 
-pub struct SwitchDemoProcessingElement<const BUFFER_SIZE: usize> {
-    base_addr: *const u64,
+pub trait SdpeUtils {
+    type ReadCycles;
+    type WriteCycles;
+
+    fn set_read(&mut self, read_start: u64, read_cycles: Self::ReadCycles);
+    fn set_write(&mut self, write_start: u64, write_cycles: Self::WriteCycles);
+    fn get_read(&self) -> (u64, Self::ReadCycles);
+    fn get_write(&self) -> (u64, Self::WriteCycles);
+    fn node_data(&self) -> impl Iterator<Item = NodeData> + '_;
 }
 
-impl<const BUFFER_SIZE: usize> SwitchDemoProcessingElement<BUFFER_SIZE> {
-    const READ_START: usize = 0;
-    const READ_CYCLES: usize = 1;
-    const WRITE_START: usize = 2;
-    const WRITE_CYCLES: usize = 3;
-    const COUNTER: usize = 4;
-    const BUFFER: usize = 5;
+macro_rules! impl_sdpe_utils {
+    (
+        $(
+            $ty:path => $rc:ty, $wc:ty;
+        )+
+    ) => {
+        $(
+            impl SdpeUtils for $ty {
+                type ReadCycles = $rc;
+                type WriteCycles = $wc;
 
-    /// Create a new [`SwitchDemoProcessingElement`] instance given a base
-    /// address. The `BUFFER_SIZE` is the number of [`NodeData`] elements in its
-    /// internal buffer.
-    ///
-    /// # Safety
-    ///
-    /// The `base_addr` pointer must be a valid pointer that is backed by
-    /// a memory mapped switch demo processing element. The `BUFFER_SIZE` should
-    /// match the `bufferSize` of the associated `swtichDemoPeWb` device.
-    pub unsafe fn new(base_addr: *const ()) -> Self {
-        let addr = base_addr as *const u64;
-        Self { base_addr: addr }
-    }
+                fn set_read(&mut self, read_start: u64, read_cycles: $rc) {
+                    self.set_read_start(read_start);
+                    self.set_read_cycles(read_cycles);
+                }
 
-    pub fn set_read(&self, read_start: u64, read_cycles: u64) {
-        // SAFETY: This is safe since this function can only be called
-        // after construction, which is only valid with valid addresses.
-        unsafe {
-            self.base_addr
-                .add(Self::READ_START)
-                .cast_mut()
-                .write_volatile(read_start);
-            self.base_addr
-                .add(Self::READ_CYCLES)
-                .cast_mut()
-                .write_volatile(read_cycles);
-        }
-    }
+                fn set_write(&mut self, write_start: u64, write_cycles: $wc) {
+                    self.set_write_start(write_start);
+                    self.set_write_cycles(write_cycles);
+                }
 
-    pub fn set_write(&self, write_start: u64, write_cycles: u64) {
-        // SAFETY: This is safe since this function can only be called
-        // after construction, which is only valid with valid addresses.
-        unsafe {
-            self.base_addr
-                .add(Self::WRITE_START)
-                .cast_mut()
-                .write_volatile(write_start);
-            self.base_addr
-                .add(Self::WRITE_CYCLES)
-                .cast_mut()
-                .write_volatile(write_cycles);
-        }
-    }
+                fn get_read(&self) -> (u64, $rc) {
+                    (self.read_start(), self.read_cycles())
+                }
 
-    pub fn get_read(&self) -> (u64, u64) {
-        // SAFETY: This is safe since this function can only be called
-        // after construction, which is only valid with valid addresses.
-        unsafe {
-            let read_start = self.base_addr.add(Self::READ_START).read_volatile();
-            let read_cycles = self.base_addr.add(Self::READ_CYCLES).read_volatile();
-            (read_start, read_cycles)
-        }
-    }
+                fn get_write(&self) -> (u64, $wc) {
+                    (self.write_start(), self.write_cycles())
+                }
 
-    pub fn get_write(&self) -> (u64, u64) {
-        // SAFETY: This is safe since this function can only be called
-        // after construction, which is only valid with valid addresses.
-        unsafe {
-            let write_start = self.base_addr.add(Self::WRITE_START).read_volatile();
-            let write_cycles = self.base_addr.add(Self::WRITE_CYCLES).read_volatile();
-            (write_start, write_cycles)
-        }
+                fn node_data(&self) -> impl Iterator<Item = NodeData> + '_ {
+                    const LEN: usize = <$ty>::BUFFER_LEN / 3;
+                    const INDICES: [usize; LEN] = {
+                        let mut indices = [0; LEN];
+                        let mut i = 0;
+                        while i < indices.len() {
+                            indices[i] = i * 3;
+                            i += 1;
+                        }
+                        indices
+                    };
+                    INDICES
+                        .into_iter()
+                        .map(|idx| unsafe {
+                            let local_counter = u64::from_ne_bytes(self.buffer_unchecked(idx));
+                            let dna_lo = u64::from_ne_bytes(self.buffer_unchecked(idx + 1));
+                            let dna_hi = u64::from_ne_bytes(self.buffer_unchecked(idx + 2));
+                            NodeData {
+                                local_counter,
+                                dna: dna_lo as u128 | ((dna_hi as u128) << 64),
+                            }
+                        })
+                }
+            }
+        )+
     }
+}
 
-    pub fn get_counter(&self) -> u64 {
-        // SAFETY: This is safe since this function can only be called
-        // after construction, which is only valid with valid addresses.
-        unsafe { self.base_addr.add(Self::COUNTER).read_volatile() }
-    }
-
-    pub fn buffer(&self) -> impl Iterator<Item = NodeData> + '_ {
-        // SAFETY: This is safe since this function can only be called
-        // after construction, which is only valid with valid addresses.
-        (Self::BUFFER..Self::BUFFER + BUFFER_SIZE * 3)
-            .step_by(3)
-            .map(|i| unsafe { self.base_addr.add(i).cast::<NodeData>().read_volatile() })
-    }
+impl_sdpe_utils! {
+    bittide_hal::hals::switch_demo_mu::devices::SwitchDemoPe => u8, u8;
+    bittide_hal::hals::switch_demo_pe_test::devices::SwitchDemoPe => u8, u8;
 }
