@@ -14,13 +14,15 @@ However, as described in that protocol's documentation, the raw `AlignedRing Buf
 ## Objective
 Establish a reliable, asynchronous, point-to-point communication channel between nodes over the potentially unreliable `AlignedRing Buffer` links.
 
-## Proposed Solution
-Leverage the **TCP/IP** protocol suite to handle error detection, retransmission, and flow control. We will use the `smoltcp` library, a lightweight TCP/IP stack designed for embedded systems, to implement this layer. Note that future versions of bittide will probably use a bespoke network stack for asynchronous communication.
+## Solution
+Leverage the **TCP/IP** protocol suite to handle error detection, retransmission, and flow control. We use the `smoltcp` library, a lightweight TCP/IP stack designed for embedded systems, to implement this layer.
 
-## Implementation Strategy
+For a working demonstration of this approach, see the [Smoltcp Demo](demos/smoltcp-demo.md).
+
+## Implementation
 
 ### 1. Network Interface (`smoltcp::phy::Device`)
-We will implement the `smoltcp::phy::Device` trait for the Aligned Ring Buffer.
+The `smoltcp::phy::Device` trait is implemented for the Aligned Ring Buffer (`RingBufferDevice` in `firmware-support/bittide-sys/src/smoltcp/ring_buffer.rs`).
 *   **Medium:** Use `Medium::Ip` to minimize overhead (no Ethernet headers required for point-to-point).
 *   **MTU:** Set to **1500 bytes** (standard Ethernet size) to accommodate typical payloads.
 
@@ -33,11 +35,11 @@ We will implement the `smoltcp::phy::Device` trait for the Aligned Ring Buffer.
 *   **IP Assignment:** Placeholder IPs, if necessary we use static addressing derived from unique hardware identifiers (e.g., FPGA DNA or Port ID) to avoid the complexity of DHCP.
 
 ### 4. Demo Application
-Develop a proof-of-concept application that:
-1.  Initializes the Aligned Ring Buffer.
-2.  Sets up a `smoltcp` interface.
-3.  Establishes a TCP connection between two nodes.
-4.  Transfers data to verify reliability against induced packet loss/corruption.
+The [Smoltcp Demo](demos/smoltcp-demo.md) is a proof-of-concept application that:
+1.  Initializes and aligns the ring buffers.
+2.  Sets up a `smoltcp` interface per link.
+3.  Establishes TCP connections between all neighboring nodes using simultaneous open.
+4.  Exchanges identity information and collects UGN reports over TCP to verify reliability.
 
 ## Assumptions
 *   An **Aligned Ring Buffer** abstraction exists that provides a read/write interface for single aligned packets.

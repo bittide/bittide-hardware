@@ -108,8 +108,13 @@ tests =
         ]
     , externalHdl = []
     , testCases =
-        [ HitlTestCase
-            { name = "Bittide_Demo_DUT"
+        [ -- HitlTestCase
+          --   { name = "soft-ugn-demo"
+          --   , parameters = paramForHwTargets (fmap HwTargetByIndex [0, 1, 2, 7]) ()
+          --   , postProcData = ()
+          --   }
+          HitlTestCase
+            { name = "smoltcp-demo"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }

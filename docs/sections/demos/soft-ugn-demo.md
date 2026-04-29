@@ -11,6 +11,9 @@ is able to determine the UGNs to its neighbors without communicating with a host
 is able to read all of the information from each of the nodes in the system. This is
 accomplished through the firmware on the management unit (MU).
 
+The same hardware design is also used by the [Smoltcp Demo](smoltcp-demo.md), which demonstrates
+reliable TCP/IP communication over the ring buffers.
+
 ## Architecture
 {{#drawio path="diagrams/softUgnDemo.drawio" page=0}}
 
