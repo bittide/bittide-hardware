@@ -22,7 +22,7 @@
 // ============================================================================
 
 // Number of event loop iterations
-#define NUM_PERIODS 1000
+#define NUM_PERIODS 2000
 #define NUM_PORTS 7
 
 // Protocol timing parameter
