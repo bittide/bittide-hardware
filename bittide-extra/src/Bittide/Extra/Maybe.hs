@@ -37,12 +37,12 @@ fromMaybesR a = fromMaybe a . fold (flip (<|>)) . (Nothing :>)
 
 * Examples:
 
-   >>> orNothing True 5
+   >>> toMaybe True 5
    Just 5
 
-   >>> orNothing False "Hello"
+   >>> toMaybe False "Hello"
    Nothing
 -}
-orNothing :: Bool -> a -> Maybe a
-orNothing True a = Just a
-orNothing False _ = Nothing
+toMaybe :: Bool -> a -> Maybe a
+toMaybe True a = Just a
+toMaybe False _ = Nothing

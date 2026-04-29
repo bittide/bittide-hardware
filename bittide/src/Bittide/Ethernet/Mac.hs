@@ -306,7 +306,7 @@ makeAxi ::
   Bool ->
   Maybe (Axi4StreamM2S ('Axi4StreamConfig n 0 0) Bool)
 makeAxi _tvalid _tdata _tkeep _tuser _tlast =
-  orNothing _tvalid Axi4StreamM2S{_tdata, _tdest, _tid, _tlast, _tkeep, _tuser, _tstrb}
+  toMaybe _tvalid Axi4StreamM2S{_tdata, _tdest, _tid, _tlast, _tkeep, _tuser, _tstrb}
  where
   _tid = 0
   _tdest = 0

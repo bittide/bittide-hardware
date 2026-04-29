@@ -178,7 +178,7 @@ splitWriteInBytes ::
   Vec (Regs writeData 8) (Maybe (LocatedByte maxIndex))
 splitWriteInBytes (Just (addr, writeData)) byteSelect =
   case getRegsBe writeData of
-    RegisterBank vec -> orNothing <$> unpack byteSelect <*> fmap (addr,) vec
+    RegisterBank vec -> toMaybe <$> unpack byteSelect <*> fmap (addr,) vec
 splitWriteInBytes Nothing _ = repeat Nothing
 
 {- | Takes an address and write operation and 'bitCoerce's the addresses as follows:

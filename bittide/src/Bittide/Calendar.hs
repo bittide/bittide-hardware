@@ -369,7 +369,7 @@ mkCalendarC
     registerWbI_ endOfMetacycleCfg False -< ((wb7Offset, wb7config, wb7Meta, wbEom), Fwd noWrite)
     {- FOURMOLU_ ENABLE -}
     let
-      nextMetacycleCount = orNothing <$> calOut.lastCycle <*> (metacycleCount + 1)
+      nextMetacycleCount = toMaybe <$> calOut.lastCycle <*> (metacycleCount + 1)
       calOut = calendar maxCalDepth bsActive bsShadow calCtrl
       readEntry = Just <$> calOut.shadowEntry
       shadowDepthWrite = Just <$> calOut.shadowDepth

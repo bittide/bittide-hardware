@@ -9,7 +9,7 @@ import Clash.Prelude
 -- Local
 
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.Extra.Maybe (orNothing)
+import Bittide.Extra.Maybe (toMaybe)
 import Bittide.Instances.Common (
   PeConfigElfSource (NameOnly),
   dumpVcdFromEnvVar,
@@ -213,7 +213,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   (_unit, Fwd unitActivity) <-
     registerWb hasClock hasReset (registerConfig "unit") initUnit -< (wbUnit, Fwd noWrite)
 
-  let unitWritten = orNothing <$> (unitActivity .== Just (BusWrite ())) <*> pure True
+  let unitWritten = toMaybe <$> (unitActivity .== Just (BusWrite ())) <*> pure True
 
   registerWb_ hasClock hasReset (registerConfig "unitW") initUnitW
     -< (wbUnitW, Fwd unitWritten)

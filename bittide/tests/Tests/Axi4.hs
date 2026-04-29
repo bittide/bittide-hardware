@@ -236,7 +236,7 @@ catKeepBytes ::
   (KnownNat (DataWidth conf)) =>
   Axi4StreamM2S conf userType ->
   Vec (DataWidth conf) (Maybe (Unsigned 8, Bool))
-catKeepBytes Axi4StreamM2S{_tdata, _tkeep, _tstrb} = orNothing <$> _tkeep <*> zip _tdata _tstrb
+catKeepBytes Axi4StreamM2S{_tdata, _tkeep, _tstrb} = toMaybe <$> _tkeep <*> zip _tdata _tstrb
 
 prop_axiOperations :: Property
 prop_axiOperations = property $ do

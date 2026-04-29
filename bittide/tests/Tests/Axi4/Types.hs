@@ -72,7 +72,7 @@ axiStreamToPackets = L.reverse . snd . L.foldl go ([], [])
     | otherwise = (newPartial, packets)
    where
     newPartial =
-      L.reverse (catMaybes (toList $ orNothing <$> m._tkeep <*> m._tdata)) <> partialPacket
+      L.reverse (catMaybes (toList $ toMaybe <$> m._tkeep <*> m._tdata)) <> partialPacket
 
 -- Transform a 'Packet' into a list of Axi Stream operations.
 packetToAxiStream ::
