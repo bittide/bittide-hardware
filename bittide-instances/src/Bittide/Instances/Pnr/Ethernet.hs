@@ -30,8 +30,6 @@ import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
-import qualified Protocols.ToConst as ToConst
-
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
 #else
@@ -119,11 +117,9 @@ vexRiscGmiiC sysClk sysRst rxClk rxRst txClk txRst peConfig =
     macStatIf -< (mmMac, (macWb, macStatus))
     (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
     axiRx1 <- axiRxPipe -< axiRx0
-    axiTx0 <- wbToAxi4StreamTx' -< wbAxiTx
+    axiTx0 <- wbToAxi4StreamTx' -< (mmAxiTx, wbAxiTx)
     axiTx1 <- axiTxPipe -< axiTx0
-    _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
-    ToConst.toBwd todoMM -< mmAxiRx
-    ToConst.toBwd todoMM -< mmAxiTx
+    _rxBufStatus <- wbAxiRxBuffer -< ((mmAxiRx, wbAxiRx), axiRx1)
 
     idC -< (uartRx, gmiiTx)
  where
@@ -146,7 +142,7 @@ vexRiscGmiiC sysClk sysRst rxClk rxRst txClk txRst peConfig =
   uart = wcre $ uartInterfaceWb d32 d2 (uartDf baud)
   pe = withLittleEndian $ wcre processingElement NoDumpVcd peConfig
   wbToAxi4StreamTx' = wcre wbToAxi4StreamTx
-  wbAxiRxBuffer = wcre wbAxisRxBufferCircuit (SNat @2048)
+  wbAxiRxBuffer = withLittleEndian $ wcre wbAxisRxBufferCircuit (SNat @2048)
   axiTxPipe = wcre (axiUserMapC (const False) <| axiStreamToByteStream)
   axiRxPipe = wcre (axiUserMapC or <| axiStreamFromByteStream)
   miiSel = pure False

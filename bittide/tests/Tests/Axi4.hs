@@ -325,6 +325,17 @@ prop_wbAxisRxBufferReadStreams = property $ do
     , not . hasLeadingNullBytes
     ]
   conf = SimulationConfig 0 500 False
+  rxBufNoMm ::
+    (1 <= bufferBytes, HiddenClockResetEnable System) =>
+    SNat bufferBytes ->
+    Circuit
+      (Wishbone System 'Standard 30 4, Axi4Stream System ('Axi4StreamConfig 4 0 0) Bool)
+      (CSignal System (Bool, Bool))
+  rxBufNoMm bufBytes =
+    let Circuit f = withLittleEndian (wbAxisRxBufferCircuit @System @30 bufBytes)
+     in Circuit $ \((wbFwd, axiFwd), statusBwd) ->
+          let (((_, wbBwd), axiBwd), statusFwd) = f ((((), wbFwd), axiFwd), statusBwd)
+           in ((wbBwd, axiBwd), statusFwd)
   tb ::
     (1 <= bufferBytes, HiddenClockResetEnable System) =>
     SNat bufferBytes ->
@@ -333,7 +344,7 @@ prop_wbAxisRxBufferReadStreams = property $ do
       (Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
   tb bufferBytes = circuit $ \axiIn0 -> do
     axiIn1 <- axiUserMapC (const False) -< axiIn0
-    _status <- wbAxisRxBufferCircuit @System @30 bufferBytes -< (wb, axiIn1)
+    _status <- rxBufNoMm bufferBytes -< (wb, axiIn1)
     (wb, axiOut) <- rxReadMasterC bufferBytes
     idC -< axiOut
 
