@@ -143,6 +143,7 @@ generateTypeDef (Builtin b) =
           Signed -> "signed"
           Unsigned -> "unsigned"
           Index -> "index"
+          Protocols.MemoryMap.TypeDescription.Mask -> "mask"
       ]
 generateTypeDef (DataDef cons) = do
   cons1 <- mapM generateConstructor cons

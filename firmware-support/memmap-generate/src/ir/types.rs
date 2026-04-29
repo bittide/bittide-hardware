@@ -68,6 +68,7 @@ pub enum TypeRef {
     Unsigned(Handle<TypeRef>),
     Signed(Handle<TypeRef>),
     Index(Handle<TypeRef>),
+    Mask(Handle<TypeRef>),
     Bool,
     Float,
     Double,

@@ -223,7 +223,8 @@ impl IrCtx {
                 TypeRef::BitVector(handle)
                 | TypeRef::Unsigned(handle)
                 | TypeRef::Signed(handle)
-                | TypeRef::Index(handle) => *handle = range.handles().next().unwrap(),
+                | TypeRef::Index(handle)
+                | TypeRef::Mask(handle) => *handle = range.handles().next().unwrap(),
                 TypeRef::Vector(size, type_ref) => {
                     let mut handles = range.handles();
                     *size = handles.next().unwrap();
@@ -345,6 +346,12 @@ impl IrCtx {
                     }
                     ("Index", "Clash.Sized.Internal.Index") => {
                         let handle = self.type_refs.push(TypeRef::Index(Handle::const_handle(0)));
+
+                        to_do_and_patch.push((handle, args));
+                        handle
+                    }
+                    ("Mask", "Protocols.MemoryMap.Mask") => {
+                        let handle = self.type_refs.push(TypeRef::Mask(Handle::const_handle(0)));
 
                         to_do_and_patch.push((handle, args));
                         handle

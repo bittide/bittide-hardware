@@ -150,6 +150,7 @@ library
     Protocols.MemoryMap.Check.AbsAddress
     Protocols.MemoryMap.Check.Normalized
     Protocols.MemoryMap.Json
+    Protocols.MemoryMap.Mask
     Protocols.MemoryMap.Registers.WishboneStandard
     Protocols.MemoryMap.Registers.WishboneStandard.Internal
     Protocols.MemoryMap.TypeCollect
@@ -246,6 +247,7 @@ test-suite unittests
     -with-rtsopts=-N12
 
   other-modules:
+    Tests.Protocols.MemoryMap.Mask
     Tests.Protocols.MemoryMap.Registers.WishboneStandard
 
   build-depends:
