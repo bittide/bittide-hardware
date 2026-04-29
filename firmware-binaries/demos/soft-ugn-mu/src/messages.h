@@ -17,9 +17,9 @@
 // ============================================================================
 
 enum RingBufferAlignState {
-  RINGBUFFER_ALIGN_EMPTY = 0,
-  RINGBUFFER_ALIGN_ANNOUNCE = 0xBADC0FFEE,
-  RINGBUFFER_ALIGN_ACKNOWLEDGE = 0xDEADABBA,
+  RING_BUFFER_ALIGN_EMPTY = 0,
+  RING_BUFFER_ALIGN_ANNOUNCE = 0xBADC0FFEE,
+  RING_BUFFER_ALIGN_ACKNOWLEDGE = 0xDEADABBA,
 };
 
 // ============================================================================
@@ -394,9 +394,9 @@ enum RingBufferAlignState {
     uart_puts(UART, "] P");                                                    \
     uart_putdec(UART, (uint64_t)(PORT));                                       \
     uart_puts(UART, ": state=");                                               \
-    if ((STATE) == RINGBUFFER_ALIGN_ANNOUNCE)                                  \
+    if ((STATE) == RING_BUFFER_ALIGN_ANNOUNCE)                                  \
       uart_puts(UART, "ANNOUNCE");                                             \
-    else if ((STATE) == RINGBUFFER_ALIGN_ACKNOWLEDGE)                          \
+    else if ((STATE) == RING_BUFFER_ALIGN_ACKNOWLEDGE)                          \
       uart_puts(UART, "ACK");                                                  \
     else                                                                       \
       uart_puts(UART, "EMPTY");                                                \

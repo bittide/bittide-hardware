@@ -54,12 +54,6 @@ impl_valid_entry_type! {
     mask: 12,
 }
 
-impl_valid_entry_type! {
-    type: [crate::types::ValidEntry_16],
-    repeat: u16,
-    mask: 16,
-}
-
 /// Abstraction trait over all the methods that a calendar type should provide
 pub trait CalendarInterface {
     type EntryType: Copy + ValidEntryType;
@@ -302,10 +296,10 @@ impl_calendar_interface! {
 impl_calendar_interface! {
     cal: crate::hals::switch_demo_gppe_mu::devices::Calendar,
     metacycle: u32,
-    shadow: u16,
-    write: u16,
-    read: u16,
-    entry: crate::types::ValidEntry_12<u16>,
+    shadow: u8,
+    write: u8,
+    read: u8,
+    entry: crate::types::ValidEntry_12<[u8; 8]>,
 }
 
 impl_calendar_interface! {
@@ -315,50 +309,4 @@ impl_calendar_interface! {
     write: u8,
     read: u8,
     entry: crate::types::ValidEntry_12<u8>,
-}
-
-impl_calendar_interface! {
-    cal: crate::hals::soft_ugn_demo_mu::devices::Calendar,
-    metacycle: u32,
-    shadow: u16,
-    write: u16,
-    read: u16,
-    entry: crate::types::ValidEntry_16<u16>,
-}
-
-pub trait RingbufferCalendar {
-    fn initialize_as_ringbuffer(&self, size: usize);
-}
-
-impl<T> RingbufferCalendar for T
-where
-    T: CalendarType,
-    ValidEntryInner<CalendarEntryType<T>>: FromAs<usize>,
-    ValidEntryRepeat<CalendarEntryType<T>>: FromAs<u8>,
-{
-    /// Initializes a calendar type which contains entries derivable from `usize` and repeats
-    /// derivable from `u8` as a ringbuffer.
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
-    /// - Attempting to initialize a ringbuffer of size 0
-    /// - Attempting to initialize a ringbuffer of a size greater than the maximum size of the
-    ///   calendar (compared against [`Self::SHADOW_INDEX_MAX`])
-    fn initialize_as_ringbuffer(&self, size: usize) {
-        assert!(size > 0, "Cannot have a ringbuffer of size 0!");
-        let size_max_index: CalendarShadowIndex<T> = (size - 1).into_as();
-        if size_max_index > Self::SHADOW_INDEX_MAX {
-            panic!(
-                "Size ({size}) exceeds calendar size ({})",
-                <CalendarShadowIndex<T> as IntoAs<u128>>::into_as(Self::SHADOW_INDEX_MAX)
-            );
-        }
-        for n in 0..size {
-            let entry = CalendarEntryType::<Self>::new(n.into_as(), 0.into_as());
-            self.write_shadow_entry(n, entry);
-        }
-        self.calint_set_shadow_depth_index(size_max_index);
-        self.calint_set_swap_active(true);
-    }
 }
