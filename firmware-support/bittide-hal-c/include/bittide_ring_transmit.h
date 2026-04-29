@@ -41,10 +41,8 @@
  */
 static inline void transmit_ring_buffer_write_slice_unchecked(
     TransmitRingBuffer unit, uint64_t *src, uint32_t offset, uint32_t len) {
-  for (uint32_t i = 0; i < len; i++) {
-    transmit_ring_buffer_set_data_unchecked(unit, offset + i,
-                                           (uint8_t const *)&src[i]);
-  }
+  memcpy_volatile((unit.base + 0) + (offset * sizeof(uint64_t)), src,
+                  len * sizeof(uint64_t));
 }
 
 /**
@@ -63,9 +61,9 @@ static inline void transmit_ring_buffer_write_slice_unchecked(
  * invalid
  */
 static inline bool transmit_ring_buffer_write_slice(TransmitRingBuffer unit,
-                                                   uint64_t *src,
-                                                   uint32_t offset,
-                                                   uint32_t len) {
+                                                    uint64_t *src,
+                                                    uint32_t offset,
+                                                    uint32_t len) {
   // Validate parameters
   if (src == 0 || offset + len > TRANSMIT_RING_BUFFER_DATA_LEN) {
     return false;
