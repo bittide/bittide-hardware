@@ -13,10 +13,11 @@ authors = ["Google LLC"]
 workspace = true
 
 [dependencies]
-riscv-rt = "0.11.0"
-bittide-sys = { path = "../../../firmware-support/bittide-sys" }
-ufmt = "0.2.0"
+bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+riscv-rt = "0.11.0"
+ufmt = "0.2.0"
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }

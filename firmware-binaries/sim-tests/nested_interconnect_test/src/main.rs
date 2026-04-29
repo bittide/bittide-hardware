@@ -6,9 +6,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use ufmt::{uwrite, uwriteln};
-
 use bittide_hal::hals::nested_interconnect as hal;
+use bittide_macros::unsigned;
+use ufmt::{uwrite, uwriteln};
 
 use core::fmt::Write;
 #[cfg(not(test))]
@@ -72,23 +72,23 @@ fn main() -> ! {
 
         // Read initial values (should be 0)
         write!(name_buf, "peripheral{i}.status.init").unwrap();
-        expect(&name_buf, 0u32, peripheral.status());
+        expect(&name_buf, 0u32, peripheral.status().into_inner());
         name_buf.clear();
 
         write!(name_buf, "peripheral{i}.control.init").unwrap();
-        expect(&name_buf, 0u32, peripheral.control());
+        expect(&name_buf, 0u32, peripheral.control().into_inner());
         name_buf.clear();
 
         // Write and read back status
-        peripheral.set_status(*status_val);
+        peripheral.set_status(unsigned!(*status_val, n = 32));
         write!(name_buf, "peripheral{i}.status.readback").unwrap();
-        expect(&name_buf, *status_val, peripheral.status());
+        expect(&name_buf, *status_val, peripheral.status().into_inner());
         name_buf.clear();
 
         // Write and read back control
-        peripheral.set_control(*control_val);
+        peripheral.set_control(unsigned!(*control_val, n = 32));
         write!(name_buf, "peripheral{i}.control.readback").unwrap();
-        expect(&name_buf, *control_val, peripheral.control());
+        expect(&name_buf, *control_val, peripheral.control().into_inner());
     }
 
     // Verify all peripherals are still accessible
@@ -97,7 +97,7 @@ fn main() -> ! {
     {
         let mut name_buf = heapless::String::<50>::new();
         write!(name_buf, "peripheral{i}.status.final").unwrap();
-        expect(&name_buf, *status_val, peripheral.status());
+        expect(&name_buf, *status_val, peripheral.status().into_inner());
     }
 
     test_ok()

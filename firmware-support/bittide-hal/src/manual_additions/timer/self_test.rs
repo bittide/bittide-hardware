@@ -75,7 +75,7 @@ pub fn self_test(timer: Timer) -> impl Iterator<Item = (&'static str, TestReturn
 
 /// Obtain the value of the counter, check if it's not 0.
 pub fn now_not_null(timer: Timer) -> TestReturn {
-    let frequency = timer.frequency();
+    let frequency = timer.frequency().into_inner();
     let now = timer.now();
     if now == Instant::from_cycles(0, frequency) {
         Some((
@@ -89,7 +89,7 @@ pub fn now_not_null(timer: Timer) -> TestReturn {
 
 /// Read the frequency value, check if it's not 0.
 pub fn freq_not_null(timer: Timer) -> TestReturn {
-    let frequency: u64 = timer.frequency();
+    let frequency: u64 = timer.frequency().into_inner();
     if frequency == 0 {
         Some(("freq_not_null test failed: frequency is null", None))
     } else {

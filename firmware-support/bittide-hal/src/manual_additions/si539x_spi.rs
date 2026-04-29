@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::manual_additions::timer::Duration;
-use crate::shared_devices::Si539xSpi;
-use crate::shared_devices::Timer;
-use crate::types::Maybe::{Just, Nothing};
-use crate::types::RegisterOperation;
-
+use crate::{
+    manual_additions::{bitvector::BitVector, timer::Duration, ConvertOptional},
+    shared_devices::{Si539xSpi, Timer},
+    types::{Maybe::Nothing, RegisterOperation},
+};
+use bittide_macros::bitvector;
 use ufmt::derive::uDebug;
 
 pub struct Config<const PRE_LEN: usize, const CFG_LEN: usize, const PST_LEN: usize> {
@@ -25,9 +25,9 @@ pub struct ConfigEntry {
 impl From<ConfigEntry> for RegisterOperation {
     fn from(value: ConfigEntry) -> Self {
         RegisterOperation {
-            page: [value.page],
-            address: [value.address],
-            write: Just([value.data]),
+            page: bitvector!([value.page], n = 8),
+            address: bitvector!([value.address], n = 8),
+            write: BitVector::new([value.data]).conv_optional(),
         }
     }
 }
@@ -149,8 +149,8 @@ impl Si539xSpi {
     /// Perform a read operation.
     pub fn read(&self, page: u8, address: u8) -> u8 {
         let read_op = RegisterOperation {
-            page: [page],
-            address: [address],
+            page: bitvector!([page], n = 8),
+            address: bitvector!([address], n = 8),
             write: Nothing,
         };
         self.set_register_operation(read_op);
@@ -158,7 +158,7 @@ impl Si539xSpi {
         while self.commit() {
             continue;
         }
-        self.read_data()[0]
+        self.read_data().into_inner()[0]
     }
 
     /// Perform a write operation.

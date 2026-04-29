@@ -5,6 +5,7 @@
 #![cfg_attr(not(test), no_main)]
 
 use bittide_hal::scatter_gather_pe::DeviceInstances;
+use bittide_macros::{bitvector, BitVector};
 use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -42,8 +43,10 @@ fn main() -> ! {
     //   1: Write to the gather memory.
     //   2: Read from the scatter memory.
 
-    let source: [[u8; 8]; MEM_SIZE] = core::array::from_fn(|i| (i as u64).to_le_bytes());
-    let mut destination: [[u8; 8]; MEM_SIZE] = [99u64.to_le_bytes(); MEM_SIZE];
+    let source: [BitVector!(64); MEM_SIZE] =
+        core::array::from_fn(|i| bitvector!((i as u64).to_le_bytes(), n = 64));
+    let mut destination: [BitVector!(64); MEM_SIZE] =
+        [bitvector!(99u64.to_le_bytes(), n = 64); MEM_SIZE];
 
     // Metacycle 1: write to gather
     gather_unit.wait_for_new_metacycle();

@@ -4,16 +4,22 @@
 
 pub mod addressable_buffer;
 pub mod aligned;
+pub mod bitvector;
 pub mod calendar;
 pub mod capture_ugn;
 pub mod dna;
 pub mod elastic_buffer;
+pub mod index;
 pub mod ring_buffer;
 pub mod scatter_gather_pe;
 pub mod si539x_spi;
+pub mod signed;
 pub mod soft_ugn_demo_mu;
 pub mod timer;
 pub mod uart;
+pub mod unsigned;
+
+use crate::types::Maybe;
 
 // Sealing the `FromAs` and `IntoAs` traits with a supertrait
 mod seal {
@@ -37,6 +43,30 @@ mod seal {
         callback: NONE,
         in: {
             impl Seal for TYPE {}
+        }
+    }
+}
+
+pub trait ConvertOptional<Target> {
+    fn conv_optional(self) -> Target;
+}
+
+impl<T> ConvertOptional<Option<T>> for Maybe<T> {
+    #[inline]
+    fn conv_optional(self) -> Option<T> {
+        match self {
+            Maybe::Just(val) => Some(val),
+            Maybe::Nothing => None,
+        }
+    }
+}
+
+impl<T> ConvertOptional<Maybe<T>> for Option<T> {
+    #[inline]
+    fn conv_optional(self) -> Maybe<T> {
+        match self {
+            Some(val) => Maybe::Just(val),
+            None => Maybe::Nothing,
         }
     }
 }

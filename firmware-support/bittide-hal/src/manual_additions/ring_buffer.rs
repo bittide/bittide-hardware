@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::manual_additions::{
+    index::{Index, IndexInterface, IndexSizeCheck},
+    FromAs, IntoAs,
+};
 use log::{debug, trace, warn};
 
 const ALIGNMENT_ANNOUNCE: u64 = 0xBADC0FFEE;
@@ -96,9 +100,11 @@ pub trait ReceiveRingBufferInterface {
     const DATA_LEN: usize;
     const CLEAR_AT_COUNT_SIZE: usize;
 
+    type CountIdx: IndexInterface + IndexSizeCheck<Inner: FromAs<usize>>;
+
     fn base_ptr(&self) -> *const [u8; 8];
 
-    fn set_clear_at_count(&self, count: usize);
+    fn set_clear_at_count(&self, count: Self::CountIdx);
 
     /// Sets the enable register for the receive ring_buffer. When enabled, incoming frames from
     /// the network will be written to the buffer at an address determined by an internal free
@@ -141,7 +147,7 @@ pub trait ReceiveRingBufferInterface {
 }
 
 macro_rules! impl_ring_buffer_interfaces {
-    (rx: $rx:ty, tx: $tx:ty) => {
+    (rx: $rx:ty, tx: $tx:ty, cidx: $cidx:ty$(,)?) => {
         const _: () = {
             if <$rx>::DATA_LEN != <$tx>::DATA_LEN {
                 const_panic::concat_panic!(
@@ -157,11 +163,13 @@ macro_rules! impl_ring_buffer_interfaces {
             const DATA_LEN: usize = <$rx>::DATA_LEN;
             const CLEAR_AT_COUNT_SIZE: usize = <$rx>::CLEAR_AT_COUNT_SIZE;
 
+            type CountIdx = $cidx;
+
             fn base_ptr(&self) -> *const [u8; 8] {
                 self.0.cast::<[u8; 8]>()
             }
-            fn set_clear_at_count(&self, count: usize) {
-                assert!(count < Self::CLEAR_AT_COUNT_SIZE);
+            fn set_clear_at_count(&self, count: $cidx) {
+                assert!(usize::from_as(count.into_inner()) < Self::CLEAR_AT_COUNT_SIZE);
                 <$rx>::set_clear_at_count(self, count.try_into().unwrap());
             }
             fn set_enable(&self, enabled: bool) {
@@ -191,7 +199,8 @@ macro_rules! impl_ring_buffer_interfaces {
 
 impl_ring_buffer_interfaces! {
     rx: crate::shared_devices::ReceiveRingBuffer,
-    tx: crate::shared_devices::TransmitRingBuffer
+    tx: crate::shared_devices::TransmitRingBuffer,
+    cidx: Index<16, u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,7 +265,9 @@ where
                             self.phase = AlignPhase::AcknowledgingAlignment;
                             return false;
                         } else {
-                            self.buffer.set_clear_at_count(rx_idx);
+                            self.buffer.set_clear_at_count(unsafe {
+                                Rx::CountIdx::idx_new_unchecked(rx_idx.into_as())
+                            });
                         }
                     }
                 }
