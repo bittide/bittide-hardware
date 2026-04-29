@@ -27,7 +27,7 @@ static void write_marker(TransmitRingBuffer tx_ring, int16_t idx,
                          enum RingBufferAlignState state) {
   uint64_t encoded = (uint64_t)state;
   transmit_ring_buffer_set_data_unchecked(tx_ring, idx,
-                                         (uint8_t const *)&encoded);
+                                          (uint8_t const *)&encoded);
 }
 
 static enum RingBufferAlignState read_state(ReceiveRingBuffer rx_ring,
@@ -86,7 +86,7 @@ void align_ring_buffers(UgnContext *ugn_ctx, Uart uart) {
             phases[port] = ALIGN_PHASE_ACKNOWLEDGING;
             break;
           } else {
-            receive_ring_buffer_set_clear_at_count(rx_ring, (uint8_t)rx_idx);
+            receive_ring_buffer_set_clear_at_count(rx_ring, rx_idx);
           }
         }
       } else if (phases[port] == ALIGN_PHASE_ACKNOWLEDGING ||
