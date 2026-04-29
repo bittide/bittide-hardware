@@ -37,11 +37,16 @@ static enum RingBufferAlignState read_state(ReceiveRingBuffer rx_ring,
   return (enum RingBufferAlignState)data;
 }
 
-void align_ring_buffers(UgnContext *ugn_ctx, Uart uart) {
+void align_ring_buffers(UgnContext *ugn_ctx, int16_t *alignment_offsets,
+                        Uart uart) {
   PRINT_ALIGN_START(uart);
 
   const int32_t num_ports = ugn_ctx->num_ports;
   enum AlignPhase phases[num_ports];
+
+  for (int32_t port = 0; port < num_ports; port++) {
+    alignment_offsets[port] = 0;
+  }
 
   // Initialize: clear each TX buffer and announce at TX[0].
   for (int32_t port = 0; port < num_ports; port++) {
@@ -84,13 +89,13 @@ void align_ring_buffers(UgnContext *ugn_ctx, Uart uart) {
           if (rx_idx == 0) {
             write_marker(tx_ring, 0, RING_BUFFER_ALIGN_ACKNOWLEDGE);
             phases[port] = ALIGN_PHASE_ACKNOWLEDGING;
-            break;
           } else {
+            alignment_offsets[port] = rx_idx;
             receive_ring_buffer_set_clear_at_count(rx_ring, rx_idx);
           }
+          break;
         }
-      } else if (phases[port] == ALIGN_PHASE_ACKNOWLEDGING ||
-                 phases[port] == 0) {
+      } else if (phases[port] == ALIGN_PHASE_ACKNOWLEDGING) {
         // Partner's ACKNOWLEDGE arrives at offset 0 once the hardware is
         // aligned and they have also transitioned past FINDING.
         enum RingBufferAlignState state = read_state(rx_ring, 0);

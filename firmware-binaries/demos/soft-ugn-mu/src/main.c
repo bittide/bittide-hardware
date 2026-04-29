@@ -68,10 +68,6 @@ int c_main(void) {
       hal.transmit_ring_buffer_4, hal.transmit_ring_buffer_5,
       hal.transmit_ring_buffer_6};
 
-  for (uint32_t port = 0; port < NUM_PORTS; port++) {
-    receive_ring_buffer_set_enable(receive_ring_buffers[port], true);
-    transmit_ring_buffer_set_enable(transmit_ring_buffers[port], true);
-  }
   Timer timer = hal.timer;
   dna_t dna;
   dna_read(hal.dna, dna);
@@ -98,7 +94,13 @@ int c_main(void) {
   PRINT_INIT_INFO(uart, &ugn_ctx, BUFFER_SIZE, SEND_PERIOD, RECEIVE_PERIOD,
                   NUM_PORTS);
 
-  align_ring_buffers(&ugn_ctx, uart);
+  for (uint32_t port = 0; port < NUM_PORTS; port++) {
+    receive_ring_buffer_set_enable(receive_ring_buffers[port], true);
+    transmit_ring_buffer_set_enable(transmit_ring_buffers[port], true);
+  }
+  int16_t alignment_offsets[NUM_PORTS] = {0};
+  align_ring_buffers(&ugn_ctx, alignment_offsets, uart);
+  ugn_ctx.alignment_offsets = alignment_offsets;
 
   // Event loop variables
   FixedIntPriorityQueue event_queue;
@@ -114,16 +116,14 @@ int c_main(void) {
   uint64_t start_cycles_write = start_cycles + STARTING_DELAY_WRITE;
   uint64_t start_cycles_read = start_cycles + STARTING_DELAY_READ;
 
-  // Schedule SEND and RECEIVE events
+  // Schedule SEND and RECEIVE events.
+  // After alignment TX[0] maps to RX[0], so all offsets are 0.
   for (uint32_t port = 0; port < NUM_PORTS; port++) {
     uint64_t send_time = start_cycles_write + port * SEND_SPACING;
-    uint32_t send_offset = send_time % BUFFER_SIZE;
-
     uint64_t receive_time = start_cycles_read + port * RECEIVE_SPACING;
-    uint32_t receive_offset = receive_time % BUFFER_SIZE;
 
-    Event send_event = make_send_event(MSG_TYPE_ANNOUNCE, send_offset, port);
-    Event receive_event = make_receive_event(receive_offset, port);
+    Event send_event = make_send_event(MSG_TYPE_ANNOUNCE, 0, port);
+    Event receive_event = make_receive_event(0, port);
 
     pq_insert(&event_queue, encode_event(send_event), send_time);
     pq_insert(&event_queue, encode_event(receive_event), receive_time);

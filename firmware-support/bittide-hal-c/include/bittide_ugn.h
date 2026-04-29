@@ -91,6 +91,10 @@ typedef struct {
   TransmitRingBuffer *transmit_ring_buffers;
   uint32_t num_ports;
 
+  // Per-port alignment offsets from the ring buffer alignment protocol.
+  // Each value is the counter shift applied to the receive ring buffer.
+  int16_t *alignment_offsets;
+
   // UGN edge lists (dynamically sized based on max_degree)
   UgnEdge *incoming_link_ugn_list;
   UgnEdge *outgoing_link_ugn_list;
@@ -202,6 +206,7 @@ ugn_context_init(UgnContext *ctx, ReceiveRingBuffer *receive_ring_buffers,
   ctx->receive_ring_buffers = receive_ring_buffers;
   ctx->transmit_ring_buffers = transmit_ring_buffers;
   ctx->num_ports = num_ports;
+  ctx->alignment_offsets = 0;
   ctx->node_id = node_id;
   ctx->incoming_link_ugn_list = incoming_list;
   ctx->outgoing_link_ugn_list = outgoing_list;
@@ -249,22 +254,24 @@ static inline bool all_ports_done(UgnContext *ctx) {
 // Future changes to the offset calculation (e.g., for non-trivial calendar
 // configurations) only need to be updated here.
 
-// Calculate receive buffer offset for a given event time and port
+// After ring buffer alignment, TX[0] maps to RX[0] on the partner.
+// All reads and writes use offset 0.
 static inline uint32_t ugn_calculate_receive_offset(const UgnContext *ctx,
                                                     uint32_t port,
                                                     uint64_t event_time) {
   (void)ctx;
-  (void)port; // Unused in this implementation
-  return (uint32_t)(event_time % RECEIVE_RING_BUFFER_DATA_LEN);
+  (void)port;
+  (void)event_time;
+  return 0;
 }
 
-// Calculate transmit buffer offset for a given event time and port
 static inline uint32_t ugn_calculate_transmit_offset(const UgnContext *ctx,
                                                      uint32_t port,
                                                      uint64_t event_time) {
   (void)ctx;
-  (void)port; // Unused in this implementation
-  return (uint32_t)(event_time % TRANSMIT_RING_BUFFER_DATA_LEN);
+  (void)port;
+  (void)event_time;
+  return 0;
 }
 
 // ============================================================================
@@ -324,13 +331,18 @@ static inline void initialize_ugn_object(UgnEdge *u, uint32_t src_node,
   u->is_valid = true;
 }
 
-// Process received message and update UGN edge
+// Process received message and update UGN edge.
+// alignment_offset compensates for the counter shift applied during ring
+// buffer alignment: the old scatter/gather code baked this into the receive
+// event time; with ring buffers we correct the UGN directly.
 static inline bool process_ugn_message(const UgnMessage *msg,
                                        uint32_t local_port,
                                        uint32_t local_node_id,
-                                       uint64_t local_time, UgnEdge *edge_in,
-                                       UgnEdge *edge_out) {
-  int64_t receive_delay = (int64_t)local_time - (int64_t)msg->local_counter;
+                                       uint64_t local_time,
+                                       int16_t alignment_offset,
+                                       UgnEdge *edge_in, UgnEdge *edge_out) {
+  int64_t receive_delay =
+      (int64_t)local_time - (int64_t)msg->local_counter + alignment_offset;
   initialize_ugn_object(edge_in, msg->node_id, msg->port, local_node_id,
                         local_port, receive_delay);
 
@@ -428,8 +440,11 @@ static inline bool check_incoming_buffer(UgnContext *ctx, Timer timer,
     return false;
   }
 
-  bool valid_message = process_ugn_message(
-      &msg, event->port, ctx->node_id, event->event_time, &edge_in, &edge_out);
+  int16_t align_off =
+      ctx->alignment_offsets ? ctx->alignment_offsets[event->port] : 0;
+  bool valid_message =
+      process_ugn_message(&msg, event->port, ctx->node_id, event->event_time,
+                          align_off, &edge_in, &edge_out);
   if (!valid_message) {
     return false;
   }

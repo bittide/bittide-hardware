@@ -24,7 +24,7 @@
  * This function implements a distributed alignment protocol that physically
  * aligns the receive ring_buffers on each port with the partner's transmit
  * stream. After alignment, alignment markers always arrive at offset 0 in
- * the receive ring_buffer, so no per-port offset needs to be tracked.
+ * the receive ring_buffer.
  *
  * Per-port state machine:
  * - FINDING: Scan RX for ANNOUNCE/ACKNOWLEDGE.
@@ -38,8 +38,13 @@
  * calling this function; enables are not touched by the protocol.
  *
  * @param ugn_ctx The UGN context containing receive and transmit ring_buffers
+ * @param alignment_offsets Output array (one per port) recording the offset
+ *        passed to set_clear_at_count for each port. These offsets represent
+ *        the counter shift applied during alignment and must be used to
+ *        correct UGN receive delay measurements.
  * @param uart UART for debug output
  */
-void align_ring_buffers(UgnContext *ugn_ctx, Uart uart);
+void align_ring_buffers(UgnContext *ugn_ctx, int16_t *alignment_offsets,
+                        Uart uart);
 
 #endif // RING_BUFFER_ALIGN_H
