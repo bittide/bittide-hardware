@@ -449,6 +449,37 @@ pub fn BitVector(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
     .into()
 }
 
+/// Macro to conveniently create a `Mask` type
+///
+/// # Example
+///
+/// ```rust,ignore
+/// # use bittide_macros::Mask;
+/// fn test(m: Mask![32]) {
+///     // ...
+/// #   _ = m;
+/// }
+/// ```
+#[proc_macro]
+#[allow(non_snake_case)]
+pub fn Mask(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let n_lit = parse_macro_input!(toks as LitInt);
+
+    let n_val: usize = match n_lit.base10_parse() {
+        Err(err) => return err.into_compile_error().into(),
+        Ok(v) => v,
+    };
+
+    let size = n_val.div_ceil(8);
+
+    let prefix = get_import_prefix();
+
+    quote! {
+        #prefix::mask::Mask<#n_val, #size>
+    }
+    .into()
+}
+
 fn read_hex_literal(
     input: &LitInt,
     input_str: &str,

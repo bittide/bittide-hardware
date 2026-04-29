@@ -75,7 +75,7 @@ unpackOrErrorC byteOrder bytes =
         <> " as "
         <> show (typeRep (Proxy @a))
 
-data ByteOrder = LittleEndian | BigEndian deriving (Eq, Show)
+data ByteOrder = LittleEndian | BigEndian deriving (Eq, Show, Bounded, Enum)
 
 type BitSizeInBytes a = DivRU (BitSize a) 8
 type NextPowerOfTwo a = 2 ^ CLog 2 (Max 1 a)

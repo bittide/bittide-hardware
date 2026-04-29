@@ -160,6 +160,7 @@ pub enum BuiltinType {
     Signed,
     Unsigned,
     Index,
+    Mask,
 }
 
 impl TryFrom<Value> for BuiltinType {
@@ -179,6 +180,7 @@ impl TryFrom<Value> for BuiltinType {
             "signed" => Ok(BuiltinType::Signed),
             "unsigned" => Ok(BuiltinType::Unsigned),
             "index" => Ok(BuiltinType::Index),
+            "mask" => Ok(BuiltinType::Mask),
             s => Err(format!("Unsupported builin type: {s:}")),
         }
     }

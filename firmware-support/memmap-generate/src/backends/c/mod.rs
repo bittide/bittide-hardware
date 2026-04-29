@@ -152,7 +152,17 @@ fn generate_variable_binding(
                     write!(code, "uint8_t {before_var}{variable_name}[{n}]").unwrap();
                 }
             } else {
-                panic!("Unsigned/BitVector with length not known after monomorphisation");
+                panic!("BitVector with length not known after monomorphisation");
+            }
+        }
+        TypeRef::Mask(handle) => {
+            let size = &ctx.type_refs[lookup_sub(variant, *handle)];
+
+            if let TypeRef::Nat(n) = size {
+                let n = po2_type(*n);
+                write!(code, "uint{n}_t {before_var}{variable_name}").unwrap();
+            } else {
+                panic!("Mask with length not known after monomorphisation");
             }
         }
         TypeRef::Unsigned(handle) => {
@@ -324,6 +334,10 @@ fn type_to_ident(ctx: &IrCtx, ty: Handle<TypeRef>) -> String {
         TypeRef::Index(handle) => {
             let len = type_to_ident(ctx, *handle);
             format!("i{len}")
+        }
+        TypeRef::Mask(handle) => {
+            let len = type_to_ident(ctx, *handle);
+            format!("mask{len}")
         }
         TypeRef::Bool => "bool".to_string(),
         TypeRef::Float => "f32".to_string(),

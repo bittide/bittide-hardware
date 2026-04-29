@@ -75,9 +75,12 @@ fn generate_const(
     let ty = &ctx.type_refs[desc.type_ref];
 
     let variables = match ty {
-        TypeRef::BitVector(handle) | TypeRef::Unsigned(handle) | TypeRef::Signed(handle) => {
+        TypeRef::BitVector(handle)
+        | TypeRef::Unsigned(handle)
+        | TypeRef::Signed(handle)
+        | TypeRef::Mask(handle) => {
             let TypeRef::Nat(width) = &ctx.type_refs[*handle] else {
-                panic!("BitVector/Unsigned/Signed need to have constant widths")
+                panic!("BitVector/Unsigned/Signed/Mask need to have constant widths")
             };
             Some(("WIDTH", *width))
         }

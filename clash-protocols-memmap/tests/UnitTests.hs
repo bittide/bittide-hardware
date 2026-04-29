@@ -9,6 +9,7 @@ import Prelude
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
+import qualified Tests.Protocols.MemoryMap.Mask
 import qualified Tests.Protocols.MemoryMap.Registers.WishboneStandard
 
 tests :: TestTree
@@ -16,6 +17,7 @@ tests =
   testGroup
     "Unittests"
     [ Tests.Protocols.MemoryMap.Registers.WishboneStandard.tests
+    , Tests.Protocols.MemoryMap.Mask.tests
     ]
 
 {- | Default number of tests is 100, which is too low for our (complicated)
