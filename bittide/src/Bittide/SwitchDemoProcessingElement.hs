@@ -6,16 +6,13 @@ module Bittide.SwitchDemoProcessingElement where
 
 import Clash.Prelude
 
-import Data.Maybe (fromMaybe)
-import Data.Tuple (swap)
-import GHC.Stack (HasCallStack)
-
-import Protocols
-
 import Bittide.SharedTypes (Bitbone)
-import Bittide.Wishbone (wbToVec)
-import Clash.Sized.Vector.ToTuple (vecToTuple)
+import Clash.Class.BitPackC (ByteOrder)
+import Data.Maybe (fromMaybe)
+import GHC.Stack (HasCallStack)
+import Protocols
 import Protocols.MemoryMap
+import Protocols.MemoryMap.Registers.WishboneStandard
 
 {- | Multiplying by 3 should always fit, though if n~1, the output type is `Index 3`
 which doesn't fit the 3 we're multiplying by hence yielding an undefined. This
@@ -162,6 +159,7 @@ switchDemoPeWb ::
   , KnownNat addrW
   , HasCallStack
   , 1 <= bufferSize
+  , ?byteOrder :: ByteOrder
   ) =>
   SNat bufferSize ->
   -- | External counter
@@ -171,18 +169,19 @@ switchDemoPeWb ::
   -- | Incoming crossbar link
   Signal dom (BitVector 64) ->
   Circuit (ToConstBwd Mm, Bitbone dom addrW) (CSignal dom (BitVector 64))
-switchDemoPeWb SNat localCounter maybeDna linkIn = withMemoryMap mm $ Circuit go
- where
-  go (wbM2S, _) = (wbS2M, linkOut)
-   where
-    readVec :: Vec (8 + bufferSize * 3 * 2 + 2) (Signal dom (BitVector 32))
-    readVec =
-      dflipflop
-        <$> ( unbundle (bitCoerce . map swapWords <$> writableRegs)
-                ++ unbundle (bitCoerce . map swapWords . bitCoerce <$> localCounter)
-                ++ unbundle (bitCoerce . map swapWords <$> buffer)
-            )
+-- switchDemoPeWb SNat localCounter maybeDna linkIn = withMemoryMap mm $ Circuit go
+switchDemoPeWb SNat localCounter maybeDna linkIn = circuit $ \bbMm -> do
+  [wb0, wb1, wb2, wb3, wb4, wb5] <-
+    deviceWbI (deviceConfig "SwitchDemoPE"){registered = False} -< bbMm
+  Fwd (readStart, _) <- registerWbI readStartCfg (unpack 0) -< (wb0, Fwd (pure Nothing))
+  Fwd (readCycles, _) <- registerWbI readCyclesCfg (unpack 0) -< (wb1, Fwd (pure Nothing))
+  Fwd (writeStart, _) <- registerWbI writeStartCfg (unpack 0) -< (wb2, Fwd (pure Nothing))
+  Fwd (writeCycles, _) <- registerWbI writeCyclesCfg (unpack 0) -< (wb3, Fwd (pure Nothing))
+  registerWbI_ localClockCycleCounterCfg (unpack 0) -< (wb4, Fwd (Just <$> localCounter))
+  registerWbI_ bufferCfg (repeat 0 :: Vec (bufferSize * 3) (BitVector 64))
+    -< (wb5, Fwd (Just <$> buffer))
 
+  let
     -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
     --      use it until the DNA is actually read out.
     unsafeDna = (fromMaybe 0 <$> maybeDna)
@@ -198,113 +197,41 @@ switchDemoPeWb SNat localCounter maybeDna linkIn = withMemoryMap mm $ Circuit go
         writeStart
         writeCycles
 
-    readStart = unpack <$> rs
-    readCycles = checkedResize . bvToIndex <$> rc
-    writeStart = unpack <$> ws
-    writeCycles = checkedResize . bvToIndex <$> wc
-
-    -- \| Unpack a BitVector to an Index of the same size
-    bvToIndex :: (KnownNat n) => BitVector n -> Index (2 ^ n)
-    bvToIndex = unpack
-
-    -- \| Swap the two words of a 64-bit Bitvector to match the word order of
-    -- the Vexriscv. This allows the CPU to read the two words as one 64-bit value.
-    swapWords :: BitVector 64 -> BitVector 64
-    swapWords = bitCoerce . (swap @(BitVector 32) @(BitVector 32)) . bitCoerce
-
-    rs, rc, ws, wc :: Signal dom (BitVector 64)
-    (rs, rc, ws, wc) = unbundle $ vecToTuple <$> writableRegs
-
-    writableRegs :: Signal dom (Vec 4 (BitVector 64))
-    writableRegs =
-      (fmap (map swapWords . bitCoerce) . bundle . map (regMaybe maxBound) . unbundle)
-        $ take d8
-        <$> writeVec
-
-    (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
-
-  mm =
-    MemoryMap
-      { tree = DeviceInstance locCaller "SwitchDemoPE"
-      , deviceDefs = deviceSingleton deviceDef
+  idC -< Fwd linkOut
+ where
+  readStartCfg =
+    (registerConfig "read_start")
+      { access = ReadWrite
+      , description = "Local clock cycle to start reading at"
       }
-  deviceDef =
-    DeviceDefinition
-      { tags = []
-      , registers =
-          [ NamedLoc
-              { name = Name "read_start" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(BitVector 64)
-                    , address = 0x00
-                    , access = WriteOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          , NamedLoc
-              { name = Name "read_cycles" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(BitVector 64)
-                    , address = 0x08
-                    , access = WriteOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          , NamedLoc
-              { name = Name "write_start" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(BitVector 64)
-                    , address = 0x10
-                    , access = WriteOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          , NamedLoc
-              { name = Name "write_cycles" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(BitVector 64)
-                    , address = 0x18
-                    , access = WriteOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          , NamedLoc
-              { name = Name "local_clock_cycle_counter" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(BitVector 64)
-                    , address = 0x20
-                    , access = ReadOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          , NamedLoc
-              { name = Name "buffer" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(Vec (bufferSize * 3) (BitVector 64))
-                    , address = 0x28
-                    , access = ReadOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          ]
-      , deviceName = Name "SwitchDemoPE" ""
-      , definitionLoc = locHere
+
+  readCyclesCfg =
+    (registerConfig "read_cycles")
+      { access = ReadWrite
+      , description = "Number of clock cycles to read for"
+      }
+
+  writeStartCfg =
+    (registerConfig "write_start")
+      { access = ReadWrite
+      , description = "Local clock cycle to start writing at"
+      }
+
+  writeCyclesCfg =
+    (registerConfig "write_cycles")
+      { access = ReadWrite
+      , description = "Number of clock cycles to write for"
+      }
+
+  localClockCycleCounterCfg =
+    (registerConfig "local_clock_cycle_counter")
+      { access = ReadOnly
+      , description = "Counter containing the local clock cycle"
+      }
+
+  bufferCfg =
+    (registerConfig "buffer")
+      { access = ReadOnly
+      , description =
+          "Buffer that should contain the DNA and counter values from all other connected FPGAs"
       }

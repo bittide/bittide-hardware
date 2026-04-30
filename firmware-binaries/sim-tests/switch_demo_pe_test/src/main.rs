@@ -5,21 +5,15 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(sync_unsafe_cell)]
 
-use bittide_hal::shared_devices::timer::Timer;
-use bittide_hal::{manual_additions::timer::Duration, shared_devices::uart::Uart};
-use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
-use bittide_sys::uart::log::LOGGER;
-
+use bittide_hal::{hals::switch_demo_pe_test::DeviceInstances, manual_additions::timer::Duration};
+use bittide_sys::{switch_demo_pe::SdpeUtils, uart::log::LOGGER};
 use core::fmt::Write;
 use log::{info, LevelFilter};
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *mut u8 = (0b010 << 29) as *mut u8;
-const TIMER_ADDR: *mut u8 = (0b011 << 29) as *mut u8;
-const SWITCH_PE_A: *const () = (0b101 << 29) as *const ();
-const SWITCH_PE_B: *const () = (0b110 << 29) as *const ();
+const DEVICES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 // Size of buffer in number of "tri-cycles". That is, we always store 3 64-bit words:
 // local clock cycle counter, DNA (64 lsbs), DNA (32 msbs, zero-extended).
@@ -31,18 +25,15 @@ const BUFFER_SIZE: usize = 2;
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-    let timer = unsafe { Timer::new(TIMER_ADDR) };
-
-    let switch_pe_a: SwitchDemoProcessingElement<BUFFER_SIZE> =
-        unsafe { SwitchDemoProcessingElement::new(SWITCH_PE_A) };
-    let switch_pe_b: SwitchDemoProcessingElement<BUFFER_SIZE> =
-        unsafe { SwitchDemoProcessingElement::new(SWITCH_PE_B) };
+    let mut uart = DEVICES.uart;
+    let timer = DEVICES.timer;
+    let mut switch_pe_a = DEVICES.switch_demo_pe_0;
+    let mut switch_pe_b = DEVICES.switch_demo_pe_1;
 
     unsafe {
         let logger = &mut (*LOGGER.get());
         logger.set_logger(uart.clone());
-        let log_timer = Timer::new(TIMER_ADDR);
+        let log_timer = DEVICES.timer;
         logger.set_timer(log_timer);
         logger.display_source = LevelFilter::Info;
         log::set_logger_racy(logger).ok();
@@ -52,7 +43,10 @@ fn main() -> ! {
         log::set_max_level_racy(LevelFilter::Info);
     }
 
-    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
+    info!(
+        "Local counter: 0x{:X}",
+        switch_pe_a.local_clock_cycle_counter()
+    );
 
     let first_transfer_start = 0x10000;
     let second_transfer_start = 0x10100;
@@ -72,27 +66,36 @@ fn main() -> ! {
     let (rs_b, rc_b) = switch_pe_b.get_read();
     info!("A: readStart: 0x{:X}, readCycles: 0x{:X}", rs_a, rc_a);
     info!("B: readStart: 0x{:X}, readCycles: 0x{:X}", rs_b, rc_b);
-    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
+    info!(
+        "Local counter: 0x{:X}",
+        switch_pe_a.local_clock_cycle_counter()
+    );
 
     // Write the buffer of A over UART
     write!(uart, "Buffer A: [").unwrap();
-    switch_pe_a.buffer().enumerate().for_each(|(i, nd)| {
+    switch_pe_a.node_data().enumerate().for_each(|(i, nd)| {
         let sep = if i + 1 < BUFFER_SIZE { ", " } else { "" };
         write!(uart, "(0x{:X}, 0x{:X}){sep}", nd.local_counter, nd.dna).unwrap();
     });
     writeln!(uart, "]").unwrap();
 
-    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
+    info!(
+        "Local counter: 0x{:X}",
+        switch_pe_a.local_clock_cycle_counter()
+    );
 
     // Write the buffer of B over UART
     write!(uart, "Buffer B: [").unwrap();
-    switch_pe_b.buffer().enumerate().for_each(|(i, nd)| {
+    switch_pe_b.node_data().enumerate().for_each(|(i, nd)| {
         let sep = if i + 1 < BUFFER_SIZE { ", " } else { "" };
         write!(uart, "(0x{:X}, 0x{:X}){sep}", nd.local_counter, nd.dna).unwrap();
     });
     writeln!(uart, "]").unwrap();
 
-    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
+    info!(
+        "Local counter: 0x{:X}",
+        switch_pe_a.local_clock_cycle_counter()
+    );
 
     writeln!(uart, "Finished").unwrap();
 
@@ -103,7 +106,7 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
+    let mut uart = DEVICES.uart;
     writeln!(uart, "Panicked! #{info}").unwrap();
     loop {
         continue;

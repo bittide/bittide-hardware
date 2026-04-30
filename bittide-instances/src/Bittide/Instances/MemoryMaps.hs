@@ -34,6 +34,7 @@ import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.RingBuffer as RingBuffer
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
+import qualified Bittide.Instances.Tests.SwitchDemoProcessingElement as SwitchDemoPe
 import qualified Bittide.Instances.Tests.TimeWb as TimeWb
 import qualified Bittide.Instances.Tests.WbToDf as WbToDf
 import qualified Data.ByteString.Lazy as BS
@@ -68,6 +69,7 @@ $( do
            , ("SwitchDemoGppeMu", SwitchDemoGppe.mu)
            , ("SwitchDemoGppeCc", SwitchDemoGppe.cc)
            , ("SwitchDemoGppeGppe", SwitchDemoGppe.gppe)
+           , ("SwitchDemoPeTest", SwitchDemoPe.dutMm)
            , ("TimeWb", TimeWb.timeWbMm)
            , ("TimeWbC", TimeWb.timeWbMmC)
            , ("WbToDfTest", WbToDf.dutMM)
