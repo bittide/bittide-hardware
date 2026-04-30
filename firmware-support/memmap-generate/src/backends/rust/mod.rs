@@ -81,6 +81,7 @@ pub fn generate_type_desc<'ir>(
         use_index: false,
         use_signed: false,
         use_unsigned: false,
+        use_mask: false,
     };
     let desc = &ctx.type_descs[handle];
     let type_name = &ctx.type_names[desc.name];
@@ -435,6 +436,7 @@ pub fn generate_device_desc<'ir>(
         use_index: false,
         use_signed: false,
         use_unsigned: false,
+        use_mask: false,
     };
     let desc = &ctx.device_descs[handle];
     let name = &ctx.identifiers[desc.name];
@@ -487,7 +489,10 @@ fn generate_const(
     let ty = &ctx.type_refs[desc.type_ref];
 
     let variables = match ty {
-        TypeRef::BitVector(handle) | TypeRef::Unsigned(handle) | TypeRef::Signed(handle) => {
+        TypeRef::BitVector(handle)
+        | TypeRef::Unsigned(handle)
+        | TypeRef::Signed(handle)
+        | TypeRef::Mask(handle) => {
             let width = generate_type_ref(ctx, varis, None, refs, *handle);
             Some(("WIDTH", width))
         }
@@ -673,6 +678,7 @@ pub struct TypeReferences {
     pub use_index: bool,
     pub use_signed: bool,
     pub use_unsigned: bool,
+    pub use_mask: bool,
 }
 
 fn generate_type_ref(
@@ -745,6 +751,24 @@ fn generate_type_ref(
                 quote! { Index<#n, #backer> }
             } else {
                 quote! { compile_error!("Index with length not known after monomorphisation") }
+            }
+        }
+        TypeRef::Mask(handle) => {
+            let size = &ctx.type_refs[lookup_sub(variant, *handle)];
+
+            if let &TypeRef::Nat(n) = size {
+                if n > 128 {
+                    let msg = format!("Mask length {n} is outside of allowed range 0..=128!");
+                    quote! { compile_error!(#msg) }
+                } else {
+                    refs.use_mask = true;
+                    let n = (n as u8).div_ceil(8).next_power_of_two() * 8;
+                    let backer = ident(IdentType::Raw, format!("u{n}")).into_token_stream();
+                    let n = proc_macro2::Literal::u8_unsuffixed(n);
+                    quote! { Mask<#n, #backer> }
+                }
+            } else {
+                quote! { compile_error!("Mask with length not known after monomorphisation") }
             }
         }
         TypeRef::Bool => quote! { bool },
@@ -892,6 +916,10 @@ fn type_to_ident(ctx: &IrCtx, ty: Handle<TypeRef>) -> String {
         TypeRef::Index(handle) => {
             let len = type_to_ident(ctx, *handle);
             format!("i{len}")
+        }
+        TypeRef::Mask(handle) => {
+            let len = type_to_ident(ctx, *handle);
+            format!("mask{len}")
         }
         TypeRef::Bool => "bool".to_string(),
         TypeRef::Float => "f32".to_string(),
