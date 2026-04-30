@@ -65,7 +65,7 @@ transmitRingBuffer ::
 transmitRingBuffer primitive SNat = circuit $ \wb -> do
   [wb0, wb1] <-
     deviceWbI (deviceConfig "TransmitRingBuffer"){registered = False}
-      <| fmapC (Wb.increaseBuswidth d1)
+      <| fmapC (Wb.increaseBusWidth d1)
       -< wb
   reqresp <- addressableBytesWb @memDepth regConfig -< wb0
   (Fwd (transmitEnable, _)) <-
@@ -139,7 +139,7 @@ receiveRingBuffer primitive SNat = circuit $ \(wb, Fwd frames) -> do
   [wb0, wb1, wb2] <-
     deviceWbI (deviceConfig "ReceiveRingBuffer"){registered = False}
       <| fmapC
-        (Wb.increaseBuswidth d1)
+        (Wb.increaseBusWidth d1)
       -< wb
   (Fwd (receiveEnable, _)) <-
     registerWbI @_ @_ @8 receiveEnableConfig False -< (wb1, Fwd (pure Nothing))
