@@ -20,7 +20,7 @@ import Protocols
 import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
-import Protocols.Wishbone.Extra (increaseBuswidth, xpmCdcHandshakeWb)
+import Protocols.Wishbone.Extra (increaseBusWidth, xpmCdcHandshakeWb)
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   wishbonePropWithModel,
@@ -160,7 +160,7 @@ testIncreaseBuswidth power = property $ do
         $ wbStorage "test" depth (Just (Vec (repeat 0)))
 
     dut :: Circuit (Wishbone System 'Standard (AddressWidth + power) nBytes) ()
-    dut = withClockResetEnable clk rst ena (increaseBuswidth power |> dutMem)
+    dut = withClockResetEnable clk rst ena (increaseBusWidth power |> dutMem)
 
   H.footnote [i| Depth: #{snatToInteger depth}, Last Address: #{lastAddress}|]
 
@@ -177,14 +177,14 @@ testIncreaseBuswidth power = property $ do
   rst = noReset
   ena = enableGen
 
-prop_increaseBuswidth_0 :: Property
-prop_increaseBuswidth_0 = testIncreaseBuswidth d0
+prop_increaseBusWidth_0 :: Property
+prop_increaseBusWidth_0 = testIncreaseBuswidth d0
 
-prop_increaseBuswidth_1 :: Property
-prop_increaseBuswidth_1 = testIncreaseBuswidth d1
+prop_increaseBusWidth_1 :: Property
+prop_increaseBusWidth_1 = testIncreaseBuswidth d1
 
-prop_increaseBuswidth_2 :: Property
-prop_increaseBuswidth_2 = testIncreaseBuswidth d2
+prop_increaseBusWidth_2 :: Property
+prop_increaseBusWidth_2 = testIncreaseBuswidth d2
 
 prop_memoryModel :: Property
 prop_memoryModel = property $ do

@@ -2,7 +2,11 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Protocols.Wishbone.Extra (delayWishbone, xpmCdcHandshakeWb, increaseBuswidth) where
+module Protocols.Wishbone.Extra (
+  delayWishbone,
+  xpmCdcHandshakeWb,
+  increaseBusWidth,
+) where
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Extra (xpmCdcHandshakeDf)
 import Clash.Prelude
@@ -223,14 +227,14 @@ xpmCdcHandshakeWb clkM rstM clkS rstS =
 `power` bits of the address. For example, with `power = 1`, a 32-bit bus becomes a 64-bit bus,
 where even addresses access the lower 32 bits and odd addresses access the upper 32 bits.
 -}
-increaseBuswidth ::
+increaseBusWidth ::
   forall dom mode aw width power.
   (HiddenClockResetEnable dom, KnownNat aw, KnownNat width, KnownNat power, power <= aw) =>
   SNat power ->
   Circuit
     (Wishbone dom mode aw width)
     (Wishbone dom mode (aw - power) (2 ^ power * width))
-increaseBuswidth SNat = Circuit (unbundle . fmap go . bundle)
+increaseBusWidth SNat = Circuit (unbundle . fmap go . bundle)
  where
   go (m2sLeft, s2mRight) = (s2mLeft, m2sRight)
    where
