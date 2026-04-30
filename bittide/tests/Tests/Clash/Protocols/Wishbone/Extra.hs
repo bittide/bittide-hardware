@@ -210,5 +210,60 @@ prop_memoryModel = property $ do
   genAddr = Gen.integral (Range.linear 0 (lastAddress * 2))
   genInputs = Gen.list (Range.linear 1 10) (genWishboneTransfer genAddr)
 
+-- XXX: Should be removed once this has been fixed upstream.
+
+-- | Create a stalling wishbone 'Standard' circuit.
+stallStandard ::
+  forall dom addressBits dataBytes.
+  ( C.KnownNat addressBits
+  , C.KnownDomain dom
+  , C.KnownNat dataBytes
+  ) =>
+  {- | Early busCycle propagation, when 'True', the busCycle signal will always be propagated.
+  When 'False', the busCycle signal will be stalled just like the 'strobe' signal.
+  -}
+  Bool ->
+  -- | Number of cycles to stall the master for on each valid bus-cycle
+  [Int] ->
+  Circuit
+    (Wishbone dom 'Standard addressBits dataBytes)
+    (Wishbone dom 'Standard addressBits dataBytes)
+stallStandard earlyBusCycle stalls0 =
+  Circuit goS
+ where
+  goS (m2s, s2m) = (s2m, go stalls0 m2s s2m)
+  go ::
+    [Int] ->
+    Signal dom (WishboneM2S addressBits dataBytes) ->
+    Signal dom (WishboneS2M dataBytes) ->
+    Signal dom (WishboneM2S addressBits dataBytes)
+  -- Idle, waiting for a request
+  go (stall : stalls) (m :- ms) (s :- ss) = m' :- go stalls' ms ss
+   where
+    -- Only propagate the buscycle while stalling, this allows the manager to reserve the bus, but postpones the actual
+    -- transaction until the stall is over.
+    m'
+      | stall > 0 = block m
+      | otherwise = m
+    stalls' = nextStall stall stalls m s
+  go [] ms _ = ms
+
+  block m
+    | earlyBusCycle = m{strobe = False}
+    | otherwise = m{busCycle = False, strobe = False}
+
+  -- Select the correct
+  nextStall
+    | earlyBusCycle = \stall stalls m s ->
+        if
+          | m.busCycle && m.strobe && hasTerminateFlag s -> stalls
+          | m.busCycle && m.strobe && stall > 0 -> stall - 1 : stalls
+          | otherwise -> stall : stalls
+    | otherwise = \stall stalls m s ->
+        if
+          | m.busCycle && m.strobe && hasTerminateFlag s -> stalls
+          | m.busCycle && stall > 0 -> stall - 1 : stalls
+          | otherwise -> stall : stalls
+
 tests :: TestTree
 tests = $(testGroupGenerator)
