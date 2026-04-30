@@ -376,7 +376,7 @@ wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
         ( (emptyWishboneS2M @0){readData, err, acknowledge = wbAcknowledge}
         , Axi4StreamS2M axisReady
         , unpack . resize $ pack internalAddress
-        , maybeAxisM2S >>= orNothing axisHandshake . (writeCounter,) . pack . reverse . _tdata
+        , maybeAxisM2S >>= toMaybe axisHandshake . (writeCounter,) . pack . reverse . _tdata
         , (packetComplete, bufferFull)
         )
 
@@ -642,7 +642,7 @@ wbToAxi4StreamTx = Circuit $ unbundle . fmap go . bundle
     _tdata = reverse $ unpack writeData
     axiM2S :: Maybe (Axi4StreamM2S (AxiStreamBytesOnly nBytes) ())
     axiM2S =
-      orNothing (masterActive && not err)
+      toMaybe (masterActive && not err)
         $ Axi4StreamM2S{_tdata, _tdest, _tid, _tkeep, _tlast, _tstrb, _tuser}
 
 data AxiPacketFifoState maxPackets = AxiPacketFifoState
@@ -849,7 +849,7 @@ axi4WriteAddressFifo clkA rstA clkB rstB =
     toDf (waM2S, dfAck) = (waS2M, dfData)
      where
       waS2M = S2M_WriteAddress . fromAck <$> dfAck
-      dfData = orNothing <$> fmap isWriteAddress waM2S <*> waM2S
+      dfData = toMaybe <$> fmap isWriteAddress waM2S <*> waM2S
       fromAck (Ack b) = b
 
   dfToAxi4 ::
@@ -890,7 +890,7 @@ axi4WriteDataFifo clkA rstA clkB rstB =
     toDf (wdM2S, dfAck) = (wdS2M, dfData)
      where
       wdS2M = S2M_WriteData . fromAck <$> dfAck
-      dfData = orNothing <$> fmap isWriteData wdM2S <*> wdM2S
+      dfData = toMaybe <$> fmap isWriteData wdM2S <*> wdM2S
       fromAck (Ack b) = b
 
   dfToAxi4 ::
@@ -931,7 +931,7 @@ axi4WriteResponseFifo clkA rstA clkB rstB =
     toDf (wrS2M, dfAck) = (wrM2S, dfData)
      where
       wrM2S = M2S_WriteResponse . fromAck <$> dfAck
-      dfData = orNothing <$> fmap isWriteResponse wrS2M <*> wrS2M
+      dfData = toMaybe <$> fmap isWriteResponse wrS2M <*> wrS2M
       fromAck (Ack b) = b
 
   dfToAxi4 ::
@@ -972,7 +972,7 @@ axi4ReadAddressFifo clkA rstA clkB rstB =
     toDf (raM2S, dfAck) = (raS2M, dfData)
      where
       raS2M = S2M_ReadAddress . fromAck <$> dfAck
-      dfData = orNothing <$> fmap isReadAddress raM2S <*> raM2S
+      dfData = toMaybe <$> fmap isReadAddress raM2S <*> raM2S
       fromAck (Ack b) = b
 
   dfToAxi4 ::
@@ -1014,7 +1014,7 @@ axi4ReadDataFifo clkA rstA clkB rstB =
     toDf (rdS2M, dfAck) = (rdM2S, dfData)
      where
       rdM2S = M2S_ReadData . fromAck <$> dfAck
-      dfData = orNothing <$> fmap isReadData rdS2M <*> rdS2M
+      dfData = toMaybe <$> fmap isReadData rdS2M <*> rdS2M
       fromAck (Ack b) = b
 
   dfToAxi4 ::

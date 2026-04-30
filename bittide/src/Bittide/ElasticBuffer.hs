@@ -10,7 +10,7 @@ import Protocols
 import Bittide.ClockControl (RelDataCount, targetDataCount)
 import Bittide.Df (unsafeFromDf)
 import Bittide.ElasticBuffer.AutoCenter (autoCenter)
-import Bittide.Extra.Maybe (orNothing)
+import Bittide.Extra.Maybe (toMaybe)
 import Bittide.SharedTypes (BitboneMm)
 import Bittide.Shutter (shutter)
 import Clash.Class.BitPackC (ByteOrder)
@@ -443,7 +443,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
           , description = "Sticky underflow flag; can be cleared by writing false"
           }
         False
-        -< (wbUnderflow, Fwd (flip orNothing True <$> underflow))
+        -< (wbUnderflow, Fwd (flip toMaybe True <$> underflow))
 
     registerWb_
       clkRead
@@ -464,7 +464,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
           , description = "Sticky overflow flag; can be cleared by writing false"
           }
         False
-        -< (wbOverflow, Fwd (flip orNothing True <$> overflow1))
+        -< (wbOverflow, Fwd (flip toMaybe True <$> overflow1))
 
     registerWb_
       clkRead

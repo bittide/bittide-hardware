@@ -152,7 +152,7 @@ wbInterface m@WishboneM2S{} readData =
   err = masterActive && (m.addr > maxAddress)
   acknowledge = masterActive && not err
   wbAddr = unpack . resize $ pack m.addr
-  writeOp = orNothing (m.strobe && m.writeEnable && not err) m.writeData
+  writeOp = toMaybe (m.strobe && m.writeEnable && not err) m.writeData
 
 {- | Adds a stalling address to the 'wbInterface' by demanding an extra address on type level.
 When this address is accessed, the outgoing 'WishboneS2M' bus' acknowledge is replaced

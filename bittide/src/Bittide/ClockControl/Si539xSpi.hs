@@ -192,7 +192,7 @@ si539xSpiWb minTargetPs =
     -- can be removed.
     Fwd (resetReg, _resetActivity) <- registerWbI resetSpiConfig False -< (wb4, Fwd noWrite)
 
-    let maybeRegOp = orNothing <$> commit <*> regOp
+    let maybeRegOp = toMaybe <$> commit <*> regOp
     let reset = unsafeFromActiveHigh $ resetReg
 
     (Fwd readData, _busy, spi) <-
@@ -492,7 +492,7 @@ si539xSpiDriver SNat incomingOpS s2m = (fromSlave, decoderBusy, spiM2S)
               }
 
       spiBytes = spiCommandToBytes spiCommand
-      output = orNothing (not commandAcknowledged && idleCycles == 0) spiBytes
+      output = toMaybe (not commandAcknowledged && idleCycles == 0) spiBytes
 {-# OPAQUE si539xSpiDriver #-}
 
 -- TODO: Look into replacing dcFifo with XPM_CDC_Handshake.

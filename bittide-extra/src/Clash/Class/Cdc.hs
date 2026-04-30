@@ -25,7 +25,7 @@ module Clash.Class.Cdc where
 
 import Clash.Prelude hiding (Bit, isRising, regEn)
 
-import Bittide.Extra.Maybe (orNothing)
+import Bittide.Extra.Maybe (toMaybe)
 import Clash.Explicit.Prelude (isRising, noReset, regEn)
 import Data.Data (Proxy (Proxy))
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -716,7 +716,7 @@ handshakeMaybe ::
   Signal src (Maybe a) ->
   Signal dst Bool ->
   (Signal src Bool, Signal dst (Maybe a))
-handshakeMaybe clkSrc clkDst srcIn dstAck = (srcRcv, orNothing <$> dstReq <*> dstOut)
+handshakeMaybe clkSrc clkDst srcIn dstAck = (srcRcv, toMaybe <$> dstReq <*> dstOut)
  where
   (dstOut, dstReq, srcRcv) =
     handshake @vendor clkSrc clkDst (fromMaybe (unpack 0) <$> srcIn) (isJust <$> srcIn) dstAck

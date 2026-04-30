@@ -722,9 +722,9 @@ timeWb externalCounter = circuit $ \mmWb -> do
 
   -- Local circuit dependent declarations
   let
-    scratchWrite = orNothing <$> (cmdActivity .== Just (Mm.BusWrite Capture)) <*> count
+    scratchWrite = toMaybe <$> (cmdActivity .== Just (Mm.BusWrite Capture)) <*> count
     cmpResult = count .>=. scratch
-    cmpResultWrite = orNothing <$> (cmdActivity ./= Just (Mm.BusWrite WaitForCmp)) <*> cmpResult
+    cmpResultWrite = toMaybe <$> (cmdActivity ./= Just (Mm.BusWrite WaitForCmp)) <*> cmpResult
     cmdWaitAck = (cmdActivity ./= Just (Mm.BusWrite WaitForCmp)) .||. cmpResult
   idC -< Fwd count
  where

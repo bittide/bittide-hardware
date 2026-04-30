@@ -33,7 +33,7 @@ packAxi4Stream axi = output
   (newData, newKeep, newStrobe) =
     unzip3
       $ fmap (\b -> (maybe 0 fst b, isJust b, maybe False snd b)) (packVec inpVec)
-  inpVec = orNothing <$> _tkeep axi <*> zip (_tdata axi) (_tstrb axi)
+  inpVec = toMaybe <$> _tkeep axi <*> zip (_tdata axi) (_tstrb axi)
 
 {- | Function that moves all @Just@ values in a `Vec n (Maybe a)` to the front of
 the vector.
@@ -76,7 +76,7 @@ splitAxi4Stream ::
   , Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWith destWidth) userTypeB)
   )
 splitAxi4Stream Nothing = (Nothing, Nothing)
-splitAxi4Stream (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
+splitAxi4Stream (Just axi) = (toMaybe aValid axiA, toMaybe bValid axiB)
  where
   axiA =
     Axi4StreamM2S
@@ -164,7 +164,7 @@ combineAxi4Stream ::
         (userTypeA, userTypeB)
     )
 combineAxi4Stream maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
-  (Just axiA, Just axiB) -> orNothing compatibleAxis axiNew
+  (Just axiA, Just axiB) -> toMaybe compatibleAxis axiNew
    where
     axiNew =
       Axi4StreamM2S
