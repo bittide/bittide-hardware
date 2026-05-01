@@ -31,10 +31,8 @@ package bittide
 package zlib
   flags: +pkg-config
 
--- Reduces build times by ~10%, but triggers a bug in haskell-language-server:
--- https://github.com/haskell/haskell-language-server/issues/4595
---package *
---  ghc-options: +RTS -A64M -RTS
+package *
+  ghc-options: +RTS -qn4 -A128M -RTS
 semaphore: true
 jobs: $ncpus
 
