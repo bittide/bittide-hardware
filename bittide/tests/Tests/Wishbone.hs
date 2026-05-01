@@ -3,25 +3,26 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 module Tests.Wishbone (tests, simpleSlave, simpleSlave', wbRead) where
 
 import Clash.Prelude hiding (sample)
 
+import Clash.Explicit.Prelude (noReset)
 import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector (unsafeFromList)
-import Data.Bifunctor
+import Data.Maybe (fromJust)
 import Data.String
+import Data.String.Interpolate (i)
 import Hedgehog
 import Hedgehog.Range as Range
 import Protocols
 import Protocols.Hedgehog
 import Protocols.Idle (forceResetSanityGeneric)
-import Protocols.MemoryMap (ignoreMM)
+import Protocols.MemoryMap
 import Protocols.Wishbone
-import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
+import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit, wishbonePropWithModel)
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
@@ -32,8 +33,12 @@ import Tests.Shared
 import Tests.Wishbone.Utils (genWishboneRequest)
 
 import qualified Data.List as L
+import qualified Data.Map as Map
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
+import qualified Protocols.Df as Df
+import qualified Protocols.Hedgehog as PH
+import qualified Protocols.Wishbone.Standard.Hedgehog as Wb
 
 tests :: TestTree
 tests =
@@ -42,90 +47,69 @@ tests =
     [ testPropertyNamed "Reading readData from slaves." "readingSlaves" readingSlaves
     , testPropertyNamed "Writing and reading from slaves." "writingSlaves" writingSlaves
     , testPropertyNamed
-        "Send and receive bytes via uartInterfaceWb"
-        "uartInterfaceWbCircuitTest"
-        uartInterfaceWbCircuitTest
+        "Loopback uartInterfaceWb through fifo with random stalls"
+        "uartInterfaceWbTest"
+        uartInterfaceWbTest
     , testPropertyNamed
         "Test the Df based wishbone master"
         "prop_dfWishboneMaster"
         prop_dfWishboneMaster
     ]
 
-data UartMachineState = ReadStatus | ReadByte | WriteByte | OutputByte (BitVector 8)
-  deriving (Generic, NFDataX, Show)
+type AddressWidth = 4
 
-{- | A `Circuit` that transforms incoming `Df` transactions into `Wishbone` transactions
-that are compatible with `Bittide.Wishbone.wbToDf`.
--}
+smallInt :: Gen Int
+smallInt = Gen.integral (Range.linear 0 10)
 
--- .It implements the following state machine:
--- 1. Check if there is incoming data available in the `wbToDf` receive fifo, if so, skip to 4.
--- 2. Check if there is space in the `wbToDf` transmit fifo. If so, skip to 6.
--- 3. Go to 1.
--- 4. Read in the incoming byte and send it to the outgoing Df interface.
--- 5. Go to 1
--- 6. If there is no data available at the incoming Df interface, go to 1.
--- 7. Write data from incoming Df interface to `wbToDf`.
-uartMachine ::
-  forall dom addrW.
-  ( HiddenClockResetEnable dom
-  , KnownNat addrW
-  ) =>
-  Circuit
-    (Df dom (BitVector 8))
-    (Wishbone dom 'Standard addrW 1, Df dom (BitVector 8))
-uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
- where
-  go ReadStatus (_, ~(s@WishboneS2M{}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
-   where
-    (rxEmpty, txFull) = unpack (resize s.readData)
-    nextState = case (s.acknowledge, s.err, (rxEmpty, txFull)) of
-      (True, False, (False, _)) -> ReadByte
-      (True, False, (True, False)) -> WriteByte
-      _ -> ReadStatus
-    wbOut = (emptyWishboneM2S @30){addr = 1, busCycle = True, strobe = True}
-  go ReadByte (_, ~(s@WishboneS2M{}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
-   where
-    nextState = case (s.acknowledge, s.err) of
-      (True, False) -> OutputByte (resize s.readData)
-      _ -> ReadByte
-    wbOut = (emptyWishboneM2S @30){addr = 0, busCycle = True, strobe = True}
-  go (OutputByte byte) (_, ~(_, Ack dfAck)) =
-    (nextState, (Ack False, (emptyWishboneM2S, Just byte)))
-   where
-    nextState = if dfAck then ReadStatus else (OutputByte byte)
-  go (WriteByte) (Just dfData, ~(s@WishboneS2M{}, _)) = (nextState, (Ack dfAck, (wbOut, Nothing)))
-   where
-    (nextState, dfAck) =
-      if s.acknowledge && not s.err then (ReadStatus, True) else (WriteByte, False)
-    wbOut =
-      (emptyWishboneM2S @30 @1)
-        { addr = 0
-        , busCycle = True
-        , strobe = True
-        , writeEnable = True
-        , busSelect = 1
-        , writeData = resize dfData
-        }
-  go WriteByte (Nothing, _) = (ReadStatus, (Ack False, (emptyWishboneM2S, Nothing)))
+genStalls' :: (KnownNat n) => Gen (Vec n ((StallAck, [Int])))
+genStalls' = do
+  numStalls <- smallInt
+  genVec (PH.genStalls smallInt numStalls PH.Stall)
 
--- | Check if we can combine `uartInterfaceWb` in loopback mode and `uartMachine` to create `id`.
-uartInterfaceWbCircuitTest :: Property
-uartInterfaceWbCircuitTest = do
+uartInterfaceWbTest :: Property
+uartInterfaceWbTest = property $ do
+  stallsBefore <- forAll $ genStalls'
+  stallsAfter <- forAll $ genStalls'
   let
-    dataGen = Gen.list (Range.linear 0 32) $ genDefinedBitVector @8
-    dut :: (HiddenClockResetEnable System) => Circuit (Df System Byte) (Df System Byte)
-    dut = circuit $ \dfIn -> do
-      (wb, dfOut) <- uartMachine -< dfIn
-      mm <- ignoreMM
-      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartBytes -< ((mm, wb), uartTx)
-      idC -< dfOut
-    expectOptions =
-      defExpectOptions
-        { eoResetCycles = 15
-        , eoDriveEarly = True
-        }
-  idWithModel expectOptions dataGen id (wcre dut)
+    deviceName = "Uart"
+    defs = (((getMMAny dutMm).deviceDefs) Map.! deviceName)
+    dataLoc = L.find (\loc -> loc.name.name == "data") defs.registers
+    dataAddr = fromIntegral (fromJust dataLoc).value.address `div` natToNum @AddressWidth
+
+    bytes = [0 .. 7]
+    writeOps = Wb.Write dataAddr 1 <$> bytes
+    readOps = L.replicate 8 $ Wb.Read dataAddr 1
+    allOps = writeOps <> readOps
+
+    dutMm :: Circuit (ToConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth 4) ()
+    dutMm =
+      withLittleEndian $ withClockResetEnable clk rst ena $ circuit $ \(mm, wb) -> do
+        -- The receive buffer needs to be large enough, otherwise bytes will be dropped.
+        (uartOut, _uartStatus) <- uartInterfaceWb d2 d16 uartBytes -< ((mm, wb), uartIn)
+        uartIn <-
+          stallC simConfig stallsAfter
+            <| Df.fifo d16
+            <| stallC simConfig stallsBefore
+            -< uartOut
+        idC -< ()
+
+    model (Wb.Write _ _ _) resp s
+      | resp.acknowledge = Right s
+      | otherwise = Left [i|Expected acknowledge for valid write, but got: #{resp}|]
+    model (Wb.Read _ _) resp (expected : rest)
+      | resp.acknowledge && resp.readData == expected = Right rest
+      | otherwise = Left [i|Expected: #{expected}, but got: #{resp}|]
+    model (Wb.Read _ _) resp [] = Left [i|Expected more read responses, but got: #{resp} |]
+
+  withClockResetEnable clk rst ena
+    $ wishbonePropWithModel eOpts model (unMemmap dutMm) (pure allOps) bytes
+ where
+  eOpts = defExpectOptions
+  simConfig = def
+
+  clk = clockGen
+  rst = noReset
+  ena = enableGen
 
 {- | Generates a 'MemoryMap' for 'singleMasterInterconnect' for a specific number
 of slaves.
@@ -134,7 +118,7 @@ genConfig ::
   forall nSlaves pfxWidth.
   (1 <= nSlaves, KnownNat pfxWidth) =>
   SNat nSlaves ->
-  Gen (MemoryMap nSlaves pfxWidth)
+  Gen (WB.MemoryMap nSlaves pfxWidth)
 genConfig nSlaves@SNat =
   unsafeFromList . L.take (snatToNum nSlaves) <$> Gen.shuffle [0 ..]
 

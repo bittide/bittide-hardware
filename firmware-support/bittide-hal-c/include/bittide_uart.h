@@ -9,21 +9,8 @@
 #include <stdint.h>
 
 // ============================================================================
-// UART Status Flags
-// ============================================================================
-
-#define UART_STATUS_TX_FULL 0x01
-#define UART_STATUS_RX_EMPTY 0x02
-
-// ============================================================================
 // UART Function Declarations
 // ============================================================================
-
-/// Check if UART transmit buffer is full
-int uart_tx_full(Uart uart);
-
-/// Check if UART receive buffer is empty
-int uart_rx_empty(Uart uart);
 
 /// Put a single character to UART (blocking)
 void uart_putc(Uart uart, char c);

@@ -5,31 +5,10 @@
 use crate::shared_devices::uart::Uart;
 use bittide_macros::bitvector;
 
-pub struct UartStatus {
-    pub receive_buffer_empty: bool,
-    pub transmit_buffer_full: bool,
-}
-
 pub struct TransmitBufferFull;
 pub struct ReceiveBufferEmpty;
 
 impl Uart {
-    /// UART status register output
-    pub fn read_status(&self) -> UartStatus {
-        let flags = self.status()[0];
-
-        let rx_mask = 0b10;
-        let rx_empty = flags & rx_mask;
-
-        let tx_mask = 0b01;
-        let tx_full = flags & tx_mask;
-
-        UartStatus {
-            receive_buffer_empty: rx_empty != 0,
-            transmit_buffer_full: tx_full != 0,
-        }
-    }
-
     /// The `receive` function attempts to receive data from the UART. If no
     /// data is available, it keeps looping until data is available.
     pub fn receive(&self) -> u8 {
@@ -43,7 +22,7 @@ impl Uart {
     /// The `try_receive` function attempts to receive data from the UART. If no
     /// data is available, it returns None.
     pub fn try_receive(&self) -> Result<u8, ReceiveBufferEmpty> {
-        if self.read_status().receive_buffer_empty {
+        if self.receive_buffer_empty() {
             Err(ReceiveBufferEmpty)
         } else {
             Ok(self.data()[0])
@@ -63,7 +42,7 @@ impl Uart {
     /// The `try_send` function attempts to send the given data to the UART. If
     /// the UART is unable to accept the data, it returns an error.
     pub fn try_send(&self, data: u8) -> Result<(), TransmitBufferFull> {
-        if self.read_status().transmit_buffer_full {
+        if self.transmit_buffer_full() {
             Err(TransmitBufferFull)
         } else {
             self.set_data(bitvector!([data], n = 8));
