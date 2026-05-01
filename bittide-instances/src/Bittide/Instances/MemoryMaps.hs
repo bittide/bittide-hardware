@@ -38,6 +38,7 @@ import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
 import qualified Bittide.Instances.Tests.SwitchDemoProcessingElement as SwitchDemoPe
 import qualified Bittide.Instances.Tests.TimeWb as TimeWb
+import qualified Bittide.Instances.Tests.Watchdog as Watchdog
 import qualified Bittide.Instances.Tests.WbToDf as WbToDf
 import qualified Data.ByteString.Lazy as BS
 import qualified Protocols.MemoryMap.Json as Json
@@ -76,6 +77,7 @@ $( do
            , ("SwitchDemoPeTest", SwitchDemoPe.dutMm)
            , ("TimeWb", TimeWb.timeWbMm)
            , ("TimeWbC", TimeWb.timeWbMmC)
+           , ("WatchdogTest", Watchdog.dutMm)
            , ("WbToDfTest", WbToDf.dutMM)
            , ("WireDemoBoot", WireDemo.boot)
            , ("WireDemoMu", WireDemo.mu)

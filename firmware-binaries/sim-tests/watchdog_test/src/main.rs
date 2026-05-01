@@ -7,28 +7,25 @@
 use ufmt::uwriteln;
 
 use bittide_hal::{
+    hals::watchdog_test::DeviceInstances,
     manual_additions::timer::{Duration, Instant, WaitResult},
-    shared_devices::{uart::Uart, Timer},
 };
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *mut u8 = (2 << 29) as *mut u8;
-const TIMER_ADDR: *mut u8 = (3 << 29) as *mut u8;
-const IDLE_A_ADDR: *const () = (5 << 29) as *const ();
-const IDLE_B_ADDR: *const () = (6 << 29) as *const ();
+const DEVICES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-    let timer = unsafe { Timer::new(TIMER_ADDR) };
+    let mut uart = DEVICES.uart;
+    let timer = DEVICES.timer;
 
     // Align to start of a whole microsecond
     let wait_result = timer.wait_until(timer.now() + Duration::from_micros(10));
     let t0 = timer.now();
-    unsafe { (IDLE_A_ADDR as *mut u8).write_volatile(0) };
+    DEVICES.idle_a.set_idle(());
     let t1: Instant = timer.now();
     let diff_a = t1 - t0;
 
@@ -42,7 +39,7 @@ fn main() -> ! {
     // Align to start of a whole microsecond
     let wait_result = timer.wait_until(timer.now() + Duration::from_micros(10));
     let t0 = timer.now();
-    unsafe { (IDLE_B_ADDR as *mut u8).write_volatile(0) };
+    DEVICES.idle_b.set_idle(());
     let t1: Instant = timer.now();
     let diff_b = t1 - t0;
 
