@@ -3,34 +3,24 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- Don't warn about partial functions: this is a test, so we'll see it fail.
 {-# OPTIONS_GHC -Wno-x-partial #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Wishbone.CaptureUgn where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
-import qualified Prelude as P
+import Clash.Prelude (withClockResetEnable)
 
-import Bittide.ElasticBuffer (ElasticBufferData (Data))
-import Clash.Signal.Internal
-import Data.Char
-import Data.Maybe
-import Numeric
-import Project.FilePath
-import Protocols
-import Protocols.Idle
-import Protocols.MemoryMap
-import Test.Tasty
-import Test.Tasty.HUnit
-import Test.Tasty.TH
-import VexRiscv (DumpVcd (NoDumpVcd))
+import Clash.Signal.Internal (Signal (..))
+import Data.Char (chr)
+import Data.Maybe (catMaybes)
+import Numeric (showHex)
+import Protocols (sampleC)
+import Test.Tasty (TestTree)
+import Test.Tasty.HUnit (Assertion, assertBool, testCase)
+import Test.Tasty.TH (testGroupGenerator)
 
-import Bittide.CaptureUgn
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
-import Bittide.Instances.Common (PeConfigElfSource (NameOnly), peConfigFromElf)
-import Bittide.ProcessingElement
-import Bittide.SharedTypes (withLittleEndian)
-import Bittide.Wishbone
+import Bittide.Instances.Tests.CaptureUgn (dut, peConfigSim)
+
+import qualified Data.List as L
 
 {- | Test whether we can read the local and remote sequence counters from the captureUgn
 peripheral.
@@ -79,42 +69,6 @@ case_capture_ugn_self_test = do
         == expectedRemoteCounter
     )
 
-{- | A simulation-only instance containing just VexRisc with UART and the captureUgn
-peripheral which runs the `capture_ugn_test` binary from `firmware-binaries`.
--}
-dut ::
-  forall dom.
-  (HiddenClockResetEnable dom) =>
-  PeConfig 4 ->
-  -- | Elastic buffer
-  Signal dom (Maybe (BitVector 64)) ->
-  -- | Local sequence counter
-  Signal dom (Unsigned 64) ->
-  Circuit () (Df dom (BitVector 8))
-dut peConfig eb localCounter = withLittleEndian $ circuit $ do
-  (uartRx, jtagIdle) <- idleSource
-  [uartBus, ugnBus] <-
-    processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-  mm <- ignoreMM
-  _bittideData <- captureUgn localCounter (Data <$> eb) -< ugnBus
-  idC -< uartTx
-
-type IMemWords = DivRU (4 * 1024) 4
-type DMemWords = DivRU (4 * 1024) 4
-
-peConfigSim :: IO (PeConfig 4)
-peConfigSim =
-  peConfigFromElf
-    (SNat @IMemWords)
-    (SNat @DMemWords)
-    (NameOnly "capture_ugn_test")
-    Release
-    d0
-    d0
-    False
-    Riscv32imc.vexRiscv0
-
 {- | Simulation function which matches the remote counter to the correct sample
 of the local counter.
 -}
@@ -125,7 +79,7 @@ getSequenceCounters ((a, Just b) :- _) = (a, b)
 getSequenceCounters ((_, Nothing) :- xs) = getSequenceCounters xs
 
 parseResult :: String -> (Unsigned 64, Unsigned 64)
-parseResult = (read :: String -> (Unsigned 64, Unsigned 64)) . P.head . lines
+parseResult = (read :: String -> (Unsigned 64, Unsigned 64)) . L.head . lines
 
 tests :: TestTree
 tests = $(testGroupGenerator)
