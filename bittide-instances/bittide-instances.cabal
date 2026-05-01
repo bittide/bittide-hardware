@@ -230,6 +230,7 @@ library
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Tests.AddressableBytesWb
     Bittide.Instances.Tests.ClockControlWb
+    Bittide.Instances.Tests.DnaPortE2
     Bittide.Instances.Tests.ElasticBufferWb
     Bittide.Instances.Tests.NestedInterconnect
     Bittide.Instances.Tests.RegisterWb
