@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use memmap_generate::build_utils::standard_static_memory_build;
+use memmap_generate::build_utils::standard_memmap_build;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 /// Put the linker script somewhere the linker can find it.
 fn main() {
-    standard_static_memory_build("memory.x");
+    standard_memmap_build("ClockControlWb.json", "DataMemory", "InstructionMemory");
 
     let now = SystemTime::now();
     let rng_seed = now.duration_since(UNIX_EPOCH).unwrap().as_millis();
