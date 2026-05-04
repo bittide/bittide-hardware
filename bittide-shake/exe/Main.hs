@@ -281,7 +281,6 @@ main = do
               , "bittide-extra"
               , "bittide-experiments"
               , "bittide-instances"
-              , "bittide-tools"
               ]
           command_ [] "mkdir" ["-p", dataFilesDir]
           for_ (filter (((==) (Just '/')) . fmap fst . uncons) $ lines out) $

@@ -5,7 +5,6 @@ exec cabal repl \
   bittide-extra \
   bittide-instances \
   bittide-shake \
-  bittide-tools \
   bittide \
   clash-bitpackc \
   clash-protocols-memmap \

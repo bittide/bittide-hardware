@@ -19,9 +19,6 @@ package bittide-shake
 package bittide-experiments
   ghc-options: -Werror
 
-package bittide-tools
-  ghc-options: -Werror
-
 package ghc-typelits-extra-proofs
   ghc-options: -Werror
 
