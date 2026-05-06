@@ -32,7 +32,7 @@ package zlib
   flags: +pkg-config
 
 package *
-  ghc-options: +RTS -qn4 -A128M -RTS
+  ghc-options: +RTS -qn4 -K512M -H -I5 -T -RTS
 semaphore: true
 jobs: $ncpus
 

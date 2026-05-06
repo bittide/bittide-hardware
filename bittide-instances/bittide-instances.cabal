@@ -369,7 +369,7 @@ test-suite unittests
 executable clash
   ghc-options:
     -threaded
-    "-with-rtsopts -qn4 -A128M"
+    "-with-rtsopts -qn4 -K512M -H -I5 -T"
 
   main-is: exe/clash/Main.hs
   build-depends:
