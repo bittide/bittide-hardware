@@ -173,7 +173,8 @@ enforceValidTarget target@Target{}
 targets :: [Target]
 targets =
   map enforceValidTarget $
-    [ defTarget $ mkName "Bittide.Instances.Pnr.AsciiDebugMux.asciiDebugMux"
+    [ defTarget $ mkName "Bittide.Instances.Pnr.Counter.counter"
+    , defTarget $ mkName "Bittide.Instances.Pnr.AsciiDebugMux.asciiDebugMux"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBufferWb"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freeze"
