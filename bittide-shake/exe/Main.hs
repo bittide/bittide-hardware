@@ -174,19 +174,19 @@ targets :: [Target]
 targets =
   map enforceValidTarget $
     [ defTarget $ mkName "Bittide.Instances.Pnr.AsciiDebugMux.asciiDebugMux"
-    , defTarget $ mkName "Bittide.Instances.Pnr.Switch.switchExample"
-    , defTarget $ mkName "Bittide.Instances.Pnr.Switch.switchExampleReducedPins"
-    , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freeze"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBufferWb"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freeze"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferPnr"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferPnr"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
-    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferPnr"
-    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferPnr"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Switch.switchExample"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Switch.switchExampleReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
