@@ -65,8 +65,11 @@ prepareTests = do
     dependentTestGroup
       "bittide-instances"
       AllSucceed
-      [ testGroup
+      [ -- These 2 cargo build commands are not actually dependent on eachother, but they
+        -- cannot happen in parallel as it could cause a race condition in Cargo.
+        dependentTestGroup
           "Build Rust crates"
+          AllSucceed
           [ testCase "release" (run "./cargo.sh" ["build", "--release"] (Just gitRoot))
           , testCase "debug" (run "./cargo.sh" ["build"] (Just gitRoot))
           ]
