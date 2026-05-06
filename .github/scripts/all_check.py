@@ -17,11 +17,15 @@ import yaml
 CI_PATH = ".github/workflows/ci.yml"
 ALL_TEST = "all"
 
+# Jobs that intentionally do not gate the 'all' status check, e.g. because they
+# run *after* 'all' to react to its result.
+EXCLUDED_JOBS = {"notify-slack"}
+
 def main():
   ci_yml_fp = open(CI_PATH, "r")
   ci_yml_parsed = yaml.load(ci_yml_fp, Loader=yaml.FullLoader)
 
-  all_jobs = set(ci_yml_parsed['jobs'].keys()) - {ALL_TEST}
+  all_jobs = set(ci_yml_parsed['jobs'].keys()) - {ALL_TEST} - EXCLUDED_JOBS
   all_needs = set(ci_yml_parsed["jobs"][ALL_TEST]["needs"])
 
   if all_jobs - all_needs:
