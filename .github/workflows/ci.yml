@@ -773,6 +773,26 @@ jobs:
 
       # Deployment: see .github/workflows/deploy-documentation.yml
 
+  notify-slack:
+    name: Notify Slack on scheduled failure
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    needs: [all]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Post failure notification to Slack
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: "Nightly CI failed on `${{ github.ref_name }}`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "*Nightly CI failed* on `${{ github.ref_name }}` (commit `${{ github.sha }}`)\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
+
   all:
     name: All jobs finished
     if: ${{ !cancelled() }}
