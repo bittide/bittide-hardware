@@ -24,7 +24,6 @@ import System.FilePath
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as SwitchDemo
-import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as SwitchDemoGppe
 import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as WireDemo
 import qualified Bittide.Instances.Tests.AddressableBytesWb as AddressableBytesWb
 import qualified Bittide.Instances.Tests.CaptureUgn as CaptureUgn
@@ -70,10 +69,6 @@ $( do
            , ("SwitchDemoBoot", SwitchDemo.boot)
            , ("SwitchDemoMu", SwitchDemo.mu)
            , ("SwitchDemoCc", SwitchDemo.cc)
-           , ("SwitchDemoGppeBoot", SwitchDemoGppe.boot)
-           , ("SwitchDemoGppeMu", SwitchDemoGppe.mu)
-           , ("SwitchDemoGppeCc", SwitchDemoGppe.cc)
-           , ("SwitchDemoGppeGppe", SwitchDemoGppe.gppe)
            , ("SwitchDemoPeTest", SwitchDemoPe.dutMm)
            , ("TimeWb", TimeWb.timeWbMm)
            , ("TimeWbC", TimeWb.timeWbMmC)

@@ -194,11 +194,6 @@ library
     Bittide.Instances.Hitl.SwitchDemo.Driver
     Bittide.Instances.Hitl.SwitchDemo.MemoryMaps
     Bittide.Instances.Hitl.SwitchDemo.TopEntity
-    Bittide.Instances.Hitl.SwitchDemoGppe.BringUp
-    Bittide.Instances.Hitl.SwitchDemoGppe.Core
-    Bittide.Instances.Hitl.SwitchDemoGppe.Driver
-    Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps
-    Bittide.Instances.Hitl.SwitchDemoGppe.TopEntity
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
