@@ -9,7 +9,6 @@ SPDX-License-Identifier: Apache-2.0
 - [Introduction](sections/introduction.md)
 - [Architecture overview](sections/architecture.md)
 - [Hardware-in-the-Loop (HITL) Platform](sections/hitl-platform.md)
-- [Example bittide System](sections/example-system.md)
 - [Experiments](sections/experiments.md)
 - [Components](sections/components.md)
   - [Calendar](sections/components/calendar.md)
