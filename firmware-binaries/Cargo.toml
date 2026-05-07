@@ -8,8 +8,7 @@ incremental = false
 lto = true
 opt-level = "z"
 panic = "abort"
-split-debuginfo = "packed"
-strip = "symbols"
+split-debuginfo = "unpacked"
 
 [profile.release]
 codegen-units = 1
