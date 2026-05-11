@@ -17,6 +17,7 @@ workspace = true
 [dependencies]
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 riscv-rt = "0.11.0"
 ufmt = "0.2.0"
 

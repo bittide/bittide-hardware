@@ -33,9 +33,9 @@ macro_rules! impl_node_iterator {
                     INDICES
                         .into_iter()
                         .map(|idx| unsafe {
-                            let local_counter = u64::from_ne_bytes(self.buffer_unchecked(idx));
-                            let dna_lo = u64::from_ne_bytes(self.buffer_unchecked(idx + 1));
-                            let dna_hi = u64::from_ne_bytes(self.buffer_unchecked(idx + 2));
+                            let local_counter = u64::from_ne_bytes(self.buffer_unchecked(idx).into_inner());
+                            let dna_lo = u64::from_ne_bytes(self.buffer_unchecked(idx + 1).into_inner());
+                            let dna_hi = u64::from_ne_bytes(self.buffer_unchecked(idx + 2).into_inner());
                             NodeData {
                                 local_counter,
                                 dna: dna_lo as u128 | ((dna_hi as u128) << 64),
