@@ -6,6 +6,7 @@
 #![feature(sync_unsafe_cell)]
 
 use bittide_hal::{hals::switch_demo_pe_test::DeviceInstances, manual_additions::timer::Duration};
+use bittide_macros::{index, unsigned};
 use bittide_sys::{switch_demo_pe::NodeIterator, uart::log::LOGGER};
 use core::fmt::Write;
 use log::{info, LevelFilter};
@@ -45,36 +46,36 @@ fn main() -> ! {
 
     info!(
         "Local counter: 0x{:X}",
-        switch_pe_a.local_clock_cycle_counter()
+        switch_pe_a.local_clock_cycle_counter().into_inner()
     );
 
-    let first_transfer_start = 0x10000;
-    let second_transfer_start = 0x10100;
+    let first_transfer_start = unsigned!(0x10000, n = 64);
+    let second_transfer_start = unsigned!(0x10100, n = 64);
 
     // A only writes its own data
     switch_pe_a.set_write_start(first_transfer_start);
-    switch_pe_a.set_write_cycles(1);
+    switch_pe_a.set_write_cycles(index!(1, n = 3));
     // B reads data from A
     switch_pe_b.set_read_start(first_transfer_start);
-    switch_pe_b.set_read_cycles(1);
+    switch_pe_b.set_read_cycles(index!(1, n = 3));
     // B writes its own data and data received from A
     switch_pe_b.set_write_start(second_transfer_start);
-    switch_pe_b.set_write_cycles(2);
+    switch_pe_b.set_write_cycles(index!(2, n = 3));
     // A reads all data from B
     switch_pe_a.set_read_start(second_transfer_start);
-    switch_pe_a.set_read_cycles(2);
+    switch_pe_a.set_read_cycles(index!(2, n = 3));
 
     timer.wait(Duration::from_micros(600));
 
-    let rs_a = switch_pe_a.read_start();
-    let rc_a = switch_pe_a.read_cycles();
-    let rs_b = switch_pe_b.read_start();
-    let rc_b = switch_pe_b.read_cycles();
+    let rs_a = switch_pe_a.read_start().into_inner();
+    let rc_a = switch_pe_a.read_cycles().into_inner();
+    let rs_b = switch_pe_b.read_start().into_inner();
+    let rc_b = switch_pe_b.read_cycles().into_inner();
     info!("A: readStart: 0x{:X}, readCycles: 0x{:X}", rs_a, rc_a);
     info!("B: readStart: 0x{:X}, readCycles: 0x{:X}", rs_b, rc_b);
     info!(
         "Local counter: 0x{:X}",
-        switch_pe_a.local_clock_cycle_counter()
+        switch_pe_a.local_clock_cycle_counter().into_inner()
     );
 
     // Write the buffer of A over UART
@@ -87,7 +88,7 @@ fn main() -> ! {
 
     info!(
         "Local counter: 0x{:X}",
-        switch_pe_a.local_clock_cycle_counter()
+        switch_pe_a.local_clock_cycle_counter().into_inner()
     );
 
     // Write the buffer of B over UART
@@ -100,7 +101,7 @@ fn main() -> ! {
 
     info!(
         "Local counter: 0x{:X}",
-        switch_pe_a.local_clock_cycle_counter()
+        switch_pe_a.local_clock_cycle_counter().into_inner()
     );
 
     writeln!(uart, "Finished").unwrap();
