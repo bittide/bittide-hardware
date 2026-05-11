@@ -2,6 +2,19 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# Note [Use of `cabal list-bin`]
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Several steps below resolve a binary via `$(cabal list-bin pkg:target)` instead of
+# invoking it through `cabal run` (or via the `nix/bin/shake` wrapper, which itself
+# calls `cabal run shake`). The reason is that `cabal run` triggers cabal's planner,
+# which compares the freshly-elaborated `ElaboratedConfiguredPackage` against the one
+# stored in `dist-newstyle/build/.../cache/config`. That stored value records the
+# full `$PATH` (as `extra-prog-path`). Jobs that run without `--ignore-environment`
+# (because `with_vivado.sh` needs basic Ubuntu in `$PATH`) end up with a different
+# `$PATH` than the build job that produced the cache, so the planner reports
+# "configuration changed" for every package and cascades into recompiles.
+# `list-bin` only resolves the path on disk, so it skips the planner entirely.
+
 name: CI
 
 # XXX: What we'd really like is run on every pull request / pull request change,
@@ -32,6 +45,20 @@ env:
   SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
   CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
   CARGO_INCREMENTAL: 0
+
+  # See Note [Use of `cabal list-bin`]
+  bittide_cpus_datadir: "${{ github.workspace }}/bittide-cpus/"
+  bittide_datadir: "${{ github.workspace }}/bittide/"
+  bittide_experiments_datadir: "${{ github.workspace }}/bittide-experiments/"
+  bittide_extra_datadir: "${{ github.workspace }}/bittide-extra/"
+  bittide_instances_datadir: "${{ github.workspace }}/bittide-instances/"
+  bittide_shake_datadir: "${{ github.workspace }}/bittide-shake/"
+  bittide_tools_datadir: "${{ github.workspace }}/bittide-tools/"
+  clash_bitpackc_datadir: "${{ github.workspace }}/clash-bitpackc/"
+  clash_protocols_memmap_datadir: "${{ github.workspace }}/clash-protocols-memmap/"
+  gdb_hs_datadir: "${{ github.workspace }}/gdb-hs/"
+  ghc_typelits_extra_lemmas_datadir: "${{ github.workspace }}/ghc-typelits-extra-lemmas/"
+  vivado_hs_datadir: "${{ github.workspace }}/vivado-hs/"
 
   # Suppress warnings related to locals
   LC_ALL: C
@@ -347,9 +374,10 @@ jobs:
       - name: Run ${{ matrix.test_suite }} (with Vivado)
         if: ${{ matrix.with_vivado }}
         run: |
-          # We need to run with '-j2', because Vivado takes up a lot of memory
+          # See Note [Use of `cabal list-bin`].
+          # We need to run with '-j2', because Vivado takes up a lot of memory.
           .github/scripts/with_vivado.sh \
-            cabal run ${{ matrix.package }}:${{ matrix.test_suite }} -- -j2
+            "$(cabal list-bin ${{ matrix.package }}:${{ matrix.test_suite }})" -j2
 
       - name: Run ${{ matrix.test_suite }}
         if: ${{ ! matrix.with_vivado }}
@@ -482,11 +510,21 @@ jobs:
             cp .github/synthesis/main.json checks.json
           fi
 
-      - name: Set synth matrix
-        id: set-synth
+      - name: Set HDL matrix
+        id: set-hdl
         run: |
           cat checks.json
           echo "matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Set Vivado matrix
+        id: set-vivado
+        run: |
+          # All rows whose stage is something Vivado actually has to do (i.e.
+          # not pure HDL generation). The 'bittide-instances-vivado' job runs
+          # only over these rows.
+          jq '[.[] | select(.stage!="hdl")]' checks.json > checks.vivado.json
+          cat checks.vivado.json
+          echo "matrix=$(cat checks.vivado.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
 
       - name: Set HITL matrix
         id: set-hitl
@@ -503,29 +541,30 @@ jobs:
           echo "matrix=$(cat checks.clock-report.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
 
     outputs:
-      synth: ${{ steps.set-synth.outputs.matrix }}
+      hdl: ${{ steps.set-hdl.outputs.matrix }}
+      vivado: ${{ steps.set-vivado.outputs.matrix }}
       hitl: ${{ steps.set-hitl.outputs.matrix }}
       clock-report: ${{ steps.set-clock-report.outputs.matrix }}
 
+  # HDL generation. Mirrors the Build Haskell+Rust job's `--ignore-environment`
+  # discipline so the cabal store / dist-newstyle stay consistent.
+  # See Note [Use of `cabal list-bin`].
   bittide-instances-hdl:
-    name: synth
+    name: hdl
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        # We leave out '--ignore-environment', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0}
+        shell: git-nix-shell {0} --ignore-environment
     needs: [build, bittide-instances-matrices]
 
     strategy:
       matrix:
-        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.synth) }}
+        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.hdl) }}
       fail-fast: false
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-20
-      volumes:
-        - /opt/tools:/opt/tools
-      options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -559,6 +598,70 @@ jobs:
           shake ${{ matrix.target.top }}:hdl
           cache push clash --prefix="${{ matrix.target.top }}"
 
+      - name: Create non-empty vivado directory
+        if: ${{ matrix.target.stage == 'hdl' }}
+        run: |
+          # Workaround for https://github.com/bittide/bittide-hardware/issues/523
+          mkdir -p _build/vivado
+          touch _build/vivado/workaround-issue-523
+
+      # For stage=hdl rows, no Vivado job runs after this, so we must push
+      # build-post-synth here so 'artifacts' has something to fetch. For other stages,
+      # the Vivado job pushes build-post-synth itself, so skip here.
+      - name: cache push build-post-synth (hdl-only rows)
+        if: ${{ matrix.target.stage == 'hdl' }}
+        run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
+
+      - name: Archive build artifacts (if anything failed)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: _build-${{ matrix.target.top }}-failure-hdl
+          path: |
+            _build/clash
+
+  # Vivado synthesis / place-and-route / bitstream. Runs without
+  # `--ignore-environment` because `with_vivado.sh` needs basic Ubuntu in $PATH.
+  # See Note [Use of `cabal list-bin`].
+  bittide-instances-vivado:
+    name: vivado
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        # We leave out '--ignore-environment', as 'with_vivado.sh' relies on basic Ubuntu
+        shell: git-nix-shell {0}
+    needs: [bittide-instances-hdl, bittide-instances-matrices]
+
+    strategy:
+      matrix:
+        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.vivado) }}
+      fail-fast: false
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-04-20
+      volumes:
+        - /opt/tools:/opt/tools
+      options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set CI flags
+        run: |
+          .github/scripts/set_ci_flags.sh
+
+      - name: Pull HDL artifacts (clash cache)
+        run: cache pull clash --prefix="${{ matrix.target.top }}"
+
+      # We need the cabal store / dist-newstyle so that `cabal list-bin` can resolve
+      # the `shake` binary path; see Note [Use of `cabal list-bin`]. We also need
+      # cargo because shake's `:test` rule shells out to `cargo build` for the
+      # firmware binaries.
+      - run: cache pull cabal
+      - run: cache pull cargo
+      - run: cache pull build
+
       - name: Determine whether synthesis should run
         id: check_synthesis_status
         run: |
@@ -577,24 +680,12 @@ jobs:
             exit 1
           fi
 
-          if [[ "${target}" == "hdl" ]]; then
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           cache pull synth --prefix="${{ matrix.target.top }}-${target}" --missing-ok --write-cache-found
           if [[ $(cat cache_found) == 0 ]]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Pull caches (if synthesis should run and caches not already pulled)
-        if: ${{ steps.check_synthesis_status.outputs.should_run == 'true' && !(steps.check_hdl_gen_status.outputs.should_run == 'true')  }}
-        run: |
-          cache pull cabal
-          cache pull cargo
-          cache pull build
 
       - name: Synthesis
         if: ${{ steps.check_synthesis_status.outputs.should_run == 'true'  }}
@@ -613,18 +704,13 @@ jobs:
           if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
             mkdir -p "${VIVADO_HS_LOG_DIR}"
           fi
+          # See Note [Use of `cabal list-bin`].
+          shake_bin="$(cabal list-bin bittide-shake:shake)"
           .github/scripts/with_vivado.sh \
-            shake ${{ matrix.target.top }}:"${target}"
+            "${shake_bin}" ${{ matrix.target.top }}:"${target}"
 
           # Pushing synthesis results to cache
           cache push synth --prefix="${{ matrix.target.top }}-${target}"
-
-      - name: Create non-empty vivado directory
-        if: ${{ matrix.target.stage == 'hdl' }}
-        run: |
-          # Workaround for https://github.com/bittide/bittide-hardware/issues/523
-          mkdir -p _build/vivado
-          touch _build/vivado/workaround-issue-523
 
       - name: cache push build-post-synth
         run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
@@ -633,7 +719,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: _build-${{ matrix.target.top }}-failure
+          name: _build-${{ matrix.target.top }}-failure-vivado
           path: |
             _build/clash
             _build/vivado
@@ -642,7 +728,7 @@ jobs:
   bittide-instances-publish-artifacts:
     name: artifacts
     runs-on: [self-hosted, compute]
-    needs: [bittide-instances-hdl, bittide-instances-matrices]
+    needs: [bittide-instances-hdl, bittide-instances-vivado, bittide-instances-matrices]
     defaults:
       run:
         shell: git-nix-shell {0} --ignore-environment
@@ -653,7 +739,7 @@ jobs:
 
     strategy:
       matrix:
-        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.synth) }}
+        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.hdl) }}
       fail-fast: false
 
     steps:
@@ -683,7 +769,7 @@ jobs:
       run:
         # We leave out '--ignore-environment', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
-    needs: [bittide-instances-hdl, bittide-instances-matrices]
+    needs: [bittide-instances-vivado, bittide-instances-matrices]
 
     strategy:
       matrix:
@@ -730,8 +816,10 @@ jobs:
           if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
             mkdir -p "${VIVADO_HS_LOG_DIR}"
           fi
+          # See Note [Use of `cabal list-bin`].
+          shake_bin="$(cabal list-bin bittide-shake:shake)"
           .github/scripts/with_vivado.sh \
-            shake ${{ matrix.target.top }}:test
+            "${shake_bin}" ${{ matrix.target.top }}:test
 
       - name: Archive HITL data
         if: ${{ !cancelled() }}
@@ -801,6 +889,7 @@ jobs:
         bittide-instances-hdl,
         bittide-instances-matrices,
         bittide-instances-publish-artifacts,
+        bittide-instances-vivado,
         build,
         cachix,
         firmware-limit-checks,
