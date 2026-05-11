@@ -13,12 +13,10 @@ impl GatherUnit {
     /// the `GatherUnit` memory.
     pub fn write_slice(&self, src: &[BitVector!(64)], offset: usize) {
         assert!(src.len() + offset <= Self::GATHER_MEMORY_LEN);
-        let mut off = offset;
-        for &val in src {
+        for (off, &val) in (offset..).zip(src.iter()) {
             unsafe {
                 self.set_gather_memory_unchecked(off, val);
             }
-            off += 1;
         }
     }
 
@@ -41,12 +39,10 @@ impl ScatterUnit {
     ///  of the `ScatterUnit`.
     pub fn read_slice(&self, dst: &mut [BitVector!(64)], offset: usize) {
         assert!(dst.len() + offset <= Self::SCATTER_MEMORY_LEN);
-        let mut off = offset;
-        for val in dst {
+        for (off, val) in (offset..).zip(dst.iter_mut()) {
             unsafe {
                 *val = self.scatter_memory_unchecked(off);
             }
-            off += 1;
         }
     }
 
