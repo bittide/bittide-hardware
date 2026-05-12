@@ -122,11 +122,13 @@ driverFunc _name targets = do
             do
               putStrLn "Testing whether breakpoints work"
               -- the hyphen in the binary names becomes an underscore because reasons
-              Gdb.setBreakpoints gdb ["vexriscv_hello::test_success"]
+              Gdb.setTempBreakpoint
+                gdb
+                "vexriscv_hello::test_success"
+                ["echo 'breakpoint reached'", "continue"]
               Gdb.continue gdb
               Gdb.echo gdb "breakpoint reached"
               Gdb.runCommand gdb "disable 1"
-              Gdb.continue gdb
 
             -- This is the last thing that will print when the FPGA has been programmed
             -- and starts entering UART-echo mode.

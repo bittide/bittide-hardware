@@ -9,19 +9,23 @@ module Gdb.Commands.Basic where
 import Prelude
 
 import Control.Concurrent (withMVar)
+import Control.Monad (void)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Numeric (showHex)
+import Project.Handle (readUntil)
 import System.IO (hPutStrLn)
 import System.Posix (sigINT, signalProcess)
 import System.Process.Internals (
   ProcessHandle (ProcessHandle, phandle),
   ProcessHandle__ (ClosedHandle, OpenExtHandle, OpenHandle),
  )
+import "extra" Data.List.Extra (trim)
 
 import Gdb.Internal
 
 import qualified Data.List as L
+import qualified System.Timeout.Extra as T
 
 -- | Make GDB echo a string to its output
 echo :: (HasCallStack) => Gdb -> String -> IO ()
@@ -120,9 +124,55 @@ setTimeout gdb Nothing =
 setTimeout gdb (Just (show -> time)) = do
   runCommand gdb ("set remotetimeout " <> time)
 
+-- | Sets a single breakpoint with a 'command ... end' section
+setBreakpoint :: (HasCallStack) => Gdb -> String -> [String] -> IO ()
+setBreakpoint gdb bkpt [] = runCommand gdb ("break " <> bkpt)
+setBreakpoint gdb bkpt commands = do
+  hPutStrLn gdb.stdin [i|echo #{magic}|]
+  hPutStrLn gdb.stdin [i|break #{trim bkpt}|]
+  hPutStrLn gdb.stdin "commands"
+  mapM_ (hPutStrLn gdb.stdin . trim) commands
+  hPutStrLn gdb.stdin "end"
+  hPutStrLn gdb.stdin [i|echo #{magic}|]
+
+  void $
+    T.tryWithTimeout T.NoPrintActionTime ("Wait for magic (start)") 15_000_000 $
+      readUntil gdb.stdout [i|#{magic}(gdb) |]
+
+  void $
+    T.tryWithTimeout T.NoPrintActionTime ("Wait for magic (end)") 15_000_000 $
+      readUntil gdb.stdout [i|(gdb) #{magic}|]
+
+  return ()
+
 -- | Sets breakpoints on functions in gdb.
 setBreakpoints :: (HasCallStack) => Gdb -> [String] -> IO ()
-setBreakpoints gdb = runCommands gdb . fmap ("break " <>)
+setBreakpoints gdb = mapM_ (flip (setBreakpoint gdb) [])
+
+-- | Sets a single breakpoint with a 'command ... end' section
+setTempBreakpoint :: (HasCallStack) => Gdb -> String -> [String] -> IO ()
+setTempBreakpoint gdb bkpt [] = runCommand gdb ("tbreak " <> bkpt)
+setTempBreakpoint gdb bkpt commands = do
+  hPutStrLn gdb.stdin [i|echo #{magic}|]
+  hPutStrLn gdb.stdin [i|tbreak #{trim bkpt}|]
+  hPutStrLn gdb.stdin "commands"
+  mapM_ (hPutStrLn gdb.stdin . trim) commands
+  hPutStrLn gdb.stdin "end"
+  hPutStrLn gdb.stdin [i|echo #{magic}|]
+
+  void $
+    T.tryWithTimeout T.NoPrintActionTime ("Wait for magic (start)") 15_000_000 $
+      readUntil gdb.stdout [i|#{magic}(gdb) |]
+
+  void $
+    T.tryWithTimeout T.NoPrintActionTime ("Wait for magic (end)") 15_000_000 $
+      readUntil gdb.stdout [i|(gdb) #{magic}|]
+
+  return ()
+
+-- | Sets breakpoints on functions in gdb.
+setTempBreakpoints :: (HasCallStack) => Gdb -> [String] -> IO ()
+setTempBreakpoints gdb = mapM_ (flip (setTempBreakpoint gdb) [])
 
 {- | Sets a hook to run when a breakpoint is hit.
 The hook will print the register values, backtrace, and quit gdb.
