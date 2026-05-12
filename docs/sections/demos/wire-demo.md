@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # Wire Demo
-The [switch demo](switch-demo-asic.md) shows that we could use the bittide mechanism to thread a path through an 8-node network, all statically scheduled. To simplify things, we programmed a static calendar and used a calculator to produce the exact clock cycles at which the PE should send and receive data. For more details, see [this presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y/edit?usp=sharing).
+The [switch demo](switch-demo.md) shows that we could use the bittide mechanism to thread a path through an 8-node network, all statically scheduled. To simplify things, we programmed a static calendar and used a calculator to produce the exact clock cycles at which the PE should send and receive data. For more details, see [this presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y/edit?usp=sharing).
 
 While talking to potential users of bittide we've found that they're not interested in this switching behavior (yet). Instead, they're more interested in the "wire" behavior of bittide and would simply like to be kept away from anything else.
 

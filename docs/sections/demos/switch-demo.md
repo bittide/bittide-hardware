@@ -4,13 +4,13 @@ SPDX-FileCopyrightText: 2025 Google LLC
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Switch Demo with ASIC processing element
+# Switch Demo
 
 This chapter describes the specific hardware setup used to perform a demonstration of the
 bittide switch.
 
 ## Architecture
-{{#drawio path="diagrams/switchDemoAsic.drawio" page=2}}
+{{#drawio path="diagrams/switchDemo.drawio" page=2}}
 
 ### Initialization sequence
 1. "Boot" CPU
