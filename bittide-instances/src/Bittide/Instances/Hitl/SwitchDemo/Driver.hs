@@ -84,30 +84,25 @@ muSwitchDemoPeBuffer =
        lift val
    )
 
-sampleMemoryBase :: Integer
-sampleMemoryBase =
-  $( do
-       val <- TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
-       lift val
-   )
-
-dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
-dumpCcSamples hitlDir ccConf ccGdbs = do
+dumpCcSamples :: (HasCallStack) => MemoryMap -> FilePath -> CcConf Topology -> [Gdb] -> IO ()
+dumpCcSamples mm hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
-  nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
+  sampleMemoryAddr <- expectRight $ getPathAddress @Integer mm ["0", "SampleMemory", "data"]
+
+  nSamples <- liftIO $ zipWithConcurrently (go sampleMemoryAddr) ccGdbs ccSamplesPaths
   putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
   saveCcConfig hitlDir ccConf
   putStrLn [i|Wrote configs and samples to: #{hitlDir}|]
  where
-  go :: (HasCallStack) => Gdb -> FilePath -> IO Word
-  go gdb dumpPath = do
-    nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb sampleMemoryBase
+  go :: (HasCallStack) => Integer -> Gdb -> FilePath -> IO Word
+  go addr gdb dumpPath = do
+    nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb addr
 
     let
       bytesPerSample = 13
       bytesPerWord = 4
 
-      dumpStart = sampleMemoryBase + bytesPerWord
+      dumpStart = addr + bytesPerWord
       dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * bytesPerSample
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
@@ -338,7 +333,7 @@ driver testName targets = do
             $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muTapInfos targets
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          let goDumpCcSamples = dumpCcSamples MemoryMaps.cc hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
 

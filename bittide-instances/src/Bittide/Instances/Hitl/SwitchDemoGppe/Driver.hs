@@ -31,6 +31,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
+import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as MemoryMaps
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
 import qualified Gdb
@@ -114,7 +115,7 @@ driver testName targets = do
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gppeGdbs
 
           brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+            let goDumpCcSamples = dumpCcSamples MemoryMaps.cc hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue muGdbs
 
