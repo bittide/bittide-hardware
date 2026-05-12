@@ -19,7 +19,7 @@ import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
-import Bittide.Wishbone (TimeCmd (Capture))
+import Bittide.Instances.Hitl.WireDemo.Driver (readCurrentTime, readHardwareUgns)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
@@ -33,7 +33,6 @@ import Numeric (showHex)
 import Project.Chan
 import Project.FilePath
 import Project.Handle (assertEither, expectRight)
-import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
@@ -83,48 +82,6 @@ muSwitchDemoPeBuffer =
          TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
        lift val
    )
-
-{- | Read the current time in clock cycles from the given target/device using the given
-GDB connection. Requires the CPU to be halted.
--}
-readCurrentTime :: (HasCallStack) => MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
-readCurrentTime mm (_, d) gdb = do
-  putStrLn $ "Getting current time from device " <> d.deviceId
-  commandAddress <- expectRight $ getPathAddress mm ["0", "Timer", "command"]
-  scratchAddress <- expectRight $ getPathAddress mm ["0", "Timer", "scratchpad"]
-  Gdb.writeLe gdb commandAddress Capture
-  Gdb.readLe gdb scratchAddress
-
-{- | Read the hardware UGNs of the given device using the given GDB connection. Requires
-the CPU to be halted.
--}
-readHardwareUgns :: MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
-readHardwareUgns mm (_, d) gdb = do
-  let
-    captureUgnPrefixed :: Int -> String -> [String]
-    captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
-
-    readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
-    readUgnMmio linkNr = do
-      let getUgnRegister = expectRight . getPathAddress mm . captureUgnPrefixed linkNr
-      counterAddresses <- mapM getUgnRegister ["local_counter", "remote_counter"]
-      [localCounter, remoteCounter] <- mapM (Gdb.readLe gdb) counterAddresses
-      delta <- Gdb.readLe gdb =<< getUgnRegister "elastic_buffer_delta"
-      pure (localCounter, remoteCounter, delta)
-
-    -- Adjust the local counter for the frames added/removed from the elastic
-    -- buffer after capturing the UGN. Leaves the remote counter untouched.
-    adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 32) -> (Unsigned 64, Unsigned 64)
-    adjustLocalCounter (localCounter, remoteCounter, delta) =
-      (addSigned localCounter delta, remoteCounter)
-     where
-      addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
-      addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
-
-  liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-  ugnTriples <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
-  liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
-  pure $ adjustLocalCounter <$> ugnTriples
 
 driver ::
   (HasCallStack) =>
