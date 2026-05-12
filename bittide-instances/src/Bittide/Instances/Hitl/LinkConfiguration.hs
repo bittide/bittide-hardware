@@ -267,7 +267,7 @@ tests =
   HitlTestGroup
     { topEntity = 'linkConfigurationTest
     , targetXdcs =
-        [ "switchDemoTest.xdc"
+        [ "wireDemoTest.xdc"
         , "si539x" </> "spi.xdc"
         ]
     , externalHdl = []
