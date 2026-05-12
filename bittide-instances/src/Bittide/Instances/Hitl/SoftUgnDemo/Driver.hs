@@ -13,10 +13,9 @@ import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.SwitchDemo.Driver (
   dumpCcSamples,
   initGdb,
-  parseBootTapInfo,
-  parseTapInfo,
  )
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Bittide.Instances.Hitl.Utils.Ugn
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurrently_)

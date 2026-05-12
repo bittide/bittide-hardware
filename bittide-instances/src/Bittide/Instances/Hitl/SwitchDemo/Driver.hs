@@ -16,6 +16,7 @@ import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
+import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
@@ -127,42 +128,6 @@ initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
   Gdb.setTimeout gdb Nothing
   Gdb.runCommand gdb "echo connected to target device"
   pure ()
-
-{- | Parse the tap info from OpenOCD log produced during startup. This function
-expects to find multiple JTAG IDs and exactly one GDB port. This is typically
-paired with 'vexriscv_boot_init.tcl' which only creates a target for the
-last TAP (the boot CPU).
--}
-parseBootTapInfo :: (HasCallStack) => Ocd.OcdInitData -> Ocd.TapInfo
-parseBootTapInfo initOcd =
-  case (L.sortOn snd <$> Ocd.parseJtagIds initOcd.log, Ocd.parseGdbPorts initOcd.log) of
-    (Left err, _) -> error $ "Failed to parse JTAG IDs from OpenOCD log: " <> err
-    (_, Left err) -> error $ "Failed to parse GDB ports from OpenOCD log: " <> err
-    (Right [], Right _) -> error "No JTAG IDs found in OpenOCD log!"
-    (Right _, Right (_ : _ : _)) -> error "Multiple GDB ports found in OpenOCD log!"
-    (Right _, Right []) -> error "No GDB ports found in OpenOCD log!"
-    (Right ((jtagTapId, jtagId) : _), Right [(gdbTapId, gdbPort)])
-      | jtagTapId /= gdbTapId ->
-          -- This can happen for a various number of reasons. Maybe check whether
-          -- all tap ids are present, that there is only one GDB server, and that
-          -- that GDB server is tied to a TAP ID that's equal to the TAP ID of the
-          -- tap associated with the lowest JTAG IDCODE.
-          error
-            [i|Expected first JTAG TAP ID, ordered by associated IDCODE, to be equal to the JTAG TAP ID of the only GDB port found, but: #{jtagTapId} /= #{gdbTapId}|]
-      | otherwise -> Ocd.TapInfo{tapId = jtagTapId, jtagId, gdbPort}
-
-{- | Parse the tap info from OpenOCD log produced during startup. This function
-expects to find all taps given to it. For each tap, it expects to find exactly one
-GDB port.
--}
-parseTapInfo :: (HasCallStack) => [Ocd.JtagId] -> Ocd.OcdInitData -> [Ocd.TapInfo]
-parseTapInfo expectedJtagIds initOcd =
-  case Ocd.parseJtagIdsAndGdbPorts initOcd.log of
-    Left err -> error $ "Failed to parse TAP info from OpenOCD log: " <> err
-    Right tapInfos
-      | ((.jtagId) <$> tapInfos) /= expectedJtagIds ->
-          error [i|Parsed JTAG IDs do not match expected IDs!|]
-      | otherwise -> tapInfos
 
 {- | Read the current time in clock cycles from the given target/device using the given
 GDB connection. Requires the CPU to be halted.
