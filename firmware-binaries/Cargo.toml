@@ -47,10 +47,10 @@ members = [
 
   "demos/clock-control",
   "demos/soft-ugn-mu",
-  "demos/switch-demo1-boot",
   "demos/switch-demo1-mu",
-  "demos/switch-demo2-mu",
   "demos/switch-demo2-gppe",
+  "demos/switch-demo2-mu",
+  "demos/wire-demo-boot",
   "demos/wire-demo-mu",
 ]
 resolver = "2"

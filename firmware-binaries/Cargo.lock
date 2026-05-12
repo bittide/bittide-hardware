@@ -773,18 +773,6 @@ version = "0.1.0"
 source = "git+https://github.com/QBayLogic/subst_macros.git?rev=1273588cd7b854b8b6294cf54c7e238f77778ac4#1273588cd7b854b8b6294cf54c7e238f77778ac4"
 
 [[package]]
-name = "switch-demo1-boot"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-macros",
- "bittide-sys",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
-
-[[package]]
 name = "switch-demo1-mu"
 version = "0.1.0"
 dependencies = [
@@ -991,6 +979,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "wire-demo-boot"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+ "ufmt",
 ]
 
 [[package]]

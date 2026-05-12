@@ -105,7 +105,7 @@ component over UART. The behavior of the application specific processing element
 explained in [Application specific processing element](###application-specific-processing-element).
 
 Tests are configured to run the following binaries on the system's CPUs:
-- Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
+- Boot CPU: `wire-demo-boot` (`firmware-binaries/demos/wire-demo-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `switch-demo1-mu` (`firmware-binaries/demos/switch-demo1-mu`)
 

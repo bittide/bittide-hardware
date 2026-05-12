@@ -110,7 +110,7 @@ the elastic buffers and print out the UGNs captured using the hardware UGN captu
 The host driver then calculates the a schedule to thread a path through all nodes and programs all PE Configs and programmable muxes. After waiting for a static time the host driver reads the `written_data` register in each PE Config device and verifies it is equal to the XOR of all device DNAs up to that node. The last node should therefore have stored the XOR of all device DNAs.
 
 Tests are configured to run the following binaries on the system's CPUs:
-- Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
+- Boot CPU: `wire-demo-boot` (`firmware-binaries/demos/wire-demo-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `wire-demo-mu` (`firmware-binaries/demos/wrie-demo-mu`)
 

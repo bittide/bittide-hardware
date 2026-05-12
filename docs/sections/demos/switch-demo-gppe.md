@@ -99,7 +99,7 @@ component over UART. Finally, the general purpose processing element has its
 reset deasserted. It simply prints "Hello!" over UART.
 
 Tests are configured to run the following binaries on the system's CPUs:
-- Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
+- Boot CPU: `wire-demo-boot` (`firmware-binaries/demos/wire-demo-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `switch-demo2-mu` (`firmware-binaries/demos/switch-demo2-mu`)
 - General purpose processing element: `switch-demo2-gppe` (`firmware-binaries/demos/switch-demo2-gppe`)
