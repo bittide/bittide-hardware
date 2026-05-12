@@ -85,8 +85,7 @@ In this absolute schedule the links are FPGA indexed (not link indexed) and all
 Next, this absolute schedule is converted to a 'relative' schedule by:
   - Converting 'firstBCycle' to account for the counter mapping between the nodes
   - Converting FPGA indexed links to link indices based on the FPGA setup
-This process should be done in a chain-like manner, similar to the calculator for the
-switch demo.
+This process should be done in a chain-like manner.
 -}
 generateSchedule ::
   forall nodeCount.

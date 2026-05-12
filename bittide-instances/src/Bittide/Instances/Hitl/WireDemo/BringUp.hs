@@ -74,9 +74,8 @@ bootPeConfig =
     , includeIlaWb = False
     }
 
-{- | See 'Bittide.Instances.Hitl.SwitchDemo.BringUp.bringUp'
-
-TODO: Deduplicate
+{- | See https://github.com/bittide/bittide-hardware/issues/1106#issue-3693588346
+for information on reset logic.
 -}
 bringUp ::
   "REFCLK" ::: Clock Basic125 ->

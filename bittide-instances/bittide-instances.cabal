@@ -189,11 +189,6 @@ library
     Bittide.Instances.Hitl.SoftUgnDemo.Driver
     Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps
     Bittide.Instances.Hitl.SoftUgnDemo.TopEntity
-    Bittide.Instances.Hitl.SwitchDemo.BringUp
-    Bittide.Instances.Hitl.SwitchDemo.Core
-    Bittide.Instances.Hitl.SwitchDemo.Driver
-    Bittide.Instances.Hitl.SwitchDemo.MemoryMaps
-    Bittide.Instances.Hitl.SwitchDemo.TopEntity
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests

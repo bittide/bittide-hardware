@@ -254,13 +254,6 @@ impl_calendar_interface! {
 }
 
 impl_calendar_interface! {
-    cal: crate::hals::switch_demo_mu::devices::Calendar,
-    metacycle: Unsigned!(32),
-    index: Index!(7),
-    entry: crate::types::ValidEntry_12<[Index!(9); 8]>,
-}
-
-impl_calendar_interface! {
     cal: crate::hals::soft_ugn_demo_mu::devices::Calendar,
     metacycle: Unsigned!(32),
     index: Index!(4000),

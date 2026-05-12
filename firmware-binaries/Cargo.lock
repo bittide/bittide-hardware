@@ -773,17 +773,6 @@ version = "0.1.0"
 source = "git+https://github.com/QBayLogic/subst_macros.git?rev=1273588cd7b854b8b6294cf54c7e238f77778ac4#1273588cd7b854b8b6294cf54c7e238f77778ac4"
 
 [[package]]
-name = "switch-demo1-mu"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-sys",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
-
-[[package]]
 name = "switch_calendar_test"
 version = "0.1.0"
 dependencies = [

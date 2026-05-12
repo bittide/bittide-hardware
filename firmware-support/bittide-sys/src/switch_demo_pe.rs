@@ -48,6 +48,5 @@ macro_rules! impl_node_iterator {
 }
 
 impl_node_iterator! {
-    bittide_hal::hals::switch_demo_mu::devices::SwitchDemoPe,
-    bittide_hal::hals::switch_demo_pe_test::devices::SwitchDemoPe,
+    bittide_hal::shared_devices::switch_demo_pe::SwitchDemoPe,
 }
