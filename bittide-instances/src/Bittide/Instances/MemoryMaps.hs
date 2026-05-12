@@ -34,7 +34,6 @@ import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.RingBuffer as RingBuffer
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
-import qualified Bittide.Instances.Tests.SwitchDemoProcessingElement as SwitchDemoPe
 import qualified Bittide.Instances.Tests.TimeWb as TimeWb
 import qualified Bittide.Instances.Tests.Watchdog as Watchdog
 import qualified Bittide.Instances.Tests.WbToDf as WbToDf
@@ -65,7 +64,6 @@ $( do
            , ("SoftUgnDemoMu", SoftUgnDemo.mu)
            , ("SoftUgnDemoCc", SoftUgnDemo.cc)
            , ("SwitchC", SwitchCalendar.memoryMap)
-           , ("SwitchDemoPeTest", SwitchDemoPe.dutMm)
            , ("TimeWb", TimeWb.timeWbMm)
            , ("TimeWbC", TimeWb.timeWbMmC)
            , ("WatchdogTest", Watchdog.dutMm)

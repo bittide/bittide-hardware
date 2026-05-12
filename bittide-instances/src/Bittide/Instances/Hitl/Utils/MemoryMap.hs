@@ -45,8 +45,8 @@ bindLeft a fn = case a of
 
 A "path" is a list of 'String's, where each item in the list is an interconnect
 number, device name, or register name. Paths may end in a device name or register
-name, but should not end with an interconnect number. For example, @["0", \"SwitchDemoPE\",
-"buffer"]@ is a path that ends in a register name, and @["0", \"CaptureUgn0\"]@ is
+name, but should not end with an interconnect number. For example, @["0", \"Timer\",
+"command"]@ is a path that ends in a register name, and @["0", \"CaptureUgn0\"]@ is
 a path that ends in a device name.
 
 Caveat(s):

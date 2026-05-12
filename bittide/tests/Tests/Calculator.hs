@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedLists #-}
 
-module Tests.SwitchDemoProcessingElement.Calculator where
+module Tests.Calculator where
 
 import Clash.Prelude hiding (indices)
 
@@ -14,7 +14,6 @@ import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Test.Tasty.TH (testGroupGenerator)
 
 type NumNodes = 3
-type SdpeConfig = DefaultSdpeConfig NumNodes
 
 {- FOURMOLU_DISABLE -} -- data / tabular format
 parts :: Vec NumNodes (Vec (NumNodes - 1) (Int, Int))
@@ -44,25 +43,13 @@ case_toFpgaIndexed = toFpgaIndexed fpgaSetup indices @?= expected
  where
   expected = [(1, 0), (2, 1)] :> [(2, 2), (0, 3)] :> [(0, 4), (1, 5)] :> Nil
 
+type InternalSwitchDelay = 4
+
 case_toCounterMap :: Assertion
 case_toCounterMap =
   toCounterMap (SNat @InternalSwitchDelay) (toFpgaIndexed fpgaSetup parts) @?= expected
  where
   expected = [(1, 2), (2, 7)] :> [(0, 5), (2, 1)] :> [(0, 3), (1, 6)] :> Nil
-
-case_chainConfiguration :: Assertion
-case_chainConfiguration = config @?= expected
- where
-  configMeta :: Vec NumNodes (DefaultSdpeMetaPeConfig Int NumNodes 3)
-  configMeta = fullChainConfiguration defaultSdpeCalcConfig fpgaSetup parts 100
-  config :: Vec NumNodes (CyclePeConfig Int (Index (NumNodes + 1)))
-  config = metaPeConfigToCyclePeConfig (natToNum @(CalMetacycleLength SdpeConfig)) <$> configMeta
-
-  expected = peConfig0 :> peConfig1 :> peConfig2 :> Nil
-
-  peConfig0 = CyclePeConfig{startWriteAt = 116, writeForN = 1, startReadAt = 154, readForN = 3}
-  peConfig1 = CyclePeConfig{startWriteAt = 135, writeForN = 2, startReadAt = 118, readForN = 1}
-  peConfig2 = CyclePeConfig{startWriteAt = 151, writeForN = 3, startReadAt = 136, readForN = 2}
 
 tests :: TestTree
 tests = $(testGroupGenerator)

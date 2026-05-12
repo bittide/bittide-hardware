@@ -34,7 +34,6 @@ members = [
   "sim-tests/nested_interconnect_test",
   "sim-tests/wb_to_df_test",
   "sim-tests/scatter_gather_test",
-  "sim-tests/switch_demo_pe_test",
   "sim-tests/switch_calendar_test",
   "sim-tests/time_self_test",
   "sim-tests/watchdog_test",

@@ -786,19 +786,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "switch_demo_pe_test"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-macros",
- "bittide-sys",
- "log",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
-
-[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -230,7 +230,6 @@ library
     Bittide.Instances.Tests.RingBuffer
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
-    Bittide.Instances.Tests.SwitchDemoProcessingElement
     Bittide.Instances.Tests.TimeWb
     Bittide.Instances.Tests.Watchdog
     Bittide.Instances.Tests.WbToDf
@@ -328,7 +327,6 @@ test-suite unittests
     Wishbone.RingBuffer
     Wishbone.ScatterGather
     Wishbone.SwitchCalendar
-    Wishbone.SwitchDemoProcessingElement
     Wishbone.Time
     Wishbone.Watchdog
 
