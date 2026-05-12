@@ -16,7 +16,6 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, demoRigInfo, fpgaSetup)
 import Bittide.Instances.Hitl.SwitchDemo.Driver (
   dumpCcSamples,
   initGdb,
-  initPicocom,
   parseBootTapInfo,
   parseTapInfo,
   readCurrentTime,
@@ -24,6 +23,7 @@ import Bittide.Instances.Hitl.SwitchDemo.Driver (
  )
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)

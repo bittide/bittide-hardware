@@ -16,14 +16,13 @@ import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
-import Control.Concurrent.Chan (Chan)
 import Control.Monad (forM, forM_, unless)
 import Control.Monad.IO.Class
-import Data.ByteString (ByteString)
 import Data.Maybe (fromJust)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -35,8 +34,6 @@ import Project.Handle (assertEither, expectRight)
 import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
-import System.IO
-import System.Process (StdStream (CreatePipe, UseHandle))
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "bittide-extra" Control.Exception.Extra (brackets)
@@ -44,7 +41,6 @@ import "bittide-extra" Control.Exception.Extra (brackets)
 import qualified Bittide.Calculator as Calc
 import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as MemoryMaps
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Gdb
@@ -131,37 +127,6 @@ initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
   Gdb.setTimeout gdb Nothing
   Gdb.runCommand gdb "echo connected to target device"
   pure ()
-
-initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
-initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
-  devNullHandle <- openFile "/dev/null" WriteMode
-
-  let
-    devPath = deviceInfo.serial
-    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
-    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
-
-  -- Note that script at `devPath` already logs to `stdoutPath` and
-  -- `stderrPath`. This is what we're after: debug logging. To prevent race
-  -- conditions, we need to know when picocom is ready so we also shortly
-  -- interested in stderr in this Haskell process.
-  (picoChan, cleanup) <-
-    Picocom.startWithLoggingAndEnvChan
-      ( Picocom.StdStreams
-          { Picocom.stdin = CreatePipe
-          , Picocom.stdout = CreatePipe
-          , Picocom.stderr = UseHandle devNullHandle
-          }
-      )
-      devPath
-      stdoutPath
-      stderrPath
-      []
-
-  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
-    $ waitForLine picoChan "Terminal ready"
-
-  pure (picoChan, cleanup)
 
 {- | Parse the tap info from OpenOCD log produced during startup. This function
 expects to find multiple JTAG IDs and exactly one GDB port. This is typically

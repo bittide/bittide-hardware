@@ -13,11 +13,11 @@ import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.SwitchDemo.Driver (
   dumpCcSamples,
   initGdb,
-  initPicocom,
   parseBootTapInfo,
   parseTapInfo,
  )
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Bittide.Instances.Hitl.Utils.Ugn
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)

@@ -9,6 +9,7 @@ import Prelude
 
 import Paths_bittide_instances
 
+import Bittide.Hitl (DeviceInfo (..))
 import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.Chan
 import Control.Monad.Catch
@@ -17,10 +18,47 @@ import Data.ByteString (ByteString, empty)
 import Data.ByteString.Char8 (hGetLine)
 import Data.Maybe (fromJust)
 import GHC.IO.Exception
+import Project.Chan (waitForLine)
+import System.FilePath ((</>))
+import System.IO (IOMode (WriteMode), openFile)
+import Vivado.Tcl (HwTarget)
 
 import GHC.IO.Handle (BufferMode (..), Handle, hIsEOF, hSetBuffering)
 import System.Posix.Env (getEnvironment)
 import System.Process
+
+import qualified System.Timeout.Extra as T
+
+initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
+initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
+  devNullHandle <- openFile "/dev/null" WriteMode
+
+  let
+    devPath = deviceInfo.serial
+    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
+    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
+
+  -- Note that script at `devPath` already logs to `stdoutPath` and
+  -- `stderrPath`. This is what we're after: debug logging. To prevent race
+  -- conditions, we need to know when picocom is ready so we also shortly
+  -- interested in stderr in this Haskell process.
+  (picoChan, cleanup) <-
+    startWithLoggingAndEnvChan
+      ( StdStreams
+          { stdin = CreatePipe
+          , stdout = CreatePipe
+          , stderr = UseHandle devNullHandle
+          }
+      )
+      devPath
+      stdoutPath
+      stderrPath
+      []
+
+  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000 $
+    waitForLine picoChan "Terminal ready"
+
+  pure (picoChan, cleanup)
 
 getStartPath :: IO FilePath
 getStartPath = getDataFileName "data/picocom/start.sh"
