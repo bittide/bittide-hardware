@@ -9,8 +9,7 @@ module Bittide.Instances.Hitl.SwitchDemo.Driver where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
-import Bittide.ClockControl.Topology (Topology)
+import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
@@ -19,6 +18,7 @@ import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -83,30 +83,6 @@ muSwitchDemoPeBuffer =
          TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
        lift val
    )
-
-dumpCcSamples :: (HasCallStack) => MemoryMap -> FilePath -> CcConf Topology -> [Gdb] -> IO ()
-dumpCcSamples mm hitlDir ccConf ccGdbs = do
-  mapConcurrently_ Gdb.interrupt ccGdbs
-  sampleMemoryAddr <- expectRight $ getPathAddress @Integer mm ["0", "SampleMemory", "data"]
-
-  nSamples <- liftIO $ zipWithConcurrently (go sampleMemoryAddr) ccGdbs ccSamplesPaths
-  putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
-  saveCcConfig hitlDir ccConf
-  putStrLn [i|Wrote configs and samples to: #{hitlDir}|]
- where
-  go :: (HasCallStack) => Integer -> Gdb -> FilePath -> IO Word
-  go addr gdb dumpPath = do
-    nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb addr
-
-    let
-      bytesPerSample = 13
-      bytesPerWord = 4
-
-      dumpStart = addr + bytesPerWord
-      dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * bytesPerSample
-
-    Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
-  ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
 
 {- | Read the current time in clock cycles from the given target/device using the given
 GDB connection. Requires the CPU to be halted.

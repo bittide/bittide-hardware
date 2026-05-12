@@ -10,14 +10,12 @@ import Clash.Prelude
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (FpgaCount)
-import Bittide.Instances.Hitl.SwitchDemo.Driver (
-  dumpCcSamples,
- )
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Bittide.Instances.Hitl.Utils.Ugn
+import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_, unless, when)

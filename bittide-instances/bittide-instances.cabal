@@ -210,6 +210,7 @@ library
     Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
     Bittide.Instances.Hitl.Utils.Ugn
+    Bittide.Instances.Hitl.Utils.Utils
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.Hitl.WireDemo.BringUp
