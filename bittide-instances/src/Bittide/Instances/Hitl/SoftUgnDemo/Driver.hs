@@ -12,9 +12,9 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.SwitchDemo.Driver (
   dumpCcSamples,
-  initGdb,
  )
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import Bittide.Instances.Hitl.Utils.Ugn

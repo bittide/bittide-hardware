@@ -15,11 +15,11 @@ import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, demoRigInfo, fpgaSetup)
 import Bittide.Instances.Hitl.SwitchDemo.Driver (
   dumpCcSamples,
-  initGdb,
   readCurrentTime,
   readHardwareUgns,
  )
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)

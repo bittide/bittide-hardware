@@ -15,6 +15,7 @@ import Bittide.Hitl
 import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
@@ -111,23 +112,6 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
-
-initGdb ::
-  FilePath ->
-  String ->
-  Gdb ->
-  Ocd.TapInfo ->
-  (HwTarget, DeviceInfo) ->
-  IO ()
-initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
-  Gdb.setLogging gdb
-    $ hitlDir
-    </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
-  Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
-  Gdb.setTarget gdb tapInfo.gdbPort
-  Gdb.setTimeout gdb Nothing
-  Gdb.runCommand gdb "echo connected to target device"
-  pure ()
 
 {- | Read the current time in clock cycles from the given target/device using the given
 GDB connection. Requires the CPU to be halted.
