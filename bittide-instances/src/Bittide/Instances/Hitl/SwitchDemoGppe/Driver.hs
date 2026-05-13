@@ -10,14 +10,11 @@ import Clash.Prelude
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (FpgaCount)
-import Bittide.Instances.Hitl.SwitchDemo.Driver (
-  dumpCcSamples,
-  initGdb,
-  initPicocom,
-  parseBootTapInfo,
-  parseTapInfo,
- )
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
+import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_)
@@ -32,6 +29,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
+import qualified Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps as MemoryMaps
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
 import qualified Gdb
@@ -70,7 +68,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "wire-demo-boot") bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -115,7 +113,7 @@ driver testName targets = do
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gppeGdbs
 
           brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+            let goDumpCcSamples = dumpCcSamples MemoryMaps.cc hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue muGdbs
 

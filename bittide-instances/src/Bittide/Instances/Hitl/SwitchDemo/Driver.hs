@@ -9,21 +9,22 @@ module Bittide.Instances.Hitl.SwitchDemo.Driver where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
-import Bittide.ClockControl.Topology (Topology)
+import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
-import Bittide.Wishbone (TimeCmd (Capture))
+import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
+import Bittide.Instances.Hitl.WireDemo.Driver (readCurrentTime, readHardwareUgns)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
-import Control.Concurrent.Chan (Chan)
 import Control.Monad (forM, forM_, unless)
 import Control.Monad.IO.Class
-import Data.ByteString (ByteString)
 import Data.Maybe (fromJust)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -32,11 +33,8 @@ import Numeric (showHex)
 import Project.Chan
 import Project.FilePath
 import Project.Handle (assertEither, expectRight)
-import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
-import System.IO
-import System.Process (StdStream (CreatePipe, UseHandle))
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "bittide-extra" Control.Exception.Extra (brackets)
@@ -44,7 +42,6 @@ import "bittide-extra" Control.Exception.Extra (brackets)
 import qualified Bittide.Calculator as Calc
 import qualified Bittide.Instances.Hitl.SwitchDemo.MemoryMaps as MemoryMaps
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Gdb
@@ -85,161 +82,6 @@ muSwitchDemoPeBuffer =
          TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "SwitchDemoPE", "buffer"]
        lift val
    )
-
-sampleMemoryBase :: Integer
-sampleMemoryBase =
-  $( do
-       val <- TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
-       lift val
-   )
-
-dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
-dumpCcSamples hitlDir ccConf ccGdbs = do
-  mapConcurrently_ Gdb.interrupt ccGdbs
-  nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
-  putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
-  saveCcConfig hitlDir ccConf
-  putStrLn [i|Wrote configs and samples to: #{hitlDir}|]
- where
-  go :: (HasCallStack) => Gdb -> FilePath -> IO Word
-  go gdb dumpPath = do
-    nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb sampleMemoryBase
-
-    let
-      bytesPerSample = 13
-      bytesPerWord = 4
-
-      dumpStart = sampleMemoryBase + bytesPerWord
-      dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * bytesPerSample
-
-    Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
-  ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
-
-initGdb ::
-  FilePath ->
-  String ->
-  Gdb ->
-  Ocd.TapInfo ->
-  (HwTarget, DeviceInfo) ->
-  IO ()
-initGdb hitlDir binName gdb tapInfo (hwT, _d) = do
-  Gdb.setLogging gdb
-    $ hitlDir
-    </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
-  Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
-  Gdb.setTarget gdb tapInfo.gdbPort
-  Gdb.setTimeout gdb Nothing
-  Gdb.runCommand gdb "echo connected to target device"
-  pure ()
-
-initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
-initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
-  devNullHandle <- openFile "/dev/null" WriteMode
-
-  let
-    devPath = deviceInfo.serial
-    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
-    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
-
-  -- Note that script at `devPath` already logs to `stdoutPath` and
-  -- `stderrPath`. This is what we're after: debug logging. To prevent race
-  -- conditions, we need to know when picocom is ready so we also shortly
-  -- interested in stderr in this Haskell process.
-  (picoChan, cleanup) <-
-    Picocom.startWithLoggingAndEnvChan
-      ( Picocom.StdStreams
-          { Picocom.stdin = CreatePipe
-          , Picocom.stdout = CreatePipe
-          , Picocom.stderr = UseHandle devNullHandle
-          }
-      )
-      devPath
-      stdoutPath
-      stderrPath
-      []
-
-  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
-    $ waitForLine picoChan "Terminal ready"
-
-  pure (picoChan, cleanup)
-
-{- | Parse the tap info from OpenOCD log produced during startup. This function
-expects to find multiple JTAG IDs and exactly one GDB port. This is typically
-paired with 'vexriscv_boot_init.tcl' which only creates a target for the
-last TAP (the boot CPU).
--}
-parseBootTapInfo :: (HasCallStack) => Ocd.OcdInitData -> Ocd.TapInfo
-parseBootTapInfo initOcd =
-  case (L.sortOn snd <$> Ocd.parseJtagIds initOcd.log, Ocd.parseGdbPorts initOcd.log) of
-    (Left err, _) -> error $ "Failed to parse JTAG IDs from OpenOCD log: " <> err
-    (_, Left err) -> error $ "Failed to parse GDB ports from OpenOCD log: " <> err
-    (Right [], Right _) -> error "No JTAG IDs found in OpenOCD log!"
-    (Right _, Right (_ : _ : _)) -> error "Multiple GDB ports found in OpenOCD log!"
-    (Right _, Right []) -> error "No GDB ports found in OpenOCD log!"
-    (Right ((jtagTapId, jtagId) : _), Right [(gdbTapId, gdbPort)])
-      | jtagTapId /= gdbTapId ->
-          -- This can happen for a various number of reasons. Maybe check whether
-          -- all tap ids are present, that there is only one GDB server, and that
-          -- that GDB server is tied to a TAP ID that's equal to the TAP ID of the
-          -- tap associated with the lowest JTAG IDCODE.
-          error
-            [i|Expected first JTAG TAP ID, ordered by associated IDCODE, to be equal to the JTAG TAP ID of the only GDB port found, but: #{jtagTapId} /= #{gdbTapId}|]
-      | otherwise -> Ocd.TapInfo{tapId = jtagTapId, jtagId, gdbPort}
-
-{- | Parse the tap info from OpenOCD log produced during startup. This function
-expects to find all taps given to it. For each tap, it expects to find exactly one
-GDB port.
--}
-parseTapInfo :: (HasCallStack) => [Ocd.JtagId] -> Ocd.OcdInitData -> [Ocd.TapInfo]
-parseTapInfo expectedJtagIds initOcd =
-  case Ocd.parseJtagIdsAndGdbPorts initOcd.log of
-    Left err -> error $ "Failed to parse TAP info from OpenOCD log: " <> err
-    Right tapInfos
-      | ((.jtagId) <$> tapInfos) /= expectedJtagIds ->
-          error [i|Parsed JTAG IDs do not match expected IDs!|]
-      | otherwise -> tapInfos
-
-{- | Read the current time in clock cycles from the given target/device using the given
-GDB connection. Requires the CPU to be halted.
--}
-readCurrentTime :: (HasCallStack) => MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
-readCurrentTime mm (_, d) gdb = do
-  putStrLn $ "Getting current time from device " <> d.deviceId
-  commandAddress <- expectRight $ getPathAddress mm ["0", "Timer", "command"]
-  scratchAddress <- expectRight $ getPathAddress mm ["0", "Timer", "scratchpad"]
-  Gdb.writeLe gdb commandAddress Capture
-  Gdb.readLe gdb scratchAddress
-
-{- | Read the hardware UGNs of the given device using the given GDB connection. Requires
-the CPU to be halted.
--}
-readHardwareUgns :: MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
-readHardwareUgns mm (_, d) gdb = do
-  let
-    captureUgnPrefixed :: Int -> String -> [String]
-    captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
-
-    readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
-    readUgnMmio linkNr = do
-      let getUgnRegister = expectRight . getPathAddress mm . captureUgnPrefixed linkNr
-      counterAddresses <- mapM getUgnRegister ["local_counter", "remote_counter"]
-      [localCounter, remoteCounter] <- mapM (Gdb.readLe gdb) counterAddresses
-      delta <- Gdb.readLe gdb =<< getUgnRegister "elastic_buffer_delta"
-      pure (localCounter, remoteCounter, delta)
-
-    -- Adjust the local counter for the frames added/removed from the elastic
-    -- buffer after capturing the UGN. Leaves the remote counter untouched.
-    adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 32) -> (Unsigned 64, Unsigned 64)
-    adjustLocalCounter (localCounter, remoteCounter, delta) =
-      (addSigned localCounter delta, remoteCounter)
-     where
-      addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
-      addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
-
-  liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-  ugnTriples <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
-  liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
-  pure $ adjustLocalCounter <$> ugnTriples
 
 driver ::
   (HasCallStack) =>
@@ -385,7 +227,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "wire-demo-boot") bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -424,7 +266,7 @@ driver testName targets = do
             $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muTapInfos targets
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          let goDumpCcSamples = dumpCcSamples MemoryMaps.cc hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
 

@@ -89,7 +89,7 @@ then releases the reset of the management unit CPU. In turn, this CPU will cente
 the elastic buffers, initialize the scatter/gather calendars, and print out the UGNs captured using the hardware UGN capture component over UART. Finally, the general purpose processing element is started. It executes the software UGN discovery protocol and prints the results over UART. The host driver then compares the hardware-captured UGNs with the software-discovered UGNs to verify correctness.
 
 Tests are configured to run the following binaries on the system's CPUs:
-- Boot CPU: `switch-demo1-boot` (`firmware-binaries/demos/switch-demo1-boot`)
+- Boot CPU: `wire-demo-boot` (`firmware-binaries/demos/wire-demo-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
 - Management unit: `soft-ugn-mu` (`firmware-binaries/demos/soft-ugn-mu`)
 

@@ -223,7 +223,7 @@ tests =
     { topEntity = 'transceiversUpTest
     , externalHdl = []
     , targetXdcs =
-        [ "switchDemoTest.xdc"
+        [ "wireDemoTest.xdc"
         , "si539x" </> "spi.xdc"
         ]
     , testCases = iters

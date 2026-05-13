@@ -16,7 +16,9 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.SwitchDemo.Driver (initGdb, initPicocom, parseTapInfo)
+import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
+import Bittide.Instances.Hitl.Utils.OpenOcd (parseTapInfo)
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)

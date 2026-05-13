@@ -12,18 +12,14 @@ import Clash.Prelude
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Domains (GthTx)
-import Bittide.Instances.Hitl.Setup (FpgaCount, demoRigInfo, fpgaSetup)
-import Bittide.Instances.Hitl.SwitchDemo.Driver (
-  dumpCcSamples,
-  initGdb,
-  initPicocom,
-  parseBootTapInfo,
-  parseTapInfo,
-  readCurrentTime,
-  readHardwareUgns,
- )
+import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, demoRigInfo, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
+import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
+import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
@@ -38,6 +34,7 @@ import Numeric (showHex)
 import Project.Chan
 import Project.FilePath
 import Project.Handle (assertEither, expectRight)
+import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
@@ -132,6 +129,48 @@ generateSchedule fpgaTable ugnParts startCycle = genConfig <$> iterateI nextStat
       let links = snd (fpgaTable !! currentFpga)
        in fromJust $ elemIndex targetFpga links
 
+{- | Read the current time in clock cycles from the given target/device using the given
+GDB connection. Requires the CPU to be halted.
+-}
+readCurrentTime :: (HasCallStack) => MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
+readCurrentTime mm (_, d) gdb = do
+  putStrLn $ "Getting current time from device " <> d.deviceId
+  commandAddress <- expectRight $ getPathAddress mm ["0", "Timer", "command"]
+  scratchAddress <- expectRight $ getPathAddress mm ["0", "Timer", "scratchpad"]
+  Gdb.writeLe gdb commandAddress Capture
+  Gdb.readLe gdb scratchAddress
+
+{- | Read the hardware UGNs of the given device using the given GDB connection. Requires
+the CPU to be halted.
+-}
+readHardwareUgns :: MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
+readHardwareUgns mm (_, d) gdb = do
+  let
+    captureUgnPrefixed :: Int -> String -> [String]
+    captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
+
+    readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
+    readUgnMmio linkNr = do
+      let getUgnRegister = expectRight . getPathAddress mm . captureUgnPrefixed linkNr
+      counterAddresses <- mapM getUgnRegister ["local_counter", "remote_counter"]
+      [localCounter, remoteCounter] <- mapM (Gdb.readLe gdb) counterAddresses
+      delta <- Gdb.readLe gdb =<< getUgnRegister "elastic_buffer_delta"
+      pure (localCounter, remoteCounter, delta)
+
+    -- Adjust the local counter for the frames added/removed from the elastic
+    -- buffer after capturing the UGN. Leaves the remote counter untouched.
+    adjustLocalCounter :: (Unsigned 64, Unsigned 64, Signed 32) -> (Unsigned 64, Unsigned 64)
+    adjustLocalCounter (localCounter, remoteCounter, delta) =
+      (addSigned localCounter delta, remoteCounter)
+     where
+      addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
+      addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
+
+  liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
+  ugnTriples <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
+  liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
+  pure $ adjustLocalCounter <$> ugnTriples
+
 writePeConfig ::
   ( HasCallStack
   , KnownNat linkCount
@@ -225,7 +264,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "wire-demo-boot") bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -264,7 +303,7 @@ driver testName targets = do
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          let goDumpCcSamples = dumpCcSamples MemoryMaps.cc hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
 

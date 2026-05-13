@@ -99,7 +99,7 @@ tests =
   HitlTestGroup
     { topEntity = 'softUgnDemoTest
     , targetXdcs =
-        [ "switchDemoTest.xdc"
+        [ "wireDemoTest.xdc"
         , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"

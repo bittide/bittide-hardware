@@ -204,11 +204,13 @@ library
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.Utils.Driver
+    Bittide.Instances.Hitl.Utils.Gdb
     Bittide.Instances.Hitl.Utils.MemoryMap
     Bittide.Instances.Hitl.Utils.OpenOcd
     Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
     Bittide.Instances.Hitl.Utils.Ugn
+    Bittide.Instances.Hitl.Utils.Utils
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.Hitl.WireDemo.BringUp
