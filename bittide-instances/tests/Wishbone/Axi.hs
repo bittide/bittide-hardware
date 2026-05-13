@@ -36,7 +36,6 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 -- Qualified
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Protocols.DfConv as DfConv
-import qualified Protocols.ToConst as ToConst
 
 -- {-# ANN module "HLint: Missing NOINLINE pragma" #-}
 
@@ -85,16 +84,14 @@ dut peConfig =
 
       (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartTx)
 
-      _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)
-      ToConst.toBwd todoMM -< mmAxiRx
+      _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< ((mmAxiRx, axiRxBus), axiStream)
 
       axiStream <-
         axiUserMapC (const False)
           <| DfConv.fifo axiProxy axiProxy (SNat @1024)
           <| axiPacking
           <| wbToAxi4StreamTx
-          -< axiTxBus
-      ToConst.toBwd todoMM -< mmAxiTx
+          -< (mmAxiTx, axiTxBus)
       idC -< uartRx
  where
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
