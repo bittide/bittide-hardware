@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::hals::wire_demo_mu::DeviceInstances;
+use bittide_hal::hals::wire_demo_mu::{devices::ClockControl, DeviceInstances};
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
@@ -63,7 +63,7 @@ fn main() -> ! {
             stable: cc.links_stable()[0],
             settled: 0,
         };
-        let all_stable = stability.all_stable();
+        let all_stable = stability.all_stable(ClockControl::DATA_COUNTS_LEN);
         if all_stable {
             break;
         }

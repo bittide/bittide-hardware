@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-// SPDX-FileCopyrightText: 2022 Google LLC
+// SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,7 @@ use itertools::izip;
 use bittide_hal::{
     manual_additions::timer::{Duration, Instant, WaitResult},
     shared_devices::{Timer, Uart},
-    switch_demo_cc::{
+    soft_ugn_demo_cc::{
         devices::{ClockControl, DomainDiffCounters, Freeze},
         DeviceInstances,
     },

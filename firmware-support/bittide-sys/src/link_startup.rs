@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::shared_devices::{ElasticBuffer, Transceivers};
+use bittide_hal::manual_additions::transceivers::TransceiversInterface;
+use bittide_hal::shared_devices::ElasticBuffer;
+use log::debug;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UgnCaptureState {
@@ -29,11 +31,12 @@ impl LinkStartup {
     /// Transition to the next state based on current conditions
     pub fn next(
         &mut self,
-        transceivers: &Transceivers,
+        transceivers: &impl TransceiversInterface,
         channel: usize,
         elastic_buffer: &ElasticBuffer,
         captured_ugn: bool,
     ) {
+        let old_state = self.state;
         self.state = match self.state {
             UgnCaptureState::WaitForChannelNegotiation => {
                 if transceivers
@@ -73,6 +76,12 @@ impl LinkStartup {
             }
             UgnCaptureState::Done => self.state,
         };
+        if self.state != old_state {
+            debug!(
+                "link_startup[{}]: {:?} -> {:?}",
+                channel, old_state, self.state
+            );
+        }
     }
 
     pub fn is_done(&self) -> bool {

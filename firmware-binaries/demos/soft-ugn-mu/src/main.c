@@ -24,7 +24,7 @@
 ScatterUnit su;
 // Number of event loop iterations
 #define NUM_PERIODS 1000
-#define NUM_PORTS 7
+#define NUM_PORTS 3
 
 // Protocol timing parameter
 #define BUFFER_SIZE 4000
@@ -58,14 +58,10 @@ int c_main(void) {
 
   Uart uart = hal.uart;
   ScatterUnit scatter_units[NUM_PORTS] = {
-      hal.scatter_unit_0, hal.scatter_unit_1, hal.scatter_unit_2,
-      hal.scatter_unit_3, hal.scatter_unit_4, hal.scatter_unit_5,
-      hal.scatter_unit_6};
+      hal.scatter_unit_0, hal.scatter_unit_1, hal.scatter_unit_2};
 
   GatherUnit gather_units[NUM_PORTS] = {hal.gather_unit_0, hal.gather_unit_1,
-                                        hal.gather_unit_2, hal.gather_unit_3,
-                                        hal.gather_unit_4, hal.gather_unit_5,
-                                        hal.gather_unit_6};
+                                        hal.gather_unit_2};
   Timer timer = hal.timer;
   dna_t dna;
   dna_read(hal.dna, dna);

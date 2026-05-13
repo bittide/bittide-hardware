@@ -6,7 +6,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::{
-    hals::soft_ugn_demo_mu::DeviceInstances, manual_additions::calendar::RingbufferCalendar,
+    hals::soft_ugn_demo_mu::{devices::ClockControl, DeviceInstances},
+    manual_additions::calendar::RingbufferCalendar,
     shared_devices::Uart,
 };
 use bittide_sys::{link_startup::LinkStartup, stability_detector::Stability};
@@ -35,18 +36,10 @@ fn initialize_calendars(uart: &mut Uart) {
         &INSTANCES.scatter_calendar_0,
         &INSTANCES.scatter_calendar_1,
         &INSTANCES.scatter_calendar_2,
-        &INSTANCES.scatter_calendar_3,
-        &INSTANCES.scatter_calendar_4,
-        &INSTANCES.scatter_calendar_5,
-        &INSTANCES.scatter_calendar_6,
         // Gather calendars
         &INSTANCES.gather_calendar_0,
         &INSTANCES.gather_calendar_1,
         &INSTANCES.gather_calendar_2,
-        &INSTANCES.gather_calendar_3,
-        &INSTANCES.gather_calendar_4,
-        &INSTANCES.gather_calendar_5,
-        &INSTANCES.gather_calendar_6,
     ];
     uwriteln!(uart, "  Initializing {} calendars", calendars.len()).unwrap();
     let mut i = 0;
@@ -68,23 +61,15 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
         &INSTANCES.elastic_buffer_2,
-        &INSTANCES.elastic_buffer_3,
-        &INSTANCES.elastic_buffer_4,
-        &INSTANCES.elastic_buffer_5,
-        &INSTANCES.elastic_buffer_6,
     ];
 
     let capture_ugns = [
         INSTANCES.capture_ugn_0,
         INSTANCES.capture_ugn_1,
         INSTANCES.capture_ugn_2,
-        INSTANCES.capture_ugn_3,
-        INSTANCES.capture_ugn_4,
-        INSTANCES.capture_ugn_5,
-        INSTANCES.capture_ugn_6,
     ];
 
-    let mut link_startups = [LinkStartup::new(); 7];
+    let mut link_startups = [LinkStartup::new(); 3];
     while !link_startups.iter().all(|ls| ls.is_done()) {
         for (i, link_startup) in link_startups.iter_mut().enumerate() {
             link_startup.next(
@@ -105,7 +90,7 @@ fn main() -> ! {
             stable: cc.links_stable()[0],
             settled: 0,
         };
-        let all_stable = stability.all_stable();
+        let all_stable = stability.all_stable(ClockControl::DATA_COUNTS_LEN);
         if all_stable {
             break;
         }
