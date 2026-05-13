@@ -66,26 +66,28 @@ genStalls' = do
   numStalls <- smallInt
   genVec (PH.genStalls smallInt numStalls PH.Stall)
 
+maxInFlight :: SNat 16
+maxInFlight = SNat
+
 uartInterfaceWbTest :: Property
 uartInterfaceWbTest = property $ do
   stallsBefore <- forAll $ genStalls'
   stallsAfter <- forAll $ genStalls'
+
   let
     deviceName = "Uart"
     defs = (((getMMAny dutMm).deviceDefs) Map.! deviceName)
     dataLoc = L.find (\loc -> loc.name.name == "data") defs.registers
     dataAddr = fromIntegral (fromJust dataLoc).value.address `div` natToNum @AddressWidth
 
-    bytes = [0 .. 7]
-    writeOps = Wb.Write dataAddr 1 <$> bytes
-    readOps = L.replicate 8 $ Wb.Read dataAddr 1
-    allOps = writeOps <> readOps
-
     dutMm :: Circuit (ToConstBwd Mm, Wishbone XilinxSystem Standard AddressWidth 4) ()
     dutMm =
       withLittleEndian $ withClockResetEnable clk rst ena $ circuit $ \(mm, wb) -> do
-        -- The receive buffer needs to be large enough, otherwise bytes will be dropped.
-        (uartOut, _uartStatus) <- uartInterfaceWb d2 d16 uartBytes -< ((mm, wb), uartIn)
+        -- The receive buffer is sized to hold the worst-case in-flight count produced by
+        -- 'genWriteReadOps' (currently 'maxInFlight'). 'unsafeToDf' at the rxFifo input
+        -- silently drops bytes if the FIFO is full, so this must not be smaller than the
+        -- peak in-flight count.
+        (uartOut, _uartStatus) <- uartInterfaceWb d2 maxInFlight uartBytes -< ((mm, wb), uartIn)
         uartIn <-
           stallC simConfig stallsAfter
             <| Df.fifo d16
@@ -93,23 +95,78 @@ uartInterfaceWbTest = property $ do
             -< uartOut
         idC -< ()
 
-    model (Wb.Write _ _ _) resp s
-      | resp.acknowledge = Right s
+    -- The model tracks the FIFO of in-flight bytes (written but not yet
+    -- read). Writes enqueue; reads dequeue and check.
+    model ::
+      Wb.WishboneMasterRequest 4 4 -> WishboneS2M 4 -> [BitVector 32] -> Either String [BitVector 32]
+    model (Wb.Write _ _ b) resp s
+      | resp.acknowledge = Right (s <> [b])
       | otherwise = Left [i|Expected acknowledge for valid write, but got: #{resp}|]
     model (Wb.Read _ _) resp (expected : rest)
       | resp.acknowledge && resp.readData == expected = Right rest
       | otherwise = Left [i|Expected: #{expected}, but got: #{resp}|]
     model (Wb.Read _ _) resp [] = Left [i|Expected more read responses, but got: #{resp} |]
 
+  -- Generate interleaving writes and reads in a single 'Gen' so that Hedgehog's shrinker
+  -- preserves the invariant that reads never outrun writes in flight.
+  allOps <- forAll $ genWriteReadOps dataAddr
+
   withClockResetEnable clk rst ena
-    $ wishbonePropWithModel eOpts model (unMemmap dutMm) (pure allOps) bytes
+    $ wishbonePropWithModel eOpts model (unMemmap dutMm) (pure allOps) []
  where
-  eOpts = defExpectOptions
+  -- The randomized schedule can take well over the default 1000 cycles to
+  -- complete (longer schedules + random stalls). Bump the sample limit so
+  -- the test isn't truncated mid-transaction.
+  eOpts = defExpectOptions{eoSampleMax = 100_000}
   simConfig = def
 
   clk = clockGen
   rst = noReset
   ena = enableGen
+
+{- | Generate a list of Wishbone 'Write' and 'Read' requests targeting the given address.
+The interleaving is chosen so that at every prefix the number of reads does not exceed the
+number of writes already issued (otherwise a read would stall the bus forever waiting for
+a byte that never arrives).
+-}
+genWriteReadOps ::
+  BitVector 4 -> Gen [Wb.WishboneMasterRequest 4 4]
+genWriteReadOps dataAddr = do
+  -- The list length drives test cost. Keep it moderate; the inner generator below balances
+  -- writes vs reads.
+  n <- Gen.integral (Range.linear (1 :: Int) (snatToNum maxInFlight))
+  ops <- go (0 :: Int) n
+  -- Drain any in-flight writes with reads so the model has matching reads.
+  drain <- genDrain (countInFlight ops)
+  pure (ops <> drain)
+ where
+  -- @go inFlight remaining@: writes already issued but not yet read back, and how many
+  -- more ops to emit.
+  go _ 0 = pure []
+  go inFlight remaining
+    | inFlight == 0 = do
+        b <- genDefinedBitVector @8
+        (Wb.Write dataAddr 1 (resize b) :) <$> go 1 (remaining - 1)
+    | otherwise = do
+        op <- Gen.element [OpWrite, OpRead]
+        case op of
+          OpWrite -> do
+            b <- genDefinedBitVector @8
+            (Wb.Write dataAddr 1 (resize b) :) <$> go (inFlight + 1) (remaining - 1)
+          OpRead -> (Wb.Read dataAddr 1 :) <$> go (inFlight - 1) (remaining - 1)
+
+  -- Append between 0 and inFlight read ops to drain any pending writes.
+  genDrain inFlight = do
+    k <- Gen.integral (Range.linear 0 inFlight)
+    pure (L.replicate k (Wb.Read dataAddr 1))
+
+  -- Count writes minus reads in the sequence (the in-flight count after it).
+  countInFlight = L.foldl' step (0 :: Int)
+   where
+    step n (Wb.Write{}) = n + 1
+    step n (Wb.Read{}) = n - 1
+
+data Op = OpWrite | OpRead deriving (Show)
 
 {- | Generates a 'MemoryMap' for 'singleMasterInterconnect' for a specific number
 of slaves.

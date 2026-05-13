@@ -452,6 +452,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(bus, uartRx) ->
       (registerConfig "data")
         { Mm.access = Mm.ReadWrite
         , Mm.description = ""
+        , Mm.busRead = Mm.PreferCircuit
         }
       0
       -< (dataWb, Fwd regIn)
