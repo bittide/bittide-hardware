@@ -74,7 +74,7 @@ bootPeConfig =
     , includeIlaWb = False
     }
 
-{- | See 'Bittide.Instances.Hitl.SwitchDemo.BringUp.bringUp'
+{- | See 'Bittide.Instances.Hitl.WireDemo.BringUp.bringUp'
 
 TODO: Deduplicate
 -}

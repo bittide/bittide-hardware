@@ -28,8 +28,6 @@ import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.TopEntity as SoftUgnDemo
-import qualified Bittide.Instances.Hitl.SwitchDemo.TopEntity as SwitchDemo
-import qualified Bittide.Instances.Hitl.SwitchDemoGppe.TopEntity as SwitchDemoGppe
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
 import qualified Bittide.Instances.Hitl.TemperatureMonitor as TemperatureMonitor
 import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
@@ -48,8 +46,6 @@ hitlTests =
     <> [LinkConfiguration.tests]
     <> [Si539xConfiguration.tests]
     <> [SoftUgnDemo.tests]
-    <> [SwitchDemo.tests]
-    <> [SwitchDemoGppe.tests]
     <> [SyncInSyncOut.tests]
     <> [TemperatureMonitor.tests]
     <> [Transceivers.tests]

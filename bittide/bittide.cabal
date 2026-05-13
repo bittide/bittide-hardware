@@ -229,7 +229,6 @@ library
     Bittide.SharedTypes
     Bittide.Shutter
     Bittide.Switch
-    Bittide.SwitchDemoProcessingElement
     Bittide.Sync
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
@@ -296,6 +295,7 @@ test-suite unittests
     Tests.Axi4.Properties
     Tests.Axi4.Types
     Tests.BitView
+    Tests.Calculator
     Tests.Calendar
     Tests.Clash.Protocols.Wishbone.Extra
     Tests.ClockControl.Freeze
@@ -305,15 +305,12 @@ test-suite unittests
     Tests.Df
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
-    Tests.GeneralPurposeProcessingElement.Calculator
     Tests.Handshake
     Tests.ProcessingElement.ReadElf
     Tests.ProgrammableMux
     Tests.ScatterGather
     Tests.Shared
     Tests.Switch
-    Tests.SwitchDemoProcessingElement
-    Tests.SwitchDemoProcessingElement.Calculator
     Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign

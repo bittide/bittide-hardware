@@ -189,16 +189,6 @@ library
     Bittide.Instances.Hitl.SoftUgnDemo.Driver
     Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps
     Bittide.Instances.Hitl.SoftUgnDemo.TopEntity
-    Bittide.Instances.Hitl.SwitchDemo.BringUp
-    Bittide.Instances.Hitl.SwitchDemo.Core
-    Bittide.Instances.Hitl.SwitchDemo.Driver
-    Bittide.Instances.Hitl.SwitchDemo.MemoryMaps
-    Bittide.Instances.Hitl.SwitchDemo.TopEntity
-    Bittide.Instances.Hitl.SwitchDemoGppe.BringUp
-    Bittide.Instances.Hitl.SwitchDemoGppe.Core
-    Bittide.Instances.Hitl.SwitchDemoGppe.Driver
-    Bittide.Instances.Hitl.SwitchDemoGppe.MemoryMaps
-    Bittide.Instances.Hitl.SwitchDemoGppe.TopEntity
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
@@ -240,7 +230,6 @@ library
     Bittide.Instances.Tests.RingBuffer
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
-    Bittide.Instances.Tests.SwitchDemoProcessingElement
     Bittide.Instances.Tests.TimeWb
     Bittide.Instances.Tests.Watchdog
     Bittide.Instances.Tests.WbToDf
@@ -338,7 +327,6 @@ test-suite unittests
     Wishbone.RingBuffer
     Wishbone.ScatterGather
     Wishbone.SwitchCalendar
-    Wishbone.SwitchDemoProcessingElement
     Wishbone.Time
     Wishbone.Watchdog
 
