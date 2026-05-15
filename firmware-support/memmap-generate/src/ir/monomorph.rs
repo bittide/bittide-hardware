@@ -271,7 +271,8 @@ impl<'ir> Monomorpher<'ir> {
             TypeRef::BitVector(arg_handle)
             | TypeRef::Unsigned(arg_handle)
             | TypeRef::Signed(arg_handle)
-            | TypeRef::Index(arg_handle) => {
+            | TypeRef::Index(arg_handle)
+            | TypeRef::Mask(arg_handle) => {
                 // shouldn't be needed to visit the args, they can only be
                 // hardcoded numbers or variables
                 self.number_primitives.insert(handle, *arg_handle);

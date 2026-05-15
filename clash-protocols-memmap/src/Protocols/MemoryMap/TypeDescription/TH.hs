@@ -81,6 +81,7 @@ data Builtin
   | Signed
   | Unsigned
   | Index
+  | Mask
   deriving (Show, TH.Lift)
 
 {- | Type argument

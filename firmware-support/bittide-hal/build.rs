@@ -390,6 +390,11 @@ fn generate_type_ref_imports(ctx: &IrCtx, refs: &TypeReferences) -> TokenStream 
             use bittide_macros::Unsigned;
         });
     }
+    if refs.use_mask {
+        code.extend(quote! {
+            use crate::manual_additions::mask::Mask;
+        });
+    }
     for ty_ref in &refs.references {
         let name = &ctx.type_names[*ty_ref].base;
         let module = ident(IdentType::Module, name);
