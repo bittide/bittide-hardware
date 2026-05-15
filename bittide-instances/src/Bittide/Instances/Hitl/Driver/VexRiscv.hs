@@ -135,7 +135,7 @@ driverFunc _name targets = do
 
             -- Test UART echo
             hPutStrLn pico.stdinHandle "Hello, UART!"
-            tryWithTimeout "Waiting for \"Hello, UART!!\"" 10_000_000
+            tryWithTimeout "Waiting for \"Hello, UART!\"" 10_000_000
               $ waitForLine pico.stdoutHandle "Hello, UART!"
 
     updateVio "vioHitlt" [("probe_test_start", "0")]
