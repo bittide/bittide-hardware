@@ -16,6 +16,7 @@ import Bittide.Instances.Hitl.SwitchDemo.Driver (
   initPicocom,
   parseBootTapInfo,
   parseTapInfo,
+  sampleMemoryBase,
  )
 import Bittide.Instances.Hitl.Utils.Driver
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -115,7 +116,7 @@ driver testName targets = do
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gppeGdbs
 
           brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+            let goDumpCcSamples = dumpCcSamples sampleMemoryBase hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue ccGdbs
             liftIO $ mapConcurrently_ Gdb.continue muGdbs
 

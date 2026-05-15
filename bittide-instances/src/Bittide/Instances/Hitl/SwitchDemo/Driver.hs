@@ -95,8 +95,8 @@ sampleMemoryBase =
        lift val
    )
 
-dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
-dumpCcSamples hitlDir ccConf ccGdbs = do
+dumpCcSamples :: (HasCallStack) => Integer -> FilePath -> CcConf Topology -> [Gdb] -> IO ()
+dumpCcSamples sampleMemBase hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
   nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
   putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
@@ -105,14 +105,14 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
  where
   go :: (HasCallStack) => Gdb -> FilePath -> IO Word
   go gdb dumpPath = do
-    nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb sampleMemoryBase
-    nLinks <- Gdb.readLe @(Unsigned 32) gdb (sampleMemoryBase + 4)
+    nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb sampleMemBase
+    nLinks <- Gdb.readLe @(Unsigned 32) gdb (sampleMemBase + 4)
 
     let
       wordsPerSample = 6 + fromIntegral nLinks
       bytesPerWord = 4
 
-      dumpStart = sampleMemoryBase + bytesPerWord
+      dumpStart = sampleMemBase + bytesPerWord
       dumpEnd = dumpStart + bytesPerWord + fromIntegral nSamplesWritten * bytesPerWord * wordsPerSample
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
@@ -427,7 +427,7 @@ driver testName targets = do
             $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-mu") muGdbs muTapInfos targets
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+          let goDumpCcSamples = dumpCcSamples sampleMemoryBase hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
 

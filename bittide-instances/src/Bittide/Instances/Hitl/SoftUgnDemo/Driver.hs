@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Bittide.Instances.Hitl.SoftUgnDemo.Driver where
 
@@ -18,6 +19,8 @@ import Bittide.Instances.Hitl.SwitchDemo.Driver (
   parseTapInfo,
  )
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
+
 import Bittide.Instances.Hitl.Utils.Ugn
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
@@ -26,57 +29,73 @@ import Control.Monad.IO.Class
 import Data.Vector.Internal.Check (HasCallStack)
 import Project.Chan
 import Project.FilePath
-import Project.Handle (assertEither)
+import Project.Handle (assertEither, expectRight)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
+import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as MemoryMaps
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
 import qualified Gdb
+import qualified Language.Haskell.TH as TH
 import qualified System.Timeout.Extra as T
 
-driver ::
+sampleMemoryBase :: Integer
+sampleMemoryBase =
+  $( do
+       val <- TH.runIO $ expectRight $ getPathAddress @Integer MemoryMaps.cc ["0", "SampleMemory", "data"]
+       lift val
+   )
+
+driver :: (HasCallStack) => String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode
+driver name = case name of
+  "soft-ugn-demo" -> driverSoftUgn name
+  _ -> error $ "Unknown test name: " <> name
+
+driverSoftUgn ::
   (HasCallStack) =>
   String ->
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
-driver testName targets = do
+driverSoftUgn testName allTargets = do
   liftIO
     . putStrLn
     $ "Running driver function for targets "
-    <> show ((\(_, info) -> info.deviceId) <$> targets)
+    <> show ((\(_, info) -> info.deviceId) <$> allTargets)
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build/hitl" </> testName
 
-  forM_ targets (assertProbe "probe_test_start")
+  forM_ allTargets (assertProbe "probe_test_start")
 
   let
+    targets = filter (\(hwT, _) -> getTargetIndex hwT < 4) allTargets
     -- BOOT / MU / CC IDs
     expectedJtagIds = [0x0514C001, 0x1514C001, 0x2514C001]
     toInitArgs (_, deviceInfo) targetIndex =
       Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
-    initArgs = L.zipWith toInitArgs targets [0 ..]
+    initArgs = L.zipWith toInitArgs allTargets [0 ..]
     optionalBootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
     openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalBootInitArgs
 
+  let bootPicocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) allTargets [0 ..]
   let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-  brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-    -- Start OpenOCD that will program the boot CPU
+  brackets bootPicocomStarts (liftIO . snd) $ \(L.map fst -> bootPicocoms) -> do
+    -- Start OpenOCD that will program the boot CPU on all FPGAs
     brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
       let bootTapInfos = parseBootTapInfo <$> initOcdsData
 
-      Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
+      Gdb.withGdbs (L.length allTargets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "switch-demo1-boot") bootGdbs bootTapInfos allTargets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
-          $ forConcurrently_ picocoms
+          $ forConcurrently_ bootPicocoms
           $ \pico ->
             waitForLine pico "[BT] Going into infinite loop.."
 
@@ -89,8 +108,8 @@ driver testName targets = do
     let
       allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-      _bootTapInfos, muTapInfos, ccTapInfos :: [Ocd.TapInfo]
-      (_bootTapInfos, muTapInfos, ccTapInfos)
+      _bootTapInfos, allMuTapInfos, ccTapInfos :: [Ocd.TapInfo]
+      (_bootTapInfos, allMuTapInfos, ccTapInfos)
         | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
         , [boots, mus, ccs] <- L.transpose allTapInfos =
             (boots, mus, ccs)
@@ -101,8 +120,10 @@ driver testName targets = do
               <> ", but got: "
               <> show (L.length <$> allTapInfos)
 
-    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-cc") ccGdbs ccTapInfos targets
+      muTapInfos = [mu | ((hwT, _), mu) <- L.zip allTargets allMuTapInfos, getTargetIndex hwT < 4]
+
+    Gdb.withGdbs (L.length allTargets) $ \ccGdbs -> do
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-cc") ccGdbs ccTapInfos allTargets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
 
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
@@ -110,7 +131,7 @@ driver testName targets = do
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf 4) ccGdbs
+          let goDumpCcSamples = dumpCcSamples sampleMemoryBase hitlDir (defCcConf (L.length allTargets)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
 
@@ -132,15 +153,6 @@ driver testName targets = do
           _ <- liftIO $ do
             putStrLn "\n=== Hardware UGN Roundtrip Latencies ==="
             mapM print hardwareRoundtrips
-          liftIO
-            $ T.tryWithTimeoutOn
-              T.PrintActionTime
-              "Waiting for calendar initialization"
-              (30_000_000)
-              goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico "[MU] All calendars initialized"
 
           softwareUgnsPerNode <-
             liftIO
