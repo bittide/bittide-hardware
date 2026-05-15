@@ -21,8 +21,10 @@ import Protocols.Vec (vecCircuits)
 import VexRiscv
 
 import Bittide.Calendar
-import Bittide.CaptureUgn (captureUgn)
+import Bittide.CaptureUgn (captureUgn, sendUgn)
 import Bittide.ElasticBuffer (ElasticBufferData)
+import Bittide.Extra.Maybe (toMaybe)
+import Bittide.Handshake (handshakesWb)
 import Bittide.Jtag
 import Bittide.MetaPeConfig (metaPeConfig)
 import Bittide.ProcessingElement
@@ -31,6 +33,8 @@ import Bittide.SharedTypes
 import Bittide.Switch
 import Bittide.Wishbone (readDnaPortE2Wb, timeWb, uartBytes, uartInterfaceWb)
 
+import qualified Bittide.Handshake as Handshake
+import Clash.Functor.Extra ((<<$>>), (<<*>>))
 import qualified Protocols.Vec as Vec
 
 {- | Each 'gppe' results in 2 busses for the 'managementUnit', namely:
@@ -70,7 +74,7 @@ node ::
     ( ToConstBwd Mm
     , Vec gppes (ToConstBwd Mm)
     , Jtag dom
-    , Vec linkCount (CSignal dom (ElasticBufferData (Maybe (BitVector 64))))
+    , Vec linkCount (CSignal dom (ElasticBufferData (BitVector 64)))
     )
     ( Vec linkCount (CSignal dom (BitVector 64))
     , CSignal dom (Unsigned 64)
@@ -81,7 +85,7 @@ node ::
     , CSignal dom (Vec (linkCount + gppes + 1) (Index (linkCount + gppes + 2)))
     )
 node (Config muConfig switchConfig gppeConfigs) =
-  circuit $ \(muMM, gppeMMs, jtag, Fwd rxs) -> do
+  circuit $ \(muMM, gppeMMs, jtag, Fwd rxs0) -> do
     [muJtag, gppesJtagTap] <- jtagChain -< jtag
     gppesJtag <- jtagChain -< gppesJtagTap
 
@@ -89,13 +93,30 @@ node (Config muConfig switchConfig gppeConfigs) =
       , Fwd localCounter
       , (switchMM, switchWb)
       , externalMMWb
+      , handshakeMMWb
       , captureUgnsMMWb
       , scatterCalsMMWb
       , gatherCalsMMWb
       ) <-
       managementUnitC muConfig -< (muMM, nmuLinkIn, muJtag)
 
-    ugnRxs <- vecCircuits (captureUgn localCounter <$> rxs) -< captureUgnsMMWb
+    Fwd handshakesOut <-
+      handshakesWb
+        -< ( handshakeMMWb
+           , Fwd
+               ( Handshake.Inputs
+                   { fromNeighbors = rxs0
+                   , fromCores = txs1
+                   }
+               )
+           )
+
+    let
+      -- TODO: Hardware UGN capture is currently mandatory, it shouldn't be.
+      rxs1 = toMaybe <<$>> handshakesOut.toCoreDones <<*>> handshakesOut.toCores
+      txs1 = sendUgn localCounter <$> handshakesOut.fromCoreDones <*> linksOut
+
+    ugnRxs <- vecCircuits (captureUgn localCounter <$> rxs1) -< captureUgnsMMWb
 
     (Fwd peLinksOut, peUartsOut) <-
       Vec.unzip
@@ -106,10 +127,10 @@ node (Config muConfig switchConfig gppeConfigs) =
     switchIn <- Vec.append3 -< ([nmuLinkOut], Fwd peLinksOut, ugnRxs)
     (switchOut, cal) <-
       switchC @_ @_ @_ @_ @64 switchConfig -< (switchMM, (switchIn, switchWb))
-    ([nmuLinkIn], Fwd switchToGppes, linksOut) <- Vec.split3 -< switchOut
+    ([nmuLinkIn], Fwd switchToGppes, Fwd linksOut) <- Vec.split3 -< switchOut
 
     idC
-      -< ( linksOut
+      -< ( Fwd handshakesOut.toNeighbors
          , Fwd localCounter
          , externalMMWb
          , Fwd switchToGppes
@@ -221,11 +242,12 @@ Internal busses:
   * Switch
   * 'timeWb'
   * External link
+  * Handshakes
   * 'linkCount' number of 'captureUgn' components
   * 'gppes' number of Scatter calendars
   * 'gppes' number of Gather calendars
 -}
-type NmuBusses linkCount gppes = PeInternalBusses + 7 + linkCount + 2 * gppes
+type NmuBusses linkCount gppes = PeInternalBusses + 8 + linkCount + 2 * gppes
 type NmuPrefixWidth linkCount gppes = CLog 2 (NmuBusses linkCount gppes + 1)
 type NmuRemBusWidth linkCount gppes = 30 - NmuPrefixWidth linkCount gppes
 type NmuWishbone dom linkCount gppes = Bitbone dom (NmuRemBusWidth linkCount gppes)
@@ -278,6 +300,8 @@ managementUnitC ::
       (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     , -- \| External connection memory map and Wishbone bus
       (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
+    , -- \| Handshake memory map and Wishbone bus
+      (ToConstBwd Mm, NmuWishbone dom linkCount gppes)
     , -- \| 'captureUgn's memory maps and Wishbone busses
       Vec
         linkCount
@@ -301,6 +325,7 @@ managementUnitC (ManagementConfig{scatterConfig, gatherConfig, peConfig, dumpVcd
         , switchMMWb
         , timeMMWb
         , externalMMWb
+        , handshakeMMWb
         ]
       , myWbRest
       ) <-
@@ -321,6 +346,7 @@ managementUnitC (ManagementConfig{scatterConfig, gatherConfig, peConfig, dumpVcd
          , localCounter
          , switchMMWb
          , externalMMWb
+         , handshakeMMWb
          , captureUgnMMWbs
          , scatterMMWbs
          , gatherMMWbs

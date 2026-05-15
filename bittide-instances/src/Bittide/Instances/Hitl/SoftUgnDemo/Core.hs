@@ -9,15 +9,24 @@ CPUs and checks that the software and hardware captured UGNs match.
 module Bittide.Instances.Hitl.SoftUgnDemo.Core (InternalCpuCount, core) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (
+  HiddenClock,
+  HiddenClockResetEnable,
+  HiddenReset,
+  withClock,
+  withClockResetEnable,
+  withReset,
+ )
 import Protocols
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
-import Bittide.CaptureUgn (captureUgn)
+import Bittide.CaptureUgn (captureUgn, sendUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (xilinxElasticBufferWb)
+import Bittide.Extra.Maybe (toMaybe)
+import Bittide.Handshake (handshakesWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Jtag (jtagChain)
@@ -35,6 +44,7 @@ import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterface
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx (withXilinx)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
+import Clash.Functor.Extra ((<<$>>), (<<*>>))
 import Protocols.Extra
 import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (Mm)
@@ -42,6 +52,7 @@ import Protocols.Wishbone.Extra (delayWishbone)
 import VexRiscv (DumpVcd (..), Jtag)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Handshake as Handshake
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.Vec as Vec
 
@@ -71,9 +82,10 @@ type PeripheralsPerLink = 6
 
 {- External busses:
     - Transceivers
+    - Handshakes
     - Callisto
 -}
-type NmuExternalBusses = 2 + (LinkCount * PeripheralsPerLink)
+type NmuExternalBusses = 3 + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
 
 muConfig ::
@@ -155,10 +167,9 @@ core ::
     , Jtag Bittide
     , "MASK" ::: CSignal Bittide (BitVector LinkCount)
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
-    , "RXS" ::: Vec LinkCount (CSignal GthRx (Maybe (BitVector 64)))
+    , "RXS" ::: Vec LinkCount (CSignal GthRx (BitVector 64))
     )
     ( CSignal Bittide (Maybe SpeedChange)
-    , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
@@ -182,7 +193,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (scatterBusses, scatterCalendarBusses, muWbs3) <- Vec.split3 -< muWbs2
     (gatherBusses, gatherCalendarBusses, muWbs4) <- Vec.split3 -< muWbs3
-    [muTransceiverBus, muCallistoBus] <- idC -< muWbs4
+    [muTransceiverBus, muCallistoBus, muHandshakeBus] <- idC -< muWbs4
     -- Stop management unit
 
     -- Start internal links
@@ -200,11 +211,30 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
         <| repeatC (fmapC $ withBittideClockResetEnable delayWishbone)
         -< ebWbs
 
-    -- Use of `dflipflop` to add pipelining should be replaced by
-    -- https://github.com/bittide/bittide-hardware/pull/1134
-    Fwd rxs2 <-
+    let
+      rxs2 = dflipflop bitClk <$> rxs1
+
+    Fwd handshakesOut <-
+      withBittideClockReset handshakesWb
+        -< ( muHandshakeBus
+           , Fwd
+               ( Handshake.Inputs
+                   { fromNeighbors = rxs2
+                   , fromCores = txs1
+                   }
+               )
+           )
+
+    let
+      -- TODO: Hardware UGN capture is currently mandatory, it shouldn't be.
+      rxs3 = toMaybe <<$>> handshakesOut.toCoreDones <<*>> handshakesOut.toCores
+      rxs4 = dflipflop bitClk <$> rxs3
+
+      txs1 = withClock bitClk $ sendUgn localCounter <$> handshakesOut.fromCoreDones <*> txs0
+
+    Fwd rxs5 <-
       withBittideClockResetEnable
-        $ Vec.vecCircuits ((captureUgn localCounter . dflipflop bitClk) <$> rxs1)
+        $ Vec.vecCircuits (captureUgn localCounter <$> rxs4)
         -< ugnWbs
     -- Stop internal links
 
@@ -222,10 +252,10 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
       repeatC (fmapC $ withBittideClockResetEnable delayWishbone) -< gatherCalendarBusses
 
     idleSink
-      <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs2)
+      <| Vec.vecCircuits (fmap (withBittideClockResetEnable (scatterUnitWbC scatterConfig)) rxs5)
       <| Vec.zip
       -< (scatterBusses, scatterCalendarBussesDelayed)
-    Fwd txs <-
+    Fwd txs0 <-
       repeatC (withBittideClockResetEnable (gatherUnitWbC gatherConfig))
         <| Vec.zip
         -< (gatherBusses, gatherCalendarBussesDelayed)
@@ -277,8 +307,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
     -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
-         , Fwd localCounter
-         , Fwd (dflipflop bitClk <$> txs)
+         , Fwd handshakesOut.toNeighbors
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
@@ -286,6 +315,9 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
  where
   withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   withBittideClockResetEnable = withClockResetEnable bitClk bitRst bitEna
+
+  withBittideClockReset :: forall r. ((HiddenClock Bittide, HiddenReset Bittide) => r) -> r
+  withBittideClockReset r = withClock bitClk $ withReset bitRst r
 
 uncurry4 ::
   (a -> b -> c -> d -> e) ->

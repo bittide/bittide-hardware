@@ -168,7 +168,7 @@ driver testName targets = do
             softwareUgnsFlat <- postProcessSoftwareUgns softwareUgnsPerNode
 
             let
-              swExtraLatency = 2 -- gather read latency + extra link registers
+              swExtraLatency = 1 -- gather read latency
               mismatchedUgns =
                 findMismatchedUgnEdges
                   (fmap (addLatencyEdge swExtraLatency) hardwareUgnsFlat)

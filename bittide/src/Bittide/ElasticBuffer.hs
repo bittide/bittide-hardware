@@ -118,7 +118,7 @@ data ElasticBufferData a
     FillCycle
   | -- | FIFO is in passthrough mode and was not empty
     Data a
-  deriving (Generic, NFDataX, Eq, Show)
+  deriving (Generic, NFDataX, Eq, Show, Functor)
 
 fromData :: ElasticBufferData a -> a
 fromData (Data dat) = dat

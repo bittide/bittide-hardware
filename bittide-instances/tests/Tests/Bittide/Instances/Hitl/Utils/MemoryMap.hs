@@ -7,7 +7,6 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
 import Bittide.CaptureUgn
-import Bittide.ElasticBuffer (ElasticBufferData (Data))
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Tests.NestedInterconnect (nestedInterconnectMm)
 import Bittide.ProcessingElement
@@ -38,7 +37,7 @@ exampleDevice =
     $ \mm -> do
       jtag <- idleSource
       peWbs <- processingElement NoDumpVcd peConfig -< (mm, jtag)
-      _ugns <- vecCircuits (captureUgn (pure 0) <$> (repeat (pure (Data Nothing)))) -< peWbs
+      _ugns <- vecCircuits (captureUgn (pure 0) <$> (repeat (pure Nothing))) -< peWbs
       guh <- idleSource
       idC -< guh
  where

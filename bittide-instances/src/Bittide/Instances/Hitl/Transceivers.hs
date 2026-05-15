@@ -58,20 +58,22 @@ counter ::
 counter clk rst = let c = register clk rst enableGen counterStart (c + 1) in c
 
 {- | Expect a counter starting at 'counterStart' and incrementing by one on each
-cycle.
+cycle. Starts running when the received value equals 'counterStart'.
 -}
 expectCounter ::
   (KnownDomain dom) =>
   Clock dom ->
   Reset dom ->
   -- | Received data
-  Signal dom (Maybe (BitVector 64)) ->
+  Signal dom (BitVector 64) ->
   -- | Error
   Signal dom Bool
-expectCounter clk rst = stickyE clk rst . mealy clk rst enableGen go counterStart
+expectCounter clk rst = stickyE clk rst . mealy clk rst enableGen go Nothing
  where
-  go c (Just e) = (c + 1, c /= e)
-  go c Nothing = (c, False)
+  go Nothing e
+    | e == counterStart = (Just (e + 1), False)
+    | otherwise = (Nothing, False)
+  go (Just c) e = (Just (c + 1), c /= e)
 
 {- | Worker function for 'transceiversUpTest'. See module documentation for more
 information.
@@ -104,7 +106,9 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
   , spiM2S
   )
  where
-  allUp = and <$> bundle transceivers.debugLinkUps
+  allUp =
+    fmap and (bundle transceivers.rxDataInitDonesFree)
+      .&&. fmap and (bundle transceivers.txDataInitDonesFree)
 
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
 
@@ -127,19 +131,20 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
   gthAllReset = unsafeFromActiveLow spiDone
 
   txCounters =
-    counter transceivers.txClock . unsafeFromActiveLow <$> transceivers.txSamplings
+    counter transceivers.txClock . unsafeFromActiveLow <$> transceivers.txDataInitDones
+
+  rxDataResets = unsafeFromActiveLow <$> transceivers.rxDataInitDones
 
   expectCounterError =
     zipWith3
       expectCounter
       transceivers.rxClocks
-      transceivers.rxResets
+      (zipWith orReset transceivers.rxResets rxDataResets)
       transceivers.rxDatas
 
   expectCounterErrorSys =
     fmap or
       $ bundle
-      $ zipWith (.&&.) transceivers.debugLinkUps
       $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
 
   transceivers =
@@ -162,8 +167,6 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
         , rxPs
         , channelResets = repeat noReset
         , txDatas = txCounters
-        , txStarts = repeat (pure True)
-        , rxReadys = repeat (pure True)
         }
 
 -- | Top entity for this test. See module documentation for more information.

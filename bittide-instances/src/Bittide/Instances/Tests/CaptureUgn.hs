@@ -13,7 +13,6 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
-import Bittide.ElasticBuffer (ElasticBufferData (Data))
 import Bittide.Instances.Common (PeConfigElfSource (NameOnly), emptyPeConfig, peConfigFromElf)
 import Bittide.ProcessingElement (PeConfig, processingElement)
 import Bittide.SharedTypes (withLittleEndian)
@@ -30,9 +29,9 @@ dutWithMm ::
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
   ) =>
-  -- | Procesing element configuration
+  -- | Processing element configuration
   PeConfig 4 ->
-  -- | Elastic buffer
+  -- | From handshake
   Signal dom (Maybe (BitVector 64)) ->
   -- | Local sequence counter
   Signal dom (Unsigned 64) ->
@@ -41,7 +40,7 @@ dutWithMm peConfig eb localCounter = withLittleEndian $ circuit $ \(mm, _unit) -
   (uartRx, jtagIdle) <- idleSource
   [uartBus, ugnBus] <- processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-  _bittideData <- captureUgn localCounter (Data <$> eb) -< ugnBus
+  _bittideData <- captureUgn localCounter eb -< ugnBus
   idC -< uartTx
 
 type IMemWords = DivRU (4 * 1024) 4
@@ -74,9 +73,9 @@ dut ::
   ) =>
   -- | Procesing element configuration
   PeConfig 4 ->
-  -- | Elastic buffer
+  -- | From handshake
   Signal dom (Maybe (BitVector 64)) ->
   -- | Local sequence counter
   Signal dom (Unsigned 64) ->
   Circuit () (Df dom (BitVector 8))
-dut peConfig eb localCounter = unMemmap $ dutWithMm peConfig eb localCounter
+dut peConfig handshake localCounter = unMemmap $ dutWithMm peConfig handshake localCounter

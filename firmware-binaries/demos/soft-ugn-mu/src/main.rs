@@ -62,6 +62,7 @@ fn initialize_calendars(uart: &mut Uart) {
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let transceivers = &INSTANCES.transceivers;
+    let handshakes = &INSTANCES.handshakes;
     let cc = INSTANCES.clock_control;
 
     let elastic_buffers = [
@@ -87,12 +88,7 @@ fn main() -> ! {
     let mut link_startups = [LinkStartup::new(); 7];
     while !link_startups.iter().all(|ls| ls.is_done()) {
         for (i, link_startup) in link_startups.iter_mut().enumerate() {
-            link_startup.next(
-                transceivers,
-                i,
-                elastic_buffers[i],
-                capture_ugns[i].has_captured(),
-            );
+            link_startup.next(transceivers, handshakes, i, elastic_buffers[i]);
         }
     }
 
