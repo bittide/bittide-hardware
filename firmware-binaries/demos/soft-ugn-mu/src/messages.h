@@ -17,9 +17,9 @@
 // ============================================================================
 
 enum RingBufferAlignState {
-  RINGBUFFER_ALIGN_EMPTY = 0,
-  RINGBUFFER_ALIGN_ANNOUNCE = 0xBADC0FFEE,
-  RINGBUFFER_ALIGN_ACKNOWLEDGE = 0xDEADABBA,
+  RING_BUFFER_ALIGN_EMPTY = 0,
+  RING_BUFFER_ALIGN_ANNOUNCE = 0xBADC0FFEE,
+  RING_BUFFER_ALIGN_ACKNOWLEDGE = 0xDEADABBA,
 };
 
 // ============================================================================
@@ -27,32 +27,6 @@ enum RingBufferAlignState {
 // ============================================================================
 // These macros follow the pattern from elara_experiments for setting up
 // formatted messages that can be printed to UART.
-
-// Message for missed metacycle - calculates metacycle numbers from cycles and
-// timer
-#define PRINT_MISSED_METACYCLE(UART, TIMER, METACYCLE_START_CYCLES,            \
-                               METACYCLE_CLOCKS)                               \
-  do {                                                                         \
-    uint32_t expected_mc =                                                     \
-        (uint32_t)((METACYCLE_START_CYCLES) / (METACYCLE_CLOCKS));             \
-    uint64_t current_cycles = timer_now_cycles(TIMER);                         \
-    uint32_t current_mc = (uint32_t)(current_cycles / (METACYCLE_CLOCKS));     \
-    uart_puts(UART, "*** Missed metacycle ");                                  \
-    uart_putdec(UART, (uint64_t)expected_mc);                                  \
-    uart_puts(UART, ", currently in metacycle ");                              \
-    uart_putdec(UART, (uint64_t)current_mc);                                   \
-    uart_puts(UART, " ***\r\n");                                               \
-  } while (0)
-
-// Message for event queue statistics - takes queue pointer
-#define PRINT_QUEUE_STATS(UART, EVENT_QUEUE_PTR)                               \
-  do {                                                                         \
-    uart_puts(UART, "Queue: ");                                                \
-    uart_putdec(UART, (uint64_t)((EVENT_QUEUE_PTR)->size));                    \
-    uart_puts(UART, "/");                                                      \
-    uart_putdec(UART, (uint64_t)MAX_FIXED_PQ_SIZE);                            \
-    uart_puts(UART, " events\n");                                              \
-  } while (0)
 
 // Message for completion statistics - calculates elapsed time
 #define PRINT_COMPLETION_STATS(UART, TIMER, ITERATIONS, START_CYCLES)          \
@@ -104,64 +78,6 @@ enum RingBufferAlignState {
         PRINT_INVALID_PORT(UART, i);                                           \
       }                                                                        \
     }                                                                          \
-  } while (0)
-
-// Message for printing first event information - takes event and
-// metacycle_clocks
-#define PRINT_FIRST_EVENT_INFO(UART, EVENT_STRUCT, METACYCLE_CLOCKS)           \
-  do {                                                                         \
-    uint64_t event_time = get_event_time(EVENT_STRUCT);                        \
-    uint32_t event_metacycle = (uint32_t)(event_time / (METACYCLE_CLOCKS));    \
-    uart_puts(UART, "First event scheduled at:\n");                            \
-    uart_puts(UART, "  Metacycle: ");                                          \
-    uart_putdec(UART, (uint64_t)event_metacycle);                              \
-    uart_puts(UART, "\n  Cycle: ");                                            \
-    uart_putdec(UART, event_time);                                             \
-    uart_puts(UART, "\n  Type: ");                                             \
-    if ((EVENT_STRUCT).type == EVENT_TYPE_SEND) {                              \
-      uart_puts(UART, "SEND (");                                               \
-      if ((EVENT_STRUCT).msg_type == MSG_TYPE_ANNOUNCE) {                      \
-        uart_puts(UART, "ANNOUNCE");                                           \
-      } else {                                                                 \
-        uart_puts(UART, "ACKNOWLEDGE");                                        \
-      }                                                                        \
-      uart_puts(UART, ")\n");                                                  \
-    } else if ((EVENT_STRUCT).type == EVENT_TYPE_RECEIVE) {                    \
-      uart_puts(UART, "RECEIVE\n");                                            \
-    } else {                                                                   \
-      uart_puts(UART, "INVALIDATE\n");                                         \
-    }                                                                          \
-  } while (0)
-
-// Message for printing loop configuration
-#define PRINT_LOOP_CONFIG(UART, MAX_ITERATIONS, SEND_PERIOD, RECEIVE_PERIOD,   \
-                          METACYCLE_CLOCKS)                                    \
-  do {                                                                         \
-    uart_puts(UART, "\nLoop configuration:\n");                                \
-    uart_puts(UART, "  Max iterations: ");                                     \
-    uart_putdec(UART, (uint64_t)(MAX_ITERATIONS));                             \
-    uart_puts(UART, "\n  Send period: ");                                      \
-    uart_putdec(UART, (uint64_t)(SEND_PERIOD));                                \
-    uart_puts(UART, " cycles (");                                              \
-    uart_putdec(UART, (uint64_t)((SEND_PERIOD) / (METACYCLE_CLOCKS)));         \
-    uart_puts(UART, " metacycles)\n");                                         \
-    uart_puts(UART, "  Receive period: ");                                     \
-    uart_putdec(UART, (uint64_t)(RECEIVE_PERIOD));                             \
-    uart_puts(UART, " cycles (");                                              \
-    uart_putdec(UART, (uint64_t)((RECEIVE_PERIOD) / (METACYCLE_CLOCKS)));      \
-    uart_puts(UART, " metacycles)\n");                                         \
-  } while (0)
-
-// Message for printing protocol goals
-#define PRINT_PROTOCOL_GOALS(UART, UGN_CTX_PTR)                                \
-  do {                                                                         \
-    uart_puts(UART, "\nProtocol goals:\n");                                    \
-    uart_puts(UART, "  Discover incoming UGNs for all ");                      \
-    uart_putdec(UART, (uint64_t)((UGN_CTX_PTR)->num_ports));                   \
-    uart_puts(UART, " ports\n");                                               \
-    uart_puts(UART, "  Acknowledge outgoing UGNs for all ");                   \
-    uart_putdec(UART, (uint64_t)((UGN_CTX_PTR)->num_ports));                   \
-    uart_puts(UART, " ports\n");                                               \
   } while (0)
 
 // Message for printing initialization information - compact summary
@@ -259,40 +175,6 @@ enum RingBufferAlignState {
     }                                                                          \
   } while (0)
 
-// Message for printing found incoming UGN
-#define PRINT_FOUND_INCOMING_UGN(UART, EVENT_TIME, PORT, UGN)                  \
-  do {                                                                         \
-    uart_puts(UART, "I P");                                                    \
-    uart_putdec(UART, (uint64_t)(PORT));                                       \
-    uart_puts(UART, ": ");                                                     \
-    uart_putdec_signed(UART, (UGN));                                           \
-    uart_puts(UART, " @ ");                                                    \
-    uart_putdec(UART, (uint64_t)(EVENT_TIME));                                 \
-    uart_puts(UART, "\n");                                                     \
-  } while (0)
-
-// Message for printing found outgoing UGN
-#define PRINT_FOUND_OUTGOING_UGN(UART, EVENT_TIME, PORT, UGN)                  \
-  do {                                                                         \
-    uart_puts(UART, "O P");                                                    \
-    uart_putdec(UART, (uint64_t)(PORT));                                       \
-    uart_puts(UART, ": ");                                                     \
-    uart_putdec_signed(UART, (UGN));                                           \
-    uart_puts(UART, " @ ");                                                    \
-    uart_putdec(UART, (uint64_t)(EVENT_TIME));                                 \
-    uart_puts(UART, "\n");                                                     \
-  } while (0)
-
-// Message for printing final send scheduled
-#define PRINT_FINAL_SEND_SCHEDULED(UART, PORT, TIME)                           \
-  do {                                                                         \
-    uart_puts(UART, "FS P");                                                   \
-    uart_putdec(UART, (uint64_t)(PORT));                                       \
-    uart_puts(UART, " @ ");                                                    \
-    uart_putdec(UART, (uint64_t)(TIME));                                       \
-    uart_puts(UART, "\n");                                                     \
-  } while (0)
-
 // Message for printing statistics regarding what kind of messages were sent and
 // received
 #define PRINT_MESSAGE_COUNT_STATES(UART, UGN_CTX_PTR)                          \
@@ -308,20 +190,6 @@ enum RingBufferAlignState {
     uart_putdec(UART, (uint64_t)((UGN_CTX_PTR)->outgoing_acknowledge_count));  \
     uart_puts(UART, "\n");                                                     \
   } while (0);
-
-// Assertion macro to check that SEND event_time is correctly aligned
-#define ASSERT_SEND_TIME_VALID(UART, event_time, offset)                       \
-  do {                                                                         \
-    uint64_t expected_time =                                                   \
-        ((event_time / METACYCLE_CLOCKS) * METACYCLE_CLOCKS) +                 \
-        (offset) if ((event_time) != expected_time) {                          \
-      uart_puts(UART, "[UGN WARNING] SEND event_time misaligned: ");           \
-      uart_putdec(UART, event_time);                                           \
-      uart_puts(UART, " (expected ");                                          \
-      uart_putdec(UART, expected_time);                                        \
-      uart_puts(UART, ")\n");                                                  \
-    }                                                                          \
-  } while (0)
 
 // Assertion macro to check that SEND and RECEIVE periods are coprime
 #define ASSERT_PERIODS_COPRIME(UART, SEND_PERIOD, RECEIVE_PERIOD, BUFFER_SIZE) \
@@ -357,18 +225,6 @@ enum RingBufferAlignState {
     }                                                                          \
   } while (0)
 
-#define PRINT_DEADLINE_MISSED(UART, TIMER, EVENT_PTR, EVENT_TIME)              \
-  do {                                                                         \
-    uart_puts(UART, "[UGN WARNING] Event missed deadline: type=");             \
-    uart_puts(UART, show_event_type((EVENT_PTR)->type));                       \
-    uart_puts(UART, ", scheduled_time=");                                      \
-    uart_putdec(UART, (uint64_t)(EVENT_TIME));                                 \
-    uart_puts(UART, ", now=");                                                 \
-    uint64_t now_cycles = timer_now_cycles(TIMER);                             \
-    uart_putdec(UART, now_cycles);                                             \
-    uart_puts(UART, "\n");                                                     \
-  } while (0);
-
 // ============================================================================
 // RingBuffer Alignment Messages
 // ============================================================================
@@ -380,13 +236,6 @@ enum RingBufferAlignState {
     uart_puts(UART, "========================================\n");             \
   } while (0)
 
-#define PRINT_ALIGN_ITERATION(UART, ITER)                                      \
-  do {                                                                         \
-    uart_puts(UART, "\nAlign iteration ");                                     \
-    uart_putdec(UART, (uint64_t)(ITER));                                       \
-    uart_puts(UART, ":\n");                                                    \
-  } while (0)
-
 #define PRINT_ALIGN_STATE_CHANGE(UART, ITER, PORT, STATE, IN_OFF)              \
   do {                                                                         \
     uart_puts(UART, "  [");                                                    \
@@ -394,9 +243,9 @@ enum RingBufferAlignState {
     uart_puts(UART, "] P");                                                    \
     uart_putdec(UART, (uint64_t)(PORT));                                       \
     uart_puts(UART, ": state=");                                               \
-    if ((STATE) == RINGBUFFER_ALIGN_ANNOUNCE)                                  \
+    if ((STATE) == RING_BUFFER_ALIGN_ANNOUNCE)                                 \
       uart_puts(UART, "ANNOUNCE");                                             \
-    else if ((STATE) == RINGBUFFER_ALIGN_ACKNOWLEDGE)                          \
+    else if ((STATE) == RING_BUFFER_ALIGN_ACKNOWLEDGE)                         \
       uart_puts(UART, "ACK");                                                  \
     else                                                                       \
       uart_puts(UART, "EMPTY");                                                \
@@ -405,44 +254,10 @@ enum RingBufferAlignState {
     uart_puts(UART, "\n");                                                     \
   } while (0)
 
-#define PRINT_ALIGN_OUTGOING_OFFSET(UART, PORT, OUT_OFF)                       \
-  do {                                                                         \
-    uart_puts(UART, "  P");                                                    \
-    uart_putdec(UART, (uint64_t)(PORT));                                       \
-    uart_puts(UART, ": out_off=");                                             \
-    uart_putdec_signed(UART, (OUT_OFF));                                       \
-    uart_puts(UART, "\n");                                                     \
-  } while (0)
-
-#define PRINT_ALIGN_PORT_ALIGNED(UART, PORT)                                   \
-  do {                                                                         \
-    uart_puts(UART, "  P");                                                    \
-    uart_putdec(UART, (uint64_t)(PORT));                                       \
-    uart_puts(UART, ": ALIGNED\n");                                            \
-  } while (0)
-
-#define PRINT_ALIGN_COMPLETE(UART, IN_OFFS, NUM_PORTS)                         \
-  do {                                                                         \
-    uart_puts(UART, "\n========================================\n");           \
-    uart_puts(UART, "RingBuffer alignment complete!\n");                       \
-    uart_puts(UART, "Final offsets:\n");                                       \
-    for (int32_t port = 0; port < (NUM_PORTS); port++) {                       \
-      uart_puts(UART, "  P");                                                  \
-      uart_putdec(UART, (uint64_t)port);                                       \
-      uart_puts(UART, ": in=");                                                \
-      uart_putdec_signed(UART, (IN_OFFS)[port]);                               \
-      uart_puts(UART, "\n");                                                   \
-    }                                                                          \
-    uart_puts(UART, "========================================\n\n");           \
-  } while (0)
-
-// ========== =================================================================
+// ============================================================================
 // Pre-defined Message Strings
 // ============================================================================
 
 #define MSG_QUEUE_FULL "*** [ERROR] Queue full ***\n"
-#define MSG_QUEUE_EMPTY "*** [ERROR] Queue empty ***\n"
-#define MSG_PROTOCOL_COMPLETE "Protocol complete - all UGNs discovered!\n"
-#define MSG_DEADLINE_MISS "*** Deadline miss in metacycle ***\n"
 
 #endif // MESSAGES_H

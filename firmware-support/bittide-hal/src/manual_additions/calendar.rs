@@ -8,7 +8,7 @@ peripheral access code for the `Calendar` device.
  */
 
 use crate::manual_additions::{
-    index::{IndexInner, IndexInterface, IndexSizeCheck},
+    index::{IndexInterface, IndexSizeCheck},
     unsigned::{UnsignedInterface, UnsignedSizeCheck},
     FromAs, IntoAs,
 };
@@ -49,12 +49,6 @@ impl_valid_entry_type! {
     type: [crate::types::ValidEntry_12],
     repeat: Unsigned!(16),
     mask: 12,
-}
-
-impl_valid_entry_type! {
-    type: [crate::types::ValidEntry_16],
-    repeat: Unsigned!(16),
-    mask: 16,
 }
 
 /// Abstraction trait over all the methods that a calendar type should provide
@@ -251,50 +245,4 @@ impl_calendar_interface! {
     metacycle: Unsigned!(32),
     index: Index!(256),
     entry: crate::types::ValidEntry_12<[Index!(17); 16]>,
-}
-
-impl_calendar_interface! {
-    cal: crate::hals::soft_ugn_demo_mu::devices::Calendar,
-    metacycle: Unsigned!(32),
-    index: Index!(4000),
-    entry: crate::types::ValidEntry_16<Index!(4000)>,
-}
-
-pub trait RingbufferCalendar {
-    fn initialize_as_ringbuffer(&self, size: usize);
-}
-
-impl<T> RingbufferCalendar for T
-where
-    T: CalendarType,
-    core::ops::Range<IndexInner<T::Index>>: IntoIterator<Item = IndexInner<T::Index>>,
-    ValidEntryInner<CalendarEntryType<T>>: From<T::Index>,
-    ValidEntryRepeat<CalendarEntryType<T>>: FromAs<u8>,
-{
-    /// Initializes a calendar type which contains entries derivable from `usize` and repeats
-    /// derivable from `u8` as a ringbuffer.
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
-    /// - Attempting to initialize a ringbuffer of size 0
-    /// - Attempting to initialize a ringbuffer of a size greater than the maximum size of the
-    ///   calendar (compared against [`Self::SHADOW_INDEX_MAX`])
-    fn initialize_as_ringbuffer(&self, size: usize) {
-        assert!(size > 0, "Cannot have a ringbuffer of size 0!");
-        let size_max_index: IndexInner<T::Index> = (size - 1).into_as();
-        if <usize as IntoAs<IndexInner<T::Index>>>::into_as(size) > T::Index::N_AS_INNER {
-            panic!("Size ({size}) exceeds calendar size ({})", T::Index::N_);
-        }
-        for (n, idx) in (IndexInner::<T::Index>::from_as(0usize)..T::Index::N_AS_INNER)
-            .into_iter()
-            .map(|n| unsafe { T::Index::idx_new_unchecked(n) })
-            .enumerate()
-        {
-            let entry = CalendarEntryType::<Self>::new(idx.into(), 0.into_as());
-            self.write_shadow_entry(n, entry);
-        }
-        self.calint_set_shadow_depth_index(unsafe { T::Index::idx_new_unchecked(size_max_index) });
-        self.calint_set_swap_active(true);
-    }
 }

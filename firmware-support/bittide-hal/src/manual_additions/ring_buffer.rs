@@ -198,12 +198,18 @@ macro_rules! impl_ring_buffer_interfaces {
 }
 
 impl_ring_buffer_interfaces! {
-    rx: crate::shared_devices::ReceiveRingBuffer,
-    tx: crate::shared_devices::TransmitRingBuffer,
+    rx: crate::hals::ring_buffer_test::devices::ReceiveRingBuffer,
+    tx: crate::hals::ring_buffer_test::devices::TransmitRingBuffer,
     cidx: Index<16, u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl_ring_buffer_interfaces! {
+    rx: crate::hals::soft_ugn_demo_mu::devices::ReceiveRingBuffer,
+    tx: crate::hals::soft_ugn_demo_mu::devices::TransmitRingBuffer,
+    cidx: Index<4000, u16>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 enum AlignPhase {
     Unaligned,
     FindingAlignment,
