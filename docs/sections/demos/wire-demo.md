@@ -5,11 +5,9 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # Wire Demo
-The [switch demo](switch-demo.md) shows that we could use the bittide mechanism to thread a path through an 8-node network, all statically scheduled. To simplify things, we programmed a static calendar and used a calculator to produce the exact clock cycles at which the PE should send and receive data. For more details, see [this presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y/edit?usp=sharing).
+The wire demo demonstrates the "wire" behavior of bittide: threading a path through an 8-node FPGA network, treating each link as a dedicated point-to-point connection. Rather than using calendars to do time multiplexing on every link, each link is connected to the PE through a single mux. This mux can either be set to serve the MU or the PE.
 
-While talking to potential users of bittide we've found that they're not interested in this switching behavior (yet). Instead, they're more interested in the "wire" behavior of bittide and would simply like to be kept away from anything else.
-
-The idea is still the same: thread a path through a bunch of nodes/FPGAs (in our case 8). The implementation is much simpler than the previous iteration though: instead of using calendars to do time multiplexing on every link, the links are connected to the PE through a single mux. This mux can either be set to serve the MU or the PE.
+The host driver uses the UGNs to calculates a route through all nodes and programs each node's mux and PE configuration accordingly. Each PE reads a value from one link, XORs it with its own FPGA DNA, and writes the result to another link — chaining all nodes together. The final node's result should be the XOR of all device DNAs, which serves as verification that the path was correctly established.
 
 
 ## Architecture

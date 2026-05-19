@@ -16,7 +16,6 @@ SPDX-License-Identifier: Apache-2.0
   - [Gather Unit](sections/components/gather-unit.md)
 - [Demos]()
   - [Soft UGN Demo](sections/demos/soft-ugn-demo.md)
-  - [Switch Demo](sections/demos/switch-demo.md)
   - [Wire Demo](sections/demos/wire-demo.md)
 - [Ring Buffer alignment](sections/ringbuffer-alignment.md)
 - [Asynchronous communication](sections/asynchronous-communication.md)
