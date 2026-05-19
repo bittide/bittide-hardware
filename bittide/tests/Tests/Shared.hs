@@ -12,7 +12,6 @@ import Protocols (Circuit (..), toSignals)
 import Protocols.Wishbone as Wb
 import Protocols.Wishbone.Standard.Hedgehog (WishboneMasterRequest (..), validatorCircuit)
 
-import Bittide.Calendar
 import Bittide.SharedTypes
 
 import qualified Data.List as L
@@ -225,7 +224,3 @@ validateWb m2s0 s2m0 = (m2s1, s2m1)
 -- | Satisfies implicit control signal constraints by using default values.
 wcre :: (KnownDomain dom) => ((HiddenClockResetEnable dom) => r) -> r
 wcre = withClockResetEnable clockGen resetGen enableGen
-
--- | Make any @a@ into a non-repeating `ValidEntry` without repetition bits.
-nonRepeatingEntry :: a -> ValidEntry a 0
-nonRepeatingEntry a = ValidEntry{veEntry = a, veRepeat = 0}

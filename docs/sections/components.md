@@ -10,7 +10,5 @@ This section provides an overview of the main hardware components in the Bittide
 
 ## Available Components
 
-- [Calendar](components/calendar.md)
 - [Transmit Ring Buffer](components/transmit-ring-buffer.md)
 - [Receive Ring Buffer](components/receive-ring-buffer.md)
-- [Switch](components/switch.md)

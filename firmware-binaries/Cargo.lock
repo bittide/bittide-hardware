@@ -125,18 +125,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "c_scatter_gather_test"
-version = "0.1.0"
-dependencies = [
- "bittide-hal-c",
- "bittide-sys",
- "cc",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
-
-[[package]]
 name = "c_timer_wb"
 version = "0.1.0"
 dependencies = [
@@ -638,18 +626,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
-name = "scatter_gather_test"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-macros",
- "bittide-sys",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
-
-[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -771,19 +747,6 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 name = "subst_macros"
 version = "0.1.0"
 source = "git+https://github.com/QBayLogic/subst_macros.git?rev=1273588cd7b854b8b6294cf54c7e238f77778ac4#1273588cd7b854b8b6294cf54c7e238f77778ac4"
-
-[[package]]
-name = "switch_calendar_test"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-macros",
- "bittide-sys",
- "heapless",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
 
 [[package]]
 name = "syn"

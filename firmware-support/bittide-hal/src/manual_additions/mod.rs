@@ -5,14 +5,12 @@
 pub mod addressable_buffer;
 pub mod aligned;
 pub mod bitvector;
-pub mod calendar;
 pub mod capture_ugn;
 pub mod dna;
 pub mod elastic_buffer;
 pub mod index;
 pub mod mask;
 pub mod ring_buffer;
-pub mod scatter_gather_pe;
 pub mod si539x_spi;
 pub mod signed;
 pub mod timer;

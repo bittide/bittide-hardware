@@ -14,7 +14,6 @@ import qualified Tests.Axi4.Generators
 import qualified Tests.Axi4.Properties
 import qualified Tests.BitView
 import qualified Tests.Calculator
-import qualified Tests.Calendar
 import qualified Tests.Clash.Protocols.Wishbone.Extra -- Should be moved to bittide-extra, but depends on wbStorage
 import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
@@ -25,8 +24,6 @@ import qualified Tests.ElasticBuffer
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
-import qualified Tests.ScatterGather
-import qualified Tests.Switch
 import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
@@ -43,7 +40,6 @@ tests =
     , Tests.Axi4.Properties.tests
     , Tests.BitView.tests
     , Tests.Calculator.tests
-    , Tests.Calendar.tests
     , Tests.Clash.Protocols.Wishbone.Extra.tests
     , Tests.ClockControl.Freeze.tests
     , Tests.ClockControl.Si539xSpi.tests
@@ -54,8 +50,6 @@ tests =
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
-    , Tests.ScatterGather.tests
-    , Tests.Switch.tests
     , Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.tests
     , Tests.Transceiver.WordAlign.tests

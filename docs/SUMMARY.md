@@ -11,7 +11,6 @@ SPDX-License-Identifier: Apache-2.0
 - [Hardware-in-the-Loop (HITL) Platform](sections/hitl-platform.md)
 - [Experiments](sections/experiments.md)
 - [Components](sections/components.md)
-  - [Calendar](sections/components/calendar.md)
   - [Transmit Ring Buffer](sections/components/transmit-ring-buffer.md)
   - [Receive Ring Buffer](sections/components/receive-ring-buffer.md)
 - [Demos]()

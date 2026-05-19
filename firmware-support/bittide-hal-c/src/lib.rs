@@ -26,7 +26,7 @@
 //!
 //! Devices that are not shared between hardware setups are placed in the
 //! "hardware setup directory" under a `devices` directory, like
-//! `generated/hals/scatter_gather_pe/devices/scatter_calendar.h`
+//! `generated/hals/ring_buffer_test/devices/receive_ring_buffer.h`
 //!
 //! ## Usage from C Firmware
 //!

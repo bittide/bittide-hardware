@@ -53,21 +53,21 @@ All build results end up in `_build`.
 Example:
 
 ```
-shake scatterUnitWb:hdl
+shake boardTestExtended:hdl
 ```
 
 ## Synthesis
 Example:
 
 ```
-shake scatterUnitWb:synth
+shake boardTestExtended:synth
 ```
 
 ## Place, route, and netlist generation
 Example:
 
 ```
-shake scatterUnitWb:pnr
+shake boardTestExtended:pnr
 ```
 
 ## Bitstream generation
