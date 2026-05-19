@@ -192,7 +192,6 @@ library
     Bittide.BitView
     Bittide.BootPe
     Bittide.Calculator
-    Bittide.Calendar
     Bittide.CaptureUgn
     Bittide.ClockControl
     Bittide.ClockControl.Callisto.Types
@@ -223,10 +222,8 @@ library
     Bittide.ProcessingElement.Util
     Bittide.ProgrammableMux
     Bittide.RingBuffer
-    Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Shutter
-    Bittide.Switch
     Bittide.Sync
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
@@ -294,7 +291,6 @@ test-suite unittests
     Tests.Axi4.Types
     Tests.BitView
     Tests.Calculator
-    Tests.Calendar
     Tests.Clash.Protocols.Wishbone.Extra
     Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
@@ -306,9 +302,7 @@ test-suite unittests
     Tests.Handshake
     Tests.ProcessingElement.ReadElf
     Tests.ProgrammableMux
-    Tests.ScatterGather
     Tests.Shared
-    Tests.Switch
     Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign

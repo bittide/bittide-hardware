@@ -216,9 +216,7 @@ library
     Bittide.Instances.Pnr.Freeze
     Bittide.Instances.Pnr.ProcessingElement
     Bittide.Instances.Pnr.RingBuffer
-    Bittide.Instances.Pnr.ScatterGather
     Bittide.Instances.Pnr.Si539xSpi
-    Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Tests.AddressableBytesWb
     Bittide.Instances.Tests.CaptureUgn
@@ -228,8 +226,6 @@ library
     Bittide.Instances.Tests.NestedInterconnect
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.RingBuffer
-    Bittide.Instances.Tests.ScatterGather
-    Bittide.Instances.Tests.SwitchCalendar
     Bittide.Instances.Tests.TimeWb
     Bittide.Instances.Tests.Watchdog
     Bittide.Instances.Tests.WbToDf
@@ -325,8 +321,6 @@ test-suite unittests
     Wishbone.NestedInterconnect
     Wishbone.RegisterWb
     Wishbone.RingBuffer
-    Wishbone.ScatterGather
-    Wishbone.SwitchCalendar
     Wishbone.Time
     Wishbone.Watchdog
 
