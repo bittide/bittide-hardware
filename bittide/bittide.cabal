@@ -215,8 +215,6 @@ library
     Bittide.Ethernet.Mac
     Bittide.Handshake
     Bittide.Jtag
-    Bittide.MetaPeConfig
-    Bittide.Node
     Bittide.PacketStream
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
