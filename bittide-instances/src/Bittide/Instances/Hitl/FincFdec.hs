@@ -32,7 +32,7 @@ import Bittide.Instances.Hitl.Setup (allHwTargets)
 import Data.Maybe (isJust)
 import System.FilePath ((</>))
 
-import qualified Clash.Cores.Xilinx.Extra as Gth
+import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
 
 data TestState = Busy | Fail | Success

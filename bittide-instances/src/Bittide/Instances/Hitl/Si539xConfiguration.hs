@@ -43,7 +43,7 @@ import Clash.Cores.Xilinx (withXilinx)
 import Bittide.Instances.Domains
 
 import qualified Bittide.Instances.Hitl.Driver.Si539xConfiguration as D
-import qualified Clash.Cores.Xilinx.Extra as Gth
+import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
 
 #ifdef SIM_BAUD_RATE
