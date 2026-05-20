@@ -11,7 +11,7 @@ use itertools::izip;
 use bittide_hal::{
     manual_additions::timer::{Duration, Instant, WaitResult},
     shared_devices::{Timer, Uart},
-    wire_demo_cc::{devices::DomainDiffCounters, DeviceInstances},
+    wire_demo_clock_control::{devices::DomainDiffCounters, DeviceInstances},
 };
 use bittide_macros::unsigned;
 use bittide_sys::{sample_store::SampleStore, stability_detector::StabilityDetector};

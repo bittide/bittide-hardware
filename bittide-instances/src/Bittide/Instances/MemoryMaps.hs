@@ -59,14 +59,14 @@ $( do
            , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
            , ("SoftUgnDemoBoot", SoftUgnDemo.boot)
            , ("SoftUgnDemoManagementUnit", SoftUgnDemo.managementUnit)
-           , ("SoftUgnDemoCc", SoftUgnDemo.cc)
+           , ("SoftUgnDemoClockControl", SoftUgnDemo.clockControl)
            , ("TimeWb", TimeWb.timeWbMm)
            , ("TimeWbC", TimeWb.timeWbMmC)
            , ("WatchdogTest", Watchdog.dutMm)
            , ("WbToDfTest", WbToDf.dutMM)
            , ("WireDemoBoot", WireDemo.boot)
            , ("WireDemoManagementUnit", WireDemo.managementUnit)
-           , ("WireDemoCc", WireDemo.cc)
+           , ("WireDemoClockControl", WireDemo.clockControl)
            , ("VexRiscv", vexRiscvTestMM)
            ]
 
