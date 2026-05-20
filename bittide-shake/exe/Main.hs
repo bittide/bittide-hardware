@@ -181,7 +181,6 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferPnr"
     , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferPnr"
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
-    , defTarget $ mkName "Bittide.Instances.Pnr.StabilityChecker.stabilityhecker_3_1M"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
@@ -281,7 +280,6 @@ main = do
               , "bittide-extra"
               , "bittide-experiments"
               , "bittide-instances"
-              , "bittide-tools"
               ]
           command_ [] "mkdir" ["-p", dataFilesDir]
           for_ (filter (((==) (Just '/')) . fmap fst . uncons) $ lines out) $

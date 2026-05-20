@@ -164,7 +164,6 @@ library
 
   exposed-modules:
     Bittide.Extra.Maybe
-    Bittide.Extra.Wishbone
     Clash.Class.Cdc
     Clash.Cores.Xilinx
     Clash.Cores.Xilinx.Xpm.Cdc.Extra

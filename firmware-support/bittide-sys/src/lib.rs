@@ -9,7 +9,6 @@ pub mod axi;
 pub mod callisto;
 pub mod link_startup;
 pub mod mac;
-pub mod program_stream;
 pub mod sample_store;
 pub mod smoltcp;
 pub mod stability_detector;

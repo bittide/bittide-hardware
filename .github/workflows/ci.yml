@@ -53,7 +53,6 @@ env:
   bittide_extra_datadir: "${{ github.workspace }}/bittide-extra/"
   bittide_instances_datadir: "${{ github.workspace }}/bittide-instances/"
   bittide_shake_datadir: "${{ github.workspace }}/bittide-shake/"
-  bittide_tools_datadir: "${{ github.workspace }}/bittide-tools/"
   clash_bitpackc_datadir: "${{ github.workspace }}/clash-bitpackc/"
   clash_protocols_memmap_datadir: "${{ github.workspace }}/clash-protocols-memmap/"
   gdb_hs_datadir: "${{ github.workspace }}/gdb-hs/"
@@ -346,7 +345,6 @@ jobs:
 
         # No tests:
         # - bittide-shake
-        # - bittide-tools
 
         # `vivado-hs` unit tests need to run with Vivado
         include:

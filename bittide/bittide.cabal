@@ -217,7 +217,6 @@ library
     Bittide.PacketStream
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
-    Bittide.ProcessingElement.ProgramStream
     Bittide.ProcessingElement.ReadElf
     Bittide.ProcessingElement.Util
     Bittide.ProgrammableMux
@@ -237,7 +236,6 @@ library
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
     Clash.Cores.Xilinx.Ddr4
-    Clash.Cores.Xilinx.Extra
     Clash.Cores.Xilinx.Gth
     Clash.Cores.Xilinx.Gth.Internal
     Clash.Cores.Xilinx.SystemMonitor
