@@ -57,6 +57,9 @@ name = "bittide-cpus"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "itertools",
  "ufmt",
 ]
 

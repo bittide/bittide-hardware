@@ -53,6 +53,9 @@ name = "bittide-cpus"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "itertools",
  "ufmt",
 ]
 
@@ -733,13 +736,10 @@ dependencies = [
 name = "soft-ugn-demo-clock-control"
 version = "0.1.0"
 dependencies = [
+ "bittide-cpus",
  "bittide-hal",
- "bittide-macros",
- "bittide-sys",
- "itertools",
  "memmap-generate",
  "riscv-rt 0.11.0",
- "ufmt",
 ]
 
 [[package]]
@@ -932,13 +932,10 @@ dependencies = [
 name = "wire-demo-clock-control"
 version = "0.1.0"
 dependencies = [
+ "bittide-cpus",
  "bittide-hal",
- "bittide-macros",
- "bittide-sys",
- "itertools",
  "memmap-generate",
  "riscv-rt 0.11.0",
- "ufmt",
 ]
 
 [[package]]

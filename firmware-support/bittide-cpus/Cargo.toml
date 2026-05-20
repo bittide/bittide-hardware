@@ -14,4 +14,7 @@ workspace = true
 
 [dependencies]
 bittide-hal = { path = "../bittide-hal" }
+bittide-macros = { path = "../bittide-macros" }
+bittide-sys = { path = "../bittide-sys" }
+itertools = { version = "0.14.0", default-features = false }
 ufmt = "0.2.0"

@@ -15,12 +15,9 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bittide-macros = { path = "../../../firmware-support/bittide-macros" }
-bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+bittide-cpus = { path = "../../../firmware-support/bittide-cpus" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
-itertools = { version = "0.14.0", default-features = false }
 riscv-rt = "0.11.0"
-ufmt = "0.2.0"
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
