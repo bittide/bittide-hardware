@@ -69,7 +69,7 @@ driver testName targets = do
 
       Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
         liftIO
-          $ zipWithConcurrently3_ (initGdb hitlDir "wire-demo-boot") bootGdbs bootTapInfos targets
+          $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-demo-boot") bootGdbs bootTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
@@ -87,8 +87,8 @@ driver testName targets = do
     let
       allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-      _bootTapInfos, muTapInfos, ccTapInfos :: [Ocd.TapInfo]
-      (_bootTapInfos, muTapInfos, ccTapInfos)
+      _bootTapInfos, managementUnitTapInfos, clockControlTapInfos :: [Ocd.TapInfo]
+      (_bootTapInfos, managementUnitTapInfos, clockControlTapInfos)
         | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
         , [boots, mus, ccs] <- L.transpose allTapInfos =
             (boots, mus, ccs)
@@ -99,18 +99,28 @@ driver testName targets = do
               <> ", but got: "
               <> show (L.length <$> allTapInfos)
 
-    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
-      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
+    Gdb.withGdbs (L.length targets) $ \clockControlGdbs -> do
+      liftIO
+        $ zipWithConcurrently3_
+          (initGdb hitlDir "soft-ugn-demo-clock-control")
+          clockControlGdbs
+          clockControlTapInfos
+          targets
+      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) clockControlGdbs
 
-      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muTapInfos targets
-        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
+      Gdb.withGdbs (L.length targets) $ \managementUnitGdbs -> do
+        liftIO
+          $ zipWithConcurrently3_
+            (initGdb hitlDir "soft-ugn-demo-management-unit")
+            managementUnitGdbs
+            managementUnitTapInfos
+            targets
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) managementUnitGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples MemoryMaps.cc hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue muGdbs
+          let goDumpCcSamples = dumpCcSamples MemoryMaps.clockControl hitlDir (defCcConf (natToNum @FpgaCount)) clockControlGdbs
+          liftIO $ mapConcurrently_ Gdb.continue clockControlGdbs
+          liftIO $ mapConcurrently_ Gdb.continue managementUnitGdbs
 
           hardwareCaptureCounters <-
             liftIO

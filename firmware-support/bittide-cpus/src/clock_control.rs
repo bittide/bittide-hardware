@@ -1,37 +1,65 @@
-#![no_std]
-#![cfg_attr(not(test), no_main)]
-
-// SPDX-FileCopyrightText: 2022 Google LLC
+// SPDX-FileCopyrightText: 2026 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::panic::PanicInfo;
-use itertools::izip;
-
-use bittide_hal::{
-    manual_additions::timer::{Duration, Instant, WaitResult},
-    shared_devices::{Timer, Uart},
-    wire_demo_cc::{devices::DomainDiffCounters, DeviceInstances},
+use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
+use bittide_hal::shared_devices::{
+    ClockControl, Freeze, SampleMemory, SyncOutGenerator, Timer, Uart,
 };
 use bittide_macros::unsigned;
-use bittide_sys::{sample_store::SampleStore, stability_detector::StabilityDetector};
+use bittide_sys::callisto::Callisto;
+use bittide_sys::sample_store::SampleStore;
+use bittide_sys::stability_detector::StabilityDetector;
+use itertools::izip;
 use ufmt::uwriteln;
 
-use bittide_sys::callisto::Callisto;
-#[cfg(not(test))]
-use riscv_rt::entry;
+/// Per-design `DomainDiffCounters` device interface.
+///
+/// The HAL dedup pass keeps `DomainDiffCounters` per-design because the
+/// Si539xConfiguration variant has a different register layout. This trait
+/// abstracts over the two clock-control variants (which are otherwise
+/// byte-identical).
+pub trait DomainDiffCountersInterface {
+    const ENABLE_LEN: usize;
+    fn enable(&self, idx: usize) -> Option<bool>;
+    fn set_enable(&self, idx: usize, val: bool) -> Option<()>;
+}
 
-const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
+impl DomainDiffCountersInterface
+    for bittide_hal::hals::soft_ugn_demo_clock_control::devices::DomainDiffCounters
+{
+    const ENABLE_LEN: usize = Self::ENABLE_LEN;
+    fn enable(&self, idx: usize) -> Option<bool> {
+        Self::enable(self, idx)
+    }
+    fn set_enable(&self, idx: usize, val: bool) -> Option<()> {
+        Self::set_enable(self, idx, val)
+    }
+}
 
-#[cfg_attr(not(test), entry)]
-fn main() -> ! {
-    let cc = INSTANCES.clock_control;
-    let timer = INSTANCES.timer;
-    let mut uart = INSTANCES.uart;
-    let freeze = INSTANCES.freeze;
-    let sample_memory = INSTANCES.sample_memory;
-    let sync_out_generator = INSTANCES.sync_out_generator;
-    let domain_diff_counters = INSTANCES.domain_diff_counters;
+impl DomainDiffCountersInterface
+    for bittide_hal::hals::wire_demo_clock_control::devices::DomainDiffCounters
+{
+    const ENABLE_LEN: usize = Self::ENABLE_LEN;
+    fn enable(&self, idx: usize) -> Option<bool> {
+        Self::enable(self, idx)
+    }
+    fn set_enable(&self, idx: usize, val: bool) -> Option<()> {
+        Self::set_enable(self, idx, val)
+    }
+}
+
+pub fn run<DDC: DomainDiffCountersInterface>(
+    cc: ClockControl,
+    timer: Timer,
+    uart: &mut Uart,
+    freeze: Freeze,
+    sample_memory: SampleMemory,
+    sync_out_generator: SyncOutGenerator,
+    domain_diff_counters: DDC,
+) -> ! {
+    debug_assert_eq!(DDC::ENABLE_LEN, Freeze::EB_COUNTERS_LEN);
+    debug_assert_eq!(DDC::ENABLE_LEN, ClockControl::DATA_COUNTS_LEN);
 
     uwriteln!(uart, "Starting sync out generator..").unwrap();
     sync_out_generator.set_active(true);
@@ -39,7 +67,6 @@ fn main() -> ! {
     uwriteln!(uart, "Starting clock control..").unwrap();
     let mut callisto = Callisto::new(cc.config().callisto);
 
-    // Initialize stability detector
     let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
 
     // Store samples every _n_ updates. Currently set to 20 ms (50 Hz) times a
@@ -57,22 +84,16 @@ fn main() -> ! {
         freeze.set_freeze(());
 
         // Do clock control update
-        cc.set_change_speed(
-            callisto.update(
-                &cc,
-                izip!(
-                    0..DomainDiffCounters::ENABLE_LEN,
-                    freeze.eb_counters_volatile_iter()
-                )
-                .map(|(i, counter)| {
-                    if domain_diff_counters.enable(i).unwrap_or(false) {
-                        Some(counter.into_inner())
-                    } else {
-                        None
-                    }
-                }),
-            ),
-        );
+        cc.set_change_speed(callisto.update(
+            &cc,
+            izip!(0..DDC::ENABLE_LEN, freeze.eb_counters_volatile_iter()).map(|(i, counter)| {
+                if domain_diff_counters.enable(i).unwrap_or(false) {
+                    Some(counter.into_inner())
+                } else {
+                    None
+                }
+            }),
+        ));
 
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
@@ -97,13 +118,13 @@ fn main() -> ! {
         // Update active domain difference counters based on which links are
         // enabled.
         let link_mask_rev = cc.link_mask_rev();
-        for i in 0..DomainDiffCounters::ENABLE_LEN {
+        for i in 0..DDC::ENABLE_LEN {
             domain_diff_counters.set_enable(i, test_bit(link_mask_rev[0], i));
         }
 
         // Wait for next update
         let timer_result = timer.wait_until_stall(next_update);
-        panic_on_missed_deadline(&mut uart, &timer, next_update, timer_result);
+        panic_on_missed_deadline(uart, &timer, next_update, timer_result);
         next_update += interval;
     }
 }
@@ -129,11 +150,4 @@ fn panic_on_missed_deadline(
 /// Test whether the `i`-th bit in `bv` is set.
 fn test_bit(bv: u8, i: usize) -> bool {
     (bv & (1 << i)) != 0
-}
-
-#[panic_handler]
-fn panic_handler(_info: &PanicInfo) -> ! {
-    loop {
-        continue;
-    }
 }

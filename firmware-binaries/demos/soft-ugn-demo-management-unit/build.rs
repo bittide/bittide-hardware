@@ -5,7 +5,11 @@
 use memmap_generate::build_utils::standard_memmap_build;
 
 fn main() {
-    standard_memmap_build("SoftUgnDemoMu.json", "DataMemory", "InstructionMemory");
+    standard_memmap_build(
+        "SoftUgnDemoManagementUnit.json",
+        "DataMemory",
+        "InstructionMemory",
+    );
     // Use C headers from auto-generated bittide-hal-c
     let hal_c_headers = bittide_hal_c::generated_dir();
 

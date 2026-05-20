@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::hals::soft_ugn_demo_mu::DeviceInstances;
+use bittide_hal::hals::wire_demo_management_unit::DeviceInstances;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
@@ -15,11 +15,6 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
 use riscv_rt::entry;
-
-// Declare the external C main function
-extern "C" {
-    fn c_main() -> !;
-}
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
@@ -83,6 +78,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Start printing hardware UGNs").unwrap();
     for (i, (capture_ugn, eb_delta)) in capture_ugns.iter().zip(eb_deltas).enumerate() {
+        capture_ugn.set_elastic_buffer_delta(eb_delta);
         uwriteln!(
             uart,
             "Capture UGN {}: local = {}, remote = {}, eb_delta = {}",
@@ -94,8 +90,9 @@ fn main() -> ! {
         .unwrap();
     }
     uwriteln!(uart, "Printed all hardware UGNs").unwrap();
-    uwriteln!(uart, "Calling C..").unwrap();
-    unsafe { c_main() }
+
+    #[allow(clippy::empty_loop)]
+    loop {}
 }
 
 #[panic_handler]

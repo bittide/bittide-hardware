@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "bittide-cpus"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+
+[lints]
+workspace = true
+
+[dependencies]
+bittide-hal = { path = "../bittide-hal" }
+bittide-macros = { path = "../bittide-macros" }
+bittide-sys = { path = "../bittide-sys" }
+itertools = { version = "0.14.0", default-features = false }
+ufmt = "0.2.0"

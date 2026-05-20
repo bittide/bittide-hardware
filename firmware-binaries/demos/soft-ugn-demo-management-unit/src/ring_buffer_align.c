@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "hals/soft_ugn_demo_mu/device_instances.h"
+#include "hals/soft_ugn_demo_management_unit/device_instances.h"
 
 #include "bittide_ring_receive.h"
 #include "bittide_ring_transmit.h"

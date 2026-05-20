@@ -180,7 +180,7 @@ writePeConfig ::
   NodeConfig linkCount ->
   VivadoM ()
 writePeConfig (_, d) gdb nodeConfig = do
-  let getPeConfigRegister reg = expectRight $ getPathAddress MemoryMaps.mu ["0", "WireDemoPeConfig", reg]
+  let getPeConfigRegister reg = expectRight $ getPathAddress MemoryMaps.managementUnit ["0", "WireDemoPeConfig", reg]
   liftIO $ do
     putStrLn $ "Writing PE config for target " <> d.deviceId
     addresses <- mapM getPeConfigRegister ["read_link", "write_link"]
@@ -195,7 +195,7 @@ writeProgrammableMuxConfig ::
   NodeConfig linkCount ->
   VivadoM ()
 writeProgrammableMuxConfig (_, d) gdb nodeConfig = do
-  let getMuxRegister reg = expectRight $ getPathAddress MemoryMaps.mu ["0", "ProgrammableMux", reg]
+  let getMuxRegister reg = expectRight $ getPathAddress MemoryMaps.managementUnit ["0", "ProgrammableMux", reg]
   liftIO $ do
     putStrLn $ "Writing programmable mux config for target " <> d.deviceId
     firstBCycleAddress <- getMuxRegister "first_b_cycle"
@@ -216,9 +216,10 @@ verifyWrittenData ::
   IO Bool
 verifyWrittenData (_, d) gdb expectedDna expectedData = do
   putStrLn $ "Reading PE written data for target " <> d.deviceId
-  dnaBaseAddr <- expectRight $ getPathAddress @Integer MemoryMaps.mu ["0", "Dna", "maybe_dna"]
+  dnaBaseAddr <-
+    expectRight $ getPathAddress @Integer MemoryMaps.managementUnit ["0", "Dna", "maybe_dna"]
   peConfigAddress <-
-    expectRight $ getPathAddress MemoryMaps.mu ["0", "WireDemoPeConfig", "written_data"]
+    expectRight $ getPathAddress MemoryMaps.managementUnit ["0", "WireDemoPeConfig", "written_data"]
   maybeDna <- Gdb.readLe @(Maybe (BitVector 96)) gdb dnaBaseAddr
   writtenData <- Gdb.readLe gdb peConfigAddress
 
@@ -281,8 +282,8 @@ driver testName targets = do
     let
       allTapInfos = parseTapInfo expectedJtagIds <$> initOcdsData
 
-      _bootTapInfos, muTapInfos, ccTapInfos :: [Ocd.TapInfo]
-      (_bootTapInfos, muTapInfos, ccTapInfos)
+      _bootTapInfos, managementUnitTapInfos, clockControlTapInfos :: [Ocd.TapInfo]
+      (_bootTapInfos, managementUnitTapInfos, clockControlTapInfos)
         | all (== L.length expectedJtagIds) (L.length <$> allTapInfos)
         , [boots, mus, ccs] <- L.transpose allTapInfos =
             (boots, mus, ccs)
@@ -293,18 +294,28 @@ driver testName targets = do
               <> ", but got: "
               <> show (L.length <$> allTapInfos)
 
-    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccTapInfos targets
-      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
+    Gdb.withGdbs (L.length targets) $ \clockControlGdbs -> do
+      liftIO
+        $ zipWithConcurrently3_
+          (initGdb hitlDir "wire-demo-clock-control")
+          clockControlGdbs
+          clockControlTapInfos
+          targets
+      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) clockControlGdbs
 
-      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "wire-demo-mu") muGdbs muTapInfos targets
-        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
+      Gdb.withGdbs (L.length targets) $ \managementUnitGdbs -> do
+        liftIO
+          $ zipWithConcurrently3_
+            (initGdb hitlDir "wire-demo-management-unit")
+            managementUnitGdbs
+            managementUnitTapInfos
+            targets
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) managementUnitGdbs
 
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples MemoryMaps.cc hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue muGdbs
+          let goDumpCcSamples = dumpCcSamples MemoryMaps.clockControl hitlDir (defCcConf (natToNum @FpgaCount)) clockControlGdbs
+          liftIO $ mapConcurrently_ Gdb.continue clockControlGdbs
+          liftIO $ mapConcurrently_ Gdb.continue managementUnitGdbs
 
           liftIO
             $ T.tryWithTimeoutOn
@@ -317,8 +328,9 @@ driver testName targets = do
               waitForLine pico "[MU] Printed all hardware UGNs"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
-          liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
-          ugnPairsTable <- liftIO $ zipWithConcurrently (readHardwareUgns MemoryMaps.mu) targets muGdbs
+          liftIO $ mapConcurrently_ Gdb.interrupt managementUnitGdbs
+          ugnPairsTable <-
+            liftIO $ zipWithConcurrently (readHardwareUgns MemoryMaps.managementUnit) targets managementUnitGdbs
           let
             ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
           liftIO $ do
@@ -328,7 +340,8 @@ driver testName targets = do
             mapM_ print ugnPairsTableV
 
           -- Calculate schedule and write configurations
-          currentTime <- liftIO $ readCurrentTime MemoryMaps.mu (L.head targets) (L.head muGdbs)
+          currentTime <-
+            liftIO $ readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head managementUnitGdbs)
           let
             startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
             schedule = generateSchedule fpgaSetup ugnPairsTableV startOffset
@@ -336,22 +349,26 @@ driver testName targets = do
             putStrLn "Generated schedule:"
             mapM_ print schedule
           liftIO $ putStrLn [i|Starting clock cycle: #{startOffset}|]
-          _ <- sequenceA $ L.zipWith3 writePeConfig targets muGdbs (toList schedule)
-          _ <- sequenceA $ L.zipWith3 writeProgrammableMuxConfig targets muGdbs (toList schedule)
+          _ <- sequenceA $ L.zipWith3 writePeConfig targets managementUnitGdbs (toList schedule)
+          _ <- sequenceA $ L.zipWith3 writeProgrammableMuxConfig targets managementUnitGdbs (toList schedule)
 
           -- Wait for test completion
           liftIO $ do
             let delayMicros = natToNum @((StartDelay + 1) * 1_000_000)
             putStrLn [i|Sleeping for: #{delayMicros}μs ...|]
             threadDelay delayMicros
-            newCurrentTime <- readCurrentTime MemoryMaps.mu (L.head targets) (L.head muGdbs)
+            newCurrentTime <-
+              readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head managementUnitGdbs)
             putStrLn [i|Clock is now: #{newCurrentTime}|]
 
           -- Verify test results
           let
             dnas = L.map (.dna) demoRigInfo
             expectedWrittenDatas = L.tail $ L.scanl xor 0 $ L.map resize dnas
-          checks <- liftIO $ sequenceA $ L.zipWith4 verifyWrittenData targets muGdbs dnas expectedWrittenDatas
+          checks <-
+            liftIO
+              $ sequenceA
+              $ L.zipWith4 verifyWrittenData targets managementUnitGdbs dnas expectedWrittenDatas
 
           liftIO goDumpCcSamples
 
