@@ -83,7 +83,7 @@ dependencies = [
  "memorymap-compiler-rust",
  "proc-macro2",
  "quote",
- "smoltcp 0.11.0",
+ "smoltcp",
  "subst_macros",
  "ufmt",
 ]
@@ -120,7 +120,7 @@ dependencies = [
  "itertools",
  "log",
  "rand",
- "smoltcp 0.12.0",
+ "smoltcp",
  "ufmt",
 ]
 
@@ -747,19 +747,6 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "smoltcp"
-version = "0.11.0"
-source = "git+https://github.com/smoltcp-rs/smoltcp.git?rev=dc08e0b42e668c331bb2b6f8d80016301d0efe03#dc08e0b42e668c331bb2b6f8d80016301d0efe03"
-dependencies = [
- "bitflags",
- "byteorder",
- "cfg-if",
- "heapless",
- "log",
- "managed",
-]
-
-[[package]]
-name = "smoltcp"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dad095989c1533c1c266d9b1e8d70a1329dd3723c3edac6d03bbd67e7bf6f4bb"
@@ -784,7 +771,7 @@ dependencies = [
  "log",
  "riscv 0.10.1",
  "riscv-rt 0.11.0",
- "smoltcp 0.12.0",
+ "smoltcp",
  "ufmt",
 ]
 
