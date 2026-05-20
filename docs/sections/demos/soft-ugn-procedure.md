@@ -14,7 +14,7 @@ The procedure operates by exchanging timestamped messages between neighbors. By 
 
 The procedure relies on the underlying ring buffers. Specifically:
 *   The transmit and receive ring buffers are of equal size and operate as ring buffers with free-running hardware counters.
-*   The alignment of the ring buffers (where data starting at address `0` in a transmit ring buffer arrives at address `n` in a receive ring buffer) is unknown at the start and is measured by the [Ring Buffer Alignment Procedure](../ringbuffer-alignment.md).
+*   The alignment of the ring buffers (where data starting at address `0` in a transmit ring buffer arrives at address `n` in a receive ring buffer) is unknown at the start and is measured by the [Ring Buffer Alignment Procedure](../ring-buffer-alignment.md).
 
 ## Message Types
 
@@ -49,7 +49,7 @@ Events are scheduled according to the send and receive periods:
 ## Procedure Operation
 
 1.  **Initialization**:
-    *   The MU aligns the ring buffers leveraging the [Ring Buffer Alignment Procedure](../ringbuffer-alignment.md).
+    *   The MU aligns the ring buffers  leveraging the [Ring Buffer Alignment Procedure](../ring-buffer-alignment.md).
     *   Initial `SEND` and `RECEIVE` events are scheduled for all ports.
 
 2.  **Discovery Loop**:
