@@ -22,10 +22,9 @@ clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", 
 clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
 
 [dependencies.smoltcp]
-git = "https://github.com/smoltcp-rs/smoltcp.git"
-rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03"
+version = "0.12.0"
 default-features = false
-features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"]
+features = ["log", "medium-ip", "medium-ethernet", "proto-ipv4", "socket-tcp"]
 
 [dependencies.subst_macros]
 git = "https://github.com/QBayLogic/subst_macros.git"
