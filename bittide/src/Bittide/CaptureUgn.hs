@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.CaptureUgn (captureUgn, sendUgn, sendUgnC) where
+module Bittide.CaptureUgn (captureUgn, sendUgn) where
 
 import Clash.Explicit.Prelude
 
@@ -112,24 +112,3 @@ sendUgn localCounter sampling switchData =
   samplingDelayed =
     C.withEnable enableGen
       $ C.delay (errorX "sendUgn: first samplingDelayed") sampling
-
--- | Like 'sendUgn', but more convenient to use in our current setup.
-sendUgnC ::
-  forall dom n.
-  ( HasCallStack
-  , C.HiddenClock dom
-  , KnownNat n
-  ) =>
-  -- | Local counter
-  Signal dom (Unsigned 64) ->
-  -- | Sampling? Typically driven by 'Bittide.Handshake.Output.fromCoreDone'.
-  Vec n (Signal dom Bool) ->
-  Circuit
-    (Vec n (CSignal dom (BitVector 64)))
-    (Vec n (CSignal dom (BitVector 64)))
-sendUgnC localCounter txSamplings = Circuit go
- where
-  go ::
-    (Vec n (Signal dom (BitVector 64)), Vec n ()) ->
-    (Vec n (), Vec n (Signal dom (BitVector 64)))
-  go (txDatas, _) = (repeat (), sendUgn localCounter <$> txSamplings <*> txDatas)
