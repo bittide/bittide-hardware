@@ -49,6 +49,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bittide-cpus"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "ufmt",
+]
+
+[[package]]
 name = "bittide-hal"
 version = "0.1.0"
 dependencies = [
@@ -714,12 +722,11 @@ dependencies = [
 name = "soft-ugn-demo-boot"
 version = "0.1.0"
 dependencies = [
+ "bittide-cpus",
  "bittide-hal",
  "bittide-macros",
- "bittide-sys",
  "memmap-generate",
  "riscv-rt 0.11.0",
- "ufmt",
 ]
 
 [[package]]
@@ -914,12 +921,11 @@ dependencies = [
 name = "wire-demo-boot"
 version = "0.1.0"
 dependencies = [
+ "bittide-cpus",
  "bittide-hal",
  "bittide-macros",
- "bittide-sys",
  "memmap-generate",
  "riscv-rt 0.11.0",
- "ufmt",
 ]
 
 [[package]]

@@ -6,10 +6,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::panic::PanicInfo;
-use ufmt::uwriteln;
 
-use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
-use bittide_hal::shared_devices::Transceivers;
+use bittide_hal::manual_additions::si539x_spi::Config;
 use bittide_hal::soft_ugn_demo_boot::DeviceInstances;
 use bittide_macros::load_clock_config_csv;
 
@@ -23,42 +21,14 @@ const CONFIG_200: Config<3, 590, 5> = load_clock_config_csv!(
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let si539x_spi = INSTANCES.si539x_spi;
-    let timer = INSTANCES.timer;
-    let transceivers = INSTANCES.transceivers;
     let mut uart = INSTANCES.uart;
-
-    uwriteln!(uart, "Writing Si539x configuration..").unwrap();
-    match si539x_spi.write_configuration(&timer, &CONFIG_200) {
-        Ok(()) => {
-            uwriteln!(uart, "Done.").unwrap();
-        }
-        Err(WriteError::NotConfirmed { entry, read_data }) => {
-            uwriteln!(uart, "[ERROR] failed to write Si539x configuration:").unwrap();
-            uwriteln!(
-                uart,
-                "At 0x{:02X}{:02X} wrote 0x{:02X}, but read back 0x{:02X}",
-                entry.page,
-                entry.address,
-                entry.data,
-                read_data,
-            )
-            .unwrap();
-        }
-    }
-
-    uwriteln!(uart, "Enabling bittide domain..").unwrap();
-    transceivers.set_transceiver_enable(true);
-
-    uwriteln!(uart, "Enabling all transceiver channels..").unwrap();
-    for channel in 0..Transceivers::CHANNEL_ENABLES_LEN {
-        transceivers.set_channel_enables(channel, true);
-    }
-
-    uwriteln!(uart, "Going into infinite loop..").unwrap();
-    loop {
-        continue;
-    }
+    bittide_cpus::boot::run(
+        INSTANCES.si539x_spi,
+        INSTANCES.timer,
+        INSTANCES.transceivers,
+        &mut uart,
+        &CONFIG_200,
+    )
 }
 
 #[panic_handler]
