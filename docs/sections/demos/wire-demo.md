@@ -62,8 +62,8 @@ The management unit has access to and is responsible for all [transmit](../compo
 
 To change the binary run on this CPU, one may either:
 - Edit `bittide-instances/src/bittide/Instances/Hitl/WireDemo/Driver.hs`, line 215 (at
-  time of writing) to use another binary instead of `wire-demo-mu`
-- Edit the source files in `firmware-binaries/wire-demo-mu/` to change the binary
+  time of writing) to use another binary instead of `wire-demo-management-unit`
+- Edit the source files in `firmware-binaries/demos/wire-demo-management-unit/` to change the binary
   pre-selected by the driver function
 
 ### Wire Demo processing element
@@ -110,7 +110,7 @@ The host driver then calculates a schedule to thread a path through all nodes an
 Tests are configured to run the following binaries on the system's CPUs:
 - Boot CPU: `wire-demo-boot` (`firmware-binaries/demos/wire-demo-boot`)
 - Clock control CPU: `clock-control` (`firmware-binaries/demos/clock-control`)
-- Management unit: `wire-demo-mu` (`firmware-binaries/demos/wire-demo-mu`)
+- Management unit: `wire-demo-management-unit` (`firmware-binaries/demos/wire-demo-management-unit`)
 
 One may change this by either:
 1. Changing the driver function so that it loads different binaries onto the CPUs. This

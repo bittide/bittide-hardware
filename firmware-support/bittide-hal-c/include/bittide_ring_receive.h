@@ -20,8 +20,8 @@
 // All of those includes don't really do anything.. I guess it might help
 // with auto-completion though?
 
-#ifdef HAL_SOFT_UGN_DEMO_MU_DEVICE_RECEIVE_RING_BUFFER_H
-#include "hals/soft_ugn_demo_mu/devices/receive_ring_buffer.h"
+#ifdef HAL_SOFT_UGN_DEMO_MANAGEMENT_UNIT_DEVICE_RECEIVE_RING_BUFFER_H
+#include "hals/soft_ugn_demo_management_unit/devices/receive_ring_buffer.h"
 // Type, constant, and functions already defined in receive_ring_buffer.h
 #else
 #error "No receive ring_buffer header definition found!"

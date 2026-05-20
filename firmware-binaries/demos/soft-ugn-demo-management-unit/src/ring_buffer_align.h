@@ -7,8 +7,8 @@
 
 // NOTE: This header requires the HAL device instance headers to be included
 // before it, typically by including
-// "hals/soft_ugn_demo_mu/device_instances.h" followed by the bittide_*
-// headers.
+// "hals/soft_ugn_demo_management_unit/device_instances.h" followed by the
+// bittide_* headers.
 
 #include "messages.h"
 #include <stdbool.h>

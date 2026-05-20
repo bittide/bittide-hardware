@@ -15,12 +15,12 @@ import VexRiscv (JtagIn (..))
 
 import qualified Protocols.Spi as Spi
 
-boot, mu, cc :: MemoryMap
-(boot, mu, cc) = (bootMm, muMm, ccMm)
+boot, managementUnit, cc :: MemoryMap
+(boot, managementUnit, cc) = (bootMm, managementUnitMm, ccMm)
  where
   Circuit circuitFn = withLittleEndian $ bringUp clockGen noReset
 
-  (SimOnly bootMm, SimOnly muMm, SimOnly ccMm) = vecToTuple memoryMaps
+  (SimOnly bootMm, SimOnly managementUnitMm, SimOnly ccMm) = vecToTuple memoryMaps
 
   ((memoryMaps, _, _), _) =
     circuitFn

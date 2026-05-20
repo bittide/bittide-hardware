@@ -743,7 +743,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "soft-ugn-demo-mu"
+name = "soft-ugn-demo-management-unit"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
@@ -942,7 +942,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wire-demo-mu"
+name = "wire-demo-management-unit"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",

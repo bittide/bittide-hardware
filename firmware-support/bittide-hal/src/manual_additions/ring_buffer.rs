@@ -204,8 +204,8 @@ impl_ring_buffer_interfaces! {
 }
 
 impl_ring_buffer_interfaces! {
-    rx: crate::hals::soft_ugn_demo_mu::devices::ReceiveRingBuffer,
-    tx: crate::hals::soft_ugn_demo_mu::devices::TransmitRingBuffer,
+    rx: crate::hals::soft_ugn_demo_management_unit::devices::ReceiveRingBuffer,
+    tx: crate::hals::soft_ugn_demo_management_unit::devices::TransmitRingBuffer,
     cidx: Index<4000, u16>,
 }
 

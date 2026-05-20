@@ -43,10 +43,10 @@ members = [
 
   "demos/soft-ugn-demo-clock-control",
   "demos/soft-ugn-demo-boot",
-  "demos/soft-ugn-demo-mu",
+  "demos/soft-ugn-demo-management-unit",
   "demos/wire-demo-clock-control",
   "demos/wire-demo-boot",
-  "demos/wire-demo-mu",
+  "demos/wire-demo-management-unit",
 ]
 resolver = "2"
 
