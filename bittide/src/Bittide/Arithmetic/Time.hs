@@ -5,17 +5,12 @@
 
 module Bittide.Arithmetic.Time where
 
-import Clash.Explicit.Prelude hiding (PeriodToCycles, natVal)
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import GHC.Stack (HasCallStack)
 
 import Clash.Class.Counter (Counter, countSucc)
-import Clash.Signal.Internal (Femtoseconds (Femtoseconds), mapFemtoseconds)
 import Data.Data (Proxy (..))
-import Data.Int (Int64)
 import Data.Kind (Type)
-
-import GHC.TypeLits.KnownNat (KnownNat1 (..), SNatKn (..), nameToSymbol)
-import GHC.TypeNats (natVal)
 
 {- | XXX: We currently retain this in favor of @clash-prelude@s 'PeriodToCycles'
 until @1 <= DomainPeriod dom@ is trivially true. Related issue:
@@ -26,55 +21,10 @@ Is always at least one.
 -}
 type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
 
--- Make ghc-typelits-knownnat look through time related type aliases.
--- https://github.com/clash-lang/ghc-typelits-knownnat/issues/53
-instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Picoseconds) ps where
-  natSing1 = SNatKn (natVal (Proxy @ps))
-  {-# NOINLINE natSing1 #-}
-
-instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Nanoseconds) ps where
-  natSing1 = SNatKn (natVal (Proxy @(1_000 * ps)))
-  {-# NOINLINE natSing1 #-}
-
-instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Microseconds) ps where
-  natSing1 = SNatKn (natVal (Proxy @(1_000_000 * ps)))
-  {-# NOINLINE natSing1 #-}
-
-instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Milliseconds) ps where
-  natSing1 = SNatKn (natVal (Proxy @(1_000_000_000 * ps)))
-  {-# NOINLINE natSing1 #-}
-
-instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Seconds) ps where
-  natSing1 = SNatKn (natVal (Proxy @(1_000_000_000_000 * ps)))
-  {-# NOINLINE natSing1 #-}
-
 {- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
 wait for /n/ milliseconds.
 -}
 type IndexMs dom n = Index (PeriodToCycles dom (Milliseconds n))
-
-seconds :: Int64 -> Femtoseconds
-seconds s = mapFemtoseconds (* 1000) (milliseconds s)
-
-milliseconds :: Int64 -> Femtoseconds
-milliseconds s = mapFemtoseconds (* 1000) (microseconds s)
-{-# INLINE milliseconds #-}
-
-microseconds :: Int64 -> Femtoseconds
-microseconds s = mapFemtoseconds (* 1000) (nanoseconds s)
-{-# INLINE microseconds #-}
-
-nanoseconds :: Int64 -> Femtoseconds
-nanoseconds s = mapFemtoseconds (* 1000) (picoseconds s)
-{-# INLINE nanoseconds #-}
-
-picoseconds :: Int64 -> Femtoseconds
-picoseconds s = mapFemtoseconds (* 1000) (femtoseconds s)
-{-# INLINE picoseconds #-}
-
-femtoseconds :: Int64 -> Femtoseconds
-femtoseconds = Femtoseconds
-{-# INLINE femtoseconds #-}
 
 {- | Rises after the incoming signal has been 'True' for the specified amount of
 time. Use this function if you know the time to wait for at compile time. If
