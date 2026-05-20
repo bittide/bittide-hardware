@@ -176,19 +176,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clock-control"
-version = "0.1.0"
-dependencies = [
- "bittide-hal",
- "bittide-macros",
- "bittide-sys",
- "itertools",
- "memmap-generate",
- "riscv-rt 0.11.0",
- "ufmt",
-]
-
-[[package]]
 name = "clock-control-wb"
 version = "0.1.0"
 dependencies = [
@@ -724,7 +711,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "soft-ugn-mu"
+name = "soft-ugn-demo-boot"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+ "ufmt",
+]
+
+[[package]]
+name = "soft-ugn-demo-clock-control"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "itertools",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+ "ufmt",
+]
+
+[[package]]
+name = "soft-ugn-demo-mu"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
@@ -905,6 +917,19 @@ dependencies = [
  "bittide-hal",
  "bittide-macros",
  "bittide-sys",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+ "ufmt",
+]
+
+[[package]]
+name = "wire-demo-clock-control"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "itertools",
  "memmap-generate",
  "riscv-rt 0.11.0",
  "ufmt",

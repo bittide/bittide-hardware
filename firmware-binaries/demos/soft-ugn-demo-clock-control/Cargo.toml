@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: 2025 Google LLC
+# SPDX-FileCopyrightText: 2022 Google LLC
 #
 # SPDX-License-Identifier: CC0-1.0
 
 [package]
-name = "soft-ugn-mu"
+name = "soft-ugn-demo-clock-control"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -12,14 +12,15 @@ authors = ["Google LLC"]
 [lints]
 workspace = true
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
 bittide-macros = { path = "../../../firmware-support/bittide-macros" }
-bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+itertools = { version = "0.14.0", default-features = false }
 riscv-rt = "0.11.0"
 ufmt = "0.2.0"
 
 [build-dependencies]
 memmap-generate = { path = "../../../firmware-support/memmap-generate" }
-bittide-hal-c = { path = "../../../firmware-support/bittide-hal-c" }
-cc = "1.0"

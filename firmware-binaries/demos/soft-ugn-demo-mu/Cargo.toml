@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "soft-ugn-demo-mu"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+
+[lints]
+workspace = true
+
+[dependencies]
+bittide-macros = { path = "../../../firmware-support/bittide-macros" }
+bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+riscv-rt = "0.11.0"
+ufmt = "0.2.0"
+
+[build-dependencies]
+memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+bittide-hal-c = { path = "../../../firmware-support/bittide-hal-c" }
+cc = "1.0"
