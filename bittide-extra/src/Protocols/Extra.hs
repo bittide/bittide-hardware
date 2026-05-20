@@ -18,19 +18,11 @@ import Protocols
 {- | Replicates a 'CSignal dom a' into a 'Vec n (CSignal dom a)', where the length of the
 vector is determined by the context.
 -}
-replicateCSignalI ::
+fanout ::
   forall dom a n.
   (KnownNat n) =>
   Circuit (CSignal dom a) (Vec n (CSignal dom a))
-replicateCSignalI = applyC repeat (const $ ())
-
--- | Map a function over a 'Circuit' of 'CSignal's
-cSignalMap ::
-  forall dom a b.
-  (KnownDomain dom) =>
-  (a -> b) ->
-  Circuit (CSignal dom a) (CSignal dom b)
-cSignalMap fn = applyC (fmap fn) (const $ ())
+fanout = applyC repeat (const $ ())
 
 -- | Verion of `Functor` for `Circuit`s.
 class FunctorC p where
