@@ -209,6 +209,12 @@ impl_ring_buffer_interfaces! {
     cidx: Index<4000, u16>,
 }
 
+impl_ring_buffer_interfaces! {
+    rx: crate::hals::async_comms_demo_management_unit::devices::ReceiveRingBuffer,
+    tx: crate::hals::async_comms_demo_management_unit::devices::TransmitRingBuffer,
+    cidx: Index<128, u8>,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum AlignPhase {
     Unaligned,

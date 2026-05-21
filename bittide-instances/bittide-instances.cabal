@@ -164,6 +164,10 @@ library
     Bittide.Instances.Common
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
+    Bittide.Instances.Hitl.AsyncCommsDemo.Driver
+    Bittide.Instances.Hitl.AsyncCommsDemo.MemoryMaps
+    Bittide.Instances.Hitl.AsyncCommsDemo.TopEntity
+    Bittide.Instances.Hitl.AsyncCommsDemo.UserCore
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.Ddr4
     Bittide.Instances.Hitl.DnaOverSerial
