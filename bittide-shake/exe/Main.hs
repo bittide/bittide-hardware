@@ -175,7 +175,6 @@ targets =
   map enforceValidTarget $
     [ defTarget $ mkName "Bittide.Instances.Pnr.AsciiDebugMux.asciiDebugMux"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freeze"
-    , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBufferWb"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello"
     , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferPnr"
@@ -183,7 +182,8 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
     , -- High-frequency Pnr targets
-      defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
+      defTarget $ mkName "Bittide.Instances.Pnr.DomainDiffCounter.domainDiffCounterFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 
