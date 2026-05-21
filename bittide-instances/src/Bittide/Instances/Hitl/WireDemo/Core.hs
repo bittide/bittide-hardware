@@ -175,8 +175,9 @@ core ::
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
     )
-core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
+  $ circuit
+  $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muMm, ccMm] <- idC -< memoryMaps
 
     [muJtag, ccJtag] <- jtagChain -< jtag
@@ -284,7 +285,6 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           ]
       ) <-
       withBittideClockResetEnable
-        $ withXilinx
         $ callistoSwClockControlC
           @LinkCount
           refClk
