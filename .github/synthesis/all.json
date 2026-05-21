@@ -35,6 +35,7 @@
   {"top": "fincFdecTests",                 "stage": "test",  "cc_report": false},
   {"top": "linkConfigurationTest",         "stage": "test",  "cc_report": false},
   {"top": "si539xConfigTest",              "stage": "test",  "cc_report": false},
+  {"top": "smoltcpDemoTest",               "stage": "test",  "cc_report": true},
   {"top": "softUgnDemoTest",               "stage": "test",  "cc_report": true},
   {"top": "syncInSyncOut",                 "stage": "test",  "cc_report": false},
   {"top": "temperatureMonitor",            "stage": "test",  "cc_report": false},

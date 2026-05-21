@@ -26,6 +26,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-comms-demo-boot"
+version = "0.1.0"
+dependencies = [
+ "bittide-cpus",
+ "bittide-hal",
+ "bittide-macros",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+]
+
+[[package]]
+name = "async-comms-demo-clock-control"
+version = "0.1.0"
+dependencies = [
+ "bittide-cpus",
+ "bittide-hal",
+ "memmap-generate",
+ "riscv-rt 0.11.0",
+]
+
+[[package]]
+name = "async-comms-demo-management-unit"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "heapless",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
+]
+
+[[package]]
 name = "axi_stream_self_test"
 version = "0.1.0"
 dependencies = [
@@ -530,6 +567,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ring_buffer_smoltcp_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
+]
+
+[[package]]
 name = "ring_buffer_test"
 version = "0.1.0"
 dependencies = [
@@ -791,6 +843,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tcp_simultaneous_open_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
 ]
 
 [[package]]
