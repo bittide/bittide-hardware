@@ -4,6 +4,7 @@
 
 use bittide_hal::shared_devices::{ElasticBuffer, Handshakes, Transceivers};
 use bittide_hal::types::mode::Mode;
+use log::debug;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum LinkStartupState {
@@ -39,6 +40,7 @@ impl LinkStartup {
         channel: usize,
         elastic_buffer: &ElasticBuffer,
     ) {
+        let old_state = self.state;
         self.state = match self.state {
             LinkStartupState::WaitForRxInitDone => {
                 if transceivers
@@ -122,6 +124,12 @@ impl LinkStartup {
             }
             LinkStartupState::Done => self.state,
         };
+        if self.state != old_state {
+            debug!(
+                "link_startup[{}]: {:?} -> {:?}",
+                channel, old_state, self.state
+            );
+        }
     }
 
     pub fn is_done(&self) -> bool {
