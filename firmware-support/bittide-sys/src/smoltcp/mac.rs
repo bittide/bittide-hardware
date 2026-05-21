@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-pub mod axi;
 
 use smoltcp::wire::EthernetAddress;
 
@@ -9,7 +8,7 @@ use smoltcp::wire::EthernetAddress;
 /// This is the most significant bit of the first byte.
 /// ```
 /// use smoltcp::wire::EthernetAddress;
-/// use bittide_sys::smoltcp::set_unicast;
+/// use bittide_sys::smoltcp::mac::set_unicast;
 /// let mut mac = EthernetAddress::from_bytes(&[0xFF; 6]);
 /// assert!(!mac.is_unicast());
 /// set_unicast(&mut mac);
@@ -23,7 +22,7 @@ pub fn set_unicast(addr: &mut EthernetAddress) {
 /// This is the second least significant bit of the first byte.
 /// ```
 /// use smoltcp::wire::EthernetAddress;
-/// use bittide_sys::smoltcp::set_local;
+/// use bittide_sys::smoltcp::mac::set_local;
 /// let mut mac = EthernetAddress::from_bytes(&[0; 6]);
 /// assert!(!mac.is_local());
 /// set_local(&mut mac);
