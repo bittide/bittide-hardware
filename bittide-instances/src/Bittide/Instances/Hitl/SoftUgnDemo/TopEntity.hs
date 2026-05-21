@@ -22,8 +22,9 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
+import Bittide.Instances.Hitl.GenericDemo.BringUp (bringUp)
 import Bittide.Instances.Hitl.Setup (LinkCount, allHwTargets, channelNames, clockPaths)
-import Bittide.Instances.Hitl.SoftUgnDemo.BringUp (bringUp)
+import Bittide.Instances.Hitl.SoftUgnDemo.UserCore (mkUserCore, ringBufferDepth)
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import System.FilePath ((</>))
@@ -87,7 +88,7 @@ softUgnDemoTest boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx sync
         )
     ) =
       toSignals
-        (bringUp refClk testReset)
+        (bringUp ringBufferDepth mkUserCore refClk testReset)
         ( (repeat (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
         , (spiS2M, syncIn, (), ())
         )

@@ -39,13 +39,13 @@ convert it into a table that represents the mapping from an FPGA's local counter
 to another FPGA's counter.
 -}
 toCounterMap ::
-  forall nNodes a internalDelay.
+  forall nNodes a.
   (HasCallStack, Num a, KnownNat nNodes, 1 <= nNodes) =>
-  SNat internalDelay ->
+  Int ->
   Vec nNodes (Map (Index nNodes) (a, a)) ->
   -- | n -> m: c
   Vec nNodes (Map (Index nNodes) a)
-toCounterMap SNat fpgaIndexed = goSrc <$> indicesI
+toCounterMap internalDelay fpgaIndexed = goSrc <$> indicesI
  where
   goSrc ::
     (HasCallStack) =>
@@ -61,7 +61,7 @@ toCounterMap SNat fpgaIndexed = goSrc <$> indicesI
   goSrcDst src dst | src == dst = Nothing
   goSrcDst src dst =
     let (srcCycle, dstCycle) = fpgaIndexed !! dst Map.! src
-     in Just (dst, srcCycle - dstCycle + natToNum @internalDelay)
+     in Just (dst, srcCycle - dstCycle + fromIntegral internalDelay)
 
 {- | Prints the measured IGNs in a matrix-like format.
 

@@ -2,8 +2,48 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
--- | Wire demo for a bittide system, similar to the switch demo but without a switch.
-module Bittide.Instances.Hitl.WireDemo.Core (InternalCpuCount, core) where
+{- | The core of a basic bittide system. It instantiates:
+
+  * A clock control CPU
+  * A management unit (CPU)
+  * /n/ elastic buffers
+  * /n/ handshake pipelines
+  * An arbitrary processing element, given as an argument
+
+A handshake pipeline for two links looks as follows:
+
+>                 ┌────────────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐
+>                 │                │    │           │    │           │    │           │    │           │
+> ───────────────►│ ELASTIC BUFFER ├─┬─►│           ├───►│  CAPTURE  ├───►│  RECEIVE  ├───►│           │
+>                 │                │ │  │           │    │    UGN    │    │  RINGBUF  │    │           │
+>                 └────────────────┘ │  │           │    │           │    │           │    │           │
+>                                    │  │ HANDSHAKE │    ├───────────┤    ├───────────┤    │           │
+>    ┌────────────────┐              │  │           │    │           │    │           │    │           │
+>    │   ARBITRARY    │◄─────────────┘  │           │    │   SEND    │    │  TRANSMIT │    │           │
+> ◄──┤   PROCESSING   │                 │           │    │    UGN    │    │  RINGBUF  │    │           │
+>    │   ELEMENT      │◄────────────────┤           │◄───┤           │◄───┤           │◄───┤           │
+>    └────────────────┘                 └───────────┘    └───────────┘    └───────────┘    │           │
+>        ▲  ▲                                                                              │ MGTM UNIT │
+>        │  │     ┌────────────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    │           │
+>        │  │     │                │    │           │    │           │    │           │    │           │
+> ───────┼──┼────►│ ELASTIC BUFFER ├─┬─►│           ├───►│  CAPTURE  ├───►│  RECEIVE  ├───►│           │
+>        │  │     │                │ │  │           │    │    UGN    │    │  RINGBUF  │    │           │
+>        │  │     └────────────────┘ │  │           │    │           │    │           │    │           │
+>        │  │                        │  │ HANDSHAKE │    ├───────────┤    ├───────────┤    │           │
+>        │  │                        │  │           │    │           │    │           │    │           │
+>        │  └────────────────────────┘  │           │    │   SEND    │    │  TRANSMIT │    │           │
+>        │                              │           │    │    UGN    │    │  RINGBUF  │    │           │
+>        └──────────────────────────────┤           │◄───┤           │◄───┤           │◄───│           │
+>                                       └───────────┘    └───────────┘    └───────────┘    └───────────┘
+-}
+module Bittide.Instances.Hitl.GenericDemo.Core (
+  InternalCpuCount,
+  NmuExternalBusses,
+  NmuInternalBusses,
+  NmuRemBusWidth,
+  UserCoreCircuit,
+  core,
+) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (
@@ -20,7 +60,7 @@ import Bittide.CaptureUgn (captureUgn, sendUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
-import Bittide.ElasticBuffer (xilinxElasticBufferWb)
+import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
 import Bittide.Extra.Maybe (toMaybe)
 import Bittide.Handshake (handshakesWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
@@ -33,11 +73,9 @@ import Bittide.ProcessingElement (
   RemainingBusWidth,
   processingElement,
  )
-import Bittide.ProgrammableMux (programmableMux)
 import Bittide.RingBuffer (receiveRingBuffer, transmitRingBuffer)
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
-import Bittide.WireDemoProcessingElement (wireDemoPe, wireDemoPeConfig)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx (withXilinx)
@@ -80,13 +118,39 @@ type PeripheralsPerLink = 4
 
 {- External busses:
     - Transceivers
-    - Handshakes
     - Callisto
-    - Programmable mux
-    - PE config
+    - Handshakes
+    - <userCoreBusses for the demo's user-core circuit>
 -}
-type NmuExternalBusses = 5 + (LinkCount * PeripheralsPerLink)
-type NmuRemBusWidth = RemainingBusWidth (NmuExternalBusses + NmuInternalBusses)
+type NmuExternalBusses userCoreBusses = 3 + userCoreBusses + (LinkCount * PeripheralsPerLink)
+type NmuRemBusWidth userCoreBusses =
+  RemainingBusWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses)
+
+{- | Post-handshake stage provided by the demo. Given the Bittide-domain
+clock/reset/enable, a free-running local counter and the FPGA DNA, returns
+a circuit that receives any extra MU busses the demo needs, a raw
+elastic-buffer tap (pre-handshake) per link, and the handshake's TX output
+per link, and produces the TX wire that goes to the GTH.
+
+For the soft-UGN demo this circuit forwards the handshake output verbatim
+(see 'Bittide.Instances.Hitl.SoftUgnDemo.UserCore'). For the wire demo this
+circuit holds the programmable mux and wire-demo processing element (see
+'Bittide.Instances.Hitl.WireDemo.UserCore').
+-}
+type UserCoreCircuit userCoreBusses muRemBusWidth =
+  ( (?byteOrder :: ByteOrder) =>
+    Clock Bittide ->
+    Reset Bittide ->
+    Enable Bittide ->
+    Signal Bittide (Unsigned 64) ->
+    Signal Bittide (Maybe (BitVector 96)) ->
+    Circuit
+      ( Vec userCoreBusses (ToConstBwd Mm, Bitbone Bittide muRemBusWidth)
+      , "RXS2_RAW" ::: CSignal Bittide (Vec LinkCount (BitVector 64))
+      , "HANDSHAKE_OUT" ::: CSignal Bittide (Vec LinkCount (BitVector 64))
+      )
+      ("GTH_TX" ::: CSignal Bittide (Vec LinkCount (BitVector 64)))
+  )
 
 muConfig ::
   ( KnownNat n
@@ -96,8 +160,8 @@ muConfig ::
 muConfig =
   PeConfig
     { cpu = Riscv32imc.vexRiscv1
-    , depthI = SNat @(Div (16 * 1024) 4)
-    , depthD = SNat @(Div (16 * 1024) 4)
+    , depthI = SNat @(Div (16 * 1024) 4) -- One RAMB18E2 is 16KB, this uses 1 of them.
+    , depthD = SNat @(Div (16 * 1024) 4) -- One RAMB18E2 is 16KB, this uses 1 of them.
     , initI = Nothing
     , initD = Nothing
     , iBusTimeout = d0
@@ -123,10 +187,12 @@ ccConfig =
     }
 
 managementUnit ::
-  forall dom.
+  forall dom userCoreBusses.
   ( HiddenClockResetEnable dom
   , ?byteOrder :: ByteOrder
   , 1 <= DomainPeriod dom
+  , KnownNat userCoreBusses
+  , PrefixWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses) <= 30
   ) =>
   -- | External counter
   Signal dom (Unsigned 64) ->
@@ -136,9 +202,9 @@ managementUnit ::
     (ToConstBwd Mm.Mm, Jtag dom)
     ( Df dom (BitVector 8)
     , Vec
-        NmuExternalBusses
+        (NmuExternalBusses userCoreBusses)
         ( ToConstBwd Mm.Mm
-        , Bitbone dom NmuRemBusWidth
+        , Bitbone dom (NmuRemBusWidth userCoreBusses)
         )
     )
 managementUnit externalCounter maybeDna =
@@ -157,7 +223,16 @@ managementUnit externalCounter maybeDna =
     idC -< (uartOut, restBusses)
 
 core ::
-  (?byteOrder :: ByteOrder) =>
+  forall userCoreBusses ringBufferDepth.
+  ( ?byteOrder :: ByteOrder
+  , KnownNat userCoreBusses
+  , KnownNat ringBufferDepth
+  , 1 <= ringBufferDepth
+  , PrefixWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses) <= 30
+  , 1 <= NmuRemBusWidth userCoreBusses
+  ) =>
+  SNat ringBufferDepth ->
+  UserCoreCircuit userCoreBusses (NmuRemBusWidth userCoreBusses) ->
   (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->
   Vec LinkCount (Clock GthRx) ->
@@ -173,10 +248,11 @@ core ::
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
-    , "MU_TRANSCEIVER" ::: (BitboneMm Bittide NmuRemBusWidth)
+    , "MU_TRANSCEIVER" ::: BitboneMm Bittide (NmuRemBusWidth userCoreBusses)
     )
-core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
-  circuit $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
+core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
+  $ circuit
+  $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muMm, ccMm] <- idC -< memoryMaps
 
     [muJtag, ccJtag] <- jtagChain -< jtag
@@ -192,13 +268,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
     (rxBufferBusses, muWbs3) <- Vec.split -< muWbs2
     (txBufferBusses, muWbs4) <- Vec.split -< muWbs3
-    [ muTransceiverBus
-      , muHandshakeBus
-      , muCallistoBus
-      , muProgrammableMuxBus
-      , peConfigBus
-      ] <-
-      idC -< muWbs4
+    ([muTransceiverBus, muCallistoBus, muHandshakeBus], extraMuBusses) <- Vec.split -< muWbs4
     -- Stop management unit
 
     -- Start internal links
@@ -218,6 +288,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     let
       rxs2 = dflipflop bitClk <$> rxs1
+      rxs2Raw = fmap fromData <$> rxs2
 
     Fwd handshakesOut <-
       withBittideClockReset handshakesWb
@@ -235,9 +306,9 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
       rxs3 = toMaybe <<$>> handshakesOut.toCoreDones <<*>> handshakesOut.toCores
       rxs4 = dflipflop bitClk <$> rxs3
 
-      txs1 = withClock bitClk $ sendUgn localCounter <$> handshakesOut.fromCoreDones <*> unbundle txs
+      txs1 = withClock bitClk $ sendUgn localCounter <$> handshakesOut.fromCoreDones <*> txs0
 
-    Fwd rxs5 <-
+    rxs5 <-
       withBittideClockResetEnable
         $ Vec.vecCircuits (captureUgn localCounter <$> rxs4)
         -< ugnWbs
@@ -245,36 +316,25 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     -- Start ringbuffers
     let
-      bufferDepth = SNat @200
       rxPrim ena = blockRamU bitClk bitRst ena NoClearOnReset bufferDepth
       txPrim = tdpbramRamOp tdpbram bitClk bitClk
 
     idleSink
       <| fmapC (withBittideClockResetEnable receiveRingBuffer rxPrim bufferDepth)
       <| Vec.zip
-      -< (rxBufferBusses, Fwd rxs5)
-    Fwd txsMu <-
+      -< (rxBufferBusses, rxs5)
+    Fwd txs0 <-
       fmapC (withBittideClockResetEnable $ transmitRingBuffer txPrim bufferDepth) -< txBufferBusses
     -- Stop ringbuffers
 
-    -- Start business logic
-    (readLinkI, writeLinkI) <-
-      withBittideClockResetEnable wireDemoPeConfig -< (peConfigBus, peWrittenData)
-    (Fwd txsBl, peWrittenData) <-
-      withClock bitClk
-        $ wireDemoPe businessLogicReset maybeDna localCounter
-        -< (Fwd rxs5, readLinkI, writeLinkI)
-    -- Stop business logic
-
-    -- Start programmable mux
-    (Fwd businessLogicReset, Fwd txs) <-
-      withBittideClockResetEnable
-        $ programmableMux localCounter
-        -< ( muProgrammableMuxBus
-           , (Fwd (bundle txsMu))
-           , (Fwd (bundle txsBl))
+    -- Start user core: post-handshake stage drives the GTH-TX wire.
+    Fwd txsOut <-
+      mkUserCore bitClk bitRst bitEna localCounter maybeDna
+        -< ( extraMuBusses
+           , Fwd (bundle rxs2Raw)
+           , Fwd (bundle handshakesOut.toNeighbors)
            )
-    -- Stop programmable mux
+    -- Stop user core
 
     -- Start clock control
     ( sync
@@ -284,9 +344,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
           ]
       ) <-
       withBittideClockResetEnable
-        $ withXilinx
-        $ callistoSwClockControlC
-          @LinkCount
+        $ callistoSwClockControlC @LinkCount
           refClk
           refRst
           rxClocks
@@ -324,7 +382,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets =
     -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
-         , Fwd handshakesOut.toNeighbors
+         , Fwd (unbundle txsOut)
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus

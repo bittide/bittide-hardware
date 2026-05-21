@@ -4,35 +4,9 @@
 
 module Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps where
 
-import Clash.Explicit.Prelude
-import Protocols
-
-import Bittide.Instances.Hitl.SoftUgnDemo.BringUp (bringUp)
-import Bittide.SharedTypes (withLittleEndian)
-import Clash.Sized.Vector.ToTuple (vecToTuple)
+import Bittide.Instances.Hitl.GenericDemo.MemoryMaps (extractMemoryMaps)
+import Bittide.Instances.Hitl.SoftUgnDemo.UserCore (mkUserCore, ringBufferDepth)
 import Protocols.MemoryMap (MemoryMap)
-import VexRiscv (JtagIn (..))
-
-import qualified Protocols.Spi as Spi
 
 boot, managementUnit, clockControl :: MemoryMap
-(boot, managementUnit, clockControl) = (bootMm, managementUnitMm, clockControlMm)
- where
-  Circuit circuitFn = withLittleEndian $ bringUp clockGen noReset
-
-  (SimOnly bootMm, SimOnly managementUnitMm, SimOnly clockControlMm) = vecToTuple memoryMaps
-
-  ((memoryMaps, _, _), _) =
-    circuitFn
-      (
-        ( repeat ()
-        , pure (JtagIn 0 0 0)
-        , (clockGen, SimOnly (repeat 0), 0, 0, repeat "", repeat "")
-        )
-      ,
-        ( pure (Spi.S2M low)
-        , pure low
-        , ()
-        , ()
-        )
-      )
+(boot, managementUnit, clockControl) = extractMemoryMaps ringBufferDepth mkUserCore

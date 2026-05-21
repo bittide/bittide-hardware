@@ -179,16 +179,18 @@ library
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
+    Bittide.Instances.Hitl.GenericDemo.BringUp
+    Bittide.Instances.Hitl.GenericDemo.Core
+    Bittide.Instances.Hitl.GenericDemo.MemoryMaps
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.Si539xConfiguration
-    Bittide.Instances.Hitl.SoftUgnDemo.BringUp
-    Bittide.Instances.Hitl.SoftUgnDemo.Core
     Bittide.Instances.Hitl.SoftUgnDemo.Driver
     Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps
     Bittide.Instances.Hitl.SoftUgnDemo.TopEntity
+    Bittide.Instances.Hitl.SoftUgnDemo.UserCore
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
@@ -203,11 +205,10 @@ library
     Bittide.Instances.Hitl.Utils.Utils
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
-    Bittide.Instances.Hitl.WireDemo.BringUp
-    Bittide.Instances.Hitl.WireDemo.Core
     Bittide.Instances.Hitl.WireDemo.Driver
     Bittide.Instances.Hitl.WireDemo.MemoryMaps
     Bittide.Instances.Hitl.WireDemo.TopEntity
+    Bittide.Instances.Hitl.WireDemo.UserCore
     Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.AsciiDebugMux
     Bittide.Instances.Pnr.Counter

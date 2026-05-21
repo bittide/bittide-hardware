@@ -43,11 +43,12 @@ case_toFpgaIndexed = toFpgaIndexed fpgaSetup indices @?= expected
  where
   expected = [(1, 0), (2, 1)] :> [(2, 2), (0, 3)] :> [(0, 4), (1, 5)] :> Nil
 
-type InternalSwitchDelay = 4
+internalSwitchDelay :: Int
+internalSwitchDelay = 4
 
 case_toCounterMap :: Assertion
 case_toCounterMap =
-  toCounterMap (SNat @InternalSwitchDelay) (toFpgaIndexed fpgaSetup parts) @?= expected
+  toCounterMap internalSwitchDelay (toFpgaIndexed fpgaSetup parts) @?= expected
  where
   expected = [(1, 2), (2, 7)] :> [(0, 5), (2, 1)] :> [(0, 3), (1, 6)] :> Nil
 
