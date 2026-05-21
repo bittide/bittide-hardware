@@ -42,6 +42,9 @@ createDomain vSystem{vName = "Slow", vPeriod = hzToPeriod 1_000_000}
 memDepth :: SNat 16
 memDepth = SNat
 
+{- | Apply the same circuit to every element of a vector of protocols. This is
+just 'fmapC' with an explicit 'SNat' argument to guide type inference.
+-}
 replicateC :: forall n a b. SNat n -> Circuit a b -> Circuit (Vec n a) (Vec n b)
 replicateC SNat = fmapC
 
@@ -81,7 +84,7 @@ dutWithPeConfig latency peConfig = withLittleEndian $ circuit $ \mm -> do
   idC -< uartTx
 {-# OPAQUE dutWithPeConfig #-}
 
-type IMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (80 * 1024) 4
 type DMemWords = DivRU (64 * 1024) 4
 
 peConfigFromBinaryName :: String -> IO (PeConfig 8)
@@ -102,13 +105,18 @@ takeUntilList prefix xs@(y : ys)
   | prefix `L.isPrefixOf` xs = []
   | otherwise = y : takeUntilList prefix ys
 
--- RingBuffer test simulation
-simRingBuffer :: IO ()
-simRingBuffer = putStr =<< simResultRingBuffer d4
-
-simResultRingBuffer :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> IO String
-simResultRingBuffer latency = do
-  peConfig <- peConfigFromBinaryName "ring_buffer_test"
+{- | Simulate the ring buffer DUT loaded with the given firmware binary,
+returning the UART output up to the test-complete marker.
+-}
+simResultForBinary ::
+  forall latency.
+  (HasCallStack, KnownNat latency) =>
+  Int ->
+  String ->
+  SNat latency ->
+  IO String
+simResultForBinary timeout binaryName latency = do
+  peConfig <- peConfigFromBinaryName binaryName
   let
     dutNoMm = circuit $ do
       mm <- ignoreMM
@@ -117,6 +125,20 @@ simResultRingBuffer latency = do
           $ (dutWithPeConfig @System latency peConfig)
           -< mm
       idC -< uartTx
-    uartStream = sampleC def{timeoutAfter = 1_000_000} dutNoMm
+    uartStream = sampleC def{timeoutAfter = timeout} dutNoMm
     result = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
   pure result
+
+-- RingBuffer test simulation
+simRingBuffer :: IO ()
+simRingBuffer = putStr =<< simResultRingBuffer d4
+
+simResultRingBuffer :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> IO String
+simResultRingBuffer = simResultForBinary 1_500_000 "ring_buffer_test"
+
+-- TCP simultaneous open test simulation
+simTcpOpen :: IO ()
+simTcpOpen = putStr =<< simResultTcpOpen d4
+
+simResultTcpOpen :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> IO String
+simResultTcpOpen = simResultForBinary 2_000_000 "tcp_simultaneous_open_test"

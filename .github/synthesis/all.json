@@ -28,6 +28,7 @@
 
   {"top": "vexRiscvTcpTest",               "stage": "bitstream", "cc_report": false},
 
+  {"top": "asyncCommsDemoTest",            "stage": "test",  "cc_report": true},
   {"top": "boardTestExtended",             "stage": "test",  "cc_report": false},
   {"top": "boardTestSimple",               "stage": "test",  "cc_report": false},
   {"top": "ddr4Test",                      "stage": "test",  "cc_report": false},
