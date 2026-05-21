@@ -80,7 +80,7 @@ dutWithPeConfig latency peConfig = withLittleEndian $ circuit $ \mm -> do
   idC -< uartTx
 {-# OPAQUE dutWithPeConfig #-}
 
-type IMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (80 * 1024) 4
 type DMemWords = DivRU (64 * 1024) 4
 
 peConfigFromBinaryName :: String -> IO (PeConfig 8)

@@ -530,6 +530,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ring_buffer_smoltcp_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
+]
+
+[[package]]
 name = "ring_buffer_test"
 version = "0.1.0"
 dependencies = [
@@ -761,6 +776,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "soft-ugn-demo-smoltcp-demo"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "heapless",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -791,6 +822,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tcp_simultaneous_open_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-sys",
+ "log",
+ "memmap-generate",
+ "riscv 0.10.1",
+ "riscv-rt 0.11.0",
+ "smoltcp",
+ "ufmt",
+ "zerocopy",
 ]
 
 [[package]]
