@@ -45,8 +45,8 @@ fn verify_loopback(tx: &[[u8; 8]; LEN], rx: &[[u8; 8]; LEN]) -> bool {
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let timer = INSTANCES.timer;
-    let tx = INSTANCES.transmit_ring_buffer;
-    let rx = INSTANCES.receive_ring_buffer;
+    let tx = INSTANCES.transmit_ring_buffer_0;
+    let rx = INSTANCES.receive_ring_buffer_0;
 
     let mut all_passed = true;
 

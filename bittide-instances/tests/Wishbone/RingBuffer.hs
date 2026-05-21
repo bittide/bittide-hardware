@@ -32,10 +32,9 @@ prop_ring_buffer_test =
   H.withTests 1 $ H.property $ do
     latency <- H.forAll $ Gen.integral (Range.constant 0 100)
     liftIO $ putStrLn $ "Testing ring_buffer_test with latency " <> show latency <> " cycles"
-    result <- liftIO
-      $ case someNatVal (fromInteger latency) of
-        Just (SomeNat (_ :: Proxy n)) -> simResultRingBuffer (SNat @n)
-        Nothing -> error [i|Invalid latency value: #{latency}|]
+    result <- case someNatVal (fromInteger latency) of
+      Just (SomeNat (_ :: Proxy n)) -> liftIO $ simResultRingBuffer (SNat @n)
+      Nothing -> error [i|Invalid latency value: #{latency}|]
     H.annotate [i|Result of ring_buffer_test with latency #{latency} cycles: \n#{result}|]
     H.assert ("TEST PASSED" `isInfixOf` result)
 
