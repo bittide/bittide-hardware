@@ -20,6 +20,7 @@ module Bittide.Instances.Hitl.Tests (
 import Bittide.Hitl (ClashTargetName, HitlTestCase (..), HitlTestGroup (..))
 import Prelude
 
+import qualified Bittide.Instances.Hitl.AsyncCommsDemo.TopEntity as AsyncCommsDemo
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.Ddr4 as Ddr4
 import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
@@ -44,6 +45,7 @@ hitlTests =
     <> [Ethernet.tests]
     <> [FincFdec.tests]
     <> [LinkConfiguration.tests]
+    <> [AsyncCommsDemo.tests]
     <> [Si539xConfiguration.tests]
     <> [SoftUgnDemo.tests]
     <> [SyncInSyncOut.tests]

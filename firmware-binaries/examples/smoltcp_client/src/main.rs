@@ -223,7 +223,7 @@ fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
             }
 
             for (i, s) in config.dns_servers.iter().enumerate() {
-                debug!("DNS server {}:    {}", i, s);
+                debug!("DNS server {i}:    {s}");
             }
         }
         Some(dhcpv4::Event::Deconfigured) => {
