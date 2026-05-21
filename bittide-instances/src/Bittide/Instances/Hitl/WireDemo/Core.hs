@@ -20,7 +20,7 @@ import Bittide.CaptureUgn (captureUgn, sendUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
-import Bittide.ElasticBuffer (xilinxElasticBufferWb)
+import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
 import Bittide.Extra.Maybe (toMaybe)
 import Bittide.Handshake (handshakesWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
@@ -219,6 +219,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
 
     let
       rxs2 = dflipflop bitClk <$> rxs1
+      rxs2Raw = fmap fromData <$> rxs2
 
     Fwd handshakesOut <-
       withBittideClockReset handshakesWb
@@ -236,7 +237,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
       rxs3 = toMaybe <<$>> handshakesOut.toCoreDones <<*>> handshakesOut.toCores
       rxs4 = dflipflop bitClk <$> rxs3
 
-      txs1 = withClock bitClk $ sendUgn localCounter <$> handshakesOut.fromCoreDones <*> unbundle txs
+      txs1 = withClock bitClk $ sendUgn localCounter <$> handshakesOut.fromCoreDones <*> txs0
 
     Fwd rxs5 <-
       withBittideClockResetEnable
@@ -254,7 +255,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
       <| fmapC (withBittideClockResetEnable receiveRingBuffer rxPrim bufferDepth)
       <| Vec.zip
       -< (rxBufferBusses, Fwd rxs5)
-    Fwd txsMu <-
+    Fwd txs0 <-
       fmapC (withBittideClockResetEnable $ transmitRingBuffer txPrim bufferDepth) -< txBufferBusses
     -- Stop ringbuffers
 
@@ -264,15 +265,15 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
     (Fwd txsBl, peWrittenData) <-
       withClock bitClk
         $ wireDemoPe businessLogicReset maybeDna localCounter
-        -< (Fwd rxs5, readLinkI, writeLinkI)
+        -< (Fwd rxs2Raw, readLinkI, writeLinkI)
     -- Stop business logic
 
     -- Start programmable mux
-    (Fwd businessLogicReset, Fwd txs) <-
+    (Fwd businessLogicReset, Fwd txsOut) <-
       withBittideClockResetEnable
         $ programmableMux localCounter
         -< ( muProgrammableMuxBus
-           , (Fwd (bundle txsMu))
+           , (Fwd (bundle handshakesOut.toNeighbors))
            , (Fwd (bundle txsBl))
            )
     -- Stop programmable mux
@@ -324,7 +325,7 @@ core (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
     -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
-         , Fwd handshakesOut.toNeighbors
+         , Fwd (unbundle txsOut)
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus

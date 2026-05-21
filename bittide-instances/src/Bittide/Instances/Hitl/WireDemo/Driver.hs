@@ -53,13 +53,13 @@ import qualified System.Timeout.Extra as T
 type StartDelay = 10 -- seconds
 
 {- | The delay in clock cycles between 2 PEs which is not accounted for by the
-`captureUgn` component.
-
-For the wire demo this delay is 0 cycles, because 'sendUgn' now sits inside 'core' so
-there are no unaccounted-for registers between 'sendUgn' and the corresponding
-'captureUgn' on the other side. If this ever changes again, this should be updated.
+`captureUgn` component. The wire demo schedule reasons about PE-to-PE timing, but
+the UGN is measured between MU-side `sendUgn` and `captureUgn`, which sit further
+along the data path than the PE taps. This delta backtracks the MU-measured UGN
+to the PE-to-PE delay.
 -}
-type InternalDelay = 0
+internalDelay :: Int
+internalDelay = -4
 
 {- | Collect the configuration for the 'wireDemoPeConfig' and the 'programmableMux' in
 a single data structure for easier schedule generation.
@@ -108,7 +108,7 @@ generateSchedule fpgaTable ugnParts startCycle = genConfig <$> iterateI nextStat
     srcCycleI = toInteger srcCycle
 
     ugnPartsI = map (map (bimap toInteger toInteger)) ugnParts
-    counterMap = Calc.toCounterMap (SNat @InternalDelay) (Calc.toFpgaIndexed fpgaTable ugnPartsI)
+    counterMap = Calc.toCounterMap internalDelay (Calc.toFpgaIndexed fpgaTable ugnPartsI)
 
   nextState (fpgaIndex, firstBCycle) = (fpgaIndex + 1, nextFirstBCycle)
    where
