@@ -89,6 +89,16 @@ class App:
         self.scroll = 0
         self.status = ""
         self.num_buf = ""
+        self.filter = ""
+        self.searching = False
+
+    def visible_indices(self) -> list[int]:
+        if not self.filter:
+            return list(range(len(self.rows)))
+        needle = self.filter.lower()
+        return [
+            i for i, e in enumerate(self.all_entries) if needle in e["top"].lower()
+        ]
 
     def selected_entries(self) -> list[dict]:
         out = []
@@ -105,23 +115,43 @@ class App:
         write_debug(self.debug_path, self.selected_entries(), self.all_entries)
         self.status = f"Saved {len(self.selected_entries())} entries to {self.debug_path}"
 
+    def current_row_idx(self) -> int | None:
+        vis = self.visible_indices()
+        if not vis:
+            return None
+        self.cursor = max(0, min(len(vis) - 1, self.cursor))
+        return vis[self.cursor]
+
     def toggle(self) -> None:
-        self.rows[self.cursor]["selected"] = not self.rows[self.cursor]["selected"]
+        idx = self.current_row_idx()
+        if idx is None:
+            return
+        self.rows[idx]["selected"] = not self.rows[idx]["selected"]
         self.save()
 
     def toggle_cc(self) -> None:
-        self.rows[self.cursor]["cc_report"] = not self.rows[self.cursor]["cc_report"]
+        idx = self.current_row_idx()
+        if idx is None:
+            return
+        self.rows[idx]["cc_report"] = not self.rows[idx]["cc_report"]
         self.save()
 
     def cycle_stage(self, delta: int) -> None:
-        row = self.rows[self.cursor]
+        idx = self.current_row_idx()
+        if idx is None:
+            return
+        row = self.rows[idx]
         new_idx = row["stage_idx"] + delta
         if 0 <= new_idx <= row["max_stage_idx"]:
             row["stage_idx"] = new_idx
             self.save()
 
     def move(self, delta: int) -> None:
-        self.cursor = max(0, min(len(self.rows) - 1, self.cursor + delta))
+        n = len(self.visible_indices())
+        if n == 0:
+            self.cursor = 0
+            return
+        self.cursor = max(0, min(n - 1, self.cursor + delta))
 
     def draw(self, stdscr) -> None:
         stdscr.erase()
@@ -131,24 +161,32 @@ class App:
         )
         stdscr.addnstr(0, 0, title.ljust(w), w, curses.A_REVERSE)
         help_line = (
-            " space:toggle  c:cc_report  ←/→:stage  ↑/↓:move  #<enter>:jump+toggle  q:quit "
+            " space:toggle  c:cc_report  ←/→:stage  ↑/↓:move  /:search  #<enter>:jump+toggle  q:quit "
         )
         stdscr.addnstr(1, 0, help_line[:w], w)
 
         list_top = 3
         list_bottom = h - 2
         visible = list_bottom - list_top
+
+        vis = self.visible_indices()
+        if vis:
+            self.cursor = max(0, min(len(vis) - 1, self.cursor))
+        else:
+            self.cursor = 0
         if self.cursor < self.scroll:
             self.scroll = self.cursor
         elif self.cursor >= self.scroll + visible:
             self.scroll = self.cursor - visible + 1
+        self.scroll = max(0, min(self.scroll, max(0, len(vis) - visible)))
 
         top_w = max(len(e["top"]) for e in self.all_entries)
         num_w = len(str(len(self.rows)))
         for i in range(visible):
-            idx = self.scroll + i
-            if idx >= len(self.rows):
+            vis_pos = self.scroll + i
+            if vis_pos >= len(vis):
                 break
+            idx = vis[vis_pos]
             src = self.all_entries[idx]
             row = self.rows[idx]
             mark = "[x]" if row["selected"] else "[ ]"
@@ -158,7 +196,7 @@ class App:
             stage_disp = f"{stage:<9} (max {max_stage})"
             num = f"{idx + 1:>{num_w}}"
             line = f" {num}  {mark}  {src['top']:<{top_w}}  {stage_disp}  {cc} "
-            attr = curses.A_REVERSE if idx == self.cursor else curses.A_NORMAL
+            attr = curses.A_REVERSE if vis_pos == self.cursor else curses.A_NORMAL
             if row["selected"]:
                 attr |= curses.A_BOLD | curses.color_pair(1)
             stdscr.addnstr(list_top + i, 0, line.ljust(w), w, attr)
@@ -166,7 +204,13 @@ class App:
         # Avoid writing into the bottom-right cell — curses errors when the
         # cursor would advance past the screen edge.
         last = max(0, w - 1)
-        footer = f":{self.num_buf}" if self.num_buf else self.status
+        if self.num_buf:
+            footer = f":{self.num_buf}"
+        elif self.searching or self.filter:
+            suffix = "" if self.searching else f"  ({len(vis)} match{'es' if len(vis) != 1 else ''})"
+            footer = f"/{self.filter}{suffix}"
+        else:
+            footer = self.status
         stdscr.addnstr(h - 1, 0, footer[:last].ljust(last), last)
         stdscr.refresh()
 
@@ -182,6 +226,45 @@ class App:
         while True:
             self.draw(stdscr)
             ch = stdscr.getch()
+
+            if self.searching:
+                if ch == 27:
+                    self.filter = ""
+                    self.searching = False
+                    self.cursor = 0
+                    self.scroll = 0
+                elif ch in (curses.KEY_ENTER, 10, 13):
+                    self.searching = False
+                elif ch in (curses.KEY_BACKSPACE, 127, 8):
+                    if self.filter:
+                        self.filter = self.filter[:-1]
+                        self.cursor = 0
+                        self.scroll = 0
+                    else:
+                        self.searching = False
+                elif ch == ord(" "):
+                    self.toggle()
+                elif ch in (curses.KEY_UP,):
+                    self.move(-1)
+                elif ch in (curses.KEY_DOWN,):
+                    self.move(1)
+                elif ch == curses.KEY_PPAGE:
+                    self.move(-10)
+                elif ch == curses.KEY_NPAGE:
+                    self.move(10)
+                elif ch == curses.KEY_LEFT:
+                    self.cycle_stage(-1)
+                elif ch == curses.KEY_RIGHT:
+                    self.cycle_stage(1)
+                elif 32 < ch < 127:
+                    self.filter += chr(ch)
+                    self.cursor = 0
+                    self.scroll = 0
+                continue
+
+            if ch == ord("/"):
+                self.searching = True
+                continue
             if ord("0") <= ch <= ord("9"):
                 self.num_buf += chr(ch)
                 continue
@@ -191,14 +274,21 @@ class App:
             if ch in (curses.KEY_ENTER, 10, 13) and self.num_buf:
                 n = int(self.num_buf)
                 self.num_buf = ""
-                if 1 <= n <= len(self.rows):
-                    self.cursor = n - 1
+                vis = self.visible_indices()
+                target = n - 1
+                if target in vis:
+                    self.cursor = vis.index(target)
                     self.toggle()
                 else:
-                    self.status = f"line {n} out of range"
+                    self.status = f"line {n} not in view"
                 continue
             if ch == 27 and self.num_buf:
                 self.num_buf = ""
+                continue
+            if ch == 27 and self.filter:
+                self.filter = ""
+                self.cursor = 0
+                self.scroll = 0
                 continue
             if ch in (ord("q"), 27):
                 return
