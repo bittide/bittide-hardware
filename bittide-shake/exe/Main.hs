@@ -188,6 +188,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.sendUgnFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Handshake.handshakesWbFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProgrammableMux.programmableMuxFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Time.timeWbFast"
     ]
