@@ -38,6 +38,6 @@ ftdi layout_signal nSRST -data 0x0020 -oe 0x0020
 
 # The FT2232C supports sustained data rates up to 5.6 Mbit/s
 # https://ftdichip.com/wp-content/uploads/2020/08/DS_FT2232C.pdf
-# Just to be safe we set it to 1000 kHz
-adapter speed 1000
+# Just to be safe we set it to 500 kHz
+adapter speed 500
 transport select jtag
