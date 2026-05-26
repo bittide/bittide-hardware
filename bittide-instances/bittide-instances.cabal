@@ -182,6 +182,7 @@ library
     Bittide.Instances.Hitl.GenericDemo.BringUp
     Bittide.Instances.Hitl.GenericDemo.Core
     Bittide.Instances.Hitl.GenericDemo.MemoryMaps
+    Bittide.Instances.Hitl.GenericDemo.TopEntity
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
