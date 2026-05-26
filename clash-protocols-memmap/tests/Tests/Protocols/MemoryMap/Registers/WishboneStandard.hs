@@ -47,6 +47,7 @@ import qualified Data.Text.IO as TIO
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import qualified Protocols.Df as Df
 import qualified Protocols.Hedgehog as PH
 import qualified Protocols.ReqResp as ReqResp
 import qualified Prelude as P
@@ -87,17 +88,19 @@ size and value.
 initState :: (?byteOrder :: ByteOrder) => Map.Map (BitVector AddressWidth) (BitVector 32)
 initState =
   Map.fromList @(BitVector AddressWidth)
-    -- TODO: zero-width registers
     [ (0, packWordCI initFloat !! nil)
     , (1, packWordCI initDouble !! nil)
     , (2, packWordCI initDouble !! succ nil)
     , (3, packWordCI initU32 !! nil)
     , (4, packWordCI initFloat !! nil)
     , (5, packWordCI initFloat !! nil)
-    , (6, packWordCI initU32 !! nil)
-    , (7, packWordCI initU32 !! nil)
+    , (6, 0) -- ro_zero
+    , (7, 0) -- wo_zero
     , (8, packWordCI initU32 !! nil)
-    , (9, packWordCI False !! nil)
+    , (9, packWordCI initU32 !! nil)
+    , (10, packWordCI initU32 !! nil)
+    , (11, packWordCI False !! nil)
+    , (12, packWordCI False !! nil)
     ]
  where
   nil = 0 :: Int
@@ -122,7 +125,19 @@ deviceExample ::
     (ToConstBwd Mm, Wishbone dom 'Standard aw wordSize)
     ()
 deviceExample trace clk rst = circuit $ \(mm, wb) -> do
-  [float, double, u32, readOnly, writeOnly, prio, prioPreferCircuit, delayed, delayedError] <-
+  [ float
+    , double
+    , u32
+    , readOnly
+    , writeOnly
+    , readOnlyZero
+    , writeOnlyZero
+    , prio
+    , prioPreferCircuit
+    , delayed
+    , delayedError
+    , zeroWidthError
+    ] <-
     deviceWb clk rst (deviceConfig "example"){trace = traceToBool trace} -< (mm, wb)
 
   registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
@@ -133,6 +148,34 @@ deviceExample trace clk rst = circuit $ \(mm, wb) -> do
     -< (readOnly, Fwd noWrite)
   registerWb_ clk rst (registerConfig "wo"){access = WriteOnly} initFloat
     -< (writeOnly, Fwd noWrite)
+
+  -- Zero-width registers used to test access-fault handling on the zero-width
+  -- path of 'registerWbDf'. A write to 'ro_zero' or a read of 'wo_zero' must
+  -- \*not* produce any 'BusActivity' and must signal a bus error.
+  (_roZeroVal, roZeroDf) <-
+    registerWbDf clk rst (registerConfig "ro_zero"){access = ReadOnly} ()
+      -< (readOnlyZero, Fwd noWrite)
+  (_woZeroVal, woZeroDf) <-
+    registerWbDf clk rst (registerConfig "wo_zero"){access = WriteOnly} ()
+      -< (writeOnlyZero, Fwd noWrite)
+
+  Fwd roZeroMaybe <- Df.toMaybe -< roZeroDf
+  Fwd woZeroMaybe <- Df.toMaybe -< woZeroDf
+  let
+    -- A bus write to a 'ReadOnly' register is a fault and must NOT emit any
+    -- 'BusActivity'. Similarly for a bus read on a 'WriteOnly' register.
+    -- 'BusRead' on RO and 'BusWrite' on WO are legitimate and should fire.
+    isFaultWrite = \case Just (BusWrite _) -> True; _ -> False
+    isFaultRead = \case Just (BusRead _) -> True; _ -> False
+    unexpectedZeroWidthActivity =
+      sticky
+        ( liftA2
+            (||)
+            (isFaultWrite <$> roZeroMaybe)
+            (isFaultRead <$> woZeroMaybe)
+        )
+  registerWb_ clk rst (registerConfig "zero_width_error"){access = ReadOnly} False
+    -< (zeroWidthError, Fwd (Just <$> unexpectedZeroWidthActivity))
 
   (_a0, Fwd prioOut) <-
     registerWb clk rst (registerConfig "prio") initU32
@@ -280,7 +323,7 @@ prop_wb =
   modelError instr s = do
     v <- Map.lookup addr s
     if
-      | isRead instr && addr == woAddress -> Nothing
+      | isRead instr && addr `elem` woAddresses -> Nothing
       | isWrite instr && addr `elem` roAddresses -> Nothing
       | otherwise -> Just [i|Unexpected error on address #{addr}, value: #{v}|]
    where
@@ -295,6 +338,8 @@ prop_wb =
   modelRead addr s v readData
     | v /= 0 && addr == delayedErrorAddress =
         Left [i|delayed error! v: #{v}, readData: #{readData}|]
+    | v /= 0 && addr == zeroWidthErrorAddress =
+        Left [i|unexpected zero-width BusActivity! v: #{v}, readData: #{readData}|]
     | addr `elem` [prioAddress, prioPreferCircuitAddress] =
         Right $ Map.insert addr (head $ packWordCI initU32) s
     | v == readData =
@@ -373,7 +418,8 @@ prop_wb =
   dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth 4) ()
   dut = unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem NoTrace clk rst
 
-  roAddresses = [roAddress, delayedErrorAddress]
+  roAddresses = [roAddress, roZeroAddress, delayedErrorAddress, zeroWidthErrorAddress]
+  woAddresses = [woAddress, woZeroAddress]
 
   example = memoryMap.deviceDefs Map.! "example"
   [ _regF
@@ -381,17 +427,23 @@ prop_wb =
     , _regU
     , regRO
     , regWO
+    , regROZero
+    , regWOZero
     , regPrio
     , regPrioPreferCircuit
     , regDelayed
     , regDelayedError
+    , regZeroWidthError
     ] = example.registers
   woAddress = fromIntegral $ regWO.value.address `div` 4
   roAddress = fromIntegral $ regRO.value.address `div` 4
+  roZeroAddress = fromIntegral $ regROZero.value.address `div` 4
+  woZeroAddress = fromIntegral $ regWOZero.value.address `div` 4
   prioAddress = fromIntegral $ regPrio.value.address `div` 4
   prioPreferCircuitAddress = fromIntegral $ regPrioPreferCircuit.value.address `div` 4
   delayedAddress = fromIntegral $ regDelayed.value.address `div` 4
   delayedErrorAddress = fromIntegral $ regDelayedError.value.address `div` 4
+  zeroWidthErrorAddress = fromIntegral $ regZeroWidthError.value.address `div` 4
 
 {- FOURMOLU_DISABLE -}
 case_maskWriteData :: Assertion
@@ -434,10 +486,13 @@ case_memoryMap = do
         , regU
         , regRO
         , regWO
+        , regROZero
+        , regWOZero
         , regPrio
         , regPrioPreferCircuit
         , regDelayed
         , regDelayedError
+        , regZeroWidthError
         ] = example.registers
 
   regF.name.name @?= "f"
@@ -445,20 +500,26 @@ case_memoryMap = do
   regU.name.name @?= "u"
   regRO.name.name @?= "ro"
   regWO.name.name @?= "wo"
+  regROZero.name.name @?= "ro_zero"
+  regWOZero.name.name @?= "wo_zero"
   regPrio.name.name @?= "prio"
   regPrioPreferCircuit.name.name @?= "prio_prefer_circuit"
   regDelayed.name.name @?= "delayed"
   regDelayedError.name.name @?= "delayed_error"
+  regZeroWidthError.name.name @?= "zero_width_error"
 
   regF.value.address @?= 0
   regD.value.address @?= 4
   regU.value.address @?= 12
   regRO.value.address @?= 16
   regWO.value.address @?= 20
-  regPrio.value.address @?= 24
-  regPrioPreferCircuit.value.address @?= 28
-  regDelayed.value.address @?= 32
-  regDelayedError.value.address @?= 36
+  regROZero.value.address @?= 24
+  regWOZero.value.address @?= 28
+  regPrio.value.address @?= 32
+  regPrioPreferCircuit.value.address @?= 36
+  regDelayed.value.address @?= 40
+  regDelayedError.value.address @?= 44
+  regZeroWidthError.value.address @?= 48
 
 -- | Test the addressableBytesWb circuit using wishbonePropWithModel
 prop_addressableBytesWb :: Property
