@@ -6,9 +6,12 @@
 
 import curses
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+os.environ.setdefault("ESCDELAY", "25")
 
 STAGES = ["hdl", "pnr", "bitstream", "test"]
 
