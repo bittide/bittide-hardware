@@ -602,7 +602,6 @@ data TimeCmd = Capture | WaitForCmp
   deriving (Eq, Generic, Show, NFDataX, BitPack, BitPackC)
 deriveTypeDescription ''TimeCmd
 
-{- FOURMOLU_DISABLE -}
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.
 -}
@@ -619,7 +618,8 @@ timeWb ::
     (BitboneMm dom addrW)
     (CSignal dom (Unsigned 64))
 timeWb externalCounter = circuit $ \mmWb -> do
-  [(cmdOffset, cmdConfig, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- Mm.deviceWbI (Mm.deviceConfig "Timer") -< mmWb
+  [(cmdOffset, cmdConfig, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <-
+    Mm.deviceWbI (Mm.deviceConfig "Timer") -< mmWb
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdConfig, cmdMeta, cmdWb1)
 
@@ -663,7 +663,6 @@ timeWb externalCounter = circuit $ \mmWb -> do
       { Mm.access = Mm.ReadOnly
       , Mm.description = "Frequency of the clock domain"
       }
-{- FOURMOLU_ENABLE -}
 
 andAck ::
   Signal dom Bool ->
