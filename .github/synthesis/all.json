@@ -12,6 +12,7 @@
   {"top": "captureUgnFast",                "stage": "pnr",   "cc_report": false},
   {"top": "domainDiffCounterFast",         "stage": "pnr",   "cc_report": false},
   {"top": "freezeFast",                    "stage": "pnr",   "cc_report": false},
+  {"top": "handshakesWbFast",              "stage": "pnr",   "cc_report": false},
   {"top": "programmableMuxFast",           "stage": "pnr",   "cc_report": false},
   {"top": "sendUgnFast",                   "stage": "pnr",   "cc_report": false},
   {"top": "timeWbFast",                    "stage": "pnr",   "cc_report": false},
