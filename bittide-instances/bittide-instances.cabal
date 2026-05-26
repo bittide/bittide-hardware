@@ -213,6 +213,7 @@ library
     Bittide.Instances.Hitl.WireDemo.UserCore
     Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.AsciiDebugMux
+    Bittide.Instances.Pnr.CaptureUgn
     Bittide.Instances.Pnr.DomainDiffCounter
     Bittide.Instances.Pnr.ElasticBuffer
     Bittide.Instances.Pnr.Ethernet
