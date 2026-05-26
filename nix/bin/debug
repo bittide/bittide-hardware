@@ -159,19 +159,25 @@ class App:
             num = f"{idx + 1:>{num_w}}"
             line = f" {num}  {mark}  {src['top']:<{top_w}}  {stage_disp}  {cc} "
             attr = curses.A_REVERSE if idx == self.cursor else curses.A_NORMAL
-            if not row["selected"]:
-                attr |= curses.A_DIM
+            if row["selected"]:
+                attr |= curses.A_BOLD | curses.color_pair(1)
             stdscr.addnstr(list_top + i, 0, line.ljust(w), w, attr)
 
         # Avoid writing into the bottom-right cell — curses errors when the
         # cursor would advance past the screen edge.
         last = max(0, w - 1)
         footer = f":{self.num_buf}" if self.num_buf else self.status
-        stdscr.addnstr(h - 1, 0, footer[:last].ljust(last), last, curses.A_DIM)
+        stdscr.addnstr(h - 1, 0, footer[:last].ljust(last), last)
         stdscr.refresh()
 
     def run(self, stdscr) -> None:
         curses.curs_set(0)
+        try:
+            curses.start_color()
+            curses.use_default_colors()
+            curses.init_pair(1, curses.COLOR_GREEN, -1)
+        except curses.error:
+            pass
         stdscr.keypad(True)
         while True:
             self.draw(stdscr)
