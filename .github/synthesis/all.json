@@ -15,6 +15,7 @@
   {"top": "freezeFast",                    "stage": "pnr",   "cc_report": false},
   {"top": "programmableMuxFast",           "stage": "pnr",   "cc_report": false},
   {"top": "sendUgnFast",                   "stage": "pnr",   "cc_report": false},
+  {"top": "timeWbFast",                    "stage": "pnr",   "cc_report": false},
 
   {"top": "vexRiscvTcpTest",               "stage": "bitstream", "cc_report": false},
 
