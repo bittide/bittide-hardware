@@ -187,6 +187,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.sendUgnFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ProgrammableMux.programmableMuxFast"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 
