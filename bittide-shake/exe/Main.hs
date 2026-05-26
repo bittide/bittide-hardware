@@ -188,6 +188,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.sendUgnFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.ClockControl.callistoSwClockControlCFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Dna.readDnaPortE2Fast"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.autoCenterFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Handshake.handshakesWbFast"
