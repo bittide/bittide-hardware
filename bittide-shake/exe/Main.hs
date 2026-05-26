@@ -183,7 +183,9 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
     , -- High-frequency Pnr targets
-      defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterFast"
+      defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.captureUgnFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.sendUgnFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
