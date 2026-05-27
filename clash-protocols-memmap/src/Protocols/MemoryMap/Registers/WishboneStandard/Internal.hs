@@ -540,12 +540,18 @@ registerWbDf clk rst regConfig resetValue =
           Circuit $ \(((_, _, _, m2s0), _), (_, ack)) ->
             let
               update m2s1 acknowledge
-                | not (m2s1.strobe && m2s1.busCycle) = (Nothing, emptyWishboneS2M)
+                | not masterActive = (Nothing, emptyWishboneS2M)
+                | readFault || writeFault =
+                    (Nothing, (emptyWishboneS2M @wordSize){err = True})
                 | m2s1.writeEnable = (Just (BusWrite resetValue), emptyWishboneS2M{acknowledge})
                 | otherwise =
                     ( Just (BusRead resetValue)
                     , (emptyWishboneS2M @wordSize){acknowledge, readData = 0}
                     )
+               where
+                masterActive = m2s1.strobe && m2s1.busCycle
+                readFault = regConfig.access == ReadOnly && m2s1.writeEnable
+                writeFault = regConfig.access == WriteOnly && not m2s1.writeEnable
 
               (unbundle -> (busActivity, s2m)) = update <$> m2s0 <*> coerce ack
              in
