@@ -191,6 +191,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Handshake.handshakesWbFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProgrammableMux.programmableMuxFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Time.timeWbFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Uart.uartExampleFast"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 
