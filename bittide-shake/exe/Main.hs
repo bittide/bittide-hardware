@@ -186,6 +186,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.captureUgnFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.sendUgnFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.DomainDiffCounter.domainDiffCounterFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.autoCenterFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Handshake.handshakesWbFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProgrammableMux.programmableMuxFast"
