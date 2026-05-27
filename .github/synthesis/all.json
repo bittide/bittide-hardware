@@ -22,6 +22,7 @@
   {"top": "timeWbFast",                    "stage": "pnr",   "cc_report": false},
   {"top": "transmitRingBufferFast",        "stage": "pnr",   "cc_report": false},
   {"top": "uartExampleFast",               "stage": "pnr",   "cc_report": false},
+  {"top": "wbStorageFast",                 "stage": "pnr",   "cc_report": false},
 
   {"top": "vexRiscvTcpTest",               "stage": "bitstream", "cc_report": false},
 

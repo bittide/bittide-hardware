@@ -226,6 +226,7 @@ library
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Pnr.Time
     Bittide.Instances.Pnr.Uart
+    Bittide.Instances.Pnr.WbStorage
     Bittide.Instances.Tests.AddressableBytesWb
     Bittide.Instances.Tests.CaptureUgn
     Bittide.Instances.Tests.ClockControlWb

@@ -196,6 +196,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391SpiFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Time.timeWbFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Uart.uartExampleFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.WbStorage.wbStorageFast"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 
