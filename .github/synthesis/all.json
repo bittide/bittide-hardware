@@ -14,8 +14,10 @@
   {"top": "freezeFast",                    "stage": "pnr",   "cc_report": false},
   {"top": "handshakesWbFast",              "stage": "pnr",   "cc_report": false},
   {"top": "programmableMuxFast",           "stage": "pnr",   "cc_report": false},
+  {"top": "receiveRingBufferFast",         "stage": "pnr",   "cc_report": false},
   {"top": "sendUgnFast",                   "stage": "pnr",   "cc_report": false},
   {"top": "timeWbFast",                    "stage": "pnr",   "cc_report": false},
+  {"top": "transmitRingBufferFast",        "stage": "pnr",   "cc_report": false},
   {"top": "uartExampleFast",               "stage": "pnr",   "cc_report": false},
 
   {"top": "vexRiscvTcpTest",               "stage": "bitstream", "cc_report": false},
