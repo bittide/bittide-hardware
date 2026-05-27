@@ -190,6 +190,8 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Handshake.handshakesWbFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProgrammableMux.programmableMuxFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Time.timeWbFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Uart.uartExampleFast"
     ]
