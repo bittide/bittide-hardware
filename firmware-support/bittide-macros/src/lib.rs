@@ -556,17 +556,24 @@ fn read_binary_literal(
     }
 }
 
-#[proc_macro]
-pub fn bitvector(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
+/// Build the `BitVector<n_lit, size>` construction expression shared by the
+/// `bitvector!` and `mask!` value macros.
+///
+/// For integer literals the bytes are parsed and bounds-checked at compile
+/// time, yielding a `new_unchecked` call. For other expressions a runtime
+/// constructor is emitted. Errors are returned as a ready-to-emit
+/// `compile_error!` token stream.
+fn build_bitvector_expr(
+    args: &BitVectorArgs,
+    prefix: &TokenStream,
+) -> Result<TokenStream, proc_macro::TokenStream> {
     let BitVectorArgs {
         value,
         n_lit,
         n_val,
-    } = parse_macro_input!(toks as BitVectorArgs);
-
+    } = args;
+    let n_val = *n_val;
     let size = n_val.div_ceil(8);
-
-    let prefix = get_import_prefix();
 
     match value {
         syn::Expr::Lit(syn::ExprLit {
@@ -581,40 +588,36 @@ pub fn bitvector(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     .skip(2)
                     .all(|c| c.is_ascii_hexdigit() || c == ' ' || c == '_')
                 {
-                    return syn::Error::new(
+                    return Err(syn::Error::new(
                         input.span(),
                         "Hexadecimal literals may only contain hex digits, spaces, and underscores",
                     )
                     .into_compile_error()
-                    .into();
+                    .into());
                 }
                 let input_str = input_str
                     .trim_start_matches('0')
                     .trim_start_matches(['x', 'X']);
-                if let Err(err) = read_hex_literal(&input, input_str, size, &mut buf) {
-                    return err;
-                }
+                read_hex_literal(input, input_str, size, &mut buf)?;
             } else if input_str.starts_with("0b") || input_str.starts_with("0B") {
                 if !input_str
                     .chars()
                     .skip(2)
                     .all(|c| c == '0' || c == '1' || c == ' ' || c == '_')
                 {
-                    return syn::Error::new(
+                    return Err(syn::Error::new(
                         input.span(),
                         "Binary literals may only contain `0`s, `1`s, spaces, and underscores",
                     )
                     .into_compile_error()
-                    .into();
+                    .into());
                 }
                 let input_str = input_str
                     .trim_start_matches('0')
                     .trim_start_matches(['b', 'B']);
-                if let Err(err) = read_binary_literal(&input, input_str, n_val, &mut buf) {
-                    return err;
-                }
+                read_binary_literal(input, input_str, n_val, &mut buf)?;
             } else {
-                return syn::Error::new(
+                return Err(syn::Error::new(
                     input.span(),
                     concat!(
                         "Expected a hexadecimal (`0x` or `0X` prefix) or binary (`0b` or `0B`",
@@ -623,7 +626,7 @@ pub fn bitvector(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     .to_string(),
                 )
                 .into_compile_error()
-                .into();
+                .into());
             };
             let check_bit = n_val % 8;
             if check_bit == 0 || buf.last().unwrap().leading_zeros() as usize >= (8 - check_bit) {
@@ -635,22 +638,21 @@ pub fn bitvector(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }
                 array_str.push(']');
                 let toks: proc_macro2::TokenStream = array_str.parse().unwrap();
-                quote! {
+                Ok(quote! {
                     unsafe {
                         #prefix::bitvector::BitVector::<#n_lit, #size>::new_unchecked(#toks)
                     }
-                }
-                .into()
+                })
             } else {
-                syn::Error::new(
+                Err(syn::Error::new(
                     input.span(),
                     format!("Set bits outside allowed range: {:0nb$b}", 0, nb = 1),
                 )
                 .into_compile_error()
-                .into()
+                .into())
             }
         }
-        _ => if n_val.is_multiple_of(8) {
+        _ => Ok(if n_val.is_multiple_of(8) {
             quote! {
                 unsafe {
                     #prefix::bitvector::BitVector::<#n_lit, #size>::new_unchecked(#value)
@@ -660,8 +662,29 @@ pub fn bitvector(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
             quote! {
                 #prefix::bitvector::BitVector::<#n_lit, #size>::new(#value).unwrap()
             }
-        }
-        .into(),
+        }),
+    }
+}
+
+/// Macro to conveniently create a `BitVector` value
+///
+/// # Example
+///
+/// ```rust,ignore
+/// # use bittide_macros::bitvector;
+/// # fn main() {
+/// let bv = bitvector!(0b1010_0001, n = 8);
+/// let bv = bitvector!(0xFF, n = 8);
+/// # _ = bv;
+/// # }
+/// ```
+#[proc_macro]
+pub fn bitvector(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let args = parse_macro_input!(toks as BitVectorArgs);
+    let prefix = get_import_prefix();
+    match build_bitvector_expr(&args, &prefix) {
+        Ok(bv) => bv.into(),
+        Err(err) => err,
     }
 }
 
@@ -690,6 +713,33 @@ impl Parse for BitVectorArgs {
             n_lit,
             n_val,
         })
+    }
+}
+
+/// Macro to conveniently create a `Mask` value
+///
+/// # Example
+///
+/// ```rust,ignore
+/// # use bittide_macros::mask;
+/// # fn main() {
+/// let m = mask!(0b1010_0001, n = 8);
+/// let m = mask!(0xFF, n = 8);
+/// # _ = m;
+/// # }
+/// ```
+#[proc_macro]
+pub fn mask(toks: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let args = parse_macro_input!(toks as BitVectorArgs);
+    let n_lit = &args.n_lit;
+    let size = args.n_val.div_ceil(8);
+    let prefix = get_import_prefix();
+    match build_bitvector_expr(&args, &prefix) {
+        Ok(bv) => quote! {
+            #prefix::mask::Mask::<#n_lit, #size>::from_bitvector(#bv)
+        }
+        .into(),
+        Err(err) => err,
     }
 }
 
