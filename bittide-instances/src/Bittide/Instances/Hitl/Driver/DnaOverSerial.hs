@@ -11,6 +11,7 @@ import Clash.Prelude
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup
 import Bittide.Instances.Hitl.Utils.Program
+import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Vivado
 import Control.Monad.Extra
 import Control.Monad.IO.Class
@@ -41,6 +42,9 @@ dnaOverSerialDriver ::
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
 dnaOverSerialDriver _name targets = do
+  -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
+  liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation
+
   results <- brackets (liftIO <$> initPicocoms) (liftIO . snd) $ \initPicocomsData -> do
     let targetPicocoms = fst <$> initPicocomsData
 

@@ -19,6 +19,7 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -44,6 +45,9 @@ driverFunc _name targets = do
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build" </> "hitl"
+
+  -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
+  liftIO $ mapM_ (\(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation) targets
 
   let
     expectedJtagIds = [0x0514C001]
