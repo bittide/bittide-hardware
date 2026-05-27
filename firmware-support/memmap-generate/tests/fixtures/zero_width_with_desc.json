@@ -1,0 +1,90 @@
+{
+    "devices": {
+        "ZeroWidthDoc": {
+            "description": "",
+            "name": "ZeroWidthDoc",
+            "registers": [
+                {
+                    "access": "write_only",
+                    "address": 0,
+                    "description": "WO_DESCRIPTION_MARKER write a zero-width register",
+                    "name": "wo_zero",
+                    "size": 0,
+                    "src_location": 0,
+                    "tags": [
+                        "zero-width"
+                    ],
+                    "type": {
+                        "args": [],
+                        "type_reference": {
+                            "name_base": "Unit",
+                            "name_module": "GHC.Tuple",
+                            "name_package": "ghc-prim"
+                        }
+                    }
+                },
+                {
+                    "access": "read_only",
+                    "address": 4,
+                    "description": "RO_DESCRIPTION_MARKER read a zero-width register",
+                    "name": "ro_zero",
+                    "size": 0,
+                    "src_location": 0,
+                    "tags": [
+                        "zero-width"
+                    ],
+                    "type": {
+                        "args": [],
+                        "type_reference": {
+                            "name_base": "Unit",
+                            "name_module": "GHC.Tuple",
+                            "name_package": "ghc-prim"
+                        }
+                    }
+                }
+            ],
+            "src_location": 0,
+            "tags": []
+        }
+    },
+    "src_locations": [
+        {
+            "end_col": 1,
+            "end_line": 1,
+            "file": "test_fixture",
+            "module": "TestFixture",
+            "package": "stub-for-memmap-tests",
+            "start_col": 1,
+            "start_line": 1
+        }
+    ],
+    "tree": {
+        "device_instance": {
+            "absolute_address": 0,
+            "device_name": "ZeroWidthDoc",
+            "path": [
+                0
+            ],
+            "src_location": 0,
+            "tags": []
+        }
+    },
+    "types": {
+        "GHC.Tuple.Unit": {
+            "definition": {
+                "datatype": [
+                    {
+                        "name": "()",
+                        "nameless": []
+                    }
+                ]
+            },
+            "name": {
+                "name_base": "Unit",
+                "name_module": "GHC.Tuple",
+                "name_package": "ghc-prim"
+            },
+            "type_args": []
+        }
+    }
+}
