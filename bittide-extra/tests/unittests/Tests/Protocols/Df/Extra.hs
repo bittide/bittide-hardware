@@ -194,7 +194,14 @@ prop_fromDSignalBackpressure = H.property $ do
 
     getStalls = L.scanl (\acc inps -> if isStalled inps then succ acc else acc) (0 :: Int)
     getTransfers = L.foldl (\acc inps -> if isTransfer inps then succ acc else acc) (0 :: Int)
-    getIdles = L.foldl (\acc inps -> if isIdle inps then succ acc else acc) (0 :: Int)
+    -- Count idle cycles only within the active window: the reset window before the
+    -- first transfer and the trailing cycles after the last transfer always idle,
+    -- so they'd swamp the count. Dropping them means a back-to-back run can
+    -- legitimately reach zero idle cycles.
+    getIdles signals =
+      L.length (L.filter isIdle (dropTrailing (L.dropWhile isIdle signals)))
+     where
+      dropTrailing = L.reverse . L.dropWhile isIdle . L.reverse
     -- Sample long enough to always drain every input through the stalling
     -- sampler: the reset window, one cycle per input, every stall cycle the
     -- sampler inserts, the pipeline latency (5), and some slack for bookkeeping.
@@ -206,8 +213,10 @@ prop_fromDSignalBackpressure = H.property $ do
 
   assert (getTransfers driveSignals == L.length (catMaybes inputData))
   assert (getTransfers sampleSignals == L.length (catMaybes inputData))
-  cover 1 "Idle cycles in driver" (getIdles driveSignals > 0)
-  cover 1 "Idle cycles in sampler" (getIdles sampleSignals > 0)
+  cover 2 "Idle cycles in driver" (getIdles driveSignals > 0)
+  cover 2 "Idle cycles in sampler" (getIdles sampleSignals > 0)
+  cover 5 "Non-idle cycles in driver" (getIdles driveSignals == 0)
+  cover 5 "Non-idle cycles in sampler" (getIdles sampleSignals == 0)
 
   footnote
     $ [i|Drive stalls: #{show (runLengthEncode driveStalls)} \nSample stalls: #{show (runLengthEncode sampleStalls)}|]
