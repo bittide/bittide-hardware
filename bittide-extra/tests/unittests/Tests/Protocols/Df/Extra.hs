@@ -176,10 +176,16 @@ prop_fromDSignalBackpressure = H.property $ do
   let
     reference clk ena = withClock @System clk $ withEnable ena $ delayN d5 ()
     dut clk rst = Df.fromDSignal clk rst (reference clk)
+    -- The driver, sampler stall, and 'fromDSignal' all share this reset window
+    -- ('resetCycles' must match the 'resetGenN' below). Keeping it aligned means
+    -- the driver only presents data once the DUT is out of reset, so a
+    -- reset-induced NACK is never miscounted as backpressure.
+    resetCycles = 10
+    simConfig = def{resetCycles}
     top clk rst = circuit $ do
-      (drive1, driveMonitor) <- circuitMonitor <| driveC def inputData
+      (drive1, driveMonitor) <- circuitMonitor <| driveC simConfig inputData
       (sample1, sampleMonitor) <- circuitMonitor <| dut clk rst -< drive1
-      withReset rst Df.consume <| Df.stall def{resetCycles = 0} StallCycle stalls -< sample1
+      withReset rst Df.consume <| Df.stall simConfig StallCycle stalls -< sample1
       idC -< (driveMonitor, sampleMonitor)
 
     isStalled (fwd, (Ack bwd)) = isJust fwd && not bwd
@@ -188,15 +194,29 @@ prop_fromDSignalBackpressure = H.property $ do
 
     getStalls = L.scanl (\acc inps -> if isStalled inps then succ acc else acc) (0 :: Int)
     getTransfers = L.foldl (\acc inps -> if isTransfer inps then succ acc else acc) (0 :: Int)
-    getIdles = L.foldl (\acc inps -> if isIdle inps then succ acc else acc) (0 :: Int)
-    (driveSignals, sampleSignals) = sampleC def{timeoutAfter = 200} (top clockGen resetGen)
+    -- Count idle cycles only within the active window: the reset window before the
+    -- first transfer and the trailing cycles after the last transfer always idle,
+    -- so they'd swamp the count. Dropping them means a back-to-back run can
+    -- legitimately reach zero idle cycles.
+    getIdles signals =
+      L.length (L.filter isIdle (dropTrailing (L.dropWhile isIdle signals)))
+     where
+      dropTrailing = L.reverse . L.dropWhile isIdle . L.reverse
+    -- Sample long enough to always drain every input through the stalling
+    -- sampler: the reset window, one cycle per input, every stall cycle the
+    -- sampler inserts, the pipeline latency (5), and some slack for bookkeeping.
+    timeout = resetCycles + L.length inputData + L.sum stalls + 5 + 20
+    (driveSignals, sampleSignals) =
+      sampleC simConfig{timeoutAfter = timeout} (top clockGen (C.resetGenN (SNat @10)))
     driveStalls = getStalls driveSignals
     sampleStalls = getStalls sampleSignals
 
   assert (getTransfers driveSignals == L.length (catMaybes inputData))
   assert (getTransfers sampleSignals == L.length (catMaybes inputData))
-  cover 1 "Idle cycles in driver" (getIdles driveSignals > 0)
-  cover 1 "Idle cycles in sampler" (getIdles sampleSignals > 0)
+  cover 2 "Idle cycles in driver" (getIdles driveSignals > 0)
+  cover 2 "Idle cycles in sampler" (getIdles sampleSignals > 0)
+  cover 5 "Non-idle cycles in driver" (getIdles driveSignals == 0)
+  cover 5 "Non-idle cycles in sampler" (getIdles sampleSignals == 0)
 
   footnote
     $ [i|Drive stalls: #{show (runLengthEncode driveStalls)} \nSample stalls: #{show (runLengthEncode sampleStalls)}|]
