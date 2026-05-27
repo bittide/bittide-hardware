@@ -25,6 +25,8 @@ use crate::{
     storage::Handle,
 };
 
+pub mod testing_utils;
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum IdentType {
     Type,
@@ -576,6 +578,7 @@ fn generate_reg_get_method(
     } else if ctx.tags[reg.tags].iter().any(|tag| tag == "zero-width") {
         let ty = generate_type_ref(ctx, varis, None, refs, reg.type_ref);
         quote! {
+            #desc
             pub fn #name(&self) -> #ty {
                 let _ = unsafe {
                     self.0.add(#offset).cast::<u8>().read_volatile()
@@ -652,6 +655,7 @@ fn generate_reg_set_method(
     } else if ctx.tags[reg.tags].iter().any(|tag| tag == "zero-width") {
         let ty = generate_type_ref(ctx, varis, None, refs, reg.type_ref);
         quote! {
+            #desc
             pub fn #name(&self, _val: #ty) {
                 unsafe {
                     self.0.add(#offset).cast::<u8>().write_volatile(0)
