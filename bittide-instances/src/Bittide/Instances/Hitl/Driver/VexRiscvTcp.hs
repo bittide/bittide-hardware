@@ -8,6 +8,7 @@ import Prelude
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Program
+import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -81,6 +82,9 @@ driverFunc _name [d@(_, dI)] = do
     openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
 
   D.assertProbe "probe_test_start" d
+
+  -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
+  liftIO $ resetUsbDeviceByLocation dI.usbAdapterLocation
 
   Ocd.withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
     liftIO $ do

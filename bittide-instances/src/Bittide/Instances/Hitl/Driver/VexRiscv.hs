@@ -17,6 +17,7 @@ import Vivado.VivadoM
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Program
+import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 
 import Control.Concurrent (threadDelay)
 import Control.Monad (forM)
@@ -76,6 +77,10 @@ driverFunc _name targets = do
     -- even though this is just pre-process step, the CPU is reset until
     -- the test_start signal is asserted and cannot be accessed via GDB otherwise
     updateVio "vioHitlt" [("probe_test_start", "1")]
+
+    -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
+    liftIO $ resetUsbDeviceByLocation deviceInfo.usbAdapterLocation
+
     liftIO $ Ocd.withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
       -- make sure OpenOCD is started properly
       hSetBuffering ocd.stderrHandle LineBuffering

@@ -18,6 +18,7 @@ import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
@@ -246,6 +247,9 @@ driver testName targets = do
   let hitlDir = projectDir </> "_build/hitl" </> testName
 
   forM_ targets (assertProbe "probe_test_start")
+
+  -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
+  liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation
 
   let
     -- BOOT / MU / CC IDs
