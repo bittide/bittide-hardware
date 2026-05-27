@@ -287,4 +287,28 @@ mod test {
         let collected: [bool; 8] = core::array::from_fn(|i| m2[i]);
         assert_eq!(collected, bs);
     }
+
+    #[test]
+    fn mask_macro_binary_literal() {
+        let m: Mask<8, 1> = bittide_macros::mask!(0b1010_0001, n = 8);
+        let bs = [true, false, false, false, false, true, false, true];
+        let collected: [bool; 8] = core::array::from_fn(|i| m[i]);
+        assert_eq!(collected, bs);
+    }
+
+    #[test]
+    fn mask_macro_hex_literal() {
+        let m: Mask<32, 4> = bittide_macros::mask!(0xab_cd_ef_01, n = 32);
+        let bv: BitVector<32, 4> = m.into();
+        let expected = bittide_macros::bitvector!(0xab_cd_ef_01, n = 32);
+        assert_eq!(bv, expected);
+    }
+
+    #[test]
+    fn mask_macro_non_byte_multiple() {
+        let m: Mask<13, 2> = bittide_macros::mask!(0b1_0110_0011_0101, n = 13);
+        let bv: BitVector<13, 2> = m.into();
+        let expected = bittide_macros::bitvector!(0b1_0110_0011_0101, n = 13);
+        assert_eq!(bv, expected);
+    }
 }
