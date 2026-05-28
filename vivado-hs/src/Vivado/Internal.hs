@@ -149,10 +149,12 @@ exec v cmd = do
       puts -nonewline {#{magic} ERR }
       puts [dict get $opt_dict_#{magic} {-code}]
       puts $result_#{magic}
+      puts {#{magic} END}
     } else {
       puts {}
       puts {#{magic} OK}
       puts $result_#{magic}
+      puts {#{magic} END}
     }
   |]
 
@@ -160,8 +162,8 @@ exec v cmd = do
   (stdout :|> _, mErr) <- expectLine v True filtUntilMagic
   let stdoutS = intercalate "\n" $ toList stdout
 
-  -- The return value
-  (retVal, _) <- expectLine v False filtUntilEnd
+  -- The return value, terminated by the END sentinel which is then dropped.
+  (retVal :|> _, _) <- expectLine v False filtUntilEnd
   let retValS = intercalate "\n" $ toList retVal
 
   case mErr of
@@ -188,9 +190,9 @@ exec v cmd = do
     | otherwise = return Continue
 
   filtUntilEnd :: String -> IO Filter
-  filtUntilEnd _ = do
-    inputAvailable <- IO.hReady v.stdout
-    return $ if inputAvailable then Continue else Stop
+  filtUntilEnd line
+    | line == magic <> " END" = return Stop
+    | otherwise = return Continue
 
 {- | Execute a command in Vivado and ignore the command result.
 
