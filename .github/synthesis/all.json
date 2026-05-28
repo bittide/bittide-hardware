@@ -11,6 +11,7 @@
 
   {"top": "asciiDebugMuxFast",             "stage": "pnr",   "cc_report": false},
   {"top": "autoCenterFast",                "stage": "pnr",   "cc_report": false},
+  {"top": "callistoSwClockControlCFast",   "stage": "pnr",   "cc_report": false},
   {"top": "captureUgnFast",                "stage": "pnr",   "cc_report": false},
   {"top": "counterFast",                   "stage": "pnr",   "cc_report": false},
   {"top": "freezeFast",                    "stage": "pnr",   "cc_report": false},
