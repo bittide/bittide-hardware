@@ -9,7 +9,7 @@ module Vivado.Internal where
 import Prelude
 
 import Control.Exception (Exception, finally, throwIO)
-import Control.Monad (forM_, unless, void)
+import Control.Monad (forM_, unless, void, when)
 import Data.Foldable (toList)
 import Data.List (intercalate)
 import Data.List.Extra (isPrefixOf, splitOn, trim)
@@ -97,17 +97,22 @@ successfully. If the filter returns @Stop e@, the function will return a
 expectLine ::
   (HasCallStack) =>
   VivadoHandle ->
+  {- | If 'True', also echo each line (except the magic sentinel) to host stdout
+  as it arrives, for live streaming of step output.
+  -}
+  Bool ->
   (String -> IO Filter) ->
   IO (Seq String, Maybe ErrorCode)
-expectLine v f = go mempty
+expectLine v echo f = go mempty
  where
   go :: Seq String -> IO (Seq String, Maybe ErrorCode)
   go acc = do
     line <- IO.hGetLine v.stdout
 
     IO.hPutStrLn v.logHandle line
-    unless (magic `isPrefixOf` line) $
+    unless (magic `isPrefixOf` line) $ do
       IO.hPutStrLn v.prettyLogHandle line
+      when echo $ IO.putStrLn line
 
     let lines' = acc :|> line
     f line >>= \case
@@ -144,19 +149,21 @@ exec v cmd = do
       puts -nonewline {#{magic} ERR }
       puts [dict get $opt_dict_#{magic} {-code}]
       puts $result_#{magic}
+      puts {#{magic} END}
     } else {
       puts {}
       puts {#{magic} OK}
       puts $result_#{magic}
+      puts {#{magic} END}
     }
   |]
 
   -- Discard the line with the magic string at the end
-  (stdout :|> _, mErr) <- expectLine v filtUntilMagic
+  (stdout :|> _, mErr) <- expectLine v True filtUntilMagic
   let stdoutS = intercalate "\n" $ toList stdout
 
-  -- The return value
-  (retVal, _) <- expectLine v filtUntilEnd
+  -- The return value, terminated by the END sentinel which is then dropped.
+  (retVal :|> _, _) <- expectLine v False filtUntilEnd
   let retValS = intercalate "\n" $ toList retVal
 
   case mErr of
@@ -183,9 +190,9 @@ exec v cmd = do
     | otherwise = return Continue
 
   filtUntilEnd :: String -> IO Filter
-  filtUntilEnd _ = do
-    inputAvailable <- IO.hReady v.stdout
-    return $ if inputAvailable then Continue else Stop
+  filtUntilEnd line
+    | line == magic <> " END" = return Stop
+    | otherwise = return Continue
 
 {- | Execute a command in Vivado and ignore the command result.
 
@@ -195,28 +202,26 @@ attempt to sanitize the input.
 exec_ :: VivadoHandle -> String -> IO ()
 exec_ v cmd = void (exec v cmd)
 
-{- | Execute a command in Vivado, print the resulting standard output and return
-the command result.
+{- | Execute a command in Vivado and return the command result. Standard output
+is streamed to host stdout line-by-line as it arrives from Vivado.
+
+Kept as an alias of 'exec' for backwards compatibility; 'exec' now streams
+output unconditionally.
 
 Careful: do not use this function with unverified user input, as it does not
 attempt to sanitize the input.
 -}
 execPrint :: VivadoHandle -> String -> IO String
-execPrint v cmd = do
-  (stdout, result) <- exec v cmd
-  putStr stdout
-  return result
+execPrint v cmd = snd <$> exec v cmd
 
-{- | Execute a command in Vivado, print the resulting standard output and ignore
-the command result.
+{- | Execute a command in Vivado and ignore the command result. Standard output
+is streamed to host stdout line-by-line as it arrives from Vivado.
 
 Careful: do not use this function with unverified user input, as it does not
 attempt to sanitize the input.
 -}
 execPrint_ :: VivadoHandle -> String -> IO ()
-execPrint_ v cmd = do
-  (stdout, _) <- exec v cmd
-  putStr stdout
+execPrint_ = exec_
 
 {- | Run a block of code with a Vivado handle. Example usage:
 
@@ -241,6 +246,10 @@ with f = do
       -- do:
       ( do
           setEnv "XILINX_LOCAL_USER_DATA" "no" -- Prevents multiprocessing issues
+          -- Ensure streamed step output is flushed line-by-line even when our
+          -- own stdout is a pipe (e.g. under Shake or CI), where the default
+          -- would otherwise be block-buffered.
+          IO.hSetBuffering IO.stdout IO.LineBuffering
           withCreateProcess vivadoProc $
             \(fromJust -> stdin) (fromJust -> stdout) _stderr process -> do
               IO.hSetBuffering stdout IO.LineBuffering

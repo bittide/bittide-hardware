@@ -54,7 +54,7 @@ TOUCH_AFTER=datetime.timedelta(days=1)
 
 GLOBAL_CACHE_BUST = 26
 
-CARGO_CACHE_BUST = 2
+CARGO_CACHE_BUST = 4
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
 CARGO_KEY_PATTERNS = ("**/Cargo.lock", "**/Cargo.toml", "**/rust-toolchain.toml")
 CARGO_CACHE_INCLUDE_PATTERNS = ("~/.cargo",)
