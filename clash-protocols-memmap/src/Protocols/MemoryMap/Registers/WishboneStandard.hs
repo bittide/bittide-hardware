@@ -15,6 +15,9 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWb_,
   registerWbDf,
+  registerWbVec,
+  registerWbVec_,
+  registerWbVecDf,
   registerWithOffsetWb,
   registerWithOffsetWbDf,
 
@@ -22,6 +25,9 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI,
   registerWbI_,
   registerWbDfI,
+  registerWbVecI,
+  registerWbVecI_,
+  registerWbVecDfI,
   registerWithOffsetWbI,
   registerWithOffsetWbDfI,
 
@@ -43,6 +49,7 @@ import Clash.Explicit.Prelude
 import Protocols
 
 import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
+import Data.Maybe (fromMaybe)
 import GHC.Stack (withFrozenCallStack)
 import GHC.Stack.Types (HasCallStack)
 import Protocols.Experimental.Wishbone (Wishbone, WishboneMode (Standard))
@@ -170,6 +177,87 @@ registerWb_ clk rst regConfig resetValue = circuit $ \i -> do
   _ignored <- registerWbDf clk rst regConfig resetValue -< i
   idC
 
+-- | Like 'registerWbDf', but allows individual elements of a vector to be updated independently.
+registerWbVecDf ::
+  forall n a dom wordSize aw.
+  ( RegisterWbConstraints (Vec n a) dom wordSize aw
+  , KnownNat n
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( RegisterWb dom aw wordSize
+    , CSignal dom (Vec n (Maybe a))
+    )
+    ( CSignal dom (Vec n a)
+    , Df dom (BusActivity (Vec n a))
+    )
+registerWbVecDf clk rst regConfig resetValue = circuit $ \(meta, Fwd fromUser) -> do
+  (Fwd out, outDf0) <- registerWbDf clk rst regConfig (repeat resetValue) -< (meta, Fwd write)
+  (outDf1, Fwd outDfMaybe) <- dupToMaybeDf -< outDf0
+
+  let
+    fromBus = sequenceA . busActivityData <$> outDfMaybe
+    write = fmap Just $ liftA3 go <$> out <*> fromUser <*> fromBus
+
+  idC -< (Fwd out, outDf1)
+ where
+  dupToMaybeDf :: Circuit (Df dom x) (Df dom x, CSignal dom (Maybe x))
+  dupToMaybeDf = Circuit $ \(maybeX, (ack, _)) -> (ack, (maybeX, maybeX))
+
+  -- Prefer writes from the user, then from the bus, and finally fall back to what's
+  -- already in the register.
+  go out fromUser fromBus = fromMaybe out (fromUser <|> fromBus)
+
+-- | Like 'registerWb', but allows individual elements of a vector to be updated independently.
+registerWbVec ::
+  forall n a dom wordSize aw.
+  ( RegisterWbConstraints (Vec n a) dom wordSize aw
+  , KnownNat n
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( RegisterWb dom aw wordSize
+    , CSignal dom (Vec n (Maybe a))
+    )
+    ( CSignal dom (Vec n a)
+    , CSignal dom (Maybe (BusActivity (Vec n a)))
+    )
+registerWbVec clk rst regConfig resetValue = circuit $ \i -> do
+  (regValue, busActivityDf) <- registerWbVecDf clk rst regConfig resetValue -< i
+  busActivity <- Df.toMaybe -< busActivityDf
+  idC -< (regValue, busActivity)
+
+-- | Like 'registerWb_', but allows individual elements of a vector to be updated independently.
+registerWbVec_ ::
+  forall n a dom wordSize aw.
+  ( RegisterWbConstraints (Vec n a) dom wordSize aw
+  , KnownNat n
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( RegisterWb dom aw wordSize
+    , CSignal dom (Vec n (Maybe a))
+    )
+    ()
+registerWbVec_ clk rst regConfig resetValue = circuit $ \i -> do
+  _ignored <- registerWbVecDf clk rst regConfig resetValue -< i
+  idC -< ()
+
 {- | Same as 'registerWb', but also takes an offset. You can tie registers
 created using this function together with 'deviceWithOffsetsWb'.
 -}
@@ -283,6 +371,67 @@ registerWbI_ ::
     )
     ()
 registerWbI_ = withFrozenCallStack $ registerWb_ hasClock hasReset
+
+-- | 'registerWbVec' with a hidden clock and reset
+registerWbVecI ::
+  forall n a dom wordSize aw.
+  ( HiddenClock dom
+  , HiddenReset dom
+  , RegisterWbConstraints (Vec n a) dom wordSize aw
+  , KnownNat n
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( RegisterWb dom aw wordSize
+    , CSignal dom (Vec n (Maybe a))
+    )
+    ( CSignal dom (Vec n a)
+    , CSignal dom (Maybe (BusActivity (Vec n a)))
+    )
+registerWbVecI = withFrozenCallStack $ registerWbVec hasClock hasReset
+
+-- | 'registerWbVecDf' with a hidden clock and reset
+registerWbVecDfI ::
+  forall n a dom wordSize aw.
+  ( HiddenClock dom
+  , HiddenReset dom
+  , RegisterWbConstraints (Vec n a) dom wordSize aw
+  , KnownNat n
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( RegisterWb dom aw wordSize
+    , CSignal dom (Vec n (Maybe a))
+    )
+    ( CSignal dom (Vec n a)
+    , Df dom (BusActivity (Vec n a))
+    )
+registerWbVecDfI = withFrozenCallStack $ registerWbVecDf hasClock hasReset
+
+-- | 'registerWbVec_' with a hidden clock and reset
+registerWbVecI_ ::
+  forall n a dom wordSize aw.
+  ( HiddenClock dom
+  , HiddenReset dom
+  , RegisterWbConstraints (Vec n a) dom wordSize aw
+  , KnownNat n
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( RegisterWb dom aw wordSize
+    , CSignal dom (Vec n (Maybe a))
+    )
+    ()
+registerWbVecI_ = withFrozenCallStack $ registerWbVec_ hasClock hasReset
 
 -- | 'registerWithOffsetWb' with a hidden clock and reset
 registerWithOffsetWbI ::
