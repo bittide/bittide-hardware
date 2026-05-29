@@ -15,6 +15,7 @@ import Clash.Class.BitPackC (BitPackC, ByteOrder)
 import Clash.Functor.Extra ((<<$>>))
 import Data.Maybe (fromMaybe)
 import GHC.Stack (HasCallStack)
+import Protocols.Experimental.Wishbone
 import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Mask (fromBitVector, fromVec, toVec)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -26,7 +27,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI_,
  )
 import Protocols.MemoryMap.TypeDescription (deriveTypeDescription)
-import Protocols.Wishbone
 
 nextLfsr :: BitVector 8 -> BitVector 8
 nextLfsr 0 = 1

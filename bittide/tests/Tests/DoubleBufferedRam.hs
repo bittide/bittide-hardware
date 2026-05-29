@@ -18,14 +18,14 @@ import Data.Maybe
 import Data.String
 import Hedgehog
 import Numeric (showHex)
-import Protocols.Hedgehog.Internal
-import Protocols.MemoryMap (unMemmap)
-import Protocols.Wishbone
-import Protocols.Wishbone.Standard.Hedgehog (
+import Protocols.Experimental.Hedgehog
+import Protocols.Experimental.Wishbone
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   driveStandard,
   wishbonePropWithModel,
  )
+import Protocols.MemoryMap (unMemmap)
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
@@ -38,7 +38,7 @@ import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Hedgehog.Range as Range
-import qualified Protocols.Wishbone.Standard.Hedgehog as WB
+import qualified Protocols.Experimental.Wishbone.Standard.Hedgehog as WB
 import qualified Prelude as P
 
 tests :: TestTree

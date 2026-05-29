@@ -15,6 +15,7 @@ import Data.Coerce (coerce)
 import Data.Functor ((<&>))
 import GHC.Stack (HasCallStack)
 import Protocols.Df (CollectMode (Skip))
+import Protocols.Experimental.Wishbone
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity,
   registerWb,
@@ -30,7 +31,6 @@ import Protocols.PacketStream (
 import Protocols.PacketStream.Base (truncateAbortedPackets)
 import Protocols.PacketStream.Routing (packetArbiterC)
 import Protocols.Vec (vecCircuits)
-import Protocols.Wishbone
 
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as Mm

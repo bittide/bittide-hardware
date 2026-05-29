@@ -16,8 +16,8 @@ import Data.Constraint
 import Data.Constraint.Nat.Lemmas
 import Data.Type.Equality ((:~:) (Refl))
 import Protocols (ToConstBwd)
+import Protocols.Experimental.Wishbone
 import Protocols.MemoryMap (Mm)
-import Protocols.Wishbone
 
 -- | To be used when there are two options.
 data AorB = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)

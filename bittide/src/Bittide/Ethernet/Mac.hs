@@ -14,11 +14,11 @@ import Data.List.Infinite (Infinite ((:<)), (...))
 import Data.Maybe
 import Data.String.Interpolate (__i)
 import GHC.Stack (HasCallStack)
-import Protocols.Axi4.Stream
+import Protocols.Experimental.Axi4.Stream
+import Protocols.Experimental.Wishbone
 import Protocols.Internal
 import Protocols.MemoryMap
 import Protocols.MemoryMap.TypeDescription.TH
-import Protocols.Wishbone
 
 import qualified Clash.Prelude as CP
 

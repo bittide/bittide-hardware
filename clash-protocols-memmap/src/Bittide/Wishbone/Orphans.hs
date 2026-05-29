@@ -10,7 +10,7 @@ module Bittide.Wishbone.Orphans where
 import Clash.Prelude
 
 import Clash.Shockwaves.Waveform (Waveform)
-import Protocols.Wishbone (
+import Protocols.Experimental.Wishbone (
   BurstTypeExtension,
   CycleTypeIdentifier,
   WishboneM2S,

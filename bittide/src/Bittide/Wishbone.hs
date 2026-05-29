@@ -11,7 +11,7 @@ import Clash.Prelude hiding (Exp)
 
 -- external imports
 import Clash.Class.BitPackC
-import Clash.Cores.UART (ValidBaud, uart)
+import Clash.Cores.Uart (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
@@ -22,6 +22,7 @@ import Data.Bool (bool)
 import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Protocols
+import Protocols.Experimental.Wishbone
 import Protocols.Idle (forceResetSanityGeneric)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
@@ -29,7 +30,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI_,
  )
 import Protocols.MemoryMap.TypeDescription.TH
-import Protocols.Wishbone
 
 -- internal imports
 import Bittide.Df hiding (wbToDf)
@@ -39,10 +39,10 @@ import Bittide.SharedTypes
 -- qualified imports
 
 import qualified Data.List as L
+import qualified Protocols.Experimental.Wishbone as Wishbone
 import qualified Protocols.MemoryMap as Mm
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as Mm
 import qualified Protocols.Vec as Vec
-import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
 >>> import Clash.Prelude

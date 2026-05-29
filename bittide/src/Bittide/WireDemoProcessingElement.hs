@@ -13,6 +13,7 @@ import Protocols
 import Clash.Class.BitPackC (ByteOrder)
 import Data.Maybe (fromMaybe)
 import GHC.Stack (HasCallStack)
+import Protocols.Experimental.Wishbone (Wishbone, WishboneMode (Standard))
 import Protocols.MemoryMap (Access (ReadOnly, ReadWrite), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
@@ -22,7 +23,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI,
   registerWbI_,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 wireDemoPeConfig ::
   forall dom addrW nBytes linkCount linkWidth.

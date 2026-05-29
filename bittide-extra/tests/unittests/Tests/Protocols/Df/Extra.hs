@@ -17,13 +17,14 @@ import Data.String.Interpolate (i)
 import Hedgehog (Gen, Property, Range, assert, cover, footnote, forAll, (===))
 import Protocols
 import Protocols.Df.Extra (skid, tdpbramRamOp)
-import Protocols.Hedgehog (
+import Protocols.Experimental.Hedgehog (
   ExpectOptions (..),
   defExpectOptions,
   idWithModelSingleDomain,
   idWithModelSingleDomainT,
   propWithModelSingleDomain,
  )
+import Protocols.Experimental.Simulate (SimulationConfig (..), StallAck (..), driveC, sampleC)
 import Protocols.Internal (circuitMonitor)
 import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog (testProperty)
@@ -34,8 +35,8 @@ import qualified Data.List as L
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Protocols.Df as Df
 import qualified Protocols.Df.Extra as Df
+import qualified Protocols.Experimental.Df as Df
 import qualified Prelude as P
 
 smallInt :: Range Int

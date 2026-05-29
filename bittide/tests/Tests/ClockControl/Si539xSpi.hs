@@ -5,7 +5,7 @@
 
 module Tests.ClockControl.Si539xSpi where
 
-import Clash.Cores.SPI
+import Clash.Cores.Spi
 import Clash.Prelude
 import Clash.Signal.Internal (Signal ((:-)))
 
@@ -47,7 +47,7 @@ si5391Mock sck mosi ss = readFromBiSignal miso
   slaveOut :: Signal dom (Maybe (Bytes 2))
   (veryUnsafeToBiSignalIn -> miso, _, slaveOut) =
     withClockResetEnable clockGen resetGen enableGen
-      $ spiSlaveLatticeSBIO SPIMode0 False sck mosi miso ss slaveIn
+      $ spiSlaveLatticeSBIO SpiMode0 False sck mosi miso ss slaveIn
 
   slaveIn =
     si5391Model

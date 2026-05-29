@@ -12,7 +12,7 @@ import Clash.Hedgehog.Sized.Vector (genVec)
 import Data.Maybe
 import Data.Proxy
 import Hedgehog
-import Protocols.Axi4.Stream
+import Protocols.Experimental.Axi4.Stream
 import Test.Tasty
 import Test.Tasty.Hedgehog
 

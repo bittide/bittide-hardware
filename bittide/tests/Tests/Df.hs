@@ -10,7 +10,7 @@ import Bittide.Df (asciiDebugMux)
 import Bittide.SharedTypes (Byte)
 import Clash.Hedgehog.Sized.Vector (genVec)
 import Data.Char (chr, ord)
-import Protocols.Hedgehog (
+import Protocols.Experimental.Hedgehog (
   ExpectOptions (eoSampleMax),
   defExpectOptions,
   propWithModelSingleDomain,

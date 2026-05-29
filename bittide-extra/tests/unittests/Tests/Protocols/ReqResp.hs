@@ -9,7 +9,8 @@ import Clash.Prelude as C
 import Clash.Hedgehog.Sized.Vector (genVec)
 import Hedgehog (Gen, Property)
 import Protocols
-import Protocols.Hedgehog (defExpectOptions)
+import Protocols.Experimental.Hedgehog (defExpectOptions)
+import Protocols.Experimental.Simulate (StallAck, stallC)
 import Protocols.ReqResp as ReqResp
 import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog.Extra (testProperty)
@@ -18,9 +19,9 @@ import Test.Tasty.TH (testGroupGenerator)
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Protocols.Df as Df
 import qualified Protocols.Df.Extra as Df
-import qualified Protocols.Hedgehog as PH
+import qualified Protocols.Experimental.Df as Df
+import qualified Protocols.Experimental.Hedgehog as PH
 
 smallInt :: Gen Int
 smallInt = Gen.integral (Range.linear 0 10)

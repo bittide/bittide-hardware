@@ -27,6 +27,7 @@ import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Project.FilePath (CargoBuildType (Release))
 import Protocols
+import Protocols.Experimental.Simulate (SimulationConfig (..), sampleC)
 import Protocols.Idle (idleSource)
 import Protocols.MemoryMap (MemoryMap, Mm, getMMAny, unMemmap)
 import Test.Tasty.HUnit (HasCallStack)

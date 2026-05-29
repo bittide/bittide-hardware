@@ -13,7 +13,7 @@ import Clash.Explicit.Reset (noReset)
 import Data.Maybe (isJust)
 import Data.String ()
 import Hedgehog (Property, footnote, forAll, property, success, (===))
-import Protocols.Wishbone (WishboneM2S, WishboneS2M, acknowledge)
+import Protocols.Experimental.Wishbone (WishboneM2S, WishboneS2M, acknowledge)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 import Tests.Wishbone.Utils (

@@ -9,7 +9,7 @@ import Clash.Annotations.TH
 import Clash.Prelude
 
 import Protocols
-import Protocols.Wishbone
+import Protocols.Experimental.Wishbone
 
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ElasticBuffer

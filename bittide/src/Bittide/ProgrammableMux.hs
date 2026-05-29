@@ -10,6 +10,7 @@ import Protocols
 import Bittide.ElasticBuffer (stickyE)
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
+import Protocols.Experimental.Wishbone (Wishbone, WishboneMode (Standard))
 import Protocols.MemoryMap (Access (ReadWrite, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
@@ -18,7 +19,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWbI,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 {- | A mux which switches its output from input 'A' to input 'B' when the local counter is
 'first_b_cycle' and the device is armed. Once switched the mux cannot switched back

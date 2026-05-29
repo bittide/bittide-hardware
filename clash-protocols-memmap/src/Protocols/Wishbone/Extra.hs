@@ -6,7 +6,7 @@ module Protocols.Wishbone.Extra (delayWishbone) where
 
 import Clash.Explicit.Prelude
 import Protocols
-import Protocols.Wishbone
+import Protocols.Experimental.Wishbone
 
 data DelayWishboneState aw n
   = WaitingForManager

@@ -24,6 +24,8 @@ import Clash.Sized.Vector.Extra
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols
+import Protocols.Experimental.Simulate (SimulationConfig (..), sampleC)
+import Protocols.Experimental.Wishbone (Wishbone, WishboneMode (Standard))
 import Protocols.Idle (idleSink, idleSource)
 import Protocols.MemoryMap (MemoryMap, Mm, ignoreMM, withName)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -32,7 +34,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWb_,
  )
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import Test.Tasty.HUnit (HasCallStack)
 import VexRiscv (DumpVcd (NoDumpVcd))
 

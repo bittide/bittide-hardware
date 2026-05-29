@@ -9,8 +9,11 @@ import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
 import GHC.Stack (HasCallStack)
 import Protocols (Circuit (..), toSignals)
-import Protocols.Wishbone as Wb
-import Protocols.Wishbone.Standard.Hedgehog (WishboneMasterRequest (..), validatorCircuit)
+import Protocols.Experimental.Wishbone as Wb
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (
+  WishboneMasterRequest (..),
+  validatorCircuit,
+ )
 
 import Bittide.SharedTypes
 

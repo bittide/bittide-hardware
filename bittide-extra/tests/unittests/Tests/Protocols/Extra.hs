@@ -21,48 +21,48 @@ import qualified Data.Text as Text
 import qualified Protocols.TraceC as Trace
 import qualified Prelude as P
 
-import Protocols.Axi4.ReadAddress (
+import Protocols.BiDf (BiDf)
+import Protocols.Df ()
+import Protocols.Experimental.Axi4.ReadAddress (
   Axi4ReadAddress,
   Axi4ReadAddressConfig (..),
   M2S_ReadAddress (..),
   S2M_ReadAddress (..),
  )
-import Protocols.Axi4.ReadData (
+import Protocols.Experimental.Axi4.ReadData (
   Axi4ReadData,
   Axi4ReadDataConfig (..),
   M2S_ReadData (..),
   S2M_ReadData (..),
  )
-import Protocols.Axi4.Stream (
+import Protocols.Experimental.Axi4.Stream (
   Axi4Stream,
   Axi4StreamConfig (..),
   Axi4StreamM2S (..),
   Axi4StreamS2M (..),
  )
-import Protocols.Axi4.WriteAddress (
+import Protocols.Experimental.Axi4.WriteAddress (
   Axi4WriteAddress,
   Axi4WriteAddressConfig (..),
   M2S_WriteAddress (..),
   S2M_WriteAddress (..),
  )
-import Protocols.Axi4.WriteData (
+import Protocols.Experimental.Axi4.WriteData (
   Axi4WriteData,
   Axi4WriteDataConfig (..),
   M2S_WriteData (..),
   S2M_WriteData (..),
  )
-import Protocols.Axi4.WriteResponse (
+import Protocols.Experimental.Axi4.WriteResponse (
   Axi4WriteResponse,
   Axi4WriteResponseConfig (..),
   M2S_WriteResponse (..),
   S2M_WriteResponse (..),
  )
-import Protocols.BiDf (BiDf)
-import Protocols.Df ()
+import Protocols.Experimental.Wishbone
 import Protocols.PacketStream (PacketStream, PacketStreamM2S (..), PacketStreamS2M (..))
 import Protocols.Spi (Spi)
 import qualified Protocols.Spi as Spi
-import Protocols.Wishbone
 
 -- * Helpers
 

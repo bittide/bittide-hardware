@@ -12,17 +12,17 @@ module Clash.Cores.UART.Extra (
 import Clash.Prelude
 import Protocols
 
-import Clash.Cores.UART
+import Clash.Cores.Uart
 import Clash.Functor.Extra ((<<$>>))
 import Data.Char
 import Data.Maybe
-import Protocols.Df hiding (catMaybes, pure, sample)
+import Protocols.Experimental.Df hiding (catMaybes, pure, sample)
 import System.IO
 
 import Bittide.Df
 import Bittide.Wishbone
 
-import qualified Protocols.Df as Df
+import qualified Protocols.Experimental.Df as Df
 
 data Uart (dom :: Domain)
 

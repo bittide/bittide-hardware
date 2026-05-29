@@ -19,6 +19,13 @@ import Data.Data (Proxy (Proxy), Typeable)
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe, isJust)
 import GHC.Stack (HasCallStack, SrcLoc)
+import Protocols.Experimental.Wishbone (
+  Wishbone,
+  WishboneM2S (..),
+  WishboneMode (Standard),
+  WishboneS2M (..),
+  emptyWishboneS2M,
+ )
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
   DeviceDefinition (DeviceDefinition, definitionLoc, deviceName, registers, tags),
@@ -35,13 +42,6 @@ import Protocols.MemoryMap (
  )
 import Protocols.MemoryMap.TypeDescription
 import Protocols.ReqResp
-import Protocols.Wishbone (
-  Wishbone,
-  WishboneM2S (..),
-  WishboneMode (Standard),
-  WishboneS2M (..),
-  emptyWishboneS2M,
- )
 import Protocols.Wishbone.Extra (delayWishbone)
 
 import qualified Clash.Shockwaves.Trace as Trace

@@ -68,7 +68,7 @@ import Clash.Prelude (
   natToInteger,
  )
 
-import Clash.Cores.Xilinx.VIO (vioProbe)
+import Clash.Cores.Xilinx.Vio (vioProbe)
 
 import Data.Containers.ListUtils (nubOrd)
 import Data.Map.Strict (Map)

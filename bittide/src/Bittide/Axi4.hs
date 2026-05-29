@@ -58,14 +58,15 @@ import Data.Proxy
 import Data.Typeable (Typeable)
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.Axi4.Common
 import Protocols.Axi4.Extra
-import Protocols.Axi4.ReadAddress
-import Protocols.Axi4.ReadData
-import Protocols.Axi4.Stream as AS
-import Protocols.Axi4.WriteAddress
-import Protocols.Axi4.WriteData
-import Protocols.Axi4.WriteResponse
+import Protocols.Experimental.Axi4.Common
+import Protocols.Experimental.Axi4.ReadAddress
+import Protocols.Experimental.Axi4.ReadData
+import Protocols.Experimental.Axi4.Stream as AS
+import Protocols.Experimental.Axi4.WriteAddress
+import Protocols.Experimental.Axi4.WriteData
+import Protocols.Experimental.Axi4.WriteResponse
+import Protocols.Experimental.Wishbone as WB
 import Protocols.Idle (idleSink)
 import Protocols.Internal (fromKeepType, toKeepType)
 import Protocols.MemoryMap (Access (..))
@@ -79,14 +80,13 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI,
  )
 import Protocols.ReqResp (ReqResp)
-import Protocols.Wishbone as WB
 
 import qualified Protocols.DfConv as DfConv
 import qualified Protocols.ReqResp as ReqResp
 
 {- $setup
 >>> import Clash.Prelude
->>> import Protocols.Axi4.Stream
+>>> import Protocols.Experimental.Axi4.Stream
 -}
 
 {- | An 'Axi4Stream' without gaps in the data. This means that for each transfer

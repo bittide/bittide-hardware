@@ -20,6 +20,7 @@ import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
 import Protocols.Df.Extra (tdpbramRamOp)
+import Protocols.Experimental.Simulate (SimulationConfig (..), sampleC)
 import Protocols.Idle
 import Protocols.MemoryMap
 import VexRiscv (DumpVcd (NoDumpVcd))

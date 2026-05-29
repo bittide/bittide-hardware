@@ -11,7 +11,7 @@ import Bittide.Extra.Maybe
 import Data.Maybe
 import Data.Proxy
 import Protocols
-import Protocols.Axi4.Stream
+import Protocols.Experimental.Axi4.Stream
 
 import qualified Protocols.DfConv as DfConv
 
