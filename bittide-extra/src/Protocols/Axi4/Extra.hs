@@ -6,11 +6,11 @@ module Protocols.Axi4.Extra where
 
 import Clash.Prelude
 
-import Protocols.Axi4.ReadAddress (M2S_ReadAddress (M2S_NoReadAddress))
-import Protocols.Axi4.ReadData (S2M_ReadData (S2M_NoReadData))
-import Protocols.Axi4.WriteAddress (M2S_WriteAddress (M2S_NoWriteAddress))
-import Protocols.Axi4.WriteData (M2S_WriteData (M2S_NoWriteData))
-import Protocols.Axi4.WriteResponse (S2M_WriteResponse (S2M_NoWriteResponse))
+import Protocols.Experimental.Axi4.ReadAddress (M2S_ReadAddress (M2S_NoReadAddress))
+import Protocols.Experimental.Axi4.ReadData (S2M_ReadData (S2M_NoReadData))
+import Protocols.Experimental.Axi4.WriteAddress (M2S_WriteAddress (M2S_NoWriteAddress))
+import Protocols.Experimental.Axi4.WriteData (M2S_WriteData (M2S_NoWriteData))
+import Protocols.Experimental.Axi4.WriteResponse (S2M_WriteResponse (S2M_NoWriteResponse))
 
 isReadAddress :: M2S_ReadAddress conf userType -> Bool
 isReadAddress M2S_NoReadAddress = False

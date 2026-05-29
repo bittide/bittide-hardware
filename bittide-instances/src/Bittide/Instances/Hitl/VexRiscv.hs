@@ -15,7 +15,7 @@ import Clash.Prelude
 
 import Bittide.SharedTypes (BitboneMm)
 import Clash.Class.BitPackC
-import Clash.Cores.UART (ValidBaud)
+import Clash.Cores.Uart (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Project.FilePath (CargoBuildType (Release))
 import Protocols

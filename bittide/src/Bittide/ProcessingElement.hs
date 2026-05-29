@@ -13,8 +13,8 @@ import Clash.Sized.Vector.Extra (incrementWithBlacklist)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Protocols
+import Protocols.Experimental.Wishbone
 import Protocols.Idle
-import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag)
 
 import Bittide.Cpus.Types (BittideCpu)

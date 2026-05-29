@@ -9,8 +9,8 @@ import Bittide.SharedTypes (BitboneMm, withLittleEndian)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols
+import Protocols.Experimental.Wishbone
 import Protocols.MemoryMap
-import Protocols.Wishbone
 
 import qualified Bittide.ClockControl.Freeze as Freeze
 

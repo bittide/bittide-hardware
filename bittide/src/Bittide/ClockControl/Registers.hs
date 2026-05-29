@@ -8,7 +8,7 @@ module Bittide.ClockControl.Registers where
 import Clash.Prelude hiding (PeriodToCycles)
 
 import Protocols
-import Protocols.Wishbone
+import Protocols.Experimental.Wishbone
 
 import Bittide.ClockControl (RelDataCount, SpeedChange (NoChange))
 import Bittide.ClockControl.Callisto.Types (Stability (..))

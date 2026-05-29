@@ -19,14 +19,18 @@ import Data.Map (Map)
 import Data.String.Interpolate (i)
 import Hedgehog (Gen, Property, property)
 import Protocols
-import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
-import Protocols.MemoryMap (unMemmap)
-import Protocols.Wishbone
-import Protocols.Wishbone.Extra (decreaseBusWidth, increaseBusWidth, xpmCdcHandshakeWb)
-import Protocols.Wishbone.Standard.Hedgehog (
+import Protocols.Experimental.Hedgehog (
+  ExpectOptions (eoResetCycles),
+  defExpectOptions,
+  eoSampleMax,
+ )
+import Protocols.Experimental.Wishbone
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   wishbonePropWithModel,
  )
+import Protocols.MemoryMap (unMemmap)
+import Protocols.Wishbone.Extra (decreaseBusWidth, increaseBusWidth, xpmCdcHandshakeWb)
 import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog (testProperty)
 import Test.Tasty.TH (testGroupGenerator)
@@ -37,7 +41,7 @@ import qualified Data.Map as Map
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Protocols.Wishbone.Standard.Hedgehog as Wb
+import qualified Protocols.Experimental.Wishbone.Standard.Hedgehog as Wb
 
 type AddressWidth = 4
 

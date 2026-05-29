@@ -8,7 +8,7 @@ module Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra where
 import Clash.Explicit.Prelude
 
 import Hedgehog (Gen, Property, Range)
-import Protocols.Hedgehog (ExpectOptions (..), defExpectOptions, idWithModel)
+import Protocols.Experimental.Hedgehog (ExpectOptions (..), defExpectOptions, idWithModel)
 import Test.Tasty (TestTree, defaultMain)
 import Test.Tasty.Hedgehog (testProperty)
 import Test.Tasty.TH (testGroupGenerator)

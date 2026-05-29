@@ -13,7 +13,7 @@ import Clash.Signal.Internal
 import Data.Char
 import Data.Maybe
 import Numeric
-import Protocols
+import Protocols.Experimental.Simulate (sampleC)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH

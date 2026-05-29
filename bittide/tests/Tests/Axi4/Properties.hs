@@ -6,7 +6,7 @@
 module Tests.Axi4.Properties where
 
 import Clash.Prelude
-import Protocols.Axi4.Stream
+import Protocols.Experimental.Axi4.Stream
 
 import Data.Maybe
 import Test.Tasty

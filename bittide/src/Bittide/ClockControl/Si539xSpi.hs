@@ -11,7 +11,7 @@ import Data.Maybe
 import GHC.Stack (HasCallStack)
 
 import Clash.Class.BitPackC (BitPackC, ByteOrder)
-import Clash.Cores.SPI
+import Clash.Cores.Spi
 import Clash.Cores.Xilinx.DcFifo
 
 import Protocols
@@ -423,7 +423,7 @@ si539xSpiDriver SNat incomingOpS s2m = (fromSlave, decoderBusy, spiM2S)
  where
   (sck, mosi, ss, spiBusyS, acknowledge, receivedData) =
     spiMaster
-      SPIMode0
+      SpiMode0
       (SNat @(Max 1 (DivRU (PeriodToCycles dom minTargetPeriodPs) 2)))
       d1
       spiWrite

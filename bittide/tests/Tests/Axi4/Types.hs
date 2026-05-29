@@ -8,7 +8,7 @@ import Clash.Prelude
 import Bittide.Extra.Maybe
 import Clash.Sized.Vector (unsafeFromList)
 import Data.Maybe
-import Protocols.Axi4.Stream
+import Protocols.Experimental.Axi4.Stream
 
 import qualified Data.List as L
 

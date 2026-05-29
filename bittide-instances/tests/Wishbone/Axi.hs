@@ -22,10 +22,11 @@ import Data.Char
 import Data.Maybe
 import Data.Proxy
 import Protocols
-import Protocols.Axi4.Stream
+import Protocols.Experimental.Axi4.Stream
+import Protocols.Experimental.Simulate (sampleC)
+import Protocols.Experimental.Wishbone
 import Protocols.Idle
 import Protocols.MemoryMap
-import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH

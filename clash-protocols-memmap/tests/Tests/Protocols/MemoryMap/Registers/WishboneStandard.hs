@@ -22,16 +22,17 @@ import GHC.Stack (HasCallStack)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
 import Protocols
-import Protocols.Hedgehog (defExpectOptions, eoResetCycles, eoSampleMax)
-import Protocols.MemoryMap
-import Protocols.MemoryMap.Registers.WishboneStandard
-import Protocols.MemoryMap.Registers.WishboneStandard.Internal
-import Protocols.Wishbone
-import Protocols.Wishbone.Standard.Hedgehog (
+import Protocols.Experimental.Hedgehog (defExpectOptions, eoResetCycles, eoSampleMax)
+import Protocols.Experimental.Simulate (StallAck, stallC)
+import Protocols.Experimental.Wishbone
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (..),
   driveStandard,
   wishbonePropWithModel,
  )
+import Protocols.MemoryMap
+import Protocols.MemoryMap.Registers.WishboneStandard
+import Protocols.MemoryMap.Registers.WishboneStandard.Internal
 import System.Directory (createDirectoryIfMissing)
 import Test.Tasty
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
@@ -48,7 +49,7 @@ import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified Protocols.Df as Df
-import qualified Protocols.Hedgehog as PH
+import qualified Protocols.Experimental.Hedgehog as PH
 import qualified Protocols.ReqResp as ReqResp
 import qualified Prelude as P
 

@@ -11,8 +11,8 @@ import Clash.Explicit.Prelude
 import Clash.Explicit.Reset.Extra
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
-import Clash.Cores.UART (ValidBaud)
 import Clash.Cores.UART.Extra
+import Clash.Cores.Uart (ValidBaud)
 import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Explicit.Testbench

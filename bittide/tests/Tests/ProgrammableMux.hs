@@ -13,10 +13,11 @@ import Bittide.SharedTypes (withByteOrder)
 import Clash.Class.BitPackC (ByteOrder (..))
 import Clash.Class.BitPackC.Words (packWordCI)
 import Data.Maybe (fromJust)
-import Protocols.Hedgehog (defExpectOptions)
+import Protocols.Experimental.Hedgehog (defExpectOptions)
+import Protocols.Experimental.Simulate (SimulationConfig (..), sampleC)
+import Protocols.Experimental.Wishbone
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (WishboneMasterRequest (..))
 import Protocols.MemoryMap
-import Protocols.Wishbone
-import Protocols.Wishbone.Standard.Hedgehog (WishboneMasterRequest (..))
 
 import Clash.Hedgehog.Sized.Unsigned (genUnsigned)
 import Hedgehog (Property)
@@ -30,7 +31,7 @@ import qualified Data.String.Interpolate as Str
 import qualified Hedgehog as H
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Protocols.Wishbone.Standard.Hedgehog as Wb
+import qualified Protocols.Experimental.Wishbone.Standard.Hedgehog as Wb
 
 {- | Differentiate between the data from the management unit and processing element in the
 constructor. The Unsigned 64 is the cycle number at which the data is generated, so we can

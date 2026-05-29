@@ -7,6 +7,7 @@ module Tests.WireDemoProcessingElement where
 
 import Clash.Prelude
 import Protocols
+import Protocols.Experimental.Simulate (SimulationConfig (..), driveC, sampleC)
 
 import Bittide.WireDemoProcessingElement (wireDemoPe)
 

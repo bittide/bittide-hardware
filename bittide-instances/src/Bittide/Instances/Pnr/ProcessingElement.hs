@@ -16,7 +16,7 @@ import Bittide.ProcessingElement
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Annotations.TH
-import Clash.Cores.UART (ValidBaud)
+import Clash.Cores.Uart (ValidBaud)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
 import Project.FilePath

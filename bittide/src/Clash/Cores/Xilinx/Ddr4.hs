@@ -17,12 +17,12 @@ import Data.Maybe (fromJust, fromMaybe, isJust)
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal
 
-import Protocols.Axi4.Common
-import Protocols.Axi4.ReadAddress
-import Protocols.Axi4.ReadData
-import Protocols.Axi4.WriteAddress
-import Protocols.Axi4.WriteData
-import Protocols.Axi4.WriteResponse
+import Protocols.Experimental.Axi4.Common
+import Protocols.Experimental.Axi4.ReadAddress
+import Protocols.Experimental.Axi4.ReadData
+import Protocols.Experimental.Axi4.WriteAddress
+import Protocols.Experimental.Axi4.WriteData
+import Protocols.Experimental.Axi4.WriteResponse
 
 import Protocols.Axi4.Extra
 

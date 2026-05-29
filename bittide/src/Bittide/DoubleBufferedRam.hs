@@ -6,8 +6,8 @@ module Bittide.DoubleBufferedRam where
 import Clash.Prelude
 
 import Protocols (Circuit, ToConstBwd, toSignals, (<|))
+import Protocols.Experimental.Wishbone
 import Protocols.MemoryMap (Mm, unMemmap)
-import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)

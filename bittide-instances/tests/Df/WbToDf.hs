@@ -9,7 +9,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Char
 import Hedgehog
 import Protocols
-import Protocols.Hedgehog
+import Protocols.Experimental.Hedgehog
 import Protocols.Idle
 import Protocols.MemoryMap
 import Test.Tasty

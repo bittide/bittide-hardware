@@ -337,7 +337,7 @@ test-suite unittests
     clash-bitpackc,
     clash-cores,
     clash-prelude,
-    clash-prelude-hedgehog >=1.6 && <1.10,
+    clash-prelude-hedgehog,
     clash-protocols-memmap,
     clash-vexriscv,
     directory,

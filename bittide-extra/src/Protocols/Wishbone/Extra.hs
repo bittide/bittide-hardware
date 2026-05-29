@@ -12,7 +12,7 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Extra (xpmCdcHandshakeDf)
 import Clash.Prelude
 import Data.Maybe (fromMaybe, isJust)
 import Protocols
-import Protocols.Wishbone
+import Protocols.Experimental.Wishbone
 
 data DelayWishboneState aw n
   = WaitingForManager

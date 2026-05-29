@@ -11,7 +11,7 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Data.String.Interpolate
-import Protocols
+import Protocols.Experimental.Simulate (sampleC)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH

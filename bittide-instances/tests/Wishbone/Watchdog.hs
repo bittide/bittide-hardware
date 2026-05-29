@@ -16,7 +16,7 @@ import Bittide.ProcessingElement
 -- Other
 import Data.Char
 import Data.Maybe
-import Protocols
+import Protocols.Experimental.Simulate (sampleC)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH

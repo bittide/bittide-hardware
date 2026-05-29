@@ -10,7 +10,7 @@ import Clash.Prelude
 
 import Protocols
 import Protocols.Df.Extra (tdpbramRamOp)
-import Protocols.Wishbone
+import Protocols.Experimental.Wishbone
 
 import Bittide.Instances.Domains (Bittide)
 import Bittide.RingBuffer (receiveRingBuffer, transmitRingBuffer)

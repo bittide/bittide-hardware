@@ -12,7 +12,7 @@ import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Driver.DnaOverSerial
 import Bittide.Instances.Hitl.Setup
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.UART
+import Clash.Cores.Uart
 import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Explicit.Reset

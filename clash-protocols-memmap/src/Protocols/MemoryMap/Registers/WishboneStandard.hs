@@ -45,9 +45,9 @@ import Protocols
 import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import GHC.Stack (withFrozenCallStack)
 import GHC.Stack.Types (HasCallStack)
+import Protocols.Experimental.Wishbone (Wishbone, WishboneMode (Standard))
 import Protocols.MemoryMap (Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard.Internal
-import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 import qualified Protocols.Df as Df
 import qualified Protocols.Vec as V

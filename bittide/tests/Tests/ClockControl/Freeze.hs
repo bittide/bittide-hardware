@@ -14,13 +14,13 @@ import Clash.Prelude (withClockResetEnable)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
 import Protocols
-import Protocols.Hedgehog (defExpectOptions, eoSampleMax)
-import Protocols.MemoryMap
-import Protocols.Wishbone
-import Protocols.Wishbone.Standard.Hedgehog (
+import Protocols.Experimental.Hedgehog (defExpectOptions, eoSampleMax)
+import Protocols.Experimental.Wishbone
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (..),
   wishbonePropWithModel,
  )
+import Protocols.MemoryMap
 import Test.Tasty
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

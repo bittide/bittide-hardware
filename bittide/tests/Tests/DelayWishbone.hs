@@ -17,14 +17,18 @@ import Data.Maybe (fromMaybe)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
 import Protocols
-import Protocols.Hedgehog (ExpectOptions (eoResetCycles), defExpectOptions, eoSampleMax)
-import Protocols.MemoryMap (unMemmap)
-import Protocols.Wishbone
-import Protocols.Wishbone.Extra (delayWishbone)
-import Protocols.Wishbone.Standard.Hedgehog (
+import Protocols.Experimental.Hedgehog (
+  ExpectOptions (eoResetCycles),
+  defExpectOptions,
+  eoSampleMax,
+ )
+import Protocols.Experimental.Wishbone
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (Read, Write),
   wishbonePropWithModel,
  )
+import Protocols.MemoryMap (unMemmap)
+import Protocols.Wishbone.Extra (delayWishbone)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

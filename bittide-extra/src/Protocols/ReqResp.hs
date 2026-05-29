@@ -35,11 +35,12 @@ import Data.Bifunctor (Bifunctor (..))
 import Data.Maybe
 import Protocols
 import Protocols.BiDf (BiDf)
+import Protocols.Experimental.Simulate
 import Protocols.Idle
 
 import qualified Clash.Prelude as C
-import qualified Protocols as Df
 import qualified Protocols.BiDf as BiDf
+import qualified Protocols.Experimental.Df as Df
 
 {- |
 Simplest possible protocol for request-response communication.

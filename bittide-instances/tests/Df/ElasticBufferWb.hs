@@ -12,6 +12,7 @@ import Clash.Explicit.Prelude
 import Data.Char (chr)
 import Data.Maybe (catMaybes, mapMaybe)
 import Protocols
+import Protocols.Experimental.Simulate (SimulationConfig (..), sampleC)
 import Protocols.Idle
 import Protocols.MemoryMap
 import Test.Tasty

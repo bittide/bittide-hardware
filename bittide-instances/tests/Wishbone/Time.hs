@@ -24,7 +24,7 @@ import Control.Monad (forM_, when)
 import Data.Char
 import Data.List (isInfixOf)
 import Data.Maybe
-import Protocols
+import Protocols.Experimental.Simulate (SimulationConfig (..), sampleC)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH

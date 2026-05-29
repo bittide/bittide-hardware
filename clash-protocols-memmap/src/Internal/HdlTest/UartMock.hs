@@ -20,6 +20,14 @@ import Clash.Prelude
 import Clash.Class.BitPackC
 import GHC.Stack (HasCallStack, callStack, getCallStack)
 import Protocols (CSignal, Circuit (..))
+import Protocols.Experimental.Wishbone (
+  Wishbone,
+  WishboneM2S (..),
+  WishboneMode (Standard),
+  WishboneS2M (..),
+  emptyWishboneM2S,
+  emptyWishboneS2M,
+ )
 import Protocols.MemoryMap (
   Access (ReadWrite),
   Address,
@@ -41,14 +49,6 @@ import Protocols.MemoryMap (
   withTag,
  )
 import Protocols.MemoryMap.TypeDescription
-import Protocols.Wishbone (
-  Wishbone,
-  WishboneM2S (..),
-  WishboneMode (Standard),
-  WishboneS2M (..),
-  emptyWishboneM2S,
-  emptyWishboneS2M,
- )
 
 import qualified Data.Map.Strict as Map
 

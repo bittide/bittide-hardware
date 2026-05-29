@@ -21,7 +21,7 @@ module Tests.Wishbone.Utils (
 import Clash.Prelude
 import Protocols
 
-import Protocols.Wishbone
+import Protocols.Experimental.Wishbone
 
 import Bittide.SharedTypes (Byte)
 import Bittide.Wishbone (WishboneRequest (..), WishboneResponse (..))

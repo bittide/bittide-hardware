@@ -19,29 +19,39 @@ import Data.Maybe (isJust)
 import Data.String.Interpolate (i)
 import Data.Typeable (Typeable)
 import Protocols
-import Protocols.Axi4.ReadAddress (
+import Protocols.Experimental.Axi4.ReadAddress (
   Axi4ReadAddress,
   KnownAxi4ReadAddressConfig,
   M2S_ReadAddress (..),
  )
-import Protocols.Axi4.ReadData (Axi4ReadData, KnownAxi4ReadDataConfig, S2M_ReadData (..))
-import Protocols.Axi4.Stream (Axi4Stream, Axi4StreamM2S, Axi4StreamS2M, KnownAxi4StreamConfig)
-import Protocols.Axi4.WriteAddress (
+import Protocols.Experimental.Axi4.ReadData (
+  Axi4ReadData,
+  KnownAxi4ReadDataConfig,
+  S2M_ReadData (..),
+ )
+import Protocols.Experimental.Axi4.Stream (
+  Axi4Stream,
+  Axi4StreamM2S,
+  Axi4StreamS2M,
+  KnownAxi4StreamConfig,
+ )
+import Protocols.Experimental.Axi4.WriteAddress (
   Axi4WriteAddress,
   KnownAxi4WriteAddressConfig,
   M2S_WriteAddress (..),
  )
-import Protocols.Axi4.WriteData (
+import Protocols.Experimental.Axi4.WriteData (
   Axi4WriteData,
   KnownAxi4WriteDataConfig,
   M2S_WriteData (..),
   S2M_WriteData,
  )
-import Protocols.Axi4.WriteResponse (
+import Protocols.Experimental.Axi4.WriteResponse (
   Axi4WriteResponse,
   KnownAxi4WriteResponseConfig,
   S2M_WriteResponse (..),
  )
+import Protocols.Experimental.Wishbone
 import Protocols.Extra.TH
 import Protocols.Internal (reverseCircuit)
 import Protocols.Internal.Types.Extra (TraceC)
@@ -49,18 +59,17 @@ import Protocols.PacketStream (PacketStream, PacketStreamM2S, PacketStreamS2M)
 import Protocols.ReqResp (ReqResp)
 import Protocols.Spi (Spi)
 import Protocols.Vec (vecCircuits)
-import Protocols.Wishbone
 
 import qualified Clash.Prelude as C
 import qualified Clash.Shockwaves as Shock
 import qualified Clash.Shockwaves.Trace.CRE as Shock
 import qualified Debug.Trace as Debug
-import qualified Protocols.Axi4.Common as Axi4
-import qualified Protocols.Axi4.ReadAddress as Axi4
-import qualified Protocols.Axi4.ReadData as Axi4
-import qualified Protocols.Axi4.WriteAddress as Axi4
-import qualified Protocols.Axi4.WriteData as Axi4
-import qualified Protocols.Axi4.WriteResponse as Axi4
+import qualified Protocols.Experimental.Axi4.Common as Axi4
+import qualified Protocols.Experimental.Axi4.ReadAddress as Axi4
+import qualified Protocols.Experimental.Axi4.ReadData as Axi4
+import qualified Protocols.Experimental.Axi4.WriteAddress as Axi4
+import qualified Protocols.Experimental.Axi4.WriteData as Axi4
+import qualified Protocols.Experimental.Axi4.WriteResponse as Axi4
 import qualified Protocols.Internal.Types.Extra as Trace (TraceC (..))
 
 instance TraceC () where

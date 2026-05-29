@@ -22,10 +22,11 @@ import Data.Proxy
 import Hedgehog
 
 import Protocols
-import Protocols.Axi4.Stream
-import Protocols.Hedgehog
+import Protocols.Experimental.Axi4.Stream
+import Protocols.Experimental.Hedgehog
+import Protocols.Experimental.Simulate (SimulationConfig (..), driveC, sampleC)
+import Protocols.Experimental.Wishbone as WB
 import Protocols.Internal
-import Protocols.Wishbone as WB
 import Test.Tasty
 import Test.Tasty.Hedgehog
 import Tests.Axi4.Generators
@@ -38,14 +39,14 @@ import qualified Data.String.Interpolate as SI
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Protocols.Axi4.Common as Axi
-import qualified Protocols.Axi4.ReadAddress as Axi
-import qualified Protocols.Axi4.ReadData as Axi
-import qualified Protocols.Axi4.WriteAddress as Axi
-import qualified Protocols.Axi4.WriteData as Axi
-import qualified Protocols.Axi4.WriteResponse as Axi
+import qualified Protocols.Experimental.Axi4.Common as Axi
+import qualified Protocols.Experimental.Axi4.ReadAddress as Axi
+import qualified Protocols.Experimental.Axi4.ReadData as Axi
+import qualified Protocols.Experimental.Axi4.WriteAddress as Axi
+import qualified Protocols.Experimental.Axi4.WriteData as Axi
+import qualified Protocols.Experimental.Axi4.WriteResponse as Axi
+import qualified Protocols.Experimental.Wishbone.Standard.Hedgehog as WB
 import qualified Protocols.MemoryMap as Mm
-import qualified Protocols.Wishbone.Standard.Hedgehog as WB
 import qualified Prelude as P
 
 tests :: TestTree

@@ -18,11 +18,12 @@ import Data.String.Interpolate (i)
 import Hedgehog
 import Hedgehog.Range as Range
 import Protocols
-import Protocols.Hedgehog
+import Protocols.Experimental.Hedgehog
+import Protocols.Experimental.Simulate (StallAck, stallC)
+import Protocols.Experimental.Wishbone
+import Protocols.Experimental.Wishbone.Standard.Hedgehog (validatorCircuit, wishbonePropWithModel)
 import Protocols.Idle (forceResetSanityGeneric)
 import Protocols.MemoryMap
-import Protocols.Wishbone
-import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit, wishbonePropWithModel)
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
@@ -37,8 +38,8 @@ import qualified Data.Map as Map
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Protocols.Df as Df
-import qualified Protocols.Hedgehog as PH
-import qualified Protocols.Wishbone.Standard.Hedgehog as Wb
+import qualified Protocols.Experimental.Hedgehog as PH
+import qualified Protocols.Experimental.Wishbone.Standard.Hedgehog as Wb
 
 tests :: TestTree
 tests =
