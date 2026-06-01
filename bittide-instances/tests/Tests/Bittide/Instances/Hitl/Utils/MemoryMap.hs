@@ -16,7 +16,6 @@ import Data.String.Interpolate (i)
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import Protocols.Vec (vecCircuits)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -36,12 +35,12 @@ exampleDevice =
     $ circuit
     $ \mm -> do
       jtag <- idleSource
-      peWbs <- processingElement NoDumpVcd peConfig -< (mm, jtag)
-      _ugns <- vecCircuits (captureUgn (pure 0) <$> (repeat (pure Nothing))) -< peWbs
+      [ugnWb] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
+      _ugns <- captureUgns @NumCaptureUgns (pure 0) (pure (repeat Nothing)) -< ugnWb
       guh <- idleSource
       idC -< guh
  where
-  peConfig :: PeConfig (PeInternalBusses + NumCaptureUgns)
+  peConfig :: PeConfig (PeInternalBusses + 1)
   peConfig =
     PeConfig
       { depthI = SNat @1024
@@ -77,11 +76,10 @@ expectLeft (Right _) = error "Expected failure, but got a value"
 
 case_check_all_reachable :: (HasCallStack) => Assertion
 case_check_all_reachable = do
-  forM_ [0 .. natToInteger @NumCaptureUgns - 1] $ \n -> do
-    let devicePath = ["0", [i|CaptureUgn#{n}|]]
-    assertEither $ getPathAddress @Integer exampleMm devicePath
-    forM_ ["local_counter", "remote_counter", "has_captured"] $ \reg ->
-      assertEither $ getPathAddress @Integer exampleMm (devicePath <> [reg])
+  let devicePath = ["0", "CaptureUgns"]
+  assertEither $ getPathAddress @Integer exampleMm devicePath
+  forM_ ["local_counter", "remote_counter", "has_captured"] $ \reg ->
+    assertEither $ getPathAddress @Integer exampleMm (devicePath <> [reg])
 
   return ()
 
@@ -93,7 +91,7 @@ case_check_nonexistant_nonreachable = do
 
   assertNonReachable ["1"]
   assertNonReachable ["0", "Nonexistant"]
-  assertNonReachable ["0", "CaptureUgn0", "nonexistant"]
+  assertNonReachable ["0", "CaptureUgns", "nonexistant"]
   assertNonReachable ["0", "CaptureUgn200"]
   assertNonReachable ["0", "CaptureUgn200", "nonexistant"]
 

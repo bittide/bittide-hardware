@@ -38,15 +38,7 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_6,
     ];
 
-    let capture_ugns = [
-        INSTANCES.capture_ugn_0,
-        INSTANCES.capture_ugn_1,
-        INSTANCES.capture_ugn_2,
-        INSTANCES.capture_ugn_3,
-        INSTANCES.capture_ugn_4,
-        INSTANCES.capture_ugn_5,
-        INSTANCES.capture_ugn_6,
-    ];
+    let capture_ugns = &INSTANCES.capture_ugns;
 
     let mut link_startups = [LinkStartup::new(); 7];
     while !link_startups.iter().all(|ls| ls.is_done()) {
@@ -82,13 +74,13 @@ fn main() -> ! {
         .map(|eb| eb.auto_center_total_adjustments());
 
     uwriteln!(uart, "Start printing hardware UGNs").unwrap();
-    for (i, (capture_ugn, eb_delta)) in capture_ugns.iter().zip(eb_deltas).enumerate() {
+    for (i, eb_delta) in eb_deltas.enumerate() {
         uwriteln!(
             uart,
             "Capture UGN {}: local = {}, remote = {}, eb_delta = {}",
             i,
-            capture_ugn.local_counter(),
-            capture_ugn.remote_counter(),
+            capture_ugns.local_counter(i).unwrap(),
+            capture_ugns.remote_counter(i).unwrap(),
             eb_delta
         )
         .unwrap();

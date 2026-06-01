@@ -56,7 +56,7 @@ import Clash.Prelude (
  )
 import Protocols
 
-import Bittide.CaptureUgn (captureUgn, sendUgn)
+import Bittide.CaptureUgn (captureUgns, sendUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
@@ -109,20 +109,20 @@ type FifoSize = 5 -- = 2^5 = 32
 type NmuInternalBusses = 3 + PeInternalBusses
 
 {- Busses per link:
-    - UGN component
     - Elastic buffer
     - Receive ringbuffer
     - Transmit ringbuffer
 -}
-type PeripheralsPerLink = 4
+type PeripheralsPerLink = 3
 
 {- External busses:
     - Transceivers
     - Callisto
     - Handshakes
+    - UGN capture (all links)
     - <userCoreBusses for the demo's user-core circuit>
 -}
-type NmuExternalBusses userCoreBusses = 3 + userCoreBusses + (LinkCount * PeripheralsPerLink)
+type NmuExternalBusses userCoreBusses = 4 + userCoreBusses + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth userCoreBusses =
   RemainingBusWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses)
 
@@ -264,11 +264,11 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
     -- Start management unit
     (muUartBytesBittide, muWbAll) <-
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
-    (ugnWbs, muWbs1) <- Vec.split -< muWbAll
-    (ebWbs, muWbs2) <- Vec.split -< muWbs1
-    (rxBufferBusses, muWbs3) <- Vec.split -< muWbs2
-    (txBufferBusses, muWbs4) <- Vec.split -< muWbs3
-    ([muTransceiverBus, muCallistoBus, muHandshakeBus], extraMuBusses) <- Vec.split -< muWbs4
+    (ebWbs, muWbs1) <- Vec.split -< muWbAll
+    (rxBufferBusses, muWbs2) <- Vec.split -< muWbs1
+    (txBufferBusses, muWbs3) <- Vec.split -< muWbs2
+    ([muTransceiverBus, muCallistoBus, muHandshakeBus, ugnWb], extraMuBusses) <-
+      Vec.split -< muWbs3
     -- Stop management unit
 
     -- Start internal links
@@ -308,10 +308,10 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
 
       txs1 = withClock bitClk $ sendUgn localCounter <$> handshakesOut.fromCoreDones <*> txs0
 
-    rxs5 <-
+    Fwd rxs5 <-
       withBittideClockResetEnable
-        $ Vec.vecCircuits (captureUgn localCounter <$> rxs4)
-        -< ugnWbs
+        $ captureUgns localCounter (bundle rxs4)
+        -< ugnWb
     -- Stop internal links
 
     -- Start ringbuffers
@@ -322,7 +322,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
     idleSink
       <| fmapC (withBittideClockResetEnable receiveRingBuffer rxPrim bufferDepth)
       <| Vec.zip
-      -< (rxBufferBusses, rxs5)
+      -< (rxBufferBusses, Fwd (unbundle rxs5))
     Fwd txs0 <-
       fmapC (withBittideClockResetEnable $ transmitRingBuffer txPrim bufferDepth) -< txBufferBusses
     -- Stop ringbuffers
