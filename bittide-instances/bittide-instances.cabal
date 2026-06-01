@@ -228,6 +228,7 @@ library
     Bittide.Instances.Pnr.Uart
     Bittide.Instances.Pnr.WbStorage
     Bittide.Instances.Pnr.WireDemoProcessingElement
+    Bittide.Instances.Pnr.Wishbone
     Bittide.Instances.Tests.AddressableBytesWb
     Bittide.Instances.Tests.CaptureUgn
     Bittide.Instances.Tests.ClockControlWb

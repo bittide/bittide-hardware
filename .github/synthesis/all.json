@@ -8,6 +8,7 @@
   {"top": "si5391Spi",                     "stage": "pnr",   "cc_report": false},
   {"top": "transmitRingBufferPnr",         "stage": "pnr",   "cc_report": false},
 
+  {"top": "arbiterFast",                   "stage": "pnr",   "cc_report": false},
   {"top": "asciiDebugMuxFast",             "stage": "pnr",   "cc_report": false},
   {"top": "autoCenterFast",                "stage": "pnr",   "cc_report": false},
   {"top": "captureUgnFast",                "stage": "pnr",   "cc_report": false},
