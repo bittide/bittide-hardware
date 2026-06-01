@@ -43,7 +43,7 @@ members = [
   "hitl-tests/vexriscv-hello",
   "hitl-tests/clock-board",
 
-  "demos/soft-ugn-demo-smoltcp-demo",
+  "demos/async-comms-demo-management-unit",
   "demos/soft-ugn-demo-boot",
   "demos/soft-ugn-demo-clock-control",
   "demos/soft-ugn-demo-management-unit",
