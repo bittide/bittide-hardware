@@ -12,10 +12,12 @@ import Bittide.Instances.Common (
   peConfigFromElf,
  )
 import Bittide.Instances.Domains
+import Bittide.Instances.Hacks (reducePins)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 import Clash.Annotations.TH
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Uart (ValidBaud)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
@@ -98,3 +100,31 @@ type IMemWords = DivRU (2 * 1024) 4
 type DMemWords = DivRU (1 * 1024) 4
 
 makeTopEntity 'vexRiscUartHello
+
+processingElementDut ::
+  forall dom.
+  ( HiddenClockResetEnable dom
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Circuit
+    (ToConstBwd Mm, Jtag dom)
+    ()
+processingElementDut = circuit $ \(mm, jtag) -> do
+  [] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
+  idC -< ()
+ where
+  peConfig = emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
+
+processingElementFast ::
+  Clock Basic300 -> Reset Basic300 -> Signal Basic300 Bit -> Signal Basic300 Bit
+processingElementFast clk rst = withClock clk $ reducePins go
+ where
+  go jtagIn = jtagOut
+   where
+    ((_mm, jtagOut), _) =
+      toSignals
+        ( withLittleEndian
+            $ withClockResetEnable clk rst enableGen
+            $ processingElementDut
+        )
+        (((), jtagIn), ())

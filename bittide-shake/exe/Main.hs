@@ -192,6 +192,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.autoCenterFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Handshake.handshakesWbFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ProcessingElement.processingElementFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProgrammableMux.programmableMuxFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferFast"
