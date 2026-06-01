@@ -8,7 +8,7 @@ import Protocols
 
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
-import Bittide.Instances.Domains (Basic300)
+import Bittide.Instances.Domains (Basic200)
 import Bittide.Instances.Hacks (reducePins)
 import Bittide.ProcessingElement (PeConfig (..))
 import Bittide.SharedTypes (Bitbone, withLittleEndian)
@@ -66,7 +66,7 @@ dut = withXilinx $ withLittleEndian $ circuit $ \(muBus, jtag, linkMask, Fwd lin
   idC -< (sync, speedChange)
 
 callistoSwClockControlCFast ::
-  Clock Basic300 -> Reset Basic300 -> Signal Basic300 Bit -> Signal Basic300 Bit
+  Clock Basic200 -> Reset Basic200 -> Signal Basic200 Bit -> Signal Basic200 Bit
 callistoSwClockControlCFast clk rst = withClock clk $ reducePins go
  where
   go (unbundle -> (wbIn, jtagIn, linkMask, linksOk, syncIn)) =

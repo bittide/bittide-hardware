@@ -1,0 +1,5 @@
+[
+  {"top": "callistoSwClockControlCFast",   "stage": "pnr",   "cc_report": false},
+  {"top": "processingElementFast",         "stage": "pnr",   "cc_report": false},
+  {"top": "readDnaPortE2Fast",             "stage": "pnr",   "cc_report": false}
+]

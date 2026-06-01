@@ -116,7 +116,7 @@ processingElementDut = circuit $ \(mm, jtag) -> do
   peConfig = emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
 
 processingElementFast ::
-  Clock Basic300 -> Reset Basic300 -> Signal Basic300 Bit -> Signal Basic300 Bit
+  Clock Basic200 -> Reset Basic200 -> Signal Basic200 Bit -> Signal Basic200 Bit
 processingElementFast clk rst = withClock clk $ reducePins go
  where
   go jtagIn = jtagOut
