@@ -198,6 +198,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.WbStorage.wbStorageFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.WireDemoProcessingElement.wireDemoPeFast"
     , defTarget $ mkName "Bittide.Instances.Pnr.Wishbone.arbiterFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Wishbone.delayWishboneFast"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 

@@ -11,6 +11,7 @@ import Bittide.Instances.Domains (Basic400)
 import Bittide.Instances.Hacks (reducePins)
 import Clash.Cores.Xilinx (withXilinx)
 import Data.Bifunctor (first)
+import Protocols.Wishbone.Extra (delayWishbone)
 
 import qualified Bittide.Wishbone as Wb
 
@@ -26,3 +27,12 @@ arbiterFast clk rst = withClock clk $ reducePins dut
             $ Wb.arbiter @_ @32 @4 @2
         )
         (unbundle wb0Ins, wb1Out)
+
+delayWishboneFast :: Clock Basic400 -> Reset Basic400 -> Signal Basic400 Bit -> Signal Basic400 Bit
+delayWishboneFast clk rst = withClock clk $ reducePins dut
+ where
+  dut (unbundle -> (wb0M2S, wb1S2M)) =
+    bundle
+      $ toSignals
+        (withClockResetEnable clk rst enableGen $ delayWishbone @_ @32 @4)
+        (wb0M2S, wb1S2M)
