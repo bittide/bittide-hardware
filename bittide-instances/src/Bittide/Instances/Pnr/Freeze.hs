@@ -1,12 +1,13 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE OverloadedStrings #-}
-
 module Bittide.Instances.Pnr.Freeze where
 
+import Clash.Prelude
+
+import Bittide.Instances.Domains (Basic400)
+import Bittide.Instances.Hacks (reducePins)
 import Bittide.SharedTypes (BitboneMm, withLittleEndian)
-import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Experimental.Wishbone
@@ -64,3 +65,9 @@ freeze ::
   Signal XilinxSystem (WishboneS2M 4)
 freeze clk rst m2s =
   snd $ fst $ toSignals (freezeExample @XilinxSystem clk rst) (((), m2s), ())
+
+freezeFast ::
+  Clock Basic400 -> Reset Basic400 -> Signal Basic400 Bit -> Signal Basic400 Bit
+freezeFast clk rst = withClock clk $ reducePins dut
+ where
+  dut inp = fst $ toSignals (unMemmap (freezeExample clk rst)) (inp, ())
