@@ -23,3 +23,43 @@ The build system automatically generates _false path_ constraints for all input 
 **Note that false path constraints are also generated for any reset lines. You therefore need to make sure to properly synchronize your resets before feeding them to a circuit.**
 
 To learn more about using these instances, go to the [`README.md` in `bittide-shake`](../bittide-shake/README.md).
+
+
+## Testing components at higher frequencies
+The Bittide demo designs currently run at 125 MHz. The table below shows how far each core component can be pushed in isolation, by testing place-and-route at 300, 350, and 400 MHz. Components that are FPGA-specific, or that add no logic, are omitted.
+
+| Name pnr target         | 300 | 350 | 400 |
+|:------------------------|:---:|:---:|:---:|
+|`arbiter`                |  X  |  X  |  X  |
+|`asciiDebugMuxFast`      |  X  |  X  |  X  |
+|`autoCenterFast`         |  X  |  X  |  X  |
+|`captureUgnFast`         |  X  |  X  |  X  |
+|`delayWishbone`          |  X  |  X  |  X  |
+|`domainDiffCounterFast`  |  X  |  X  |  X  |
+|`freezeFast`             |  X  |  X  |  X  |
+|`handshakesWbFast`       |  X  |     |     |
+|`programmableMuxFast`    |  X  |  X  |  X  |
+|`receiveRingBufferFast`  |  X  |  X  |     |
+|`sendUgnFast`            |  X  |  X  |  X  |
+|`si5391SpiFast`          |  X  |  X  |  X  |
+|`timeWbFast`             |  X  |  X  |     |
+|`transmitRingBufferFast` |  X  |  X  |     |
+|`uartExampleFast`<sup> 1 </sup> |  X  |  X  |     |
+|`wbStorageFast`          |  X  |     |     |
+|`wireDemoPeFast`         |  X  |  X  |  X  |
+
+<sup> 1 </sup> Contains: `uartInterfaceWb`, `uartBytes`, `uartDf`, `asciiDebugMux` and `dcFifoDf`
+
+Note that the table above is missing some components which are used in demos. The table below lists the missing components and the reason there is not yet a high-frequency pnr target for it.
+
+Component                 | Reason
+--------------------------|----------
+`elasticBuffer`           | Only test elastic buffer control and autocenter, not EB itself
+`readDnaPortE2`           | Did not reach 250 MHz, uses an FPGA-specific primitive
+`processingElement`       | Did not reach 200 MHz
+`callistoSwClockControlC` | Did not reach 200 MHz (contains a lot of components)
+`jtagChain`               | Doesn't add logic
+`unsafeJtagSynchronizer`  | Doesn't add logic
+`wireDemoPeConfig`        | Only wraps `deviceWb` with no other logic
+`syncInCounterC`          | To be removed in issue https://github.com/bittide/bittide-hardware/issues/1155
+`syncOutGenerateWbC`      | To be removed in issue https://github.com/bittide/bittide-hardware/issues/1155
