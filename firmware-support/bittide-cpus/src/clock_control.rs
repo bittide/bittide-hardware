@@ -67,12 +67,14 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     uwriteln!(uart, "Starting clock control..").unwrap();
     let mut callisto = Callisto::new(cc.config().callisto);
 
-    let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
+    let mut stability_detector =
+        StabilityDetector::<{ ClockControl::DATA_COUNTS_LEN }>::new(4, Duration::from_secs(2));
 
     // Store samples every _n_ updates. Currently set to 20 ms (50 Hz) times a
     // second (20 ms / 200 us = 100). Set to '1' for perfect storage -- not yet
     // possible due to limited memory size.
-    let mut sample_store = SampleStore::new(sample_memory, 100);
+    let mut sample_store =
+        SampleStore::<{ ClockControl::DATA_COUNTS_LEN }>::new(sample_memory, 100);
 
     // Update clock control 5K updates per second
     let interval = Duration::from_micros(200);
@@ -106,7 +108,7 @@ pub fn run<DDC: DomainDiffCountersInterface>(
         }
 
         // Emit stability information over UART
-        let all_stable = stability.all_stable();
+        let all_stable = stability.all_stable(cc.n_links().into_inner() as usize);
         if !prev_all_stable && all_stable {
             uwriteln!(uart, "All links stable").unwrap();
         } else if prev_all_stable && !all_stable {

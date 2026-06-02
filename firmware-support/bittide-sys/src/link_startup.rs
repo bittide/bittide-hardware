@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::shared_devices::{ElasticBuffer, Handshakes, Transceivers};
+use bittide_hal::manual_additions::handshakes::HandshakesInterface;
+use bittide_hal::manual_additions::transceivers::TransceiversInterface;
+use bittide_hal::shared_devices::ElasticBuffer;
 use bittide_hal::types::mode::Mode;
 use log::debug;
 
@@ -35,8 +37,8 @@ impl LinkStartup {
 
     pub fn next(
         &mut self,
-        transceivers: &Transceivers,
-        handshakes: &Handshakes,
+        transceivers: &impl TransceiversInterface,
+        handshakes: &impl HandshakesInterface,
         channel: usize,
         elastic_buffer: &ElasticBuffer,
     ) {
@@ -69,15 +71,14 @@ impl LinkStartup {
                 }
             }
             LinkStartupState::SignalSoftwareReady => {
-                let mut srs = handshakes.software_readys();
-                srs.set(channel, true).expect("Channel out of range");
-                handshakes.set_software_readys(srs);
+                handshakes
+                    .set_software_ready(channel, true)
+                    .expect("Channel out of range");
                 LinkStartupState::WaitForNeighborSoftwareReady
             }
             LinkStartupState::WaitForNeighborSoftwareReady => {
                 if handshakes
-                    .neighbor_software_readys()
-                    .get(channel)
+                    .neighbor_software_ready(channel)
                     .expect("Channel out of range")
                 {
                     LinkStartupState::CenterElasticBuffer
@@ -91,15 +92,14 @@ impl LinkStartup {
                 LinkStartupState::SignalReceiveReady
             }
             LinkStartupState::SignalReceiveReady => {
-                let mut rrs = handshakes.receive_readys();
-                rrs.set(channel, true).expect("Channel out of range");
-                handshakes.set_receive_readys(rrs);
+                handshakes
+                    .set_receive_ready(channel, true)
+                    .expect("Channel out of range");
                 LinkStartupState::WaitForReceiveDone
             }
             LinkStartupState::WaitForReceiveDone => {
                 if handshakes
-                    .receive_dones()
-                    .get(channel)
+                    .receive_done(channel)
                     .expect("Channel out of range")
                 {
                     LinkStartupState::EnableAutoCenter
@@ -113,8 +113,7 @@ impl LinkStartup {
             }
             LinkStartupState::WaitForHandshakeDone => {
                 if handshakes
-                    .handshake_dones()
-                    .get(channel)
+                    .handshake_done(channel)
                     .expect("Channel out of range")
                 {
                     LinkStartupState::Done

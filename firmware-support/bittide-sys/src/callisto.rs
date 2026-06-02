@@ -3,8 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::{
-    manual_additions::IntoAs,
-    shared_devices::clock_control::ClockControl,
+    manual_additions::{clock_control::ClockControlInterface, IntoAs},
     types::{callisto_config::CallistoConfig, maybe::Maybe, speed_change::SpeedChange},
 };
 
@@ -59,7 +58,11 @@ impl Callisto {
 
     /// Clock correction strategy based on:
     /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
-    pub fn update<I>(self: &mut Callisto, cc: &ClockControl, eb_counters_iter: I) -> SpeedChange
+    pub fn update<I>(
+        self: &mut Callisto,
+        cc: &impl ClockControlInterface,
+        eb_counters_iter: I,
+    ) -> SpeedChange
     where
         I: Iterator<Item = Option<i32>>,
     {
