@@ -974,6 +974,7 @@ dependencies = [
  "bittide-cpus",
  "bittide-hal",
  "bittide-macros",
+ "log",
  "memmap-generate",
  "riscv-rt 0.11.0",
 ]
