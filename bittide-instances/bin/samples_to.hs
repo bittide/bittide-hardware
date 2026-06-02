@@ -65,16 +65,18 @@ csvMain :: NonEmpty String -> IO (NonEmpty FilePath)
 csvMain = mapConcurrently processFile
  where
   processFile inputPath = do
-    samples <- Samples.parseFile inputPath
-    let outputPath = replaceExtension inputPath "csv"
-    LazyByteString.writeFile outputPath (Csv.encodeDefaultOrderedByName samples)
+    (nLinks, samples) <- Samples.parseFile inputPath
+    let
+      outputPath = replaceExtension inputPath "csv"
+      hdr = Samples.sampleHeader nLinks
+    LazyByteString.writeFile outputPath (Csv.encodeByName hdr samples)
     pure outputPath
 
 ppmCsvMain :: NonEmpty String -> IO (NonEmpty FilePath)
 ppmCsvMain = mapConcurrently processFile
  where
   processFile inputPath = do
-    samples <- Samples.parseFile inputPath
+    (_nLinks, samples) <- Samples.parseFile inputPath
     let
       outputPath = replaceExtension inputPath "ppm.csv"
       ppmSamples = map (uncurry mkPpmSample) (Ppm.fromSamples1 samples)

@@ -6,25 +6,26 @@ module Bittide.Instances.Hitl.Driver.ClockControl.Plot.DataCount where
 
 import Prelude
 
-import Bittide.ClockControl.Topology (Topology, hasEdge)
+import Bittide.ClockControl.Topology (Topology)
 import Bittide.Instances.Hitl.Driver.ClockControl.Plot.Common (constrained, withLegend)
 import Bittide.Instances.Hitl.Driver.ClockControl.Samples (
   Buffer (dataCount),
-  Link,
   Picoseconds,
   Sample (..),
   psToS,
   sampleToPicoseconds,
  )
-import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
+import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Data.List (transpose)
 import Data.Maybe (catMaybes)
 import Graphics.Matplotlib (o2, (%), (@@))
 
+import qualified Bittide.ClockControl.Topology as Topology
 import qualified Clash.Prelude as C
-import qualified Clash.Sized.Vector as V
 import qualified Data.String.Interpolate as I
 import qualified Graphics.Matplotlib as Mpl
+
+type Link = (Int, Int)
 
 {- | Organize parsed samples into a list of links (FPGA -> FPGA) with their
 buffers statistics. Useful for plotting buffer occupancy over time.
@@ -35,33 +36,41 @@ fromSamples ::
   -- | Parsed samples
   C.Vec FpgaCount [Sample] ->
   [(Link, [(Picoseconds, Buffer)])]
-fromSamples topology = concat . C.toList . C.imap goFpga
+fromSamples topology samples =
+  concat
+    [ goFpga topology toFpga fpgaSamples
+    | (toFpga, fpgaSamples) <- zip [0 ..] (C.toList samples)
+    , toFpga < Topology.size topology
+    ]
+
+goFpga ::
+  Topology ->
+  Int ->
+  [Sample] ->
+  [(Link, [(Picoseconds, Buffer)])]
+goFpga topology toFpga samples =
+  catMaybes
+    [ goLink topology timestamps toFpga linkIdx linkSamples
+    | (linkIdx, linkSamples) <- zip [0 ..] linkBuffers
+    ]
  where
-  goFpga ::
-    C.Index FpgaCount ->
-    [Sample] ->
-    [(Link, [(Picoseconds, Buffer)])]
-  goFpga toFpga samples =
-    catMaybes (C.toList (C.imap (goLink timestamps toFpga) linkBuffers))
-   where
-    timestamps = sampleToPicoseconds <$> samples
-    linkBuffers = transposeListVec (map (.buffers) samples)
+  timestamps = sampleToPicoseconds <$> samples
+  linkBuffers = transpose (map (.buffers) samples)
 
-  goLink ::
-    [Picoseconds] ->
-    C.Index FpgaCount ->
-    C.Index LinkCount ->
-    [Buffer] ->
-    Maybe (Link, [(Picoseconds, Buffer)])
-  goLink timestamps toFpga fromLink samples
-    | hasEdge topology (C.numConvert fromFpga) (C.numConvert toFpga) =
-        Just ((fromFpga, toFpga), zip timestamps samples)
-    | otherwise = Nothing
-   where
-    fromFpga = snd (fpgaSetup C.!! toFpga) C.!! fromLink
-
-transposeListVec :: (C.KnownNat n) => [C.Vec n a] -> C.Vec n [a]
-transposeListVec = V.unsafeFromList . transpose . map C.toList
+goLink ::
+  Topology ->
+  [Picoseconds] ->
+  Int ->
+  Int ->
+  [Buffer] ->
+  Maybe (Link, [(Picoseconds, Buffer)])
+goLink topology timestamps toFpga linkIdx bufferSamples
+  | linkIdx < length neighbors
+  , let fromFpga = neighbors !! linkIdx =
+      Just ((fromFpga, toFpga), zip timestamps bufferSamples)
+  | otherwise = Nothing
+ where
+  neighbors = [n | n <- [0 .. Topology.size topology - 1], Topology.hasEdge topology n toFpga]
 
 -- | Plot buffer occupancy over time
 plot :: [(Link, [(Picoseconds, Buffer)])] -> Mpl.Matplotlib
@@ -74,7 +83,7 @@ plot (unzip -> (links, linkData)) =
   plotsWithLabels = zipWith addOptions links plots
   plots = fmap plotLink linkData
 
-  addOptions :: (C.Index FpgaCount, C.Index FpgaCount) -> Mpl.Matplotlib -> Mpl.Matplotlib
+  addOptions :: Link -> Mpl.Matplotlib -> Mpl.Matplotlib
   addOptions (from, to) plot0
     -- Skip legend if there are too many links
     | length links <= 15 = withLegend plot1
