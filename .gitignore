@@ -96,3 +96,6 @@ docs/mdbook-drawio
 
 # Scala
 .metals
+
+# Claude Code
+.claude
