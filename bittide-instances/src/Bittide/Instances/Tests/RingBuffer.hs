@@ -119,3 +119,21 @@ simResultRingBuffer latency = do
     uartStream = sampleC def{timeoutAfter = 1_000_000} dutNoMm
     result = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
   pure result
+
+simSmolTcp :: IO ()
+simSmolTcp = putStr =<< simResultSmolTcp d0
+
+simResultSmolTcp :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> IO String
+simResultSmolTcp latency = do
+  peConfig <- peConfigFromBinaryName "ring_buffer_smoltcp_test"
+  let
+    dutNoMm = circuit $ do
+      mm <- ignoreMM
+      uartTx <-
+        withClockResetEnable clockGen (resetGenN d2) enableGen
+          $ (dutWithPeConfig @System latency peConfig)
+          -< mm
+      idC -< uartTx
+    uartStream = sampleC def{timeoutAfter = 50_000_000} dutNoMm
+    result = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
+  pure result
