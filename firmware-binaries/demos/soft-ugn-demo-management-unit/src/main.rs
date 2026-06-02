@@ -16,6 +16,8 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 #[cfg(not(test))]
 use riscv_rt::entry;
 
+const LINKS: [usize; 3] = [0, 1, 6];
+
 // Declare the external C main function
 extern "C" {
     fn c_main() -> !;
@@ -31,27 +33,19 @@ fn main() -> ! {
     let elastic_buffers = [
         &INSTANCES.elastic_buffer_0,
         &INSTANCES.elastic_buffer_1,
-        &INSTANCES.elastic_buffer_2,
-        &INSTANCES.elastic_buffer_3,
-        &INSTANCES.elastic_buffer_4,
-        &INSTANCES.elastic_buffer_5,
         &INSTANCES.elastic_buffer_6,
     ];
 
     let capture_ugns = [
         INSTANCES.capture_ugn_0,
         INSTANCES.capture_ugn_1,
-        INSTANCES.capture_ugn_2,
-        INSTANCES.capture_ugn_3,
-        INSTANCES.capture_ugn_4,
-        INSTANCES.capture_ugn_5,
         INSTANCES.capture_ugn_6,
     ];
 
-    let mut link_startups = [LinkStartup::new(); 7];
+    let mut link_startups = [LinkStartup::new(); LINKS.len()];
     while !link_startups.iter().all(|ls| ls.is_done()) {
         for (i, link_startup) in link_startups.iter_mut().enumerate() {
-            link_startup.next(transceivers, handshakes, i, elastic_buffers[i]);
+            link_startup.next(transceivers, handshakes, LINKS[i], elastic_buffers[i]);
         }
     }
 

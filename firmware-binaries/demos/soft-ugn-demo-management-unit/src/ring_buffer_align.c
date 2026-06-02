@@ -95,7 +95,8 @@ void align_ring_buffers(UgnContext *ugn_ctx, int16_t *alignment_offsets,
           }
           break;
         }
-      } else if (phases[port] == ALIGN_PHASE_ACKNOWLEDGING) {
+      } else if (phases[port] == ALIGN_PHASE_ACKNOWLEDGING ||
+                 phases[port] == 0) {
         // Partner's ACKNOWLEDGE arrives at offset 0 once the hardware is
         // aligned and they have also transitioned past FINDING.
         enum RingBufferAlignState state = read_state(rx_ring, 0);

@@ -9,7 +9,7 @@ import Clash.Prelude
 
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup (FpgaCount)
+import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
@@ -36,6 +36,27 @@ import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
+
+-- The MU firmware uses 3 out of 7 links (array indices 0,1,2 mapping to
+-- physical ports SFP0, SFP1, SMA). The hardware capture and software protocol
+-- report array indices; the driver must remap to physical ports for topology
+-- lookup in counterCaptureToTimingOracle.
+muPortMap :: [Index LinkCount]
+muPortMap = [0, 1, 6]
+
+remapCapturePort :: CounterCapture -> CounterCapture
+remapCapturePort (CounterCapture{port, local, remote}) =
+  CounterCapture{port = muPortMap L.!! fromIntegral port, local, remote}
+
+remapEdgePorts :: UgnEdge -> UgnEdge
+remapEdgePorts (UgnEdge{srcNode, srcPort, dstNode, dstPort, ugn}) =
+  UgnEdge
+    { srcNode
+    , srcPort = muPortMap L.!! fromIntegral srcPort
+    , dstNode
+    , dstPort = muPortMap L.!! fromIntegral dstPort
+    , ugn
+    }
 
 driver ::
   (HasCallStack) =>
@@ -137,7 +158,7 @@ driver testName targets = do
           let
             hardwareUgns =
               L.zipWith
-                (\i ccs -> (timingOracleToUgnEdge . counterCaptureToTimingOracle i) <$> ccs)
+                (\i ccs -> (timingOracleToUgnEdge . counterCaptureToTimingOracle i . remapCapturePort) <$> ccs)
                 [0 ..]
                 hardwareCaptureCounters
             hardwareRoundtrips = calculateRoundtripLatencies $ L.concat hardwareUgns
@@ -145,7 +166,7 @@ driver testName targets = do
             putStrLn "\n=== Hardware UGN Roundtrip Latencies ==="
             mapM print hardwareRoundtrips
 
-          softwareUgnsPerNode <-
+          softwareUgnsPerNodeRaw <-
             liftIO
               $ T.tryWithTimeoutOn
                 T.PrintActionTime
@@ -153,6 +174,8 @@ driver testName targets = do
                 (60_000_000)
                 goDumpCcSamples
               $ mapConcurrently parseSoftwareUgns picocoms
+          let softwareUgnsPerNode =
+                fmap (\(ins, outs) -> (fmap remapEdgePorts ins, fmap remapEdgePorts outs)) softwareUgnsPerNodeRaw
 
           liftIO $ do
             putStrLn "\n=== Hardware UGNs ==="

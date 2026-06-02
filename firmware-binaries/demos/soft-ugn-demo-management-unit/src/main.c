@@ -23,7 +23,7 @@
 
 // Number of event loop iterations
 #define NUM_PERIODS 1000
-#define NUM_PORTS 7
+#define NUM_PORTS 3
 
 // Protocol timing parameter
 #define BUFFER_SIZE 4000
@@ -57,16 +57,16 @@ int c_main(void) {
 
   Uart uart = hal.uart;
   ReceiveRingBuffer receive_ring_buffers[NUM_PORTS] = {
-      hal.receive_ring_buffer_0, hal.receive_ring_buffer_1,
-      hal.receive_ring_buffer_2, hal.receive_ring_buffer_3,
-      hal.receive_ring_buffer_4, hal.receive_ring_buffer_5,
-      hal.receive_ring_buffer_6};
+      hal.receive_ring_buffer_0,
+      hal.receive_ring_buffer_1,
+      hal.receive_ring_buffer_6,
+  };
 
   TransmitRingBuffer transmit_ring_buffers[NUM_PORTS] = {
-      hal.transmit_ring_buffer_0, hal.transmit_ring_buffer_1,
-      hal.transmit_ring_buffer_2, hal.transmit_ring_buffer_3,
-      hal.transmit_ring_buffer_4, hal.transmit_ring_buffer_5,
-      hal.transmit_ring_buffer_6};
+      hal.transmit_ring_buffer_0,
+      hal.transmit_ring_buffer_1,
+      hal.transmit_ring_buffer_6,
+  };
 
   Timer timer = hal.timer;
   dna_t dna;
