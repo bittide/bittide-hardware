@@ -42,8 +42,10 @@
 static inline void
 receive_ring_buffer_read_slice_unchecked(ReceiveRingBuffer unit, uint64_t *dst,
                                          uint32_t offset, uint32_t len) {
-  memcpy_volatile(dst, (unit.base + 0) + (offset * sizeof(uint64_t)),
-                  len * sizeof(uint64_t));
+  for (uint32_t i = 0; i < len; i++) {
+    receive_ring_buffer_get_data_unchecked(unit, offset + i,
+                                           (uint8_t *)&dst[i]);
+  }
 }
 
 /**
