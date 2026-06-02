@@ -213,14 +213,22 @@ library
     Bittide.Instances.Hitl.WireDemo.UserCore
     Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.AsciiDebugMux
-    Bittide.Instances.Pnr.Counter
+    Bittide.Instances.Pnr.CaptureUgn
+    Bittide.Instances.Pnr.DomainDiffCounter
     Bittide.Instances.Pnr.ElasticBuffer
     Bittide.Instances.Pnr.Ethernet
     Bittide.Instances.Pnr.Freeze
+    Bittide.Instances.Pnr.Handshake
     Bittide.Instances.Pnr.ProcessingElement
+    Bittide.Instances.Pnr.ProgrammableMux
     Bittide.Instances.Pnr.RingBuffer
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.Synchronizer
+    Bittide.Instances.Pnr.Time
+    Bittide.Instances.Pnr.Uart
+    Bittide.Instances.Pnr.WbStorage
+    Bittide.Instances.Pnr.WireDemoProcessingElement
+    Bittide.Instances.Pnr.Wishbone
     Bittide.Instances.Tests.AddressableBytesWb
     Bittide.Instances.Tests.CaptureUgn
     Bittide.Instances.Tests.ClockControlWb

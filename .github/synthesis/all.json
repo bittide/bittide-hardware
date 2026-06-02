@@ -1,5 +1,6 @@
 [
-  {"top": "counterReducedPins",            "stage": "pnr",   "cc_report": false},
+  {"top": "asciiDebugMux",                 "stage": "hdl",   "cc_report": false},
+
   {"top": "elasticBufferWb",               "stage": "pnr",   "cc_report": false},
   {"top": "freeze",                        "stage": "pnr",   "cc_report": false},
   {"top": "receiveRingBufferPnr",          "stage": "pnr",   "cc_report": false},
@@ -7,7 +8,23 @@
   {"top": "si5391Spi",                     "stage": "pnr",   "cc_report": false},
   {"top": "transmitRingBufferPnr",         "stage": "pnr",   "cc_report": false},
 
-  {"top": "asciiDebugMux",                 "stage": "hdl",   "cc_report": false},
+  {"top": "arbiterFast",                   "stage": "pnr",   "cc_report": false},
+  {"top": "asciiDebugMuxFast",             "stage": "pnr",   "cc_report": false},
+  {"top": "autoCenterFast",                "stage": "pnr",   "cc_report": false},
+  {"top": "captureUgnFast",                "stage": "pnr",   "cc_report": false},
+  {"top": "delayWishboneFast",             "stage": "pnr",   "cc_report": false},
+  {"top": "domainDiffCounterFast",         "stage": "pnr",   "cc_report": false},
+  {"top": "freezeFast",                    "stage": "pnr",   "cc_report": false},
+  {"top": "handshakesWbFast",              "stage": "pnr",   "cc_report": false},
+  {"top": "programmableMuxFast",           "stage": "pnr",   "cc_report": false},
+  {"top": "receiveRingBufferFast",         "stage": "pnr",   "cc_report": false},
+  {"top": "sendUgnFast",                   "stage": "pnr",   "cc_report": false},
+  {"top": "si5391SpiFast",                 "stage": "pnr",   "cc_report": false},
+  {"top": "timeWbFast",                    "stage": "pnr",   "cc_report": false},
+  {"top": "transmitRingBufferFast",        "stage": "pnr",   "cc_report": false},
+  {"top": "uartExampleFast",               "stage": "pnr",   "cc_report": false},
+  {"top": "wbStorageFast",                 "stage": "pnr",   "cc_report": false},
+  {"top": "wireDemoPeFast",                "stage": "pnr",   "cc_report": false},
 
   {"top": "vexRiscvTcpTest",               "stage": "bitstream", "cc_report": false},
 

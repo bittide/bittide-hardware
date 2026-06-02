@@ -175,13 +175,30 @@ targets =
   map enforceValidTarget $
     [ defTarget $ mkName "Bittide.Instances.Pnr.AsciiDebugMux.asciiDebugMux"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freeze"
-    , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBufferWb"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello"
     , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferPnr"
     , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferPnr"
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
+    , -- High-frequency Pnr targets
+      defTarget $ mkName "Bittide.Instances.Pnr.AsciiDebugMux.asciiDebugMuxFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.captureUgnFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.CaptureUgn.sendUgnFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.DomainDiffCounter.domainDiffCounterFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.autoCenterFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freezeFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Handshake.handshakesWbFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ProgrammableMux.programmableMuxFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.receiveRingBufferFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.RingBuffer.transmitRingBufferFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391SpiFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Time.timeWbFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Uart.uartExampleFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.WbStorage.wbStorageFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.WireDemoProcessingElement.wireDemoPeFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Wishbone.arbiterFast"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Wishbone.delayWishboneFast"
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 

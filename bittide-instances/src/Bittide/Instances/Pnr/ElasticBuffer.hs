@@ -13,6 +13,9 @@ import Protocols.Experimental.Wishbone
 
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ElasticBuffer
+import Bittide.ElasticBuffer.AutoCenter (autoCenter)
+import Bittide.Instances.Domains (Basic400)
+import Bittide.Instances.Hacks (reducePins)
 import Bittide.SharedTypes (withLittleEndian)
 
 import qualified Clash.Explicit.Prelude as E
@@ -42,3 +45,13 @@ elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underfl
         (((), wbIn), ((), (), (), ()))
 
 makeTopEntity 'elasticBufferWb
+
+autoCenterFast :: Clock Basic400 -> Reset Basic400 -> Signal Basic400 Bit -> Signal Basic400 Bit
+autoCenterFast clk rst = withClock clk $ reducePins dut
+ where
+  dut (unbundle -> (margin, dataCount, ack)) =
+    bundle
+      $ snd
+      $ toSignals
+        (withLittleEndian $ withClock clk $ autoCenter @_ @5 rst enableGen margin dataCount)
+        ((), (ack, (), ()))
