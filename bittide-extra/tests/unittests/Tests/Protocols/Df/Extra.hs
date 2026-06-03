@@ -14,7 +14,8 @@ import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Data.Maybe
 import Data.String.Interpolate (i)
-import Hedgehog (Gen, Property, Range, assert, cover, footnote, forAll, (===))
+import Hedgehog (Gen, Property, assert, cover, footnote, forAll, (===))
+import Hedgehog.Gen.Extra (genSmallInt)
 import Protocols
 import Protocols.Df.Extra (skid, tdpbramRamOp)
 import Protocols.Experimental.Hedgehog (
@@ -38,16 +39,6 @@ import qualified Hedgehog.Range as Range
 import qualified Protocols.Df.Extra as Df
 import qualified Protocols.Experimental.Df as Df
 import qualified Prelude as P
-
-smallInt :: Range Int
-smallInt = Range.linear 0 10
-
-genSmallInt :: Gen Int
-genSmallInt =
-  Gen.frequency
-    [ (90, Gen.integral smallInt)
-    , (10, Gen.constant (Range.lowerBound 99 smallInt))
-    ]
 
 genData :: Gen a -> Gen [a]
 genData genA = do

@@ -7,7 +7,8 @@ module Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra where
 
 import Clash.Explicit.Prelude
 
-import Hedgehog (Gen, Property, Range)
+import Hedgehog (Gen, Property)
+import Hedgehog.Gen.Extra (genSmallInt)
 import Protocols.Experimental.Hedgehog (ExpectOptions (..), defExpectOptions, idWithModel)
 import Test.Tasty (TestTree, defaultMain)
 import Test.Tasty.Hedgehog (testProperty)
@@ -20,16 +21,6 @@ import qualified Hedgehog.Range as Range
 
 createDomain vSystem{vName = "Slow", vPeriod = 10000}
 createDomain vSystem{vName = "Fast", vPeriod = 1000}
-
-smallInt :: Range Int
-smallInt = Range.linear 0 10
-
-genSmallInt :: Gen Int
-genSmallInt =
-  Gen.frequency
-    [ (90, Gen.integral smallInt)
-    , (10, Gen.constant (Range.lowerBound 99 smallInt))
-    ]
 
 genData :: Gen a -> Gen [a]
 genData genA = do
