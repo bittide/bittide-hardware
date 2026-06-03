@@ -24,7 +24,7 @@ captureUgnFast clk rst = withClock clk $ reducePins dut
         ( unMemmap
             $ withLittleEndian
             $ withClockResetEnable clk rst enableGen
-            $ Ugn.captureUgn @_ @32 localCounter linkIn
+            $ Ugn.captureUgns @_ @_ @32 localCounter (bundle (linkIn :> Nil))
         )
         (wbIn, ())
 

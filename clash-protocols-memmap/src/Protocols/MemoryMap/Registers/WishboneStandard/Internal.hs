@@ -62,6 +62,12 @@ busActivityRead :: Maybe (BusActivity a) -> Maybe a
 busActivityRead (Just (BusRead a)) = Just a
 busActivityRead _ = Nothing
 
+-- | Obtains @a@ from both 'BusRead' and 'BusWrite'
+busActivityData :: Maybe (BusActivity a) -> Maybe a
+busActivityData Nothing = Nothing
+busActivityData (Just (BusRead a)) = Just a
+busActivityData (Just (BusWrite a)) = Just a
+
 {- | Type synonym for all the information needed to create a Wishbone register with
 auto-assigned offsets.
 -}

@@ -16,16 +16,16 @@ const DEVICES: DeviceInstances = unsafe { DeviceInstances::new() };
 fn main() -> ! {
     // Initialize peripherals.
     let mut uart = DEVICES.uart;
-    let capture_ugn = DEVICES.capture_ugn;
+    let capture_ugns = DEVICES.capture_ugns;
 
-    while !capture_ugn.has_captured() {
+    while !capture_ugns.has_captured().get(0).unwrap() {
         continue;
     }
     uwriteln!(
         uart,
         "({},{})",
-        capture_ugn.local_counter(),
-        capture_ugn.remote_counter(),
+        capture_ugns.local_counter(0).unwrap(),
+        capture_ugns.remote_counter(0).unwrap(),
     )
     .unwrap();
     loop {

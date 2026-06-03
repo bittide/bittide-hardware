@@ -146,16 +146,7 @@ the CPU to be halted.
 readHardwareUgns :: MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
 readHardwareUgns mm (_, d) gdb = do
   let
-    captureUgnPrefixed :: Int -> String -> [String]
-    captureUgnPrefixed linkNr reg = ["0", "CaptureUgn" <> show linkNr, reg]
-
-    readUgnMmio :: Int -> IO (Unsigned 64, Unsigned 64, Signed 32)
-    readUgnMmio linkNr = do
-      let getUgnRegister = expectRight . getPathAddress mm . captureUgnPrefixed linkNr
-      counterAddresses <- mapM getUgnRegister ["local_counter", "remote_counter"]
-      [localCounter, remoteCounter] <- mapM (Gdb.readLe gdb) counterAddresses
-      delta <- Gdb.readLe gdb =<< getUgnRegister "elastic_buffer_delta"
-      pure (localCounter, remoteCounter, delta)
+    getUgnRegister reg = expectRight $ getPathAddress mm ["0", "CaptureUgns", reg]
 
     -- Adjust the local counter for the frames added/removed from the elastic
     -- buffer after capturing the UGN. Leaves the remote counter untouched.
@@ -167,7 +158,10 @@ readHardwareUgns mm (_, d) gdb = do
       addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
 
   liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-  ugnTriples <- mapM readUgnMmio [0 .. natToNum @(LinkCount - 1)]
+  localCounters <- Gdb.readLe @(Vec LinkCount (Unsigned 64)) gdb =<< getUgnRegister "local_counter"
+  remoteCounters <- Gdb.readLe @(Vec LinkCount (Unsigned 64)) gdb =<< getUgnRegister "remote_counter"
+  deltas <- Gdb.readLe @(Vec LinkCount (Signed 32)) gdb =<< getUgnRegister "elastic_buffer_delta"
+  let ugnTriples = toList $ zip3 localCounters remoteCounters deltas
   liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
   pure $ adjustLocalCounter <$> ugnTriples
 

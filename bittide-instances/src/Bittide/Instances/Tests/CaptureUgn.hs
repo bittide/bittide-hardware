@@ -11,7 +11,7 @@ import Protocols.Idle (idleSource)
 import Protocols.MemoryMap (MemoryMap, Mm, getMMAny, unMemmap)
 import VexRiscv (DumpVcd (NoDumpVcd))
 
-import Bittide.CaptureUgn (captureUgn)
+import Bittide.CaptureUgn (captureUgns)
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.Instances.Common (PeConfigElfSource (NameOnly), emptyPeConfig, peConfigFromElf)
 import Bittide.ProcessingElement (PeConfig, processingElement)
@@ -40,7 +40,7 @@ dutWithMm peConfig eb localCounter = withLittleEndian $ circuit $ \(mm, _unit) -
   (uartRx, jtagIdle) <- idleSource
   [uartBus, ugnBus] <- processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-  _bittideData <- captureUgn localCounter eb -< ugnBus
+  _bittideData <- captureUgns localCounter (fmap (:> Nil) eb) -< ugnBus
   idC -< uartTx
 
 type IMemWords = DivRU (4 * 1024) 4

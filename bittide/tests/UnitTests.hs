@@ -14,6 +14,7 @@ import qualified Tests.Axi4.Generators
 import qualified Tests.Axi4.Properties
 import qualified Tests.BitView
 import qualified Tests.Calculator
+import qualified Tests.CaptureUgn
 import qualified Tests.Clash.Protocols.Wishbone.Extra -- Should be moved to bittide-extra, but depends on wbStorage
 import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
@@ -40,6 +41,7 @@ tests =
     , Tests.Axi4.Properties.tests
     , Tests.BitView.tests
     , Tests.Calculator.tests
+    , Tests.CaptureUgn.tests
     , Tests.Clash.Protocols.Wishbone.Extra.tests
     , Tests.ClockControl.Freeze.tests
     , Tests.ClockControl.Si539xSpi.tests
