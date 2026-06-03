@@ -75,6 +75,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Start printing hardware UGNs").unwrap();
     for (i, eb_delta) in eb_deltas.enumerate() {
+        capture_ugns.set_elastic_buffer_delta(i, eb_delta).unwrap();
         uwriteln!(
             uart,
             "Capture UGN {}: local = {}, remote = {}, eb_delta = {}",
