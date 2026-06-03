@@ -27,12 +27,19 @@ def load_all(path: Path) -> list[dict]:
 
 
 def load_debug(path: Path) -> dict[str, dict]:
-    """Return mapping from top name to {stage, cc_report} for prefill."""
+    """Return mapping from top name to {stage, cc_report, repeat} for prefill."""
     if not path.exists():
         return {}
     with path.open() as f:
         data = json.load(f)
-    return {e["top"]: {"stage": e["stage"], "cc_report": e["cc_report"]} for e in data}
+    return {
+        e["top"]: {
+            "stage": e["stage"],
+            "cc_report": e["cc_report"],
+            "repeat": e.get("repeat", 1),
+        }
+        for e in data
+    }
 
 
 def write_debug(path: Path, entries: list[dict], all_entries: list[dict]) -> None:
@@ -49,8 +56,9 @@ def write_debug(path: Path, entries: list[dict], all_entries: list[dict]) -> Non
         stage_field = f'"{e["stage"]}",'.ljust(stage_w)
         cc = "true" if e["cc_report"] else "false"
         sep = "," if i < len(entries) - 1 else ""
+        repeat_field = f', "repeat": {e["repeat"]}' if e.get("repeat", 1) > 1 else ""
         lines.append(
-            f'  {{"top": {top_field} "stage": {stage_field} "cc_report": {cc}}}{sep}'
+            f'  {{"top": {top_field} "stage": {stage_field} "cc_report": {cc}{repeat_field}}}{sep}'
         )
     lines.append("]")
     path.write_text("\n".join(lines) + "\n")
@@ -71,6 +79,7 @@ class App:
         for e in self.all_entries:
             top = e["top"]
             max_idx = max_stage_idx(e["stage"])
+            default_repeat = e.get("repeat", 1)
             if top in prefill:
                 pre = prefill[top]
                 stage_idx = STAGES.index(pre["stage"]) if pre["stage"] in STAGES else max_idx
@@ -80,6 +89,7 @@ class App:
                     "stage_idx": stage_idx,
                     "max_stage_idx": max_idx,
                     "cc_report": pre["cc_report"],
+                    "repeat": pre.get("repeat", default_repeat),
                 })
             else:
                 self.rows.append({
@@ -87,6 +97,7 @@ class App:
                     "stage_idx": max_idx,
                     "max_stage_idx": max_idx,
                     "cc_report": e["cc_report"],
+                    "repeat": default_repeat,
                 })
         self.cursor = 0
         self.scroll = 0
@@ -111,6 +122,7 @@ class App:
                     "top": src["top"],
                     "stage": STAGES[row["stage_idx"]],
                     "cc_report": row["cc_report"],
+                    "repeat": row["repeat"],
                 })
         return out
 
@@ -149,6 +161,21 @@ class App:
             row["stage_idx"] = new_idx
             self.save()
 
+    def bump_repeat(self, delta: int) -> None:
+        idx = self.current_row_idx()
+        if idx is None:
+            return
+        row = self.rows[idx]
+        # `repeat` only affects the HITL matrix in CI, so it's only meaningful
+        # for test-stage rows.
+        if STAGES[row["stage_idx"]] != "test":
+            self.status = "repeat only applies to stage=test"
+            return
+        new_repeat = max(1, row["repeat"] + delta)
+        if new_repeat != row["repeat"]:
+            row["repeat"] = new_repeat
+            self.save()
+
     def move(self, delta: int) -> None:
         n = len(self.visible_indices())
         if n == 0:
@@ -164,7 +191,7 @@ class App:
         )
         stdscr.addnstr(0, 0, title.ljust(w), w, curses.A_REVERSE)
         help_line = (
-            " space:toggle  c:cc_report  ←/→:stage  ↑/↓:move  /:search  #<enter>:jump+toggle  q:quit "
+            " space:toggle  c:cc_report  ←/→:stage  +/-:repeat  ↑/↓:move  /:search  #<enter>:jump+toggle  q:quit "
         )
         stdscr.addnstr(1, 0, help_line[:w], w)
 
@@ -197,8 +224,10 @@ class App:
             max_stage = STAGES[row["max_stage_idx"]]
             cc = "cc" if row["cc_report"] else "  "
             stage_disp = f"{stage:<9} (max {max_stage})"
+            # `repeat` only matters for stage=test, so blank it out otherwise.
+            rep = f"x{row['repeat']}" if stage == "test" else "  "
             num = f"{idx + 1:>{num_w}}"
-            line = f" {num}  {mark}  {src['top']:<{top_w}}  {stage_disp}  {cc} "
+            line = f" {num}  {mark}  {src['top']:<{top_w}}  {stage_disp}  {cc}  {rep:<4} "
             attr = curses.A_REVERSE if vis_pos == self.cursor else curses.A_NORMAL
             if row["selected"]:
                 attr |= curses.A_BOLD | curses.color_pair(1)
@@ -311,6 +340,10 @@ class App:
                 self.cycle_stage(-1)
             elif ch in (curses.KEY_RIGHT, ord("l")):
                 self.cycle_stage(1)
+            elif ch in (ord("+"), ord("=")):
+                self.bump_repeat(1)
+            elif ch == ord("-"):
+                self.bump_repeat(-1)
 
 
 def git_change_kind(root: Path, path: Path) -> str | None:
