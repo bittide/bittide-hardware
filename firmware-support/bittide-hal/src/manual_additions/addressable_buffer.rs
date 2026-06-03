@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::shared_devices::addressable_buffer::AddressableBuffer;
-use bittide_macros::bitvector;
+use clash_macros::bitvector;
 
 impl AddressableBuffer {
     /// Returns a reference to the data as a contiguous byte slice.

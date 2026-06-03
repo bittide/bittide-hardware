@@ -42,4 +42,4 @@ default-features = false
 features = ["medium-ethernet", "proto-ipv4", "socket-tcp", "socket-dhcpv4"]
 
 [build-dependencies]
-memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+bittide-build-utils = { path = "../../../firmware-support/bittide-build-utils" }

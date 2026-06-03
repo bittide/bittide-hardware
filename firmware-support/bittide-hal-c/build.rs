@@ -7,15 +7,14 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use memmap_generate::backends::c::type_desc::generate_tuple_definition;
-use memmap_generate::backends::c::{self as backend_c, ident, IdentType, TypeReferences};
-use memmap_generate::build_utils::memmap_dir;
-use memmap_generate::input_language as mm_inp;
-use memmap_generate::ir::deduplicate::{deduplicate, deduplicate_type_names};
-use memmap_generate::ir::input_to_ir::IrInputMapping;
-use memmap_generate::ir::monomorph::passes::All;
-use memmap_generate::ir::monomorph::{MonomorphVariants, Monomorpher};
-use memmap_generate::ir::types::IrCtx;
+use memorymap_compiler::input_language as mm_inp;
+use memorymap_compiler::ir::deduplicate::{deduplicate, deduplicate_type_names};
+use memorymap_compiler::ir::input_to_ir::IrInputMapping;
+use memorymap_compiler::ir::monomorph::passes::All;
+use memorymap_compiler::ir::monomorph::{MonomorphVariants, Monomorpher};
+use memorymap_compiler::ir::types::IrCtx;
+use memorymap_compiler_c::type_desc::generate_tuple_definition;
+use memorymap_compiler_c::{self as backend_c, ident, IdentType, TypeReferences};
 
 fn main() {
     let memmap_path = memmap_dir();
@@ -288,7 +287,7 @@ fn with_guard<A>(file: &mut File, guard: &str, f: impl FnOnce(&mut File) -> A) -
 
 fn read_memory_maps(
     dir: &Path,
-) -> BTreeMap<String, memmap_generate::input_language::MemoryMapDesc> {
+) -> BTreeMap<String, memorymap_compiler::input_language::MemoryMapDesc> {
     let mut memory_maps = BTreeMap::new();
 
     for dir in dir.read_dir().unwrap() {
@@ -325,4 +324,30 @@ fn read_memory_maps(
 
 fn type_name(s: &str) -> &str {
     s.split(".").last().unwrap()
+}
+
+/// Get the path to the memory maps directory using git to find the project root.
+pub fn memmap_dir() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    // Try to find git root from the manifest directory
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(&manifest_dir)
+        .output()
+        .expect("Failed to execute git command - make sure git is installed and this is a git repository");
+
+    if !output.status.success() {
+        panic!(
+            "Failed to find git root: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let git_root = String::from_utf8(output.stdout)
+        .expect("Git output is not valid UTF-8")
+        .trim()
+        .to_string();
+
+    PathBuf::from(git_root).join("_build").join("memory_maps")
 }

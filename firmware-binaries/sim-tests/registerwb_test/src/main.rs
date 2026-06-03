@@ -9,7 +9,7 @@
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use bittide_hal::{hals::register_wb as hal, types};
-use bittide_macros::{bitvector, index, signed, unsigned};
+use clash_macros::{bitvector, index, signed, unsigned};
 
 use core::fmt::Write;
 #[cfg(not(test))]

@@ -8,8 +8,6 @@ packages:
   bittide-instances/
   bittide-shake/
   bittide/
-  clash-bitpackc/
-  clash-protocols-memmap/
   gdb-hs/
   ghc-typelits-extra-lemmas/
   vivado-hs/
@@ -34,6 +32,22 @@ package *
   ghc-options: +RTS -qn4 -K512M -H -I5 -T -RTS
 semaphore: true
 jobs: $ncpus
+
+source-repository-package
+  type: git
+  location: https://github.com/QBayLogic/clash-protocols-memmap
+  tag: 599b1f0a5539dc57a66bfa3013b308253d9278da
+  subdir:
+    clash-protocols-memmap
+    clash-bitpackc
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-protocols.git
+  tag: e03dbd8917cb7c93911810824e54e4423a0ae08b
+  subdir:
+    clash-protocols
+    clash-protocols-base
 
 -- TODO: Switch to Clash 1.10.1. It should have all the performance upgrades we want.
 source-repository-package

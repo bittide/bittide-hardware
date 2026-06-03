@@ -21,4 +21,4 @@ bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 
 [build-dependencies]
-memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+bittide-build-utils = { path = "../../../firmware-support/bittide-build-utils" }

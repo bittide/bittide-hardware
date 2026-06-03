@@ -19,14 +19,13 @@ opt-level = "z"
 panic = "abort"
 
 [workspace]
-members = [
+members = ["bittide-build-utils",
   "bittide-cpus",
   "bittide-hal",
   "bittide-hal-c",
   "bittide-macros",
   "bittide-sys",
   "gdb-trace",
-  "memmap-generate",
 ]
 
 resolver = "2"

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use memmap_generate::build_utils::standard_static_memory_build;
+use bittide_build_utils::standard_static_memory_build;
 
 fn main() {
     standard_static_memory_build("memory.x");

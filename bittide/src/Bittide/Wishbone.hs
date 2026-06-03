@@ -41,7 +41,7 @@ import Bittide.SharedTypes
 import qualified Data.List as L
 import qualified Protocols.Experimental.Wishbone as Wishbone
 import qualified Protocols.MemoryMap as Mm
-import qualified Protocols.MemoryMap.Registers.WishboneStandard as Mm
+import qualified Protocols.MemoryMap.Registers.WishboneStandard as MmWb
 import qualified Protocols.Vec as Vec
 
 {- $setup
@@ -428,9 +428,9 @@ uartInterfaceWb ::
     ((ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes), uartIn)
     (uartOut, CSignal dom (Bool, Bool))
 uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(bus, uartRx) -> do
-  [dataWb, rxEmptyWb, txFullWb] <- Mm.deviceWbI (Mm.deviceConfig "Uart") -< bus
+  [dataWb, rxEmptyWb, txFullWb] <- MmWb.deviceWbI (MmWb.deviceConfig "Uart") -< bus
 
-  let txFifoIn = Mm.busActivityWrite <$> regOutActivity
+  let txFifoIn = MmWb.busActivityWrite <$> regOutActivity
   (txFifoOut, Fwd txFifoMeta) <- fifoWithMeta txDepth <| unsafeToDf -< Fwd txFifoIn
 
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
@@ -441,34 +441,31 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(bus, uartRx) ->
   let
     rxEmpty = fmap isNothing regIn
     txFull = fmap (.fifoFull) txFifoMeta
-    busRead = fmap (isJust . Mm.busActivityRead) regOutActivity
-    busWrite = fmap (isJust . Mm.busActivityWrite) regOutActivity
+    busRead = fmap (isJust . MmWb.busActivityRead) regOutActivity
+    busWrite = fmap (isJust . MmWb.busActivityWrite) regOutActivity
     regOutAck = busWrite .&&. (fmap not txFull) .||. busRead .&&. (fmap not rxEmpty)
 
   Fwd regOutActivity <- unsafeFromDf -< (regOutActivityDf, Fwd (fmap Ack regOutAck))
 
   (_regOut, regOutActivityDf) <-
-    Mm.registerWbDfI
-      (registerConfig "data")
-        { Mm.access = Mm.ReadWrite
-        , Mm.description = ""
-        , Mm.busRead = Mm.PreferCircuit
+    MmWb.registerWbDfI
+      (registerConfig "data" "")
+        { MmWb.access = Mm.ReadWrite
+        , MmWb.busRead = MmWb.PreferCircuit
         }
       0
       -< (dataWb, Fwd regIn)
 
   registerWbI_
-    (registerConfig "receive_buffer_empty")
-      { Mm.access = Mm.ReadOnly
-      , Mm.description = "Whether the receive buffer is empty."
+    (registerConfig "receive_buffer_empty" "Whether the receive buffer is empty.")
+      { MmWb.access = Mm.ReadOnly
       }
     True
     -< (rxEmptyWb, Fwd (Just <$> rxEmpty))
 
   registerWbI_
-    (registerConfig "transmit_buffer_full")
-      { Mm.access = Mm.ReadOnly
-      , Mm.description = "Whether the transmit buffer is full."
+    (registerConfig "transmit_buffer_full" "Whether the transmit buffer is full.")
+      { MmWb.access = Mm.ReadOnly
       }
     False
     -< (txFullWb, Fwd (Just <$> txFull))
@@ -619,22 +616,22 @@ timeWb ::
     (CSignal dom (Unsigned 64))
 timeWb externalCounter = circuit $ \mmWb -> do
   [(cmdOffset, cmdConfig, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <-
-    Mm.deviceWbI (Mm.deviceConfig "Timer") -< mmWb
+    MmWb.deviceWbI (MmWb.deviceConfig "Timer") -< mmWb
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdConfig, cmdMeta, cmdWb1)
 
   -- Registers
-  Fwd (_, cmdActivity) <- Mm.registerWbI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
-  Mm.registerWbI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
-  Fwd (scratch, _) <- Mm.registerWbI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
-  Mm.registerWbI_ freqCfg freq -< (freqWb, Fwd noWrite)
+  Fwd (_, cmdActivity) <- MmWb.registerWbI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
+  MmWb.registerWbI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
+  Fwd (scratch, _) <- MmWb.registerWbI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
+  MmWb.registerWbI_ freqCfg freq -< (freqWb, Fwd noWrite)
 
   -- Local circuit dependent declarations
   let
-    scratchWrite = toMaybe <$> (cmdActivity .== Just (Mm.BusWrite Capture)) <*> count
+    scratchWrite = toMaybe <$> (cmdActivity .== Just (MmWb.BusWrite Capture)) <*> count
     cmpResult = count .>=. scratch
-    cmpResultWrite = toMaybe <$> (cmdActivity ./= Just (Mm.BusWrite WaitForCmp)) <*> cmpResult
-    cmdWaitAck = (cmdActivity ./= Just (Mm.BusWrite WaitForCmp)) .||. cmpResult
+    cmpResultWrite = toMaybe <$> (cmdActivity ./= Just (MmWb.BusWrite WaitForCmp)) <*> cmpResult
+    cmdWaitAck = (cmdActivity ./= Just (MmWb.BusWrite WaitForCmp)) .||. cmpResult
   idC -< Fwd count
  where
   -- Independent declarations
@@ -644,24 +641,20 @@ timeWb externalCounter = circuit $ \mmWb -> do
 
   -- Register configurations
   cmdCfg =
-    (Mm.registerConfig "command")
-      { Mm.access = Mm.WriteOnly
-      , Mm.description = "Control register"
+    (MmWb.registerConfig "command" "Control register")
+      { MmWb.access = Mm.WriteOnly
       }
   cmpCfg =
-    (Mm.registerConfig "cmp_result")
-      { Mm.access = Mm.ReadOnly
-      , Mm.description = "Comparison result"
+    (MmWb.registerConfig "cmp_result" "Comparison result")
+      { MmWb.access = Mm.ReadOnly
       }
   scratchCfg =
-    (Mm.registerConfig "scratchpad")
-      { Mm.access = Mm.ReadWrite
-      , Mm.description = "Scratch pad"
+    (MmWb.registerConfig "scratchpad" "Scratch pad")
+      { MmWb.access = Mm.ReadWrite
       }
   freqCfg =
-    (Mm.registerConfig "frequency")
-      { Mm.access = Mm.ReadOnly
-      , Mm.description = "Frequency of the clock domain"
+    (MmWb.registerConfig "frequency" "Frequency of the clock domain")
+      { MmWb.access = Mm.ReadOnly
       }
 
 andAck ::
@@ -780,14 +773,14 @@ readDnaPortE2Wb ::
     (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = circuit $ \wb -> do
-  [maybeDnaWb] <- Mm.deviceWbI (Mm.deviceConfig "Dna") -< wb
+  [maybeDnaWb] <- MmWb.deviceWbI (MmWb.deviceConfig "Dna") -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
   -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
   --      use it until the DNA is actually read out.
   idC -< Fwd (fromMaybe 0 <$> maybeDna)
  where
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
-  config = (registerConfig "maybe_dna"){access = Mm.ReadOnly}
+  config = (registerConfig "maybe_dna" ""){access = Mm.ReadOnly}
 
 {- | A Wishbone worker circuit that exposes the DNA value from an external DnaPortE2.
 Only one DnaPortE2 can be instantiated in a design, so this component takes in the
@@ -809,10 +802,10 @@ readDnaPortE2WbWorker ::
     (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes)
     ()
 readDnaPortE2WbWorker maybeDna = circuit $ \wb -> do
-  [maybeDnaWb] <- Mm.deviceWbI (Mm.deviceConfig "Dna") -< wb
+  [maybeDnaWb] <- MmWb.deviceWbI (MmWb.deviceConfig "Dna") -< wb
   registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
  where
-  config = (registerConfig "maybe_dna"){access = Mm.ReadOnly}
+  config = (registerConfig "maybe_dna" ""){access = Mm.ReadOnly}
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'

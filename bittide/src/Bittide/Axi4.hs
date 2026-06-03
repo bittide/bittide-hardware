@@ -66,6 +66,7 @@ import Protocols.Experimental.Axi4.Stream as AS
 import Protocols.Experimental.Axi4.WriteAddress
 import Protocols.Experimental.Axi4.WriteData
 import Protocols.Experimental.Axi4.WriteResponse
+import Protocols.Experimental.ReqResp (ReqResp)
 import Protocols.Experimental.Wishbone as WB
 import Protocols.Idle (idleSink)
 import Protocols.Internal (fromKeepType, toKeepType)
@@ -79,10 +80,10 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWbI,
  )
-import Protocols.ReqResp (ReqResp)
 
 import qualified Protocols.DfConv as DfConv
-import qualified Protocols.ReqResp as ReqResp
+import qualified Protocols.Experimental.ReqResp as ReqResp
+import qualified Protocols.Experimental.ReqResp.Extra as ReqResp
 
 {- $setup
 >>> import Clash.Prelude
@@ -284,19 +285,16 @@ wbAxisRxBufferCircuit# SNat = circuit $ \(mmWb, axi0) -> do
   idC -< statusOut
  where
   bufferRegConfig =
-    (registerConfig "data")
+    (registerConfig "data" "Buffer for incoming AXI4 stream packets")
       { access = ReadOnly
-      , description = "Buffer for incoming AXI4 stream packets"
       }
   pktLenConfig =
-    (registerConfig "packet_length")
+    (registerConfig "packet_length" "Number of bytes in the buffer")
       { access = ReadWrite
-      , description = "Number of bytes in the buffer"
       }
   statusConfig =
-    (registerConfig "status")
+    (registerConfig "status" "Status register: bit 1 = packet_complete, bit 0 = buffer_full")
       { access = ReadWrite
-      , description = "Status register: bit 1 = packet_complete, bit 0 = buffer_full"
       }
 
 {-# OPAQUE axiRxHandler #-}
@@ -615,14 +613,12 @@ wbToAxi4StreamTx = circuit $ \mmWb -> do
   wbToAxiStreamTxBridge -< (dataReqs, sendReqs)
  where
   dataRegConfig =
-    (registerConfig "data")
+    (registerConfig "data" "Write data to the AXI4 stream")
       { access = WriteOnly
-      , description = "Write data to the AXI4 stream"
       }
   sendRegConfig =
-    (registerConfig "send")
+    (registerConfig "send" "Write to send a transfer with _tlast set")
       { access = WriteOnly
-      , description = "Write to send a transfer with _tlast set"
       }
 
 wbToAxiStreamTxBridge ::

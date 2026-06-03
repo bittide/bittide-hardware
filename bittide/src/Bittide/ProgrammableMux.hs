@@ -13,7 +13,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.Experimental.Wishbone (Wishbone, WishboneMode (Standard))
 import Protocols.MemoryMap (Access (ReadWrite, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   deviceConfig,
   deviceWbI,
   registerConfig,
@@ -61,19 +61,19 @@ programmableMux localCounter = circuit $ \(bus, a, b) -> do
 
   (Fwd firstBCycle, _firstBCycleActivity) <-
     registerWbI
-      (registerConfig "first_b_cycle")
+      (registerConfig "first_b_cycle" "Clock cycle to switch from input 'A' to 'B'.")
         { access = ReadWrite
-        , description = "Clock cycle to switch from input 'A' to 'B'."
         }
       maxBound
       -< (wbFirstBCycle, Fwd (pure Nothing))
 
   (Fwd arm, _armActivity) <-
     registerWbI
-      (registerConfig "arm")
+      ( registerConfig
+          "arm"
+          "Arm the mux to switch on 'first_b_cycle'. Prevents atomicity issues when writing to 'first_b_cycle'."
+      )
         { access = WriteOnly
-        , description =
-            "Arm the mux to switch on 'first_b_cycle'. Prevents atomicity issues when writing to 'first_b_cycle'."
         }
       False
       -< (wbArm, Fwd (pure Nothing))

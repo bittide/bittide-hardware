@@ -16,6 +16,6 @@ workspace = true
 riscv-rt = "0.11.0"
 
 [build-dependencies]
-memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+bittide-build-utils = { path = "../../../firmware-support/bittide-build-utils" }
 bittide-hal-c = { path = "../../../firmware-support/bittide-hal-c" }
 cc = "1.2"

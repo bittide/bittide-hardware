@@ -3,12 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::{
-    manual_additions::{
-        bitvector::BitVector,
-        timer::{Duration, Instant},
-    },
+    manual_additions::timer::{Duration, Instant},
     shared_devices::clock_control::ClockControl,
 };
+use clash_bindings::bitvector::BitVector;
 use itertools::izip;
 use ufmt::derive::uDebug;
 

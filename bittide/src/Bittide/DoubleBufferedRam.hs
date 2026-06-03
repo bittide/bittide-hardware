@@ -23,7 +23,8 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
  )
 
-import qualified Protocols.ReqResp as ReqResp
+import qualified Protocols.Experimental.ReqResp as ReqResp
+import qualified Protocols.Experimental.ReqResp.Extra as ReqResp
 
 data ContentType n a
   = Vec (Vec n a)
@@ -83,7 +84,7 @@ wbStorage memoryName SNat initContent =
     _vecUnit <- ram -< (reads, writes1)
     idC -< ()
  where
-  regConfig = registerConfig "data"
+  regConfig = registerConfig "data" ""
   ram = ReqResp.fromBlockRamWithMask
     $ case (initContent, cancelMulDiv @(nBytes) @8) of
       (Nothing, Dict) -> blockRamByteAddressableU

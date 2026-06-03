@@ -10,8 +10,8 @@ import Clash.Hedgehog.Sized.Vector (genVec)
 import Hedgehog (Gen, Property)
 import Protocols
 import Protocols.Experimental.Hedgehog (defExpectOptions)
+import Protocols.Experimental.ReqResp as ReqResp
 import Protocols.Experimental.Simulate (StallAck, stallC)
-import Protocols.ReqResp as ReqResp
 import Test.Tasty (TestTree)
 import Test.Tasty.Hedgehog.Extra (testProperty)
 import Test.Tasty.TH (testGroupGenerator)

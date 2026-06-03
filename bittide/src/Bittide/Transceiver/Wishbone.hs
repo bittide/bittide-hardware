@@ -14,7 +14,7 @@ import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   deviceConfig,
   deviceWb,
   registerConfig,
@@ -89,31 +89,26 @@ transceiverPrbsNWb clk rst config = circuit $ \(wb, gths, Fwd txDatas) -> do
   idC -< Fwd tOutputs
  where
   transceiverEnableConfig =
-    (registerConfig "transceiver_enable")
-      { description =
-          "Enable transceiver block. Disabling this resets all channels and registers. Enabling the transceiver will bring up the bittide domain. Conversely, disabling it will bring down the bittide domain."
-      }
+    registerConfig
+      "transceiver_enable"
+      "Enable transceiver block. Disabling this resets all channels and registers. Enabling the transceiver will bring up the bittide domain. Conversely, disabling it will bring down the bittide domain."
 
   channelEnablesConfig =
-    (registerConfig "channel_enables")
-      { description =
-          "Enable individual channels. Enabling a channel means a link will be established, provided the other side also enables it. Conversely, disabling a channel will immediately drop the link if it was up, and no data will be sent or received on that channel."
-      }
+    registerConfig
+      "channel_enables"
+      "Enable individual channels. Enabling a channel means a link will be established, provided the other side also enables it. Conversely, disabling a channel will immediately drop the link if it was up, and no data will be sent or received on that channel."
 
   rxDataInitDoneConfig =
-    (registerConfig "rx_data_init_dones")
-      { description =
-          "Receive data initialization procedure done. This means that the data presented on 'rxData' is word aligned and coming from the neighbor."
-      }
+    registerConfig
+      "rx_data_init_dones"
+      "Receive data initialization procedure done. This means that the data presented on 'rxData' is word aligned and coming from the neighbor."
 
   txDataInitDoneConfig =
-    (registerConfig "tx_data_init_dones")
-      { description =
-          "Transmit data initialization procedure done. This mean that the data presented on the block's input is sampled and sent to the neighbor."
-      }
+    registerConfig
+      "tx_data_init_dones"
+      "Transmit data initialization procedure done. This mean that the data presented on the block's input is sampled and sent to the neighbor."
 
   statsConfig =
-    (registerConfig "statistics")
+    (registerConfig "statistics" "Various statistics from the transceiver reset manager.")
       { access = ReadOnly
-      , description = "Various statistics from the transceiver reset manager."
       }

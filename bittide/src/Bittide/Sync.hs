@@ -161,5 +161,5 @@ syncOutGenerateWbC clk rst counterClk counterRst = circuit $ \(mm, wb) -> do
   syncOut <- syncOutGeneratorC counterClk syncOutRst1
   idC -< syncOut
  where
-  config = registerConfig "active"
+  config = registerConfig "active" ""
   noWrite = pure Nothing

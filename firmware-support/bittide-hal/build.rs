@@ -7,15 +7,15 @@ use std::io::Write;
 use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
-use memmap_generate::input_language as mm_inp;
+use memorymap_compiler::input_language as mm_inp;
 
-use memmap_generate::ir::deduplicate::{deduplicate, deduplicate_type_names};
-use memmap_generate::ir::input_to_ir::IrInputMapping;
-use memmap_generate::ir::monomorph::passes::OnlyNats;
-use memmap_generate::ir::monomorph::{MonomorphVariants, Monomorpher};
-use memmap_generate::ir::types::IrCtx;
+use memorymap_compiler::ir::deduplicate::{deduplicate, deduplicate_type_names};
+use memorymap_compiler::ir::input_to_ir::IrInputMapping;
+use memorymap_compiler::ir::monomorph::passes::OnlyNats;
+use memorymap_compiler::ir::monomorph::{MonomorphVariants, Monomorpher};
+use memorymap_compiler::ir::types::IrCtx;
 
-use memmap_generate::backends::rust::{
+use memorymap_compiler_rust::{
     self as backend_rust, generate_device_instances, generate_type_desc, ident, IdentType,
     TypeReferences,
 };
@@ -259,7 +259,7 @@ fn main() {
         }
     }
 
-    memmap_generate::format::format_files(&generated_files).unwrap();
+    memorymap_compiler::format::format_files(&generated_files).unwrap();
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -287,8 +287,8 @@ fn annotate_types(
                 .copied()
                 .unwrap_or(ty_handle);
             match &ctx.type_refs[ty_handle] {
-                memmap_generate::ir::types::TypeRef::Float
-                | memmap_generate::ir::types::TypeRef::Double => {
+                memorymap_compiler::ir::types::TypeRef::Float
+                | memorymap_compiler::ir::types::TypeRef::Double => {
                     has_float.insert(variant_handle);
                 }
                 _ => {}
@@ -368,31 +368,32 @@ fn generate_type_ref_imports(ctx: &IrCtx, refs: &TypeReferences) -> TokenStream 
     let mut code = TokenStream::new();
     if refs.use_bitvec {
         code.extend(quote! {
-            use crate::manual_additions::bitvector::BitVector;
-            use bittide_macros::BitVector;
+            use clash_bindings::bitvector::BitVector;
+            use clash_macros::BitVector;
         });
     }
     if refs.use_index {
         code.extend(quote! {
-            use crate::manual_additions::index::Index;
-            use bittide_macros::Index;
+            use clash_bindings::index::Index;
+            use clash_macros::Index;
         });
     }
     if refs.use_signed {
         code.extend(quote! {
-            use crate::manual_additions::signed::Signed;
-            use bittide_macros::Signed;
+            use clash_bindings::signed::Signed;
+            use clash_macros::Signed;
         });
     }
     if refs.use_unsigned {
         code.extend(quote! {
-            use crate::manual_additions::unsigned::Unsigned;
-            use bittide_macros::Unsigned;
+            use clash_bindings::unsigned::Unsigned;
+            use clash_macros::Unsigned;
         });
     }
     if refs.use_mask {
         code.extend(quote! {
-            use crate::manual_additions::mask::Mask;
+            use clash_bindings::mask::Mask;
+            use clash_macros::Mask;
         });
     }
     for ty_ref in &refs.references {
@@ -405,7 +406,7 @@ fn generate_type_ref_imports(ctx: &IrCtx, refs: &TypeReferences) -> TokenStream 
 
 fn read_memory_maps(
     dir: &Path,
-) -> BTreeMap<String, memmap_generate::input_language::MemoryMapDesc> {
+) -> BTreeMap<String, memorymap_compiler::input_language::MemoryMapDesc> {
     let mut memory_maps = BTreeMap::new();
 
     for dir in dir.read_dir().unwrap() {

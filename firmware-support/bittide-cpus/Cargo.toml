@@ -16,5 +16,7 @@ workspace = true
 bittide-hal = { path = "../bittide-hal" }
 bittide-macros = { path = "../bittide-macros" }
 bittide-sys = { path = "../bittide-sys" }
+clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "9107407a3dbf73533e21251f8d400472d8eb2ec9" }
+clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "9107407a3dbf73533e21251f8d400472d8eb2ec9" }
 itertools = { version = "0.14.0", default-features = false }
 ufmt = "0.2.0"

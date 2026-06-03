@@ -6,10 +6,10 @@ use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
 use bittide_hal::shared_devices::{
     ClockControl, Freeze, SampleMemory, SyncOutGenerator, Timer, Uart,
 };
-use bittide_macros::unsigned;
 use bittide_sys::callisto::Callisto;
 use bittide_sys::sample_store::SampleStore;
 use bittide_sys::stability_detector::StabilityDetector;
+use clash_macros::unsigned;
 use itertools::izip;
 use ufmt::uwriteln;
 

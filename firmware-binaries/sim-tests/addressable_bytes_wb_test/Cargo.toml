@@ -12,6 +12,8 @@ edition = "2021"
 workspace = true
 
 [dependencies]
+clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "9107407a3dbf73533e21251f8d400472d8eb2ec9" }
+clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "9107407a3dbf73533e21251f8d400472d8eb2ec9" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
@@ -21,7 +23,7 @@ riscv-rt = "0.12.2"
 ufmt = "0.2.0"
 
 [build-dependencies]
-memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+bittide-build-utils = { path = "../../../firmware-support/bittide-build-utils" }
 
 [profile.dev]
 panic = "abort"

@@ -7,7 +7,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::hals::nested_interconnect as hal;
-use bittide_macros::unsigned;
+use clash_macros::unsigned;
 use ufmt::{uwrite, uwriteln};
 
 use core::fmt::Write;

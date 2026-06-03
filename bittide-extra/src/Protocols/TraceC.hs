@@ -51,12 +51,12 @@ import Protocols.Experimental.Axi4.WriteResponse (
   KnownAxi4WriteResponseConfig,
   S2M_WriteResponse (..),
  )
+import Protocols.Experimental.ReqResp (ReqResp)
 import Protocols.Experimental.Wishbone
 import Protocols.Extra.TH
 import Protocols.Internal (reverseCircuit)
 import Protocols.Internal.Types.Extra (TraceC)
 import Protocols.PacketStream (PacketStream, PacketStreamM2S, PacketStreamS2M)
-import Protocols.ReqResp (ReqResp)
 import Protocols.Spi (Spi)
 import Protocols.Vec (vecCircuits)
 

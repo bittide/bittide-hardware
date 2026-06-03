@@ -14,7 +14,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   deviceConfig,
   deviceWb,
   registerConfig,
@@ -83,41 +83,42 @@ freeze clk rst =
     idC
  where
   freezeConfig =
-    (registerConfig "freeze")
+    (registerConfig "freeze" "Freeze all counters")
       { access = WriteOnly
-      , description = "Freeze all counters"
       }
 
   ebCountersConfig =
-    (registerConfig "eb_counters")
+    ( registerConfig
+        "eb_counters"
+        "Elastic buffer counters (at last freeze). Note that this is coming from domain difference counters, not actual elastic buffers."
+    )
       { access = ReadOnly
-      , description =
-          "Elastic buffer counters (at last freeze). Note that this is coming from domain difference counters, not actual elastic buffers."
       }
 
   lastSyncPulseConfig =
-    (registerConfig "cycles_since_sync_pulse")
+    ( registerConfig
+        "cycles_since_sync_pulse"
+        "Number of clock cycles since last synchronization pulse (at last freeze)"
+    )
       { access = ReadOnly
-      , description = "Number of clock cycles since last synchronization pulse (at last freeze)"
       }
 
   syncCounterConfig =
-    (registerConfig "number_of_sync_pulses_seen")
+    (registerConfig "number_of_sync_pulses_seen" "Number of synchronization pulses seen (at last freeze)")
       { access = ReadOnly
-      , description = "Number of synchronization pulses seen (at last freeze)"
       }
 
   localClockConfig =
-    (registerConfig "local_clock_counter")
+    (registerConfig "local_clock_counter" "Clock counter of local clock domain (at last freeze)")
       { access = ReadOnly
-      , description = "Clock counter of local clock domain (at last freeze)"
       }
 
   freezeCounterConfig =
-    (registerConfig "freeze_counter")
+    ( registerConfig
+        "freeze_counter"
+        "Number of times a freeze has been requested. This takes a couple of cycles to update after a freeze has been issued."
+    )
       { access = ReadOnly
-      , description =
-          "Number of times a freeze has been requested. This takes a couple of cycles to update after a freeze has been issued."
       }
 
   noWrite = pure Nothing

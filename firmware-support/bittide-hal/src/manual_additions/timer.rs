@@ -15,7 +15,7 @@ insignificant for timing purposes.
 
 use crate::{shared_devices::Timer, types::TimeCmd};
 
-use bittide_macros::{unsigned, Unsigned};
+use clash_macros::{unsigned, Unsigned};
 use core::cmp;
 use core::fmt;
 use core::ops;

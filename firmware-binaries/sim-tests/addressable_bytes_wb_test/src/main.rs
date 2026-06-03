@@ -7,7 +7,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_macros::bitvector;
+use clash_macros::bitvector;
 use ufmt::{uWrite, uwrite, uwriteln};
 
 use bittide_hal::hals::addressable_bytes_wb as hal;
