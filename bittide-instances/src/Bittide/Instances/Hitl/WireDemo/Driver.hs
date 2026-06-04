@@ -18,15 +18,22 @@ import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Relabel (
+  RelabelPlan (..),
+  computeRelabel,
+  hardwareUgnEdges,
+  readCurrentTime,
+  writeCorrections,
+  writeReleaseCycle,
+ )
+import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..), indexToNodeId)
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
-import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
-import Control.Monad (forM_, unless)
+import Control.Monad (forM, forM_, unless)
 import Control.Monad.IO.Class
-import Data.Bifunctor (Bifunctor (bimap))
 import Data.Maybe (fromJust)
 import Data.String.Interpolate (i)
 import Data.Vector.Internal.Check (HasCallStack)
@@ -47,11 +54,16 @@ import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as MemoryMaps
 import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
-import qualified Data.Map as Map
 import qualified Gdb
 import qualified System.Timeout.Extra as T
 
-type StartDelay = 10 -- seconds
+{- | Seconds of headroom between reading the current time and the reset-release /
+schedule point. This must comfortably exceed the wall-clock time it takes to
+write all per-node timestamps + configs over GDB (~10s for 8 nodes), otherwise
+a node's reset can release before it is fully configured (see the post-write
+check in 'driver').
+-}
+type StartDelay = 30 -- seconds
 
 {- | The delay in clock cycles between 2 PEs which is not accounted for by the
 `captureUgn` component. The wire demo schedule reasons about PE-to-PE timing, but
@@ -61,6 +73,54 @@ to the PE-to-PE delay.
 -}
 internalDelay :: Int
 internalDelay = -4
+
+{- | Base cycle of the fixed schedule in the relabeled application-counter domain.
+The application counter is 0 at the timed-reset release (tReset), so this small
+base is a short head-start before the first node's PE fires.
+-}
+appScheduleBase :: Unsigned 64
+appScheduleBase = 1000
+
+{- | Target one-way link latencies (in clock cycles) for each chain hop: the stored
+@λ^safe@ every boot is groomed onto. These are the values 'targetUgns' is built from.
+
+Because grooming only inserts frames (@λ^safe >= λ^obs@), each value must sit at or
+above the rig's observed one-way latency on every boot, with a small margin (the gap
+becomes the inserted frames, so it must stay within the elastic buffer's safe range).
+Observed one-way latency was in @[36, 44]@ cycles over several boots; the long hop 1
+runs noticeably higher than the rest.
+-}
+targetHopLatencies :: Vec (FpgaCount - 1) (Signed 64)
+targetHopLatencies = 40 :> 46 :> 41 :> 41 :> 39 :> 40 :> 39 :> Nil
+
+-- | Chain node ids in FPGA-index order, and the directed hops between them.
+chainNodeIds :: [BitVector 32]
+chainNodeIds = L.map indexToNodeId (toList (indicesI :: Vec FpgaCount (Index FpgaCount)))
+
+chainHops :: [(BitVector 32, BitVector 32)]
+chainHops = L.zip chainNodeIds (L.tail chainNodeIds)
+
+-- | Both directions of every chain hop (the node pairs carrying a chain UGN).
+chainPairs :: [(BitVector 32, BitVector 32)]
+chainPairs = L.concatMap (\(a, b) -> [(a, b), (b, a)]) chainHops
+
+{- | Target UGNs (@λ^safe@) described as a graph, the same way measured UGNs are: the
+target one-way latency on both directions of every chain hop. Both the fixed
+application schedule ('appSchedule') and the grooming target ('computeRelabel') are
+derived from this, so the chain latencies live in one place. Ports are irrelevant --
+grooming matches edges by node pair.
+-}
+targetUgns :: [UgnEdge]
+targetUgns =
+  L.concat
+    [ [UgnEdge a 0 b 0 lat, UgnEdge b 0 a 0 lat]
+    | ((a, b), lat) <- L.zip chainHops (toList targetHopLatencies)
+    ]
+
+-- | The target one-way latency of a single directed hop, read out of 'targetUgns'.
+targetChainStep :: BitVector 32 -> BitVector 32 -> Signed 64
+targetChainStep src dst =
+  L.head [e.ugn | e <- targetUgns, e.srcNode == src, e.dstNode == dst]
 
 {- | Collect the configuration for the 'wireDemoPeConfig' and the 'programmableMux' in
 a single data structure for easier schedule generation.
@@ -72,73 +132,42 @@ data NodeConfig linkCount = NodeConfig
   }
   deriving (Show)
 
-{- | Generate a schedule for the wire demo, which consists of a configuration for the PE
-and the programmable mux for each node.
-
-First generates an 'absolute' schedule with only a few rules:
-  - 'firstBCycle' is always 1 cycle after the previous node's 'firstBCycle'
-  - 'readLink' is always the previous node, except for the first node
-  - 'writeLink' is always the next node, except for the last node
-
-In this absolute schedule the links are FPGA indexed (not link indexed) and all
-`firstBCycle`s are relative to the first node's `firstBCycle`.
-
-Next, this absolute schedule is converted to a 'relative' schedule by:
-  - Converting 'firstBCycle' to account for the counter mapping between the nodes
-  - Converting FPGA indexed links to link indices based on the FPGA setup
-This process should be done in a chain-like manner.
+{- | Chain topology for the wire demo: for each node, the link index over which it
+reads the previous node and the link index over which it writes the next node
+(@Nothing@ at the two ends of the chain). Purely structural -- it depends only on
+the FPGA link map, not on any measured timing. The per-node @first_b_cycle@ is set
+separately from the relabeled schedule (see 'driver').
 -}
-generateSchedule ::
-  forall nodeCount.
-  ( KnownNat nodeCount
-  , 1 <= nodeCount
-  ) =>
+chainTopology ::
+  (KnownNat nodeCount, 1 <= nodeCount) =>
   Vec nodeCount (FpgaId, Vec (nodeCount - 1) (Index nodeCount)) ->
-  Vec nodeCount (Vec (nodeCount - 1) (Unsigned 64, Unsigned 64)) ->
-  Unsigned 64 ->
-  Vec nodeCount (NodeConfig (nodeCount - 1))
-generateSchedule fpgaTable ugnParts startCycle = genConfig <$> iterateI nextState (0, startCycle)
+  -- | Per node: @(readLink, writeLink)@ as link indices into that node's links.
+  Vec nodeCount (Maybe (Index (nodeCount - 1)), Maybe (Index (nodeCount - 1)))
+chainTopology fpgaTable = imap node fpgaTable
  where
-  -- Map a clock cycle in the source domain to the destination domain. Goes through integer
-  -- because the mapping can be negative. If the result would be negative, return maxBound
-  -- to indicate that the event will not happen within the timespan of this test.
-  mapCycle :: Unsigned 64 -> Index nodeCount -> Index nodeCount -> Unsigned 64
-  mapCycle srcCycle src dst = if dstCycleI < 0 then maxBound else fromInteger dstCycleI
-   where
-    dstCycleI = srcCycleI + counterMap !! src Map.! dst
-    srcCycleI = toInteger srcCycle
-
-    ugnPartsI = map (map (bimap toInteger toInteger)) ugnParts
-    counterMap = Calc.toCounterMap internalDelay (Calc.toFpgaIndexed fpgaTable ugnPartsI)
-
-  nextState (fpgaIndex, firstBCycle) = (fpgaIndex + 1, nextFirstBCycle)
-   where
-    nextFirstBCycle = mapCycle (firstBCycle + 1) fpgaIndex (fpgaIndex + 1)
-
-  genConfig (fpgaIndex, firstBCycle) =
-    NodeConfig
-      { firstBCycle
-      , readLink = toLinkIndex fpgaIndex <$> readFpgaIdx
-      , writeLink = toLinkIndex fpgaIndex <$> writeFpgaIdx
-      }
+  node fpgaIndex (_, links) = (toLink <$> readFpgaIdx, toLink <$> writeFpgaIdx)
    where
     readFpgaIdx = if fpgaIndex == 0 then Nothing else Just (fpgaIndex - 1)
     writeFpgaIdx = if fpgaIndex == maxBound then Nothing else Just (fpgaIndex + 1)
+    toLink target = fromJust (elemIndex target links)
 
-    toLinkIndex currentFpga targetFpga =
-      let links = snd (fpgaTable !! currentFpga)
-       in fromJust $ elemIndex targetFpga links
-
-{- | Read the current time in clock cycles from the given target/device using the given
-GDB connection. Requires the CPU to be halted.
+{- | The fixed application-domain schedule, derived entirely from 'targetUgns' (and the
+structural chain topology), hence constant across runs. Each node's @first_b_cycle@ is
+the running sum of the per-hop application steps @1 + targetLatency + internalDelay@;
+the boot offsets are not here -- they live in the per-node timed-reset release.
 -}
-readCurrentTime :: (HasCallStack) => MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
-readCurrentTime mm (_, d) gdb = do
-  putStrLn $ "Getting current time from device " <> d.deviceId
-  commandAddress <- expectRight $ getPathAddress mm ["0", "Timer", "command"]
-  scratchAddress <- expectRight $ getPathAddress mm ["0", "Timer", "scratchpad"]
-  Gdb.writeLe gdb commandAddress Capture
-  Gdb.readLe gdb scratchAddress
+appSchedule :: Vec FpgaCount (NodeConfig (FpgaCount - 1))
+appSchedule =
+  zipWith
+    (\firstBCycle (readLink, writeLink) -> NodeConfig{firstBCycle, readLink, writeLink})
+    appFbcs
+    (chainTopology fpgaSetup)
+ where
+  appStep k =
+    checkedFromIntegral
+      (1 + targetChainStep (indexToNodeId k) (indexToNodeId (k + 1)) + fromIntegral internalDelay)
+  appSteps = map appStep (init indicesI) :: Vec (FpgaCount - 1) (Unsigned 64)
+  appFbcs = scanl (+) appScheduleBase appSteps
 
 {- | Read the hardware UGNs of the given device using the given GDB connection. Requires
 the CPU to be halted.
@@ -343,20 +372,112 @@ driver testName targets = do
             putStrLn "UGN pairs table:"
             mapM_ print ugnPairsTableV
 
-          -- Calculate schedule and write configurations
+          -- Relabel this boot onto the stored target latencies, using the reusable
+          -- grooming components ("Bittide.Instances.Hitl.Utils.Relabel"): build UGN
+          -- edges from the measured counters, groom them (Bellman-Ford) onto
+          -- λ^safe = the target latency on both directions of every chain hop, and turn
+          -- the result into per-node reset releases (which remove the boot-time counter
+          -- offsets) and per-link frame corrections (which raise each link's latency to
+          -- the target). The application then runs one FIXED schedule built from the
+          -- target latencies -- identical every run.
           currentTime <-
             liftIO $ readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head managementUnitGdbs)
           let
-            startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-            schedule = generateSchedule fpgaSetup ugnPairsTableV startOffset
-          liftIO $ do
-            putStrLn "Generated schedule:"
-            mapM_ print schedule
-          liftIO $ putStrLn [i|Starting clock cycle: #{startOffset}|]
-          _ <- sequenceA $ L.zipWith3 writePeConfig targets managementUnitGdbs (toList schedule)
-          _ <- sequenceA $ L.zipWith3 writeProgrammableMuxConfig targets managementUnitGdbs (toList schedule)
+            -- Shared reference instant for the relabel: node 0's current time plus a
+            -- large constant. 'StartDelay' must exceed the GDB bookkeeping time, else a
+            -- node's reset could release before it is fully configured.
+            sharedBase = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
 
-          -- Wait for test completion
+            -- This boot's measured UGN edges, restricted to the chain (grooming matches
+            -- edges by node pair against the chain 'targetUgns').
+            measuredEdges =
+              L.filter
+                (\e -> (e.srcNode, e.dstNode) `elem` chainPairs)
+                (hardwareUgnEdges ugnPairsTableV)
+
+          -- Groom this boot's measured UGNs onto the target (Bellman-Ford feasibility +
+          -- round-trip split). 'appSchedule' is fixed and derived from the same
+          -- 'targetUgns'.
+          RelabelPlan{resetOffsets, corrections = correctionsPerNode} <-
+            case computeRelabel measuredEdges targetUgns of
+              Left ns ->
+                fail
+                  $ "UGN grooming infeasible (UGNs changed too much); negative cycle through nodes: "
+                  <> show ns
+              Right plan -> pure plan
+
+          let
+            -- tReset_i = sharedBase + reset offset (the relabel that removes node i's
+            -- boot-time counter offset; the application counter is 0 at release).
+            tResets :: Vec FpgaCount (Unsigned 64)
+            tResets =
+              map (\off -> checkedFromIntegral (toInteger sharedBase + toInteger off)) resetOffsets
+          liftIO $ do
+            putStrLn
+              [i|Shared reference base (node 0 now + #{natToNum @StartDelay :: Integer}s): #{sharedBase}|]
+            putStrLn [i|Target one-way latencies (lambda^safe): #{toList targetHopLatencies}|]
+            putStrLn "Per-node reset offset (relabel q, gauged to node 0):"
+            mapM_ print (toList resetOffsets)
+            putStrLn "Per-node tReset (= sharedBase + reset offset):"
+            mapM_ print (toList tResets)
+            putStrLn "Per-node frame corrections (per link):"
+            mapM_ print (toList correctionsPerNode)
+            putStrLn "Fixed app-domain schedule (relabeled domain, same every run):"
+            mapM_ print appSchedule
+
+          -- Step 3: write the fixed application configuration (in the relabeled domain).
+          _ <- sequenceA $ L.zipWith3 writePeConfig targets managementUnitGdbs (toList appSchedule)
+          _ <-
+            sequenceA $ L.zipWith3 writeProgrammableMuxConfig targets managementUnitGdbs (toList appSchedule)
+
+          -- Step 5: apply the elastic-buffer corrections BEFORE the application runs.
+          -- The application is still held in reset (tReset not yet set), so resuming
+          -- the MUs only runs the corrections firmware, which applies the frames
+          -- (within a safe occupancy margin) and reports success; then halt again.
+          liftIO $ do
+            putStrLn "\n=== Applying elastic-buffer corrections ==="
+            mapConcurrently_
+              (\(gdb, corr) -> writeCorrections MemoryMaps.managementUnit gdb corr)
+              (L.zip managementUnitGdbs (toList correctionsPerNode))
+            mapConcurrently_ Gdb.continue managementUnitGdbs
+            T.tryWithTimeoutOn
+              T.PrintActionTime
+              "Waiting for corrections to be applied"
+              60_000_000
+              goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico -> waitForLine pico "[MU] Corrections applied successfully"
+            mapConcurrently_ Gdb.interrupt managementUnitGdbs
+
+          -- Step 6: set tReset so every node's application leaves reset at the relabeled
+          -- moment (its application counter becomes 0 there).
+          liftIO $ do
+            putStrLn "\n=== Setting tReset ==="
+            forM_ (L.zip managementUnitGdbs (toList tResets)) $ \(gdb, tReset) ->
+              writeReleaseCycle MemoryMaps.managementUnit gdb tReset
+
+          -- Safety check: every node must still be *before* its tReset. Writing the
+          -- configs + corrections + tReset over GDB takes time; if it took longer than
+          -- the 'StartDelay' margin, a node's local counter may already have passed its
+          -- tReset, in which case its reset releases (and the programmable mux's
+          -- equality trigger is missed) before the schedule is in effect.
+          releaseInTime <-
+            liftIO $ forM (L.zip3 targets managementUnitGdbs (toList tResets)) $ \(tgt@(_, d), gdb, tReset) -> do
+              let did = d.deviceId
+              now <- readCurrentTime MemoryMaps.managementUnit tgt gdb
+              let inTime = now < tReset
+              if inTime
+                then
+                  putStrLn
+                    [i|  #{did}: ok (now=#{now} < tReset=#{tReset}, margin=#{toInteger tReset - toInteger now} cycles)|]
+                else
+                  putStrLn
+                    [i|  [ERROR] #{did}: now=#{now} has already passed tReset=#{tReset} — setup took too long|]
+              pure inTime
+          unless (L.and releaseInTime)
+            $ fail "Reset-release window missed: setup took longer than the StartDelay margin"
+
+          -- Step 7: wait for the application to run, then read back and verify the data.
           liftIO $ do
             let delayMicros = natToNum @((StartDelay + 1) * 1_000_000)
             putStrLn [i|Sleeping for: #{delayMicros}μs ...|]
@@ -365,7 +486,6 @@ driver testName targets = do
               readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head managementUnitGdbs)
             putStrLn [i|Clock is now: #{newCurrentTime}|]
 
-          -- Verify test results
           let
             dnas = L.map (.dna) demoRigInfo
             expectedWrittenDatas = L.tail $ L.scanl xor 0 $ L.map resize dnas
