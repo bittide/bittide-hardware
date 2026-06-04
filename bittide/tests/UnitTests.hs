@@ -17,6 +17,7 @@ import qualified Tests.Calculator
 import qualified Tests.Clash.Protocols.Wishbone.Extra -- Should be moved to bittide-extra, but depends on wbStorage
 import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
+import qualified Tests.ClockControl.Ugn.Grooming
 import qualified Tests.DelayWishbone
 import qualified Tests.Df
 import qualified Tests.DoubleBufferedRam
@@ -44,6 +45,7 @@ tests =
     , Tests.Clash.Protocols.Wishbone.Extra.tests
     , Tests.ClockControl.Freeze.tests
     , Tests.ClockControl.Si539xSpi.tests
+    , Tests.ClockControl.Ugn.Grooming.tests
     , Tests.DelayWishbone.tests
     , Tests.Df.tests
     , Tests.DoubleBufferedRam.tests
