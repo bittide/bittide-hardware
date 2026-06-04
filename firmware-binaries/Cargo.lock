@@ -1012,6 +1012,7 @@ dependencies = [
  "bittide-build-utils",
  "bittide-hal",
  "bittide-sys",
+ "clash-bindings",
  "riscv-rt 0.11.0",
  "ufmt",
 ]
