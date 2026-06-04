@@ -3,10 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {- |
-Contains the `ReqResp` protocol, the simplest possible protocol for request-response communication
-together with utilities for working with it. `ReqResp` is suitable for simple request-response
-interactions where pipelining is not required. If you need pipelining, you can use the `BiDf`
-protocol instead.
+Contains additional circuits and helpers around the `ReqResp` protocol.
 -}
 module Protocols.Experimental.ReqResp.Extra (
   -- * Blockram interfaces
