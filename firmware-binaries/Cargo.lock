@@ -194,7 +194,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 [[package]]
 name = "clash-bindings"
 version = "0.1.0"
-source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=9107407a3dbf73533e21251f8d400472d8eb2ec9#9107407a3dbf73533e21251f8d400472d8eb2ec9"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=005426baa1e9c08754c99ae56cb764d759a60f4a#005426baa1e9c08754c99ae56cb764d759a60f4a"
 dependencies = [
  "clash-macros",
  "const_panic",
@@ -205,7 +205,7 @@ dependencies = [
 [[package]]
 name = "clash-macros"
 version = "0.1.0"
-source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=9107407a3dbf73533e21251f8d400472d8eb2ec9#9107407a3dbf73533e21251f8d400472d8eb2ec9"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=005426baa1e9c08754c99ae56cb764d759a60f4a#005426baa1e9c08754c99ae56cb764d759a60f4a"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -419,7 +419,7 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 [[package]]
 name = "memorymap-compiler"
 version = "0.1.0"
-source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=9107407a3dbf73533e21251f8d400472d8eb2ec9#9107407a3dbf73533e21251f8d400472d8eb2ec9"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=005426baa1e9c08754c99ae56cb764d759a60f4a#005426baa1e9c08754c99ae56cb764d759a60f4a"
 dependencies = [
  "derivative",
  "heck",
@@ -433,7 +433,7 @@ dependencies = [
 [[package]]
 name = "memorymap-compiler-c"
 version = "0.1.0"
-source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=9107407a3dbf73533e21251f8d400472d8eb2ec9#9107407a3dbf73533e21251f8d400472d8eb2ec9"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=005426baa1e9c08754c99ae56cb764d759a60f4a#005426baa1e9c08754c99ae56cb764d759a60f4a"
 dependencies = [
  "heck",
  "memorymap-compiler",
@@ -444,7 +444,7 @@ dependencies = [
 [[package]]
 name = "memorymap-compiler-rust"
 version = "0.1.0"
-source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=9107407a3dbf73533e21251f8d400472d8eb2ec9#9107407a3dbf73533e21251f8d400472d8eb2ec9"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=005426baa1e9c08754c99ae56cb764d759a60f4a#005426baa1e9c08754c99ae56cb764d759a60f4a"
 dependencies = [
  "heck",
  "memorymap-compiler",

@@ -13,8 +13,8 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-memorymap-compiler = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "9107407a3dbf73533e21251f8d400472d8eb2ec9" }
-memorymap-compiler-c = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "9107407a3dbf73533e21251f8d400472d8eb2ec9" }
+memorymap-compiler = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "005426baa1e9c08754c99ae56cb764d759a60f4a" }
+memorymap-compiler-c = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "005426baa1e9c08754c99ae56cb764d759a60f4a" }
 
 [dependencies]
 cc = "1.2"

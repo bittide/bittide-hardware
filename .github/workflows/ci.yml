@@ -53,8 +53,6 @@ env:
   bittide_extra_datadir: "${{ github.workspace }}/bittide-extra/"
   bittide_instances_datadir: "${{ github.workspace }}/bittide-instances/"
   bittide_shake_datadir: "${{ github.workspace }}/bittide-shake/"
-  clash_bitpackc_datadir: "${{ github.workspace }}/clash-bitpackc/"
-  clash_protocols_memmap_datadir: "${{ github.workspace }}/clash-protocols-memmap/"
   gdb_hs_datadir: "${{ github.workspace }}/gdb-hs/"
   ghc_typelits_extra_lemmas_datadir: "${{ github.workspace }}/ghc-typelits-extra-lemmas/"
   vivado_hs_datadir: "${{ github.workspace }}/vivado-hs/"
@@ -332,8 +330,6 @@ jobs:
           - bittide-experiments
           - bittide-extra
           - bittide-instances
-          - clash-bitpackc
-          - clash-protocols-memmap
           - gdb-hs
           - ghc-typelits-extra-lemmas
 
