@@ -59,6 +59,7 @@ import Protocols
 import Bittide.CaptureUgn (captureUgn, sendUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.ClockControl.Ugn.Corrections (correctionsWb)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
 import Bittide.Extra.Maybe (toMaybe)
@@ -76,6 +77,7 @@ import Bittide.ProcessingElement (
 import Bittide.RingBuffer (receiveRingBuffer, transmitRingBuffer)
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
+import Bittide.TimedReset (timedResetWb)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx (withXilinx)
@@ -105,8 +107,10 @@ type FifoSize = 5 -- = 2^5 = 32
     - `timeWb`
     - DNA
     - UART
+    - UGN grooming corrections
+    - application reset (TimedReset)
 -}
-type NmuInternalBusses = 3 + PeInternalBusses
+type NmuInternalBusses = 5 + PeInternalBusses
 
 {- Busses per link:
     - UGN component
@@ -144,6 +148,10 @@ type UserCoreCircuit userCoreBusses muRemBusWidth =
     Enable Bittide ->
     Signal Bittide (Unsigned 64) ->
     Signal Bittide (Maybe (BitVector 96)) ->
+    -- Application reset, released by the management unit's 'timedResetWb' at a
+    -- chosen local-counter cycle (the UGN-grooming relabel). Demos that have an
+    -- application counter gate it on this reset; others may ignore it.
+    Reset Bittide ->
     Circuit
       ( Vec userCoreBusses (ToConstBwd Mm, Bitbone Bittide muRemBusWidth)
       , "RXS2_RAW" ::: CSignal Bittide (Vec LinkCount (BitVector 64))
@@ -201,6 +209,7 @@ managementUnit ::
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
     ( Df dom (BitVector 8)
+    , "APP_RESET" ::: Reset dom
     , Vec
         (NmuExternalBusses userCoreBusses)
         ( ToConstBwd Mm.Mm
@@ -211,16 +220,24 @@ managementUnit externalCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
     allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
-    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
+    ([timeBus, uartBus, dnaBus, correctionsBus, timedResetBus], restBusses) <-
+      Vec.split -< allBusses
 
     -- Peripherals
     _localCounter <- timeWb (Just externalCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
+    -- Host-written UGN grooming corrections, polled and applied by the MU CPU.
+    correctionsWb @LinkCount -< correctionsBus
+    -- Application reset for the demo's user core: the management unit chooses the
+    -- local-counter cycle at which the application leaves reset (the UGN-grooming
+    -- relabel). The reset lives here, in the layer around the user core; the
+    -- application counter it gates lives in the user core itself.
+    appReset <- timedResetWb externalCounter -< timedResetBus
 
     -- Output
-    idC -< (uartOut, restBusses)
+    idC -< (uartOut, appReset, restBusses)
 
 core ::
   forall userCoreBusses ringBufferDepth.
@@ -262,7 +279,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
       localCounter = register bitClk bitRst bitEna 0 (localCounter + 1)
 
     -- Start management unit
-    (muUartBytesBittide, muWbAll) <-
+    (muUartBytesBittide, Fwd appReset, muWbAll) <-
       withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
     (ugnWbs, muWbs1) <- Vec.split -< muWbAll
     (ebWbs, muWbs2) <- Vec.split -< muWbs1
@@ -329,7 +346,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
 
     -- Start user core: post-handshake stage drives the GTH-TX wire.
     Fwd txsOut <-
-      mkUserCore bitClk bitRst bitEna localCounter maybeDna
+      mkUserCore bitClk bitRst bitEna localCounter maybeDna appReset
         -< ( extraMuBusses
            , Fwd (bundle rxs2Raw)
            , Fwd (bundle handshakesOut.toNeighbors)
