@@ -14,6 +14,7 @@ riscv = "^0.10"
 riscv-rt = "0.11.0"
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 ufmt = "0.2.0"
 heapless = "0.8.0"
 zerocopy = { version = "0.7", default-features = false }

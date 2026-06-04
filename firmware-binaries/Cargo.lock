@@ -51,6 +51,7 @@ name = "async-comms-demo-management-unit"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
+ "bittide-macros",
  "bittide-sys",
  "heapless",
  "log",

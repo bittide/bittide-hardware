@@ -13,11 +13,14 @@ use bittide_hal::manual_additions::timer::Duration;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::net_state::{UgnEdge, UgnReport};
 use bittide_sys::smoltcp::link_interface::LinkInterface;
-use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, UgnEdgeWire};
+use bittide_sys::smoltcp::link_protocol::{Command, CommandWire, NodeCorrectionWire, UgnEdgeWire};
+use bittide_sys::ugn_grooming::RelabelResult;
 use core::fmt::Write;
 use log::{debug, error, info, warn, LevelFilter};
 use riscv::register::{mcause, mepc, mtval};
 use ufmt::uwriteln;
+
+mod grooming;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 const LINK_COUNT: usize = 7;
@@ -297,6 +300,60 @@ fn main() -> ! {
         }
         info!("  Complete UGN graph: {} edges", report.count);
         writeln!(uart, "  Final UGN Report: {:?}", report).unwrap();
+
+        // Step 5: groom the full graph in-band and distribute each node's correction.
+        info!("Step 5: Grooming UGN graph in-band...");
+        match grooming::groom_report(&report, dna) {
+            RelabelResult::Infeasible(cycle) => {
+                error!(
+                    "  UGN grooming infeasible: negative slack cycle through {} nodes",
+                    cycle.len()
+                );
+            }
+            RelabelResult::Feasible(plan) => {
+                // Relabel reference in the local-counter domain: now + ~1s headroom, which
+                // dominates inter-node boot offsets and the distribution time so no node's
+                // release lands in the past.
+                INSTANCES.timer.freeze();
+                let now: u64 = INSTANCES.timer.scratchpad().into();
+                let headroom: u64 = INSTANCES.timer.frequency().into();
+                let shared_base = now + headroom;
+
+                for (i, link) in links.iter_mut().enumerate() {
+                    let Some(node) = partner_dnas[i] else {
+                        continue;
+                    };
+                    let correction = grooming::node_correction(&plan, &node, shared_base);
+                    let cmd: CommandWire = Command::ApplyCorrection.into();
+                    if link.send_blocking(&cmd, Duration::from_secs(1)).is_err()
+                        || link
+                            .send_blocking(&correction, Duration::from_secs(1))
+                            .is_err()
+                    {
+                        error!("  Link {}: failed to send correction", i);
+                        continue;
+                    }
+                    writeln!(
+                        uart,
+                        "  Correction sent to {:02X?}: release_cycle={}",
+                        node,
+                        correction.release_cycle()
+                    )
+                    .unwrap();
+                }
+
+                // Apply the manager's own correction.
+                let own = grooming::node_correction(&plan, &dna, shared_base);
+                grooming::apply(&elastic_buffers, &INSTANCES.timed_reset, &own);
+                writeln!(
+                    uart,
+                    "  Correction applied locally: release_cycle={}",
+                    own.release_cycle()
+                )
+                .unwrap();
+                uwriteln!(uart, "Grooming applied.").unwrap();
+            }
+        }
     } else {
         // Subordinate role: wait for manager command, then send report
         info!("Step 4: Subordinate waiting for manager command...");
@@ -337,6 +394,32 @@ fn main() -> ! {
             }
         }
         info!("  Sent {} edges to manager", edges_sent);
+
+        // Step 5: receive the manager's correction and apply it.
+        info!("Step 5: Waiting for grooming correction from manager...");
+        loop {
+            manager_link.poll();
+            if let Ok(wire) = manager_link.try_recv::<CommandWire>() {
+                match Command::try_from(wire) {
+                    Ok(Command::ApplyCorrection) => break,
+                    other => warn!(
+                        "  Unexpected command while awaiting correction: {:?}",
+                        other
+                    ),
+                }
+            }
+        }
+        let correction: NodeCorrectionWire = manager_link
+            .recv_blocking(Duration::from_secs(1))
+            .expect("Failed to receive correction");
+        grooming::apply(&elastic_buffers, &INSTANCES.timed_reset, &correction);
+        writeln!(
+            uart,
+            "  Correction applied: release_cycle={}",
+            correction.release_cycle()
+        )
+        .unwrap();
+        uwriteln!(uart, "Grooming applied.").unwrap();
     }
 
     uwriteln!(uart, "Demo complete.").unwrap();

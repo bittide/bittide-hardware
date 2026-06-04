@@ -14,3 +14,4 @@ pub mod sample_store;
 pub mod smoltcp;
 pub mod stability_detector;
 pub mod uart;
+pub mod ugn_grooming;
