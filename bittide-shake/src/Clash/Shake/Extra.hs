@@ -64,6 +64,7 @@ clashCmd buildDir hdl topName extraArgs =
     , hdlToFlag hdl
     , "-fclash-clear"
     , "-fclash-spec-limit=100"
+    , "-fclash-inline-limit=100"
     -- XXX: Slows down Clash massively (8m -> 16m for some of our demos)
     -- , "-fclash-debug"
     -- , "DebugSilent"

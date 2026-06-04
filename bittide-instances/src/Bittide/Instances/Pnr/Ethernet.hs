@@ -66,7 +66,7 @@ sim = do
           clockGen
           (resetGenN d2)
           (clockToDiffClock clockGen)
-          (pure $ unpack 0, uartRx, pure $ unpack 0)
+          (pure $ fromJustX (maybeUnpack 0), uartRx, pure $ fromJustX (maybeUnpack 0))
   uartIO @Basic125B stdin stdout baud $ Circuit go
 
 {- | Instance containing:

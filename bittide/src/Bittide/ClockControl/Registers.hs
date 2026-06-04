@@ -44,7 +44,7 @@ applyMask ::
   Signal dom (BitVector n) ->
   Signal dom (Vec n a) ->
   Signal dom (Vec n a)
-applyMask dflt mask xs = mux <$> fmap unpack mask <*> xs <*> pure (repeat dflt)
+applyMask dflt mask xs = mux <$> fmap (fromJustX . maybeUnpack) mask <*> xs <*> pure (repeat dflt)
 
 defCcConfLinks :: forall nLinks. (KnownNat nLinks) => CcConf (BitVector nLinks)
 defCcConfLinks =
@@ -159,7 +159,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
       }
 
   linkMaskRev :: Signal dom (BitVector nLinks)
-  linkMaskRev = pack . reverse . unpack @(Vec nLinks Bit) <$> linkMask
+  linkMaskRev = pack . reverse . fromJustX . maybeUnpack @(Vec nLinks Bit) <$> linkMask
 
   numberOfLinks :: Unsigned 8
   numberOfLinks = natToNum @nLinks

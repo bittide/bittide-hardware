@@ -60,8 +60,8 @@ parse1 = do
   localClockCounter <- Get.getWord64le
   numberOfSyncPulsesSeen <- Get.getWord32le
   cyclesSinceSyncPulse <- Get.getWord32le
-  stables <- C.unpack . C.truncateB . C.pack <$> Get.getWord8
-  settleds <- C.unpack . C.truncateB . C.pack <$> Get.getWord8
+  stables <- C.fromJustX . C.maybeUnpack . C.truncateB . C.pack <$> Get.getWord8
+  settleds <- C.fromJustX . C.maybeUnpack . C.truncateB . C.pack <$> Get.getWord8
   _ <- Get.getByteString 2 -- padding
   netSpeedChange <- Get.getInt32le
   ebCounters <- sequence (C.repeat Get.getInt32le)
@@ -124,8 +124,8 @@ toNamedRecord# sample =
   go i buffer = ("eb_counter_" <> Char8.pack (show i), Csv.toField buffer.dataCount)
 
   stables, settleds :: Word8
-  stables = C.unpack $ C.extend $ C.pack $ fmap (.stable) sample.buffers
-  settleds = C.unpack $ C.extend $ C.pack $ fmap (.settled) sample.buffers
+  stables = C.fromJustX . C.maybeUnpack $ C.extend $ C.pack $ fmap (.stable) sample.buffers
+  settleds = C.fromJustX . C.maybeUnpack $ C.extend $ C.pack $ fmap (.settled) sample.buffers
 
 instance Csv.ToNamedRecord Sample where
   toNamedRecord = Csv.namedRecord . toNamedRecord#

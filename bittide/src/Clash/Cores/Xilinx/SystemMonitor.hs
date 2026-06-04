@@ -27,7 +27,7 @@ temperatureMonitorCelcius ::
 temperatureMonitorCelcius = bundle (status, temperature)
  where
   (status, measurement) = unbundle temperatureMonitor
-  temperature = toSigned <<$>> dflipflop (toCelcius . unpack <<$>> dflipflop measurement)
+  temperature = toSigned <<$>> dflipflop (toCelcius . (fromJustX . maybeUnpack) <<$>> dflipflop measurement)
    where
     toSigned ::
       forall int frac. (KnownNat int, KnownNat frac) => SFixed int frac -> Signed int

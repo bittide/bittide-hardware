@@ -49,7 +49,7 @@ tests =
     ]
 
 mergeWithMask :: BitVector 32 -> BitVector 32 -> BitVector 4 -> BitVector 32
-mergeWithMask (unpack -> old) (unpack -> new) (unpack -> mask) =
+mergeWithMask (fromJustX . maybeUnpack -> old) (fromJustX . maybeUnpack -> new) (fromJustX . maybeUnpack -> mask) =
   pack (mux @(Vec 4) @(BitVector 8) mask new old)
 
 {- | Test that delayWishbone correctly delays Wishbone transactions

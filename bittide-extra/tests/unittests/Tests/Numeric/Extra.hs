@@ -25,7 +25,7 @@ should be the same as the original value.
 -}
 parseHexInRange ::
   forall a m.
-  (Monad m, BitPack a, Eq a, Show a, Bounded a, Integral a) =>
+  (Monad m, BitPack a, NFDataX a, Eq a, Show a, Bounded a, Integral a) =>
   Gen a ->
   PropertyT m ()
 parseHexInRange genA = do
@@ -47,7 +47,7 @@ parse it back. The result should yield a parse error.
 -}
 parseHexOutOfRange ::
   forall a m.
-  (Monad m, BitPack a, Eq a, Show a, Bounded a, Integral a, Typeable a) =>
+  (Monad m, BitPack a, NFDataX a, Eq a, Show a, Bounded a, Integral a, Typeable a) =>
   Gen a ->
   PropertyT m ()
 parseHexOutOfRange genA = do

@@ -128,7 +128,7 @@ stickyBits ::
   SNat stickyCycles ->
   Signal dom a ->
   Signal dom a
-stickyBits clk rst ena SNat = mealy clk rst ena go (0, unpack 0)
+stickyBits clk rst ena SNat = mealy clk rst ena go (0, fromJustX (maybeUnpack 0))
  where
   go :: (Index stickyCycles, a) -> a -> ((Index stickyCycles, a), a)
   go (count, storedBits) incomingBits = ((nextCount, nextStored), storedBits)
@@ -139,7 +139,7 @@ stickyBits clk rst ena SNat = mealy clk rst ena go (0, unpack 0)
     (nextStored, nextCount)
       | newIncoming = (incomingBits, maxBound)
       | holdingBits = (storedBits, predCount)
-      | otherwise = (unpack 0, predCount)
+      | otherwise = (fromJustX (maybeUnpack 0), predCount)
 
 {- | The minimum hold time for FINC/FDEC pulses for the Si539* boards Bittide works
 with is specified as 100ns. An additional 50ns is included for margin of error.

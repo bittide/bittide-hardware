@@ -257,11 +257,11 @@ readingSlaves = property $ do
     | otherwise =
         (emptyWishboneS2M @4)
           { acknowledge = True
-          , readData = unpack $ resize indexBV
+          , readData = fromJustX . maybeUnpack $ resize indexBV
           }
    where
     commAttempt = m.busCycle && m.strobe
-    maybeIndex = elemIndex (unpack indexBV) config
+    maybeIndex = elemIndex (fromJustX (maybeUnpack indexBV)) config
     (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split m.addr
     inRange index = restAddr <= (ranges !! index)
 
@@ -351,7 +351,7 @@ writingSlaves = property $ do
           }
    where
     commAttempt = m.busCycle && m.strobe
-    maybeIndex = elemIndex (unpack indexBV) config
+    maybeIndex = elemIndex (fromJustX (maybeUnpack indexBV)) config
     (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split m.addr
     inRange index = restAddr <= (ranges !! index)
 
@@ -410,7 +410,10 @@ prop_dfWishboneMaster =
     (resp, reg1) = case req of
       WB.ReadRequest addr sel
         | addr <= range ->
-            (WB.ReadSuccess $ mux (unpack sel) (map Just $ unpack reg0) (repeat Nothing), reg0)
+            ( WB.ReadSuccess
+                $ mux (fromJustX (maybeUnpack sel)) (map Just $ fromJustX (maybeUnpack reg0)) (repeat Nothing)
+            , reg0
+            )
       WB.ReadRequest _ _ -> (WB.ReadError, reg0)
       WB.WriteRequest addr _ dat
         | addr <= range ->

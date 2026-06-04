@@ -719,7 +719,12 @@ handshakeMaybe ::
 handshakeMaybe clkSrc clkDst srcIn dstAck = (srcRcv, toMaybe <$> dstReq <*> dstOut)
  where
   (dstOut, dstReq, srcRcv) =
-    handshake @vendor clkSrc clkDst (fromMaybe (unpack 0) <$> srcIn) (isJust <$> srcIn) dstAck
+    handshake @vendor
+      clkSrc
+      clkDst
+      (fromMaybe (fromJustX (maybeUnpack 0)) <$> srcIn)
+      (isJust <$> srcIn)
+      dstAck
 
 {- | Reliable CDC component based on 'handshakeMaybe' without backpressure and with limited
 throughput. Data will be lost if the `src` domain provides more inputs than the circuit can handle.

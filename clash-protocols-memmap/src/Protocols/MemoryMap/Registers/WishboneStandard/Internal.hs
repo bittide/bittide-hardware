@@ -494,7 +494,7 @@ wishboneToRequestResponse access wbM2S respData
   writeFault = access == WriteOnly && not wbM2S.writeEnable
 
   -- Address calculation: compute index within addressable range
-  wbAddr = unpack $ resize wbM2S.addr
+  wbAddr = fromJustX . maybeUnpack $ resize wbM2S.addr
 
   -- Request Response
   validRead = masterActive && not wbM2S.writeEnable && not readFault
@@ -746,9 +746,9 @@ maskWriteData ::
 maskWriteData offset mask busData regData = adjust offset regData $ \regWord ->
   pack
     $ mux
-      (unpack mask :: Vec wordSize Bool)
-      (unpack busData :: Vec wordSize (BitVector 8))
-      (unpack regWord :: Vec wordSize (BitVector 8))
+      (fromJustX (maybeUnpack mask) :: Vec wordSize Bool)
+      (fromJustX (maybeUnpack busData) :: Vec wordSize (BitVector 8))
+      (fromJustX (maybeUnpack regWord) :: Vec wordSize (BitVector 8))
  where
   adjust ::
     forall n a.

@@ -146,7 +146,7 @@ unpad ::
   Vec nBytes (Bytes 1)
 unpad v =
   case compareSNat (SNat @nBytes) (SNat @(SizeInWords wordSize nBytes * wordSize)) of
-    SNatLE -> unpadVec . concat . map (reverse . unpack) $ v
+    SNatLE -> unpadVec . concat . map (reverse . fromJustX . maybeUnpack) $ v
     _ -> clashCompileError "Impossible: nBytes > SizeInWords wordSize nBytes"
 
 -- | Extend a vector with supplied default value to a given length

@@ -344,7 +344,7 @@ case_indexMaxBoundExeededError = do
     let maxVal = maxBound :: Index n
     let maxBv = pack $ packC LittleEndian maxVal
     let oneLargerBv = maxBv + 1
-    let oneLarger = unpack oneLargerBv
+    let oneLarger = fromJustX (maybeUnpack oneLargerBv)
     maybeUnpackC @(Index n) LittleEndian oneLarger @?= Nothing
 
 tests :: TestTree

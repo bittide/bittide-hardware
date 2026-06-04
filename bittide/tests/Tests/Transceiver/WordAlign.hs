@@ -54,7 +54,7 @@ case_dealignLsbFirst = do
   (0xB, 0xC, 0xD, 0x0) @=? go 3
  where
   go :: Index 4 -> (HexByte, HexByte, HexByte, HexByte)
-  go offset = unpack (WordAlign.dealignLsbFirst offset (pack word1) (pack word2))
+  go offset = fromJustX (maybeUnpack (WordAlign.dealignLsbFirst offset (pack word1) (pack word2)))
 
 case_alignLsbFirst :: Assertion
 case_alignLsbFirst = do
@@ -64,7 +64,7 @@ case_alignLsbFirst = do
   (0xD, 0x0, 0x1, 0x2) @=? go 3
  where
   go :: Index 4 -> (HexByte, HexByte, HexByte, HexByte)
-  go offset = unpack (WordAlign.alignLsbFirst offset (pack word1) (pack word2))
+  go offset = fromJustX (maybeUnpack (WordAlign.alignLsbFirst offset (pack word1) (pack word2)))
 
 case_dealignMsbFirst :: Assertion
 case_dealignMsbFirst = do
@@ -74,7 +74,7 @@ case_dealignMsbFirst = do
   (0x1, 0x2, 0x3, 0xA) @=? go 3
  where
   go :: Index 4 -> (HexByte, HexByte, HexByte, HexByte)
-  go offset = unpack (WordAlign.dealignMsbFirst offset (pack word1) (pack word2))
+  go offset = fromJustX (maybeUnpack (WordAlign.dealignMsbFirst offset (pack word1) (pack word2)))
 
 case_alignMsbFirst :: Assertion
 case_alignMsbFirst = do
@@ -84,7 +84,7 @@ case_alignMsbFirst = do
   (0x3, 0xA, 0xB, 0xC) @=? go 3
  where
   go :: Index 4 -> (HexByte, HexByte, HexByte, HexByte)
-  go offset = unpack (WordAlign.alignMsbFirst offset (pack word1) (pack word2))
+  go offset = fromJustX (maybeUnpack (WordAlign.alignMsbFirst offset (pack word1) (pack word2)))
 
 prop_alignDealign ::
   (forall n. WordAlign.AlignmentFn n) ->

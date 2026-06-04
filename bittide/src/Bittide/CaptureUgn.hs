@@ -93,7 +93,7 @@ captureUgns localCounter (C.dflipflop -> linkIns) = circuit $ \bus -> do
   localCounters = toMaybe <<$>> triggers <<*>> fmap repeat localCounter
 
   remoteCounters :: Signal dom (Vec n (Maybe (Unsigned 64)))
-  remoteCounters = toMaybe <<$>> triggers <<*>> (unpack <<$>> rawLinkIns)
+  remoteCounters = toMaybe <<$>> triggers <<*>> ((fromJustX . maybeUnpack) <<$>> rawLinkIns)
 
   -- 'elastic_buffer_delta' is firmware-writable only; no hardware updates.
   ebDeltas :: Signal dom (Vec n (Maybe (Signed 32)))

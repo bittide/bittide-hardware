@@ -66,7 +66,8 @@ splitMsbs ::
 splitMsbs =
   bimap pack pack
     . unzip
-    . unpack @(Vec nBytes (Bit, BitVector (byteWidth - 1)))
+    . fromJustX
+    . maybeUnpack @(Vec nBytes (Bit, BitVector (byteWidth - 1)))
 
 -- | Opposite of 'splitMsbs'.
 joinMsbs ::
@@ -81,8 +82,8 @@ joinMsbs ::
 joinMsbs msbs bvs =
   pack
     $ zip
-      (unpack @(Vec nBytes Bool) msbs)
-      (unpack @(Vec nBytes (BitVector (byteWidth - 1))) bvs)
+      (fromJustX (maybeUnpack @(Vec nBytes Bool) msbs))
+      (fromJustX (maybeUnpack @(Vec nBytes (BitVector (byteWidth - 1))) bvs))
 
 alignSymbol :: forall n. (KnownNat n, 1 <= n) => BitVector n
 alignSymbol = 1 +>>. 0
@@ -107,7 +108,7 @@ alignBytesFromMsbs ::
 alignBytesFromMsbs alignFn freeze dat =
   aligner alignFn freeze (oneHotDecoder <$> msbs) dat
  where
-  msbs = unpack . fst . splitMsbs @n <$> dat
+  msbs = fromJustX . maybeUnpack . fst . splitMsbs @n <$> dat
   oneHotDecoder = fromMaybe 0 . elemIndex True
 
 data State n = State {prev :: Bytes n, offset :: Index n}
@@ -185,7 +186,7 @@ shiftBytesL bv n = shiftL bv (8 * fromIntegral n)
 
 -- | Take upper bits of given 'BitVector'
 takeMsbs :: forall n. (KnownNat n) => Bytes (2 * n) -> Bytes n
-takeMsbs = fst . unpack @(Bytes n, Bytes n)
+takeMsbs = fst . fromJustX . maybeUnpack @(Bytes n, Bytes n)
 
 -- | Take lower bits of given 'BitVector'
 takeLsbs :: forall n. (KnownNat n) => Bytes (2 * n) -> Bytes n

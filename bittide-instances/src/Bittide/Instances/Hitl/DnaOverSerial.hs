@@ -51,7 +51,7 @@ dnaOverSerial diffClk serialIn = serialOut
 
 -- | Convert the DNA to ASCII and prepend a newline character.
 dnaToAscii :: BitVector 96 -> Vec 25 (BitVector 8)
-dnaToAscii x = resize (bitCoerce $ ord '\n') :> fmap bv4ToHexChar (unpack x)
+dnaToAscii x = resize (bitCoerce $ ord '\n') :> fmap bv4ToHexChar (fromJustX (maybeUnpack x))
 
 -- | Convert a 4-bit bitvector to a hex character.
 bv4ToHexChar :: BitVector 4 -> BitVector 8

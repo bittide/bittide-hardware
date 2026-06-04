@@ -17,13 +17,13 @@ parsed value is out of range of the @'Index' n@, but in range of
 @'BitVector' ('BitSize' ('Index' n))@. To fix this properly, we need a version
 of 'unpack' that returns a 'Maybe' value.
 -}
-parseHex :: forall a. (BitPack a) => String -> Either String a
+parseHex :: forall a. (BitPack a, NFDataX a) => String -> Either String a
 parseHex "" = Left "Empty string"
 parseHex s = do
   result <- foldM parseDigit (0 :: Integer) s
   if result > natToNum @(2 ^ BitSize a - 1)
     then Left $ "Value is out of range: " <> show result
-    else Right $ unpack (fromInteger result)
+    else Right $ fromJustX (maybeUnpack (fromInteger result))
  where
   parseDigit !a c
     | not (isHexDigit c) = Left $ "Non-hexadecimal digit: " <> [c] <> " in " <> s

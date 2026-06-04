@@ -314,7 +314,7 @@ ddr4Axi
       s2m_wr =
         mux
           s_axi_bvalid
-          (S2M_WriteResponse <$> s_axi_bid <*> (unpack <$> s_axi_bresp) <*> pure ())
+          (S2M_WriteResponse <$> s_axi_bid <*> (fmap (fromJustX . maybeUnpack) s_axi_bresp) <*> pure ())
           (pure S2M_NoWriteResponse)
       s2m_ra = S2M_ReadAddress <$> s_axi_arready
       s2m_rd =
@@ -323,7 +323,7 @@ ddr4Axi
           ( S2M_ReadData
               <$> s_axi_rid
               <*> s_axi_rdata
-              <*> (unpack <$> s_axi_rresp)
+              <*> (fmap (fromJustX . maybeUnpack) s_axi_rresp)
               <*> s_axi_rlast
               <*> pure ()
           )

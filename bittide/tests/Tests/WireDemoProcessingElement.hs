@@ -48,7 +48,7 @@ prop_WireDemoPe = H.property $ do
             maybeDna = pure (Just dna)
             readIndex = pure (Just 0)
             writeIndex = pure (Just 0)
-            peReset = unsafeFromActiveHigh $ (pure peResetCycle) .>. (unpack <$> c)
+            peReset = unsafeFromActiveHigh $ (pure peResetCycle) .>. (fmap (fromJustX . maybeUnpack) c)
 
           Fwd c <- idC -< cntr
           (Fwd linksOut, writtenData) <-
@@ -68,7 +68,7 @@ prop_WireDemoPe = H.property $ do
     (wDataBeforeActive, wDataAtWriteCycle, wDataAfterActive) = splitAtIndex (fromIntegral writeCycle) writtenData
 
     interestingCycles :: [Unsigned 64]
-    interestingCycles = L.map unpack $ L.take 10 (L.drop (fromIntegral writeCycle - 5) outLink)
+    interestingCycles = L.map (fromJustX . maybeUnpack) $ L.take 10 (L.drop (fromIntegral writeCycle - 5) outLink)
 
     firstNonZeroIndex = L.findIndex (/= 0) outLink
 

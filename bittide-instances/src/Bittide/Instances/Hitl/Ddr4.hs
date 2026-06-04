@@ -139,7 +139,7 @@ writeDataFsm SNat clk rst = Circuit go
     m2s = mux busy (mkWriteData <$> i0) (pure M2S_NoWriteData)
 
     idxToVec :: Index nAddresses -> Vec 4 (BitVector 8)
-    idxToVec = unpack . (resize @_ @_ @(4 * 8)) . pack
+    idxToVec = fromJustX . maybeUnpack . (resize @_ @_ @(4 * 8)) . pack
 
     mkWriteData :: Index nAddresses -> M2S_WriteData ConfW ()
     mkWriteData d =

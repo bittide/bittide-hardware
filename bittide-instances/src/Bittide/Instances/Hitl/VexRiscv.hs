@@ -91,7 +91,9 @@ sim = do
      where
       (_, (_, uartTx)) =
         withClockResetEnable clockGen (resetGenN d2) enableGen
-          $ toSignals (vexRiscvTestC @Basic125 peConfig) (((), (pure $ unpack 0, uartRx)), ((), ()))
+          $ toSignals
+            (vexRiscvTestC @Basic125 peConfig)
+            (((), (pure $ fromJustX (maybeUnpack 0), uartRx)), ((), ()))
   uartIO stdin stdout baud (Circuit go)
 
 {- | Wishbone accessible status register. Used to communicate the test status

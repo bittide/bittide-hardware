@@ -183,7 +183,7 @@ pairToWishboneRequestResponse m2s s2m
  where
   req
     | m2s.writeEnable =
-        WriteRequest m2s.addr m2s.busSelect (unpack m2s.writeData)
+        WriteRequest m2s.addr m2s.busSelect (fromJustX (maybeUnpack m2s.writeData))
     | otherwise =
         ReadRequest m2s.addr m2s.busSelect
 
@@ -192,10 +192,10 @@ pairToWishboneRequestResponse m2s s2m
     | s2m.err = ReadError
     | m2s.writeEnable = WriteSuccess
     | otherwise =
-        ReadSuccess (mux (unpack m2s.busSelect) (map Just readDataVec) (repeat Nothing))
+        ReadSuccess (mux (fromJustX (maybeUnpack m2s.busSelect)) (map Just readDataVec) (repeat Nothing))
 
   readDataVec :: Vec n Byte
-  readDataVec = unpack s2m.readData
+  readDataVec = fromJustX (maybeUnpack s2m.readData)
 
 genWishboneRequest ::
   (KnownNat addrW, KnownNat nBytes) =>

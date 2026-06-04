@@ -164,7 +164,8 @@ wbToDf ::
 wbToDf name = circuit $ \(mm, wb) -> do
   [wbData, wbCommit] <- Mm.deviceWbI (Mm.deviceConfig name) -< (mm, wb)
 
-  (dat, _0) <- registerWb hasClock hasReset cfgData (unpack 0) -< (wbData, Fwd noWrite)
+  (dat, _0) <-
+    registerWb hasClock hasReset cfgData (fromJustX (maybeUnpack 0)) -< (wbData, Fwd noWrite)
   (_1, df) <- registerWbDf hasClock hasReset cfgCommit () -< (wbCommit, Fwd noWrite)
 
   replaceDfData -< (dat, df)

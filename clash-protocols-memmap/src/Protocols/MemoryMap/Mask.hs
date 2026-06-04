@@ -73,7 +73,7 @@ fromVec = Mask . pack . reverse
 of the output (LSB-first).
 -}
 toVec :: (KnownNat n) => Mask n -> Vec n Bool
-toVec (Mask bv) = reverse (unpack bv)
+toVec (Mask bv) = reverse (fromJustX (maybeUnpack bv))
 
 {- | Reinterpret a 'BitVector' as a 'Mask'. The bit at position @i@ of the
 'BitVector' (counted from the LSB) corresponds to index @i@ in

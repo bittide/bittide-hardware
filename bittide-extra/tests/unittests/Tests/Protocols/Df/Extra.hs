@@ -71,7 +71,7 @@ mergeWithMask ::
   BitVector (bv * m) ->
   BitVector m ->
   BitVector (bv * m)
-mergeWithMask (unpack -> old) (unpack -> new) (unpack -> mask) =
+mergeWithMask (fromJustX . maybeUnpack -> old) (fromJustX . maybeUnpack -> new) (fromJustX . maybeUnpack -> mask) =
   pack (mux @(Vec m) @(BitVector bv) mask new old)
 
 -- | Simply try reading the initial contents of a blockram
@@ -316,8 +316,8 @@ splitWriteInBytes ::
   Vec m (Maybe (addr, BitVector n))
 splitWriteInBytes (Just (addr, writeData)) byteSelect =
   (\m d -> if m then Just d else Nothing)
-    <$> unpack byteSelect
-    <*> fmap (addr,) (unpack writeData)
+    <$> fromJustX (maybeUnpack byteSelect)
+    <*> fmap (addr,) (fromJustX (maybeUnpack writeData))
 splitWriteInBytes Nothing _ = repeat Nothing
 
 -- End of shamelessly copied code from bittide

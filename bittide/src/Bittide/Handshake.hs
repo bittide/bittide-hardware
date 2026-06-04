@@ -74,7 +74,7 @@ wordToMeta word
   -- TODO: There is some worry that we'd be looking at stale data even if we do see the
   --       magic constant. Future implementations could try and detect a sequence of
   --       @magicConstant@ followed by @complement magicConstant@.
-  | header == magicConstant = Just $ unpack meta
+  | header == magicConstant = maybeUnpack meta
   | otherwise = Nothing
  where
   (header, meta) = split @_ @(n - BitSize (Meta a)) word

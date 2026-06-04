@@ -62,8 +62,15 @@ data BitView (n :: Nat) a = BitView
 bitFromBytes :: forall n i. (KnownNat n, i <= 7) => SNat i -> BitView (n * 8) (BitVector n)
 bitFromBytes i@SNat =
   BitView
-    { getter = pack . C.map lsb . C.map (`shiftR` snatToNum i) . unpack @(Vec n (BitVector 8))
-    , setter = \slice bv -> pack (zipWith (setBitTo i) (unpack @(Vec n (BitVector 8)) bv) (unpack slice))
+    { getter =
+        pack . C.map lsb . C.map (`shiftR` snatToNum i) . fromJustX . maybeUnpack @(Vec n (BitVector 8))
+    , setter = \slice bv ->
+        pack
+          ( zipWith
+              (setBitTo i)
+              (fromJustX (maybeUnpack @(Vec n (BitVector 8)) bv))
+              (fromJustX (maybeUnpack slice))
+          )
     }
 
 {- | Similar to 'bitFromBytes', but instead of returning a 'BitVector n' it returns a type
@@ -85,18 +92,19 @@ aBitFromBytes ::
   forall a n i.
   ( KnownNat n
   , BitPack a
+  , NFDataX a
   , BitSize a <= n
   , i <= 7
   ) =>
   SNat i ->
   BitView (n * 8) a
-aBitFromBytes i = map (bitFromBytes @n i) (unpack . resize) (resize . pack)
+aBitFromBytes i = map (bitFromBytes @n i) (fromJustX . maybeUnpack . resize) (resize . pack)
 
 {- | Map a 'BitView' of type 'a' to a 'BitView' of type 'b' using the provided conversion
 functions.
 
 >>> let bvView = bitFromBytes (SNat @0) :: BitView 8 (BitVector 1)
->>> let boolView = map bvView (bitToBool . unpack) (pack . boolToBit)
+>>> let boolView = map bvView (bitToBool . fromJustX . maybeUnpack) (pack . boolToBit)
 >>> get boolView 0b0000_0001
 True
 >>> get boolView 0b0000_0000

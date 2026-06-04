@@ -442,8 +442,8 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       <$> inputs.channelNames
       <*> inputs.clockPaths
       <*> simOnlyHdlWorkaround (map SimOnly (Gth.unSimOnly inputs.rxSims))
-      <*> unbundle (unpack <$> inputs.rxNs)
-      <*> unbundle (unpack <$> inputs.rxPs)
+      <*> unbundle (fmap (fromJustX . maybeUnpack) inputs.rxNs)
+      <*> unbundle (fmap (fromJustX . maybeUnpack) inputs.rxPs)
       <*> inputs.channelResets
       <*> inputs.txDatas
       <*> rxClockNws
@@ -699,6 +699,6 @@ transceiverPrbsWith gthCore opts input = output
   -- Both the TX and RX domain may sometimes be disabled entirely. To prevent
   -- seeing stale signals, 'withLock' is employed. This means that constructs
   -- such as @withLockRxFree (pure True)@ are actually doing something!
-  withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
-  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
+  withLockRxFree = Cdc.withLock rxClock (fmap (fromJustX . maybeUnpack) reset_rx_done) clock reset
+  withLockTxFree = Cdc.withLock txClock (fmap (fromJustX . maybeUnpack) reset_tx_done) clock reset
 {-# INLINE transceiverPrbsWith #-}

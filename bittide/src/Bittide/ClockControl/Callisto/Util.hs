@@ -72,4 +72,4 @@ safePopCountTo32 ::
   BitVector n ->
   Signed 32
 safePopCountTo32 =
-  sumTo32 . unpack @(Vec n (RelDataCount 1))
+  sumTo32 . fromJustX . maybeUnpack @(Vec n (RelDataCount 1))

@@ -331,7 +331,10 @@ decreaseBusWidth SNat = Circuit (unbundle . mealy go initState . bundle)
       | bv == 0 = Nothing
       | otherwise = Just (resize $ pack idx)
 
-    lastAddress = fold (<|>) (zipWith combine (unpack m2sLeft.busSelect) (reverse indicesI) :< Nothing)
+    lastAddress =
+      fold
+        (<|>)
+        (zipWith combine (fromJustX (maybeUnpack m2sLeft.busSelect)) (reverse indicesI) :< Nothing)
 
     newAddress = m2sLeft.addr ++# addrLsbs
     addrLsbs

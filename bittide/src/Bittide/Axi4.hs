@@ -345,7 +345,7 @@ axiRxHandler SNat = Circuit go
       ~(maybeAxisM2S, pktLen, statusBV) =
         (newState, output)
        where
-        (packetComplete, bufferFull) = unpack statusBV
+        (packetComplete, bufferFull) = fromJustX (maybeUnpack statusBV)
 
         -- AXI stream handling
         axisReady = abortPacket || not (packetComplete || bufferFull)
@@ -553,10 +553,10 @@ rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
               (_, True) -> (BufferFull, ReadingPacket minBound)
               _ -> (AwaitingData, Idle)
              where
-              (packetComplete, bufferFull) = unpack $ resize readData
+              (packetComplete, bufferFull) = fromJustX . maybeUnpack $ resize readData
             (ReadingPacketSize, _) -> (PacketComplete packetSize, ReadingPacket 0)
              where
-              packetSize = unpack $ checkedResize readData
+              packetSize = fromJustX . maybeUnpack $ checkedResize readData
             (ReadingPacket i, _)
               | _tready && lastBytes bufState nextReadState -> (bufState, ClearingPacketLength)
               | _tready -> (bufState, nextReadState)
@@ -648,8 +648,8 @@ wbToAxiStreamTxBridge = Circuit $ \((dataFwd, sendFwd), axiS2M) ->
       Just (mask, dat) ->
         Just
           Axi4StreamM2S
-            { _tdata = reverse $ unpack dat
-            , _tkeep = reverse $ unpack mask
+            { _tdata = reverse $ fromJustX (maybeUnpack dat)
+            , _tkeep = reverse $ fromJustX (maybeUnpack mask)
             , _tlast = False
             , _tstrb = repeat False
             , _tid = 0
@@ -1203,7 +1203,8 @@ mkWriteData ::
 mkWriteData done wbM2S
   | not done && wbM2S.busCycle && wbM2S.strobe && wbM2S.writeEnable =
       M2S_WriteData
-        { _wdata = toStrobeDataType <$> (unpack wbM2S.busSelect) <*> (bitCoerce wbM2S.writeData)
+        { _wdata =
+            toStrobeDataType <$> (fromJustX (maybeUnpack wbM2S.busSelect)) <*> (bitCoerce wbM2S.writeData)
         , _wlast = True
         , _wuser = ()
         }

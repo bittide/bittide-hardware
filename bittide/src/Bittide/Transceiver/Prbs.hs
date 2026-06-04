@@ -97,7 +97,7 @@ checker clk rst ena Config = mealy clk rst ena go (maxBound, maxBound)
    where
     prbsOut :: Vec nBits Bit
     prbsState :: BitVector polyLength
-    (prbsState, prbsOut) = mapAccumL goPrbs prbsReg (reverse $ unpack prbsIn)
+    (prbsState, prbsOut) = mapAccumL goPrbs prbsReg (reverse $ fromJustX (maybeUnpack prbsIn))
 
     goPrbs :: BitVector polyLength -> Bit -> (BitVector polyLength, Bit)
     goPrbs bv newBit = (o, bitErr)
@@ -118,7 +118,7 @@ bitStep ::
   Bit
 bitStep bv tap =
   -- XXX: Replacing 'slice' by 'testBit' makes tests fail?
-  xor (lsb bv) (unpack $ slice tap tap bv)
+  xor (lsb bv) (fromJustX . maybeUnpack $ slice tap tap bv)
 
 data TrackerState
   = {- | Link is considered down. Needs 127 cycles of \"good\" input to transition

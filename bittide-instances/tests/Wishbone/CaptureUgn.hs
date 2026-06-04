@@ -40,7 +40,7 @@ case_capture_ugn_self_test = do
         <> showHex expectedRemoteCounter ""
     -- Note we do 'succ' on the "expectedLocalCounter" to account for the
     -- dflipflop inserted on captureUgn's link input
-    (succ -> expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
+    (succ -> expectedLocalCounter, fromJustX . maybeUnpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
     (actualLocalCounter, actualRemoteCounter) = parseResult simResult
     clk = clockGen
     rst = resetGenN d2

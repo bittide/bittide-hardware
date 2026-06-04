@@ -62,7 +62,7 @@ mergeWithMask ::
   BitVector (n * m) ->
   BitVector n ->
   BitVector (n * m)
-mergeWithMask (unpack -> old) (unpack -> new) (unpack -> mask) =
+mergeWithMask (fromJustX . maybeUnpack -> old) (fromJustX . maybeUnpack -> new) (fromJustX . maybeUnpack -> mask) =
   pack (mux @(Vec n) @(BitVector m) mask new old)
 
 -- | Generic memory model for a Wishbone slave.

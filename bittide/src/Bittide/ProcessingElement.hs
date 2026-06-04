@@ -220,7 +220,7 @@ printCharacters ::
 printCharacters Nil _ = pure ()
 printCharacters paths@(Cons _ _) inps = case inps of
   Just (byteSelect, chars) ->
-    sequence_ $ printToFiles <*> take SNat (unpack byteSelect) <*> take SNat chars
+    sequence_ $ printToFiles <*> take SNat (fromJustX (maybeUnpack byteSelect)) <*> take SNat chars
   Nothing -> pure ()
  where
   printToFiles = printToFile <$> paths

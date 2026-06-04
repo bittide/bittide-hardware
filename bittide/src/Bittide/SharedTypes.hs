@@ -166,14 +166,14 @@ getDataBe ::
   forall bw a. (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'BigEndian -> a
 getDataBe (RegisterBank vec) =
   case timesDivRU @bw @(BitSize a) of
-    Dict -> unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
+    Dict -> fromJustX . maybeUnpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
 -- | Transforms _RegisterBank_ to a.
 getDataLe ::
   forall bw a. (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'LittleEndian -> a
 getDataLe (RegisterBank (reverse -> vec)) =
   case timesDivRU @bw @(BitSize a) of
-    Dict -> unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
+    Dict -> fromJustX . maybeUnpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
 {- | Coerces a tuple of index n and a boolean to index (n*2) where the LSB of the result
 is determined by the boolean.

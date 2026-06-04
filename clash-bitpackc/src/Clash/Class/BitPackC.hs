@@ -41,7 +41,7 @@ type MaximumAlignmentBoundary = 8 :: Nat
 to pack to words instead, consider using 'BitPackC.Padding.wordPackC'.
 -}
 packC :: (BitPackC a) => ByteOrder -> a -> Vec (ByteSizeC a) (BitVector 8)
-packC byteOrder = unpack . packC# byteOrder
+packC byteOrder = fromJustX . maybeUnpack . packC# byteOrder
 
 {- | Unpack a vector of bytes packed according to C packing conversions to a type
 @a@. Returns a 'Nothing' if decoding fails. This can happen if the bytes mention
@@ -102,7 +102,7 @@ ordered as @BigEndian@ (Clash's native ordering).
 fromEndianBV ::
   forall n. (KnownNat n) => ByteOrder -> BitVector (n * 8) -> BitVector (n * 8)
 fromEndianBV BigEndian = id
-fromEndianBV LittleEndian = pack . reverse . unpack @(Vec n (BitVector 8))
+fromEndianBV LittleEndian = pack . reverse . fromJustX . maybeUnpack @(Vec n (BitVector 8))
 
 {- | Type class that can be implemented (or derived) to enable C-FFI safe
 representation of Haskell types. It can be derived automatically as long as
@@ -233,7 +233,7 @@ class
     -- XXX: Number of constructors could in theory be larger than what fits in
     --      an 'Int'. In practice this won't happen (I hope?!).
     selectedConstructor :: Int
-    selectedConstructor = unpack (resize selectedConstructorBits)
+    selectedConstructor = fromJustX (maybeUnpack (resize selectedConstructorBits))
 
     -- Strip padding introduced by 'MultipleOf' size requirements
     fields1 :: Bytes (GByteSizeC 0 (Rep a))
@@ -243,7 +243,8 @@ class
     _padding :: Bytes (Padding (ConstructorSizeC a) (GAlignmentBoundaryC (Rep a)))
     fields0 :: Bytes (MultipleOf (GByteSizeC 0 (Rep a)) (GAlignmentBoundaryC (Rep a)))
     (selectedConstructorBits, _padding, fields0) =
-      unpack
+      fromJustX
+        . maybeUnpack
         $
         -- Strip padding introduced by 'MultipleOf' size requirements
         msbResize val
@@ -302,7 +303,7 @@ instance (KnownNat n) => BitPackC (Unsigned n) where
   maybeUnpackC# byteOrder bv0 = un1
    where
     bv1 = fromEndianBV byteOrder bv0
-    un0 = unpack bv1 :: Unsigned (ByteSizeC (Unsigned n) * 8)
+    un0 = fromJustX (maybeUnpack bv1) :: Unsigned (ByteSizeC (Unsigned n) * 8)
     un1 = checkFits un0
 
 instance (KnownNat n) => BitPackC (Signed n) where
@@ -319,7 +320,7 @@ instance (KnownNat n) => BitPackC (Signed n) where
 
   maybeUnpackC# byteOrder bv = checkFits signExtendedVal
    where
-    signExtendedVal = unpack (fromEndianBV byteOrder bv) :: Signed (ByteSizeC (Signed n) * 8)
+    signExtendedVal = fromJustX (maybeUnpack (fromEndianBV byteOrder bv)) :: Signed (ByteSizeC (Signed n) * 8)
 
 {- | Checks whether the argument fits within the bounds of the result type. Only
 works when @BitSize (f a) <= @BitSize (f b)@.
@@ -353,7 +354,7 @@ instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
   maybeUnpackC# byteOrder bv0 =
     if bv1 > maxVal
       then Nothing
-      else Just (unpack $ resize bv1)
+      else Just (fromJustX . maybeUnpack $ resize bv1)
    where
     bv1 = fromEndianBV byteOrder bv0 :: BitVector (ByteSizeC (Index n) * 8)
     maxVal = resize (pack (maxBound :: Index n)) :: BitVector (ByteSizeC (Index n) * 8)
@@ -364,7 +365,7 @@ instance BitPackC Float where
   type ByteSizeC Float = 4
 
   packC# byteOrder = toEndianBV byteOrder . pack
-  maybeUnpackC# byteOrder = Just . unpack . toEndianBV byteOrder
+  maybeUnpackC# byteOrder = Just . fromJustX . maybeUnpack . toEndianBV byteOrder
 
 instance BitPackC Double where
   type ConstructorSizeC Double = 0
@@ -372,7 +373,7 @@ instance BitPackC Double where
   type ByteSizeC Double = 8
 
   packC# byteOrder = toEndianBV byteOrder . pack
-  maybeUnpackC# byteOrder = Just . unpack . toEndianBV byteOrder
+  maybeUnpackC# byteOrder = Just . fromJustX . maybeUnpack . toEndianBV byteOrder
 
 instance BitPackC Bool where
   type ConstructorSizeC Bool = 0
@@ -406,7 +407,7 @@ instance (BitPackC a, KnownNat n) => BitPackC (Vec n a) where
   type ByteSizeC (Vec n a) = n * ByteSizeC a
 
   packC# byteOrder = pack . map (packC# byteOrder)
-  maybeUnpackC# byteOrder = sequence . map (maybeUnpackC# byteOrder) . unpack
+  maybeUnpackC# byteOrder = sequence . map (maybeUnpackC# byteOrder) . fromJustX . maybeUnpack
 
 instance (BitPackC a) => BitPackC (Maybe a)
 instance (BitPackC a, BitPackC b) => BitPackC (Either a b)
@@ -543,7 +544,7 @@ instance
     Just (l0 :*: r0)
    where
     start1 = start0 `addSNat` SNat @(GByteSizeC start f)
-    (l0packed, l1packed) = unpack packed
+    (l0packed, l1packed) = fromJustX (maybeUnpack packed)
 
 instance (BitPackC c) => GBitPackC start (K1 i c) where
   type GByteSizeC start (K1 i c) = Padding start (AlignmentBoundaryC c) + ByteSizeC c

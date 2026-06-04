@@ -571,7 +571,10 @@ prop_addressableBytesWb = property $ do
     newMapState = Map.insert address updatedData mapState
     updatedData =
       pack
-        $ mux (unpack mask :: Vec 4 Bool) (unpack newData :: Vec 4 (BitVector 8)) (unpack oldData)
+        $ mux
+          (fromJustX (maybeUnpack mask) :: Vec 4 Bool)
+          (fromJustX (maybeUnpack newData) :: Vec 4 (BitVector 8))
+          (fromJustX (maybeUnpack oldData))
     oldData = Map.findWithDefault 0 address mapState
   model req@(Read address mask) response mapState
     | address <= maxAddress && response.acknowledge && dataValid = Right mapState
@@ -583,9 +586,9 @@ prop_addressableBytesWb = property $ do
     | otherwise = Left $ "Read from invalid address not erroring: " <> show (req, response)
    where
     mapData = Map.findWithDefault 0 address mapState
-    maskVec = unpack mask
-    expectedVec = unpack mapData :: Vec 4 (BitVector 8)
-    actaulVec = unpack response.readData :: Vec 4 (BitVector 8)
+    maskVec = fromJustX (maybeUnpack mask)
+    expectedVec = fromJustX (maybeUnpack mapData) :: Vec 4 (BitVector 8)
+    actaulVec = fromJustX (maybeUnpack response.readData) :: Vec 4 (BitVector 8)
     dataValid = all (\(m, exp', act) -> not m || exp' == act) (zip3 maskVec expectedVec actaulVec)
 
   genInputs :: Gen [WishboneMasterRequest AddressWidth 4]
@@ -633,8 +636,8 @@ splitWriteInBytes ::
   Vec wordSize (Maybe (Index maxIndex, BitVector 8))
 splitWriteInBytes (Just (addr, writeData)) byteSelect = mux byteEnable justs nothings
  where
-  byteEnable = unpack byteSelect :: Vec wordSize Bool
-  justs = fmap (Just . (addr,)) (unpack writeData :: Vec wordSize (BitVector 8))
+  byteEnable = fromJustX (maybeUnpack byteSelect) :: Vec wordSize Bool
+  justs = fmap (Just . (addr,)) (fromJustX (maybeUnpack writeData) :: Vec wordSize (BitVector 8))
   nothings = repeat Nothing
 splitWriteInBytes Nothing _ = repeat Nothing
 

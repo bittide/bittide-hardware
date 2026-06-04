@@ -215,7 +215,7 @@ byteAddressableRamBehavior state input = (state', ram !! readAddr)
       . RegisterBank
       $ zipWith
         (\sel (old, new) -> if sel then new else old)
-        (unpack byteEnable)
+        (fromJustX (maybeUnpack byteEnable))
         (zip oldData newData)
 
   ram1 = if writeTrue then replace writeAddr newEntry ram else ram
@@ -312,9 +312,9 @@ wbStorageBehaviorModel initList initWbOps = snd $ L.mapAccumL f initList initWbO
     newEntry =
       zipWith3
         (\b old new -> if b then new else old)
-        (unpack bs)
-        (unpack oldEntry)
-        (unpack a)
+        (fromJustX (maybeUnpack bs))
+        (fromJustX (maybeUnpack oldEntry))
+        (fromJustX (maybeUnpack a))
 
 wbStorageRangeErrors :: Property
 wbStorageRangeErrors = property $ do
@@ -414,7 +414,12 @@ wbStorageProtocolsModel = property $ do
     | otherwise =
         let
           val = st0 I.! modelAddr
-          maskedReadData = pack $ mux (unpack sel) (unpack readData) (unpack val :: Vec 4 Byte)
+          maskedReadData =
+            pack
+              $ mux
+                (fromJustX (maybeUnpack sel))
+                (fromJustX (maybeUnpack readData))
+                (fromJustX (maybeUnpack val) :: Vec 4 Byte)
          in
           if val == maskedReadData
             then Right st0
@@ -441,4 +446,9 @@ wbStorageProtocolsModel = property $ do
    where
     modelAddr = fromIntegral addr
     old = st0 I.! modelAddr
-    new = pack $ mux (unpack sel) (unpack wr) (unpack old :: Vec 4 Byte)
+    new =
+      pack
+        $ mux
+          (fromJustX (maybeUnpack sel))
+          (fromJustX (maybeUnpack wr))
+          (fromJustX (maybeUnpack old) :: Vec 4 Byte)

@@ -591,7 +591,7 @@ wbToVec readableData m@WishboneM2S{} = (writtenData, wbS2M)
   err = masterActive && (m.addr > resize (pack (maxBound :: Index nRegisters)))
   acknowledge = masterActive && not err
   wbWriting = m.writeEnable && acknowledge
-  wbAddr = unpack $ resize m.addr :: Index nRegisters
+  wbAddr = fromJustX . maybeUnpack $ resize m.addr :: Index nRegisters
   readData = readableData !! wbAddr
   writtenData
     | wbWriting = replace wbAddr (Just m.writeData) (repeat Nothing)
@@ -932,7 +932,12 @@ dfWishboneMaster =
           case req of
             ReadRequest _ sel
               | wbS2M.acknowledge ->
-                  Just $ ReadSuccess $ mux (unpack sel) (map Just $ unpack wbS2M.readData) (repeat Nothing)
+                  Just
+                    $ ReadSuccess
+                    $ mux
+                      (fromJustX (maybeUnpack sel))
+                      (map Just $ fromJustX (maybeUnpack wbS2M.readData))
+                      (repeat Nothing)
             WriteRequest{} | wbS2M.acknowledge -> Just WriteSuccess
             ReadRequest{} | wbS2M.err -> Just ReadError
             WriteRequest{} | wbS2M.err -> Just WriteError
