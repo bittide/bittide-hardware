@@ -19,6 +19,7 @@ import qualified Df.WbToDf as WbToDf
 import qualified Tests.Bittide.Instances.Hitl.Utils.MemoryMap as MemoryMap
 import qualified Tests.Bittide.Instances.Hitl.Utils.OpenOcd as OpenOcd
 import qualified Tests.Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Tests.Bittide.Instances.Hitl.Utils.UgnGrooming as UgnGrooming
 import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.AddressableBytesWb as AddressableBytesWb
 import qualified Wishbone.Axi as Axi
@@ -85,6 +86,7 @@ prepareTests = do
           , RegisterWb.tests
           , RingBuffer.tests
           , Time.tests
+          , UgnGrooming.tests
           , Watchdog.tests
           , WbToDf.tests
           ]
