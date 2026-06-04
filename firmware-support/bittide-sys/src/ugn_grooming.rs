@@ -22,9 +22,9 @@
 //! The relabel is the *round-trip split*, **not** the Bellman-Ford potential: for a hop
 //! `i ↔ j`, the boot offset is `O_{i→j} = (λ_{i→j} − λ_{j→i}) / 2` and the one-way latency
 //! is its exact complement `λ_{i→j} − O_{i→j}`. Bellman-Ford is used only to check that the
-//! groomed system is physically allowed (no negative slack cycle). Using the shortest-path
-//! potential for the timing would absorb link-latency asymmetry into the relabel, which
-//! accumulates and breaks a directed transport chain (hence each node would otherwise drift).
+//! groomed target is physically allowed (no negative cycle in its own weights). Using the
+//! shortest-path potential for the timing would absorb link-latency asymmetry into the
+//! relabel, which accumulates and breaks a directed transport chain (each node would drift).
 
 use crate::net_state::UgnEdge;
 use heapless::Vec;
@@ -82,21 +82,52 @@ pub enum RelabelResult {
     Feasible(RelabelPlan),
 }
 
-/// Build a symmetric target `λ^safe` from this boot's measurement: for each hop the target
-/// one-way latency on *both* directions is the measured average plus `margin`. The relabel
-/// then carries the (asymmetric) boot offset and the frame corrections are the uniform
-/// `margin`. A placeholder for a stored prior-boot reference; `margin >= 0` keeps the
-/// corrections small frame insertions.
+/// One-way latency of the hop `src → dst`: `λ_{src→dst} − O_{src→dst}`, i.e. the round-trip
+/// half. Symmetric across the hop (both directions yield the same value). Falls back to the
+/// raw UGN if the reverse direction is missing.
+fn one_way_latency(measured: &[UgnEdge], edge: &UgnEdge) -> i64 {
+    match offset_of(measured, &edge.src_node, &edge.dst_node) {
+        Some(o) => edge.ugn - o,
+        None => edge.ugn,
+    }
+}
+
+/// Build a symmetric target `λ^safe` from this boot's measurement: each hop's target one-way
+/// latency (both directions) is the measured average plus `margin`. Recomputed every boot, so
+/// the post-grooming latencies track this boot's measurement — useful for testing, but not
+/// reproducible across boots (see [`stored_target`]).
 pub fn symmetric_target(measured: &[UgnEdge], margin: i64) -> Vec<UgnEdge, MAX_EDGES> {
     let mut out: Vec<UgnEdge, MAX_EDGES> = Vec::new();
     for e in measured {
-        // One-way latency = round-trip / 2 = λ_{i→j} − O_{i→j}, symmetric across the hop.
-        let lat = match offset_of(measured, &e.src_node, &e.dst_node) {
-            Some(o) => e.ugn - o,
-            None => e.ugn,
-        };
         let _ = out.push(UgnEdge {
-            ugn: lat + margin,
+            ugn: one_way_latency(measured, e) + margin,
+            ..*e
+        });
+    }
+    out
+}
+
+/// Build a target `λ^safe` from a *stored* reference one-way latency, frozen from a golden
+/// boot. Each hop's target is the fixed `reference_latency`, except hops already slower than
+/// it, which keep their measured one-way latency.
+///
+/// Unlike [`symmetric_target`], this does not depend on this boot's measured average for the
+/// links at or below the reference: every boot grooms them onto the *same* frozen latency, so
+/// the post-grooming UGNs — and hence any application schedule built on them — are reproducible
+/// across boots (the relabel `φ` still absorbs the per-boot boot offsets). The
+/// slower-than-reference passthrough keeps every per-link frame correction a non-negative
+/// insertion (`max(0, reference − latency)`), never an unsafe elastic-buffer drain, so the
+/// reference need not bound every link's physical latency.
+pub fn stored_target(measured: &[UgnEdge], reference_latency: i64) -> Vec<UgnEdge, MAX_EDGES> {
+    let mut out: Vec<UgnEdge, MAX_EDGES> = Vec::new();
+    for e in measured {
+        let lat = one_way_latency(measured, e);
+        let _ = out.push(UgnEdge {
+            ugn: if reference_latency > lat {
+                reference_latency
+            } else {
+                lat
+            },
             ..*e
         });
     }
@@ -372,6 +403,52 @@ mod tests {
             let tgt = ugn_of(&target, &e.src_node, &e.dst_node).unwrap();
             assert_eq!(e.ugn - (phi_j - phi_i) + f, tgt, "reconstruction failed");
         }
+    }
+
+    #[test]
+    fn stored_target_is_reproducible_and_nonnegative() {
+        // Two boots with the SAME physical latencies but DIFFERENT boot offsets must groom
+        // onto the same target, and an outlier link slower than the reference must pass
+        // through (frame = 0), never demanding a drain.
+        let reference = 64;
+        // Boot A: offsets δ = [0, 10, 25] (the measured_3 fixture). One link (0<->2) is the
+        // "slow" outlier here only if its latency exceeds the reference; with L02=70 it does.
+        let measured = [
+            edge(0, 0, 1, 0, 50), // lat 40
+            edge(1, 1, 0, 0, 30),
+            edge(0, 1, 2, 0, 95), // lat 70 (> reference 64): outlier
+            edge(2, 1, 0, 1, 45),
+            edge(1, 2, 2, 1, 57), // lat 42
+            edge(2, 2, 1, 2, 27),
+        ];
+        let target = stored_target(&measured, reference);
+        // Frozen links groom to the reference; the slow link keeps its own latency.
+        assert_eq!(ugn_of(&target, &node(0), &node(1)), Some(64));
+        assert_eq!(ugn_of(&target, &node(1), &node(2)), Some(64));
+        assert_eq!(ugn_of(&target, &node(0), &node(2)), Some(70)); // passthrough
+
+        let RelabelResult::Feasible(plan) = compute_relabel(&measured, &target, node(0)) else {
+            panic!("expected feasible");
+        };
+        for e in measured.iter() {
+            assert!(
+                plan.frame(&e.dst_node, e.dst_port) >= 0,
+                "frames must be insertions"
+            );
+        }
+        // The 0<->1 and 1<->2 targets (64) are independent of the boot offsets, so a second
+        // boot with shifted offsets but identical latencies yields the same target there.
+        let measured_b = [
+            edge(0, 0, 1, 0, 140), // δ shifted by +100 on node 1: lat still 40
+            edge(1, 1, 0, 0, -60),
+            edge(0, 1, 2, 0, 95),
+            edge(2, 1, 0, 1, 45),
+            edge(1, 2, 2, 1, 147),
+            edge(2, 2, 1, 2, -63),
+        ];
+        let target_b = stored_target(&measured_b, reference);
+        assert_eq!(ugn_of(&target_b, &node(0), &node(1)), Some(64));
+        assert_eq!(ugn_of(&target_b, &node(1), &node(2)), Some(64));
     }
 
     #[test]

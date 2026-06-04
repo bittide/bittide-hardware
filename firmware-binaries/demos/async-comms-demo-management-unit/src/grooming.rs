@@ -14,23 +14,25 @@ use bittide_macros::{signed, unsigned};
 use bittide_sys::net_state::{UgnEdge, UgnReport};
 use bittide_sys::smoltcp::link_protocol::{NodeCorrectionWire, MAX_LINKS};
 use bittide_sys::ugn_grooming::{
-    compute_relabel, symmetric_target, Node, RelabelPlan, RelabelResult, MAX_EDGES,
+    compute_relabel, stored_target, Node, RelabelPlan, RelabelResult, MAX_EDGES,
 };
 use heapless::Vec;
 
-/// Safety margin (epsilon) added to each symmetric one-way latency to form the target
-/// `λ^safe`. A placeholder for a stored prior-boot reference; `>= 0` keeps the per-link
-/// frame corrections small insertions.
-pub const GROOMING_MARGIN: i64 = 100;
+/// Stored prior-boot reference: the frozen target one-way latency (in cycles) every boot
+/// grooms its links onto. Chosen at/above the rig's observed one-way latency so the per-link
+/// frame corrections are small, non-negative insertions; links physically slower than this
+/// pass through unchanged (see [`stored_target`]). Freezing the target (rather than
+/// recomputing it per boot) makes the post-grooming UGNs reproducible across boots.
+pub const STORED_TARGET_LATENCY: i64 = 64;
 
-/// Groom the collected report onto a symmetric target, rooted at `root` (whose reset offset
+/// Groom the collected report onto the stored reference, rooted at `root` (whose reset offset
 /// is gauged to `0` — pass the manager's own DNA so its release lands on the shared base).
 pub fn groom_report(report: &UgnReport, root: Node) -> RelabelResult {
     let mut measured: Vec<UgnEdge, MAX_EDGES> = Vec::new();
     for edge in report.edges.iter().flatten() {
         let _ = measured.push(*edge);
     }
-    let target = symmetric_target(&measured, GROOMING_MARGIN);
+    let target = stored_target(&measured, STORED_TARGET_LATENCY);
     compute_relabel(&measured, &target, root)
 }
 
