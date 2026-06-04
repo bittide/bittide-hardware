@@ -148,11 +148,6 @@ CABAL_FILES = [
   "bittide-extra/bittide-extra.cabal",
   "bittide-instances/bittide-instances.cabal",
   "bittide/bittide.cabal",
-  # clash-bitpackc doesn't need clash-protocols, but this script doesn't handle
-  # cases like this.
-  #
-  # "clash-bitpackc/clash-bitpackc.cabal",
-  "clash-protocols-memmap/clash-protocols-memmap.cabal",
 ]
 
 def main():

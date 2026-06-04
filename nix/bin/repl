@@ -6,8 +6,6 @@ exec cabal repl \
   bittide-instances \
   bittide-shake \
   bittide \
-  clash-bitpackc \
-  clash-protocols-memmap \
   ghc-typelits-extra-lemmas \
   gdb-hs \
   vivado-hs \
