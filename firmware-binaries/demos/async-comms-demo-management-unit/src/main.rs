@@ -305,10 +305,12 @@ fn main() -> ! {
         info!("Step 5: Grooming UGN graph in-band...");
         match grooming::groom_report(&report, dna) {
             RelabelResult::Infeasible(cycle) => {
-                error!(
-                    "  UGN grooming infeasible: negative slack cycle through {} nodes",
+                uwriteln!(
+                    uart,
+                    "  UGN grooming infeasible: target has a negative cycle through {} nodes",
                     cycle.len()
-                );
+                )
+                .unwrap();
             }
             RelabelResult::Feasible(plan) => {
                 // Relabel reference in the local-counter domain: now + ~1s headroom, which

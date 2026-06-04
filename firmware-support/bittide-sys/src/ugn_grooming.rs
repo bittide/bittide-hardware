@@ -103,11 +103,26 @@ pub fn symmetric_target(measured: &[UgnEdge], margin: i64) -> Vec<UgnEdge, MAX_E
     out
 }
 
+/// Are these UGNs physically allowed? Equivalently: does the graph with `weights = λ` have
+/// no negative cycle (the round-trip constraint)? Mirrors
+/// `Bittide.ClockControl.Ugn.Grooming.isAllowed`.
+pub fn is_allowed(edges: &[UgnEdge]) -> bool {
+    negative_cycle_in(edges).is_none()
+}
+
 /// Groom the measured UGNs `λ` onto the target `λ^safe`, rooted at `root` (whose reset offset
 /// is gauged to `0`). Edges are matched by `(src_node, dst_node)`; only hops present in both
-/// snapshots are groomed. Returns [`RelabelResult::Infeasible`] if the UGNs changed too much.
+/// snapshots are groomed.
+///
+/// The round-trip split always yields realizable corrections (for a symmetric target the
+/// per-link frames are the uniform, non-negative margin), so feasibility here is simply
+/// whether the *groomed* graph `λ^safe` is physically allowed — no negative cycle in its own
+/// weights. (This is the right gate for the round-trip-split relabel; the Bellman-Ford
+/// *slack* potential of `Grooming.groomCorrection` is a stricter, different condition that
+/// would reject valid grooming on a densely-connected graph.) Returns
+/// [`RelabelResult::Infeasible`] with the witnessing cycle when the target is not allowed.
 pub fn compute_relabel(measured: &[UgnEdge], target: &[UgnEdge], root: Node) -> RelabelResult {
-    if let Some(cycle) = negative_slack_cycle(measured, target) {
+    if let Some(cycle) = negative_cycle_in(target) {
         return RelabelResult::Infeasible(cycle);
     }
 
@@ -204,22 +219,18 @@ fn node_set(edges: &[UgnEdge]) -> Vec<Node, MAX_NODES> {
     nodes
 }
 
-/// Bellman-Ford feasibility on the slack graph (`slack_{i→j} = λ^safe_{i→j} − λ_{i→j}`) from
-/// a virtual super-source (all distances start at `0`). Returns the nodes of a negative
-/// cycle if one exists (the UGNs changed too much), otherwise `None`. Mirrors
-/// `Bittide.ClockControl.Ugn.Grooming.groomCorrection`'s feasibility check.
-fn negative_slack_cycle(measured: &[UgnEdge], target: &[UgnEdge]) -> Option<Vec<Node, MAX_NODES>> {
-    let nodes = node_set(measured);
+/// Bellman-Ford negative-cycle detection on a graph whose edge weights are the edges' own
+/// UGNs, from a virtual super-source (all distances start at `0`). Returns the nodes of a
+/// negative cycle if one exists, otherwise `None`.
+fn negative_cycle_in(graph: &[UgnEdge]) -> Option<Vec<Node, MAX_NODES>> {
+    let nodes = node_set(graph);
     let n = nodes.len();
     let index = |node: &Node| nodes.iter().position(|x| x == node);
 
-    // Slack edges as (i_idx, j_idx, weight) for hops present in both snapshots.
     let mut edges: Vec<(usize, usize, i64), MAX_EDGES> = Vec::new();
-    for e in measured {
-        if let Some(tgt) = ugn_of(target, &e.src_node, &e.dst_node) {
-            if let (Some(i), Some(j)) = (index(&e.src_node), index(&e.dst_node)) {
-                let _ = edges.push((i, j, tgt - e.ugn));
-            }
+    for e in graph {
+        if let (Some(i), Some(j)) = (index(&e.src_node), index(&e.dst_node)) {
+            let _ = edges.push((i, j, e.ugn));
         }
     }
 
