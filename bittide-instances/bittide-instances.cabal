@@ -202,6 +202,7 @@ library
     Bittide.Instances.Hitl.Utils.OpenOcd
     Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
+    Bittide.Instances.Hitl.Utils.Relabel
     Bittide.Instances.Hitl.Utils.Ugn
     Bittide.Instances.Hitl.Utils.UgnGrooming
     Bittide.Instances.Hitl.Utils.Usb
