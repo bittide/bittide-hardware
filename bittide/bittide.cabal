@@ -212,6 +212,7 @@ library
     Bittide.ElasticBuffer
     Bittide.ElasticBuffer.AutoCenter
     Bittide.Ethernet.Mac
+    Bittide.Graph.Weighted
     Bittide.Handshake
     Bittide.Jtag
     Bittide.PacketStream
@@ -298,6 +299,7 @@ test-suite unittests
     Tests.Df
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
+    Tests.Graph.Weighted
     Tests.Handshake
     Tests.ProcessingElement.ReadElf
     Tests.ProgrammableMux
