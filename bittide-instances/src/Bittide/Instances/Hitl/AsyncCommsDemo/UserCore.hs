@@ -2,10 +2,9 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{- | User core for the async-comms demo: forwards the handshake's TX output
-verbatim to the GTH. No extra MU busses, no per-link tap, no business
-logic. This is identical to the soft-UGN demo's user core; the demos differ
-only in their ring-buffer depth (this demo uses shallow @d128@-deep buffers).
+{- | User core for the async-comms demo. It is identical to the soft-UGN demo's user core
+(reused verbatim); the only difference between the two demos is that the async-comms demo
+uses shallow @d128@-deep ring buffers.
 -}
 module Bittide.Instances.Hitl.AsyncCommsDemo.UserCore (
   UserCoreBusses,
@@ -15,19 +14,11 @@ module Bittide.Instances.Hitl.AsyncCommsDemo.UserCore (
 ) where
 
 import Clash.Explicit.Prelude
-import Protocols
 
-import Bittide.Instances.Hitl.GenericDemo.BringUp (NmuRemBusWidth, UserCoreCircuit)
+import Bittide.Instances.Hitl.SoftUgnDemo.UserCore (UserCoreBusses, mkUserCore)
 
-type UserCoreBusses = 0
-
+-- | Shallow ring buffers: the one intended difference from the soft-UGN demo.
 type RingBufferDepth = 128
 
 ringBufferDepth :: SNat RingBufferDepth
 ringBufferDepth = SNat
-
-mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
-mkUserCore _bitClk _bitRst _bitEna _localCounter _maybeDna =
-  circuit $ \(emptyUserCoreBusses, _rxs2Raw, handshakeOut) -> do
-    [] <- idC -< emptyUserCoreBusses
-    idC -< handshakeOut
