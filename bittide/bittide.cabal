@@ -226,6 +226,7 @@ library
     Bittide.SharedTypes
     Bittide.Shutter
     Bittide.Sync
+    Bittide.TimedReset
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma
@@ -305,6 +306,7 @@ test-suite unittests
     Tests.ProcessingElement.ReadElf
     Tests.ProgrammableMux
     Tests.Shared
+    Tests.TimedReset
     Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign

@@ -26,6 +26,7 @@ import qualified Tests.Graph.Weighted
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
+import qualified Tests.TimedReset
 import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
@@ -54,6 +55,7 @@ tests =
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
+    , Tests.TimedReset.tests
     , Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.tests
     , Tests.Transceiver.WordAlign.tests
