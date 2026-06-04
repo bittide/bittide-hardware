@@ -207,6 +207,7 @@ library
     Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
     Bittide.Instances.Hitl.Utils.Ugn
+    Bittide.Instances.Hitl.Utils.UgnGrooming
     Bittide.Instances.Hitl.Utils.Usb
     Bittide.Instances.Hitl.Utils.Utils
     Bittide.Instances.Hitl.Utils.Vivado
@@ -328,6 +329,7 @@ test-suite unittests
     Tests.Bittide.Instances.Hitl.Utils.MemoryMap
     Tests.Bittide.Instances.Hitl.Utils.OpenOcd
     Tests.Bittide.Instances.Hitl.Utils.Picocom
+    Tests.Bittide.Instances.Hitl.Utils.UgnGrooming
     Tests.ClockControlWb
     Wishbone.AddressableBytesWb
     Wishbone.Axi
