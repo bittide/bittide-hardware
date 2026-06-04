@@ -22,6 +22,7 @@ import qualified Tests.DelayWishbone
 import qualified Tests.Df
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
+import qualified Tests.Graph.Weighted
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
@@ -49,6 +50,7 @@ tests =
     , Tests.Df.tests
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests
+    , Tests.Graph.Weighted.tests
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
