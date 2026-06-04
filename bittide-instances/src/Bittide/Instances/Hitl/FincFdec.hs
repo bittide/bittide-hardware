@@ -15,6 +15,8 @@ import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
 import Bittide.ClockControl (
+  FDEC,
+  FINC,
   SpeedChange (NoChange, SlowDown, SpeedUp),
   speedChangeToFincFdec,
  )
@@ -70,8 +72,8 @@ goFincFdecTests ::
     ::: ( Signal Basic200 TestState
         , -- Freq increase / freq decrease request to clock board
           ""
-            ::: ( "FINC" ::: Signal Basic200 Bool
-                , "FDEC" ::: Signal Basic200 Bool
+            ::: ( "FINC" ::: Signal Basic200 FINC
+                , "FDEC" ::: Signal Basic200 FDEC
                 )
         , -- SPI to clock board:
           "" ::: Signal Basic200 Spi.M2S
@@ -177,8 +179,8 @@ fincFdecTests ::
                 )
         , -- Freq increase / freq decrease request to clock board
           ""
-            ::: ( "FINC" ::: Signal Basic200 Bool
-                , "FDEC" ::: Signal Basic200 Bool
+            ::: ( "FINC" ::: Signal Basic200 FINC
+                , "FDEC" ::: Signal Basic200 FDEC
                 )
         , -- SPI to clock board:
           "" ::: Signal Basic200 Spi.M2S
