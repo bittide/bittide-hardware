@@ -6,7 +6,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use memmap_generate::memory_x_from_memmap;
+use bittide_build_utils::memory_x_from_memmap;
 
 fn memmap_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

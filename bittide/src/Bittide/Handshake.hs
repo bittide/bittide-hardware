@@ -418,43 +418,45 @@ handshakesWb = circuit $ \(bus, Fwd inputs) -> do
   zeroMask = fromBitVector 0
 
   modesConfig =
-    (registerConfig "modes")
-      { description =
-          "Per-channel mode. Whether to engage the handshake module or not. In both modes, this device introduces a single cycle of latency. To renegotiate post handshake, set the mode to 'PassThrough' and back to 'Enabled'. Keep in mind that you should clear the other control registers when a channel is in 'PassThrough' mode again."
-      }
+    registerConfig
+      "modes"
+      "Per-channel mode. Whether to engage the handshake module or not. In both modes, this device introduces a single cycle of latency. To renegotiate post handshake, set the mode to 'PassThrough' and back to 'Enabled'. Keep in mind that you should clear the other control registers when a channel is in 'PassThrough' mode again."
 
-  receiveReadysConfig = registerConfig "receive_readys"
+  receiveReadysConfig = registerConfig "receive_readys" ""
 
   softwareReadysConfig =
-    (registerConfig "software_readys")
-      { description =
-          "Per-channel extra field sent to the neighbor while negotiating to indicate whether software has reached a state where it will soon assert 'receive_readys'. In a bittide context, this means that elastic buffers aren't actively (destructively) centered anymore, making it safe to end the handshake and send over UGNs. The neighbor will send this field too, which will end up in 'neighbor_software_readys'. Once a channel's bit is asserted, it should not be deasserted anymore."
-      }
+    registerConfig
+      "software_readys"
+      "Per-channel extra field sent to the neighbor while negotiating to indicate whether software has reached a state where it will soon assert 'receive_readys'. In a bittide context, this means that elastic buffers aren't actively (destructively) centered anymore, making it safe to end the handshake and send over UGNs. The neighbor will send this field too, which will end up in 'neighbor_software_readys'. Once a channel's bit is asserted, it should not be deasserted anymore."
 
   neighborSoftwareReadysConfig =
-    (registerConfig "neighbor_software_readys")
+    ( registerConfig
+        "neighbor_software_readys"
+        "Per-channel extra field received from the neighbor, see 'software_readys'. A channel's bit is only valid when its corresponding entry in 'modes' is set to 'Enabled'."
+    )
       { access = ReadOnly
-      , description =
-          "Per-channel extra field received from the neighbor, see 'software_readys'. A channel's bit is only valid when its corresponding entry in 'modes' is set to 'Enabled'."
       }
 
   neighborToCoreDonesConfig =
-    (registerConfig "receive_dones")
+    ( registerConfig
+        "receive_dones"
+        "Per-channel state of the handshake of the receive channel. A channel's bit is only valid when its corresponding entry in 'modes' is set to 'Enabled'."
+    )
       { access = ReadOnly
-      , description =
-          "Per-channel state of the handshake of the receive channel. A channel's bit is only valid when its corresponding entry in 'modes' is set to 'Enabled'."
       }
 
   coreToNeighborDonesConfig =
-    (registerConfig "transmit_dones")
+    ( registerConfig
+        "transmit_dones"
+        "Per-channel state of the handshake of the transmit channel. A channel's bit is only valid when its corresponding entry in 'modes' is set to 'Enabled'."
+    )
       { access = ReadOnly
-      , description =
-          "Per-channel state of the handshake of the transmit channel. A channel's bit is only valid when its corresponding entry in 'modes' is set to 'Enabled'."
       }
 
   handshakeDonesConfig =
-    (registerConfig "handshake_dones")
+    ( registerConfig
+        "handshake_dones"
+        "Per-channel indicator that both the receive and transmit channels have completed their handshake negotiation."
+    )
       { access = ReadOnly
-      , description =
-          "Per-channel indicator that both the receive and transmit channels have completed their handshake negotiation."
       }

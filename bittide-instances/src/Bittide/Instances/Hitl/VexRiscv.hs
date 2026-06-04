@@ -21,7 +21,7 @@ import Project.FilePath (CargoBuildType (Release))
 import Protocols
 import Protocols.MemoryMap (Access (WriteOnly), Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   deviceConfig,
   deviceWbI,
   registerConfig,
@@ -116,9 +116,8 @@ statusRegister = circuit $ \(mm, wb) -> do
   idC -< statusOut
  where
   statusConf =
-    (registerConfig "status")
+    (registerConfig "status" "Set test status")
       { access = WriteOnly
-      , description = "Set test status"
       }
 
 vexRiscvTestMM :: Mm.MemoryMap

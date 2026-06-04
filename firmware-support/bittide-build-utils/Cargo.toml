@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "bittide-build-utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+memorymap-compiler = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
+
+[lints]
+workspace = true

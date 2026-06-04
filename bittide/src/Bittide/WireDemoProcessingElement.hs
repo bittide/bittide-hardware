@@ -16,7 +16,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.Experimental.Wishbone (Wishbone, WishboneMode (Standard))
 import Protocols.MemoryMap (Access (ReadOnly, ReadWrite), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   deviceConfig,
   deviceWbI,
   registerConfig,
@@ -49,27 +49,26 @@ wireDemoPeConfig = circuit $ \(bus, writtenData) -> do
 
   (Fwd readLink, _readLinkActivity) <-
     registerWbI
-      (registerConfig "read_link")
+      (registerConfig "read_link" "Index of the link to read from.")
         { access = ReadWrite
-        , description = "Index of the link to read from."
         }
       Nothing
       -< (wbReadLink, Fwd (pure Nothing))
 
   (Fwd writeLink, _writeLinkActivity) <-
     registerWbI
-      (registerConfig "write_link")
+      (registerConfig "write_link" "Index of the link to write to.")
         { access = ReadWrite
-        , description = "Index of the link to write to."
         }
       Nothing
       -< (wbWriteLink, Fwd (pure Nothing))
 
   registerWbI_
-    (registerConfig "written_data")
+    ( registerConfig
+        "written_data"
+        "The data written by the wireDemoPe in the second cycle after reset."
+    )
       { access = ReadOnly
-      , description =
-          "The data written by the wireDemoPe in the second cycle after reset."
       }
     0
     -< (wbWrittenData, writtenData)

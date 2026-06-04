@@ -19,7 +19,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   busActivityWrite,
   deviceConfig,
   deviceWbI,
@@ -140,23 +140,22 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
  where
   noWrite = pure Nothing
 
-  numLinksConfig = (registerConfig "n_links"){access = ReadOnly}
-  linkMaskConfig = (registerConfig "link_mask"){access = ReadOnly}
-  linkMaskPopCountConfig = (registerConfig "link_mask_pop_count"){access = ReadOnly}
-  linkMaskRevConfig = (registerConfig "link_mask_rev"){access = ReadOnly}
-  linksOkConfig = (registerConfig "links_ok"){access = ReadOnly}
-  changeSpeedConfig = (registerConfig "change_speed"){access = WriteOnly}
-  linksStableConfig = registerConfig "links_stable"
-  linksSettledConfig = registerConfig "links_settled"
-  minDataCountsSeenConfig = (registerConfig "min_data_counts_seen"){access = ReadOnly}
-  maxDataCountsSeenConfig = (registerConfig "max_data_counts_seen"){access = ReadOnly}
-  clearDataCountsSeenConfig = (registerConfig "clear_data_counts_seen"){access = WriteOnly}
-  dataCountsConfig = (registerConfig "data_counts"){access = ReadOnly}
+  numLinksConfig = (registerConfig "n_links" ""){access = ReadOnly}
+  linkMaskConfig = (registerConfig "link_mask" ""){access = ReadOnly}
+  linkMaskPopCountConfig = (registerConfig "link_mask_pop_count" ""){access = ReadOnly}
+  linkMaskRevConfig = (registerConfig "link_mask_rev" ""){access = ReadOnly}
+  linksOkConfig = (registerConfig "links_ok" ""){access = ReadOnly}
+  changeSpeedConfig = (registerConfig "change_speed" ""){access = WriteOnly}
+  linksStableConfig = registerConfig "links_stable" ""
+  linksSettledConfig = registerConfig "links_settled" ""
+  minDataCountsSeenConfig = (registerConfig "min_data_counts_seen" ""){access = ReadOnly}
+  maxDataCountsSeenConfig = (registerConfig "max_data_counts_seen" ""){access = ReadOnly}
+  clearDataCountsSeenConfig = (registerConfig "clear_data_counts_seen" ""){access = WriteOnly}
+  dataCountsConfig = (registerConfig "data_counts" ""){access = ReadOnly}
   configConfig =
-    (registerConfig "config")
-      { description =
-          "Clock control configuration. By default, this just runs clock control on all available links with, hopefully, sensible control settings."
-      }
+    registerConfig
+      "config"
+      "Clock control configuration. By default, this just runs clock control on all available links with, hopefully, sensible control settings."
 
   linkMaskRev :: Signal dom (BitVector nLinks)
   linkMaskRev = pack . reverse . unpack @(Vec nLinks Bit) <$> linkMask

@@ -17,7 +17,7 @@ import Clash.Sized.Extra (concatUnsigneds, unsignedToSigned)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   deviceConfig,
   deviceWb,
   registerConfig,
@@ -148,20 +148,20 @@ domainDiffCountersWbC srcClocks srcResets clk rst = Cdc.withVendor ?vendorName $
  where
   noWrite = pure Nothing
   countersConfig =
-    (registerConfig "counters")
+    (registerConfig "counters" "")
       { access = ReadOnly
       }
 
   activeConfig =
-    (registerConfig "counters_active")
-      { description = "Active state of the counters, i.e. whether they are counting or not."
-      , access = ReadOnly
+    ( registerConfig
+        "counters_active"
+        "Active state of the counters, i.e. whether they are counting or not."
+    )
+      { access = ReadOnly
       }
 
   enableConfig =
-    (registerConfig "enable")
-      { description = "Counters enabled? Counter is cleared when disabled."
-      }
+    (registerConfig "enable" "Counters enabled? Counter is cleared when disabled.")
 
 {- | A counter that counts /up/, synchronized from the domain @src@ to domain @dst@. To
 reset this component, the reset should be asserted for at least one cycle in the

@@ -4,7 +4,7 @@
 
 use crate::stability_detector::Stability;
 use bittide_hal::shared_devices::{freeze::Freeze, sample_memory::SampleMemory};
-use bittide_macros::bitvector;
+use clash_macros::bitvector;
 
 const WORDS_PER_SAMPLE: usize = 13;
 

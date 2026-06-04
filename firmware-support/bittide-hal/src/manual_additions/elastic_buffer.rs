@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::shared_devices::elastic_buffer::ElasticBuffer;
-use bittide_macros::Signed;
+use clash_macros::Signed;
 
 impl ElasticBuffer {
     /// Minimum occupancy value for the elastic buffer (signed 8-bit).
@@ -19,7 +19,7 @@ impl ElasticBuffer {
     /// 2. Waits for completion with `adjustment_wait`
     ///
     /// Negative values drain (remove frames), positive values fill (add frames).
-    pub fn set_adjustment(&self, adjustment: Signed!(32)) {
+    pub fn set_adjustment(&self, adjustment: Signed![32]) {
         self.set_adjustment_async(adjustment);
         self.set_adjustment_wait(());
     }

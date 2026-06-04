@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use memmap_generate::build_utils::standard_memmap_build;
+use bittide_build_utils::standard_memmap_build;
 
 fn main() {
     standard_memmap_build("CaptureUgnTest.json", "DataMemory", "InstructionMemory");

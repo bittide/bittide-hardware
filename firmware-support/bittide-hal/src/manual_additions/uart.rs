@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::shared_devices::uart::Uart;
-use bittide_macros::bitvector;
+use clash_macros::bitvector;
 
 pub struct TransmitBufferFull;
 pub struct ReceiveBufferEmpty;

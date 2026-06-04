@@ -19,6 +19,8 @@ workspace = true
 default = []
 
 [dependencies]
+clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
+clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
 bittide-hal = { path = "../bittide-hal" }
 bittide-macros = { path = "../bittide-macros" }
 fdt = "0.1.0"

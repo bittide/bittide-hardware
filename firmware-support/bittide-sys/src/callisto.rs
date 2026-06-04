@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::{
-    manual_additions::IntoAs,
     shared_devices::clock_control::ClockControl,
     types::{callisto_config::CallistoConfig, maybe::Maybe, speed_change::SpeedChange},
 };
+use clash_bindings::IntoAs;
 
 /// Rust sibling of
 /// `Bittide.ClockControl.Callisto.Types.Stability`.

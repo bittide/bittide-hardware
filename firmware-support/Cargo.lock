@@ -53,12 +53,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
+name = "bittide-build-utils"
+version = "0.1.0"
+dependencies = [
+ "memorymap-compiler",
+]
+
+[[package]]
 name = "bittide-cpus"
 version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-macros",
  "bittide-sys",
+ "clash-bindings",
+ "clash-macros",
  "itertools",
  "ufmt",
 ]
@@ -68,9 +77,12 @@ name = "bittide-hal"
 version = "0.1.0"
 dependencies = [
  "bittide-macros",
+ "clash-bindings",
+ "clash-macros",
  "const_panic",
  "log",
- "memmap-generate",
+ "memorymap-compiler",
+ "memorymap-compiler-rust",
  "proc-macro2",
  "quote",
  "smoltcp 0.11.0",
@@ -83,7 +95,8 @@ name = "bittide-hal-c"
 version = "0.1.0"
 dependencies = [
  "cc",
- "memmap-generate",
+ "memorymap-compiler",
+ "memorymap-compiler-c",
 ]
 
 [[package]]
@@ -102,6 +115,8 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-macros",
+ "clash-bindings",
+ "clash-macros",
  "fdt",
  "heapless",
  "itertools",
@@ -138,6 +153,28 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+
+[[package]]
+name = "clash-bindings"
+version = "0.1.0"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=745be2eff82fd8d712b0e50d825837d2f39fb920#745be2eff82fd8d712b0e50d825837d2f39fb920"
+dependencies = [
+ "clash-macros",
+ "const_panic",
+ "subst_macros",
+ "ufmt",
+]
+
+[[package]]
+name = "clash-macros"
+version = "0.1.0"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=745be2eff82fd8d712b0e50d825837d2f39fb920#745be2eff82fd8d712b0e50d825837d2f39fb920"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+]
 
 [[package]]
 name = "const_panic"
@@ -385,8 +422,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
-name = "memmap-generate"
+name = "memorymap-compiler"
 version = "0.1.0"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=745be2eff82fd8d712b0e50d825837d2f39fb920#745be2eff82fd8d712b0e50d825837d2f39fb920"
 dependencies = [
  "derivative",
  "heck",
@@ -395,6 +433,28 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+]
+
+[[package]]
+name = "memorymap-compiler-c"
+version = "0.1.0"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=745be2eff82fd8d712b0e50d825837d2f39fb920#745be2eff82fd8d712b0e50d825837d2f39fb920"
+dependencies = [
+ "heck",
+ "memorymap-compiler",
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "memorymap-compiler-rust"
+version = "0.1.0"
+source = "git+https://github.com/QBayLogic/clash-protocols-memmap?rev=745be2eff82fd8d712b0e50d825837d2f39fb920#745be2eff82fd8d712b0e50d825837d2f39fb920"
+dependencies = [
+ "heck",
+ "memorymap-compiler",
+ "proc-macro2",
+ "quote",
 ]
 
 [[package]]

@@ -20,4 +20,4 @@ bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 riscv-rt = "0.11.0"
 
 [build-dependencies]
-memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+bittide-build-utils = { path = "../../../firmware-support/bittide-build-utils" }

@@ -2,11 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    manual_additions::{bitvector::BitVector, timer::Duration, ConvertOptional},
+    manual_additions::{timer::Duration, ConvertOptional},
     shared_devices::{Si539xSpi, Timer},
     types::{Maybe::Nothing, RegisterOperation},
 };
-use bittide_macros::bitvector;
+use clash_bindings::bitvector::BitVector;
+use clash_macros::bitvector;
 use ufmt::derive::uDebug;
 
 pub struct Config<const PRE_LEN: usize, const CFG_LEN: usize, const PST_LEN: usize> {

@@ -57,9 +57,9 @@ simplePeripheral ::
 simplePeripheral name = withName name $ circuit $ \(mm, wb) -> do
   [(offset0, config0, meta0, wb0), (offset1, config1, meta1, wb1)] <-
     deviceWbI (deviceConfig "somePeripheral") -< (mm, wb)
-  registerWb_ hasClock hasReset (registerConfig "status") (0 :: Unsigned 32)
+  registerWb_ hasClock hasReset (registerConfig "status" "") (0 :: Unsigned 32)
     -< ((offset0, config0, meta0, wb0), Fwd noWrite)
-  registerWb_ hasClock hasReset (registerConfig "control") (0 :: Unsigned 32)
+  registerWb_ hasClock hasReset (registerConfig "control" "") (0 :: Unsigned 32)
     -< ((offset1, config1, meta1, wb1), Fwd noWrite)
  where
   noWrite = pure Nothing

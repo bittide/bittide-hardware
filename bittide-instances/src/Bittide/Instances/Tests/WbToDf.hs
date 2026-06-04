@@ -24,7 +24,7 @@ import Project.FilePath
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import Protocols.MemoryMap.Registers.WishboneStandard
+import Protocols.MemoryMap.Registers.WishboneStandard as MmWb
 import Protocols.MemoryMap.TypeDescription.TH
 import VexRiscv (DumpVcd (..))
 
@@ -79,9 +79,8 @@ dut dumpVcd peConfig =
       idC -< (df, uartTx)
  where
   refCfg =
-    (registerConfig "value")
-      { description = "Reference memory for WbToDfTest"
-      , access = ReadOnly
+    (registerConfig "value" "Reference memory for WbToDfTest")
+      { MmWb.access = ReadOnly
       }
 
 type IMemWords = DivRU (1 * 1024) 4

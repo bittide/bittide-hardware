@@ -8,7 +8,7 @@ use bittide_hal::{
     elastic_buffer_wb_test::DeviceInstances, manual_additions::timer::Duration,
     shared_devices::ElasticBuffer,
 };
-use bittide_macros::{signed, unsigned};
+use clash_macros::{signed, unsigned};
 #[cfg(not(test))]
 use riscv_rt::entry;
 use ufmt::uwriteln;

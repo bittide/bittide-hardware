@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::manual_additions::{
+use clash_bindings::{
     index::{Index, IndexInterface, IndexSizeCheck},
     FromAs, IntoAs,
 };

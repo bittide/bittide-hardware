@@ -102,10 +102,10 @@ captureUgns localCounter (C.dflipflop -> linkIns) = circuit $ \bus -> do
   zeroMask :: Mask n
   zeroMask = fromVec (repeat False)
 
-  localCounterConfig = (registerConfig "local_counter"){access = ReadOnly}
-  remoteCounterConfig = (registerConfig "remote_counter"){access = ReadOnly}
-  elasticBufferDeltaConfig = (registerConfig "elastic_buffer_delta"){access = ReadWrite}
-  hasCapturedConfig = (registerConfig "has_captured"){access = ReadOnly}
+  localCounterConfig = (registerConfig "local_counter" ""){access = ReadOnly}
+  remoteCounterConfig = (registerConfig "remote_counter" ""){access = ReadOnly}
+  elasticBufferDeltaConfig = (registerConfig "elastic_buffer_delta" ""){access = ReadWrite}
+  hasCapturedConfig = (registerConfig "has_captured" ""){access = ReadOnly}
 
   -- Output is @(trigger, haveCaptured)@: 'trigger' is a one-cycle pulse on the
   -- first 'Just', 'haveCaptured' is a level high from that cycle onwards.

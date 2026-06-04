@@ -16,7 +16,7 @@ import Protocols.MemoryMap (Access (..))
 import GHC.Stack (HasCallStack)
 import qualified Protocols.Df as Df
 import qualified Protocols.Df.Extra as Df
-import qualified Protocols.ReqResp as ReqResp
+import qualified Protocols.Experimental.ReqResp as ReqResp
 import qualified Protocols.Wishbone.Extra as Wb
 
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -85,14 +85,12 @@ transmitRingBuffer primitive SNat = circuit $ \wb -> do
   applyC (fmap $ fromMaybe 0) id <| Df.toMaybe -< leftDat
  where
   transmitEnableConfig =
-    (registerConfig "enable")
+    (registerConfig "enable" "Enable signal that controls transmission of frames to the network")
       { access = ReadWrite
-      , description = "Enable signal that controls transmission of frames to the network"
       }
   regConfig =
-    (registerConfig "data")
+    (registerConfig "data" "Buffer that continuously transmits frames to the network")
       { access = ReadWrite
-      , description = "Buffer that continuously transmits frames to the network"
       }
   ram = Df.fromDualPortedBramWithMask primitive hasClock hasClock
   writeToRamOp (addr, mask, bv) = RamWrite addr (mask, bv)
@@ -164,21 +162,24 @@ receiveRingBuffer primitive SNat = circuit $ \(wb, Fwd frames) -> do
       | otherwise = (current0, False)
 
   clearAtCountConfig =
-    (registerConfig "clear_at_count")
+    ( registerConfig
+        "clear_at_count"
+        "Value at which the free running counter is reset to zero. This can be used to align ourselves with our link partner's TransmitRingBuffer"
+    )
       { access = WriteOnly
-      , description =
-          "Value at which the free running counter is reset to zero. This can be used to align ourselves with our link partner's TransmitRingBuffer"
       }
   receiveEnableConfig =
-    (registerConfig "enable")
+    ( registerConfig
+        "enable"
+        "Enable signal for receiving frames from the network. When this enable is high, incoming frames are written to the buffer to the address indicated by the free running counter. When this enable is low, incoming frames are ignored, but the counter still increments to maintain alignment."
+    )
       { access = ReadWrite
-      , description =
-          "Enable signal for receiving frames from the network. When this enable is high, incoming frames are written to the buffer to the address indicated by the free running counter. When this enable is low, incoming frames are ignored, but the counter still increments to maintain alignment."
       }
   regConfig =
-    (registerConfig "data")
+    ( registerConfig
+        "data"
+        "Buffer that continuously receives frames from the network, updates can be blocked by setting the receive enable register to false"
+    )
       { access = ReadOnly
-      , description =
-          "Buffer that continuously receives frames from the network, updates can be blocked by setting the receive enable register to false"
       }
   ram = withClockResetEnable hasClock hasReset enableGen (Df.fromBlockRam primitive)

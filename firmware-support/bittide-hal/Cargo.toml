@@ -7,8 +7,8 @@ name = "bittide-hal"
 version = "0.1.0"
 edition = "2021"
 
-[lints]
-workspace = true
+# [lints]
+# workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,6 +17,9 @@ const_panic = "0.2.15"
 bittide-macros = { path = "../bittide-macros" }
 log = "0.4.21"
 ufmt = "0.2.0"
+
+clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
+clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
 
 [dependencies.smoltcp]
 git = "https://github.com/smoltcp-rs/smoltcp.git"
@@ -29,6 +32,7 @@ git = "https://github.com/QBayLogic/subst_macros.git"
 rev = "1273588cd7b854b8b6294cf54c7e238f77778ac4"
 
 [build-dependencies]
-memmap-generate = { path = "../memmap-generate" }
+memorymap-compiler = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
+memorymap-compiler-rust = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
 quote = "1.0"
 proc-macro2 = "1.0"

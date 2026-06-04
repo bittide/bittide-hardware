@@ -17,7 +17,7 @@ import Clash.Cores.Xilinx.DcFifo
 import Protocols
 import Protocols.MemoryMap (Access (..), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (access, description),
+  RegisterConfig (access),
   deviceConfig,
   deviceWbI,
   registerConfig,
@@ -201,34 +201,34 @@ si539xSpiWb minTargetPs =
     idC -< (spiDone, spi)
  where
   regOpConfig =
-    (registerConfig "register_operation")
+    ( registerConfig
+        "register_operation"
+        "Used to read from or write to a register on a Si539x chip via SPI."
+    )
       { access = WriteOnly
-      , description = "Used to read from or write to a register on a Si539x chip via SPI."
       }
 
   commitConfig =
-    (registerConfig "commit")
+    (registerConfig "commit" "Commit the register_operation and start a SPI transaction.")
       { access = ReadWrite
-      , description = "Commit the register_operation and start a SPI transaction."
       }
 
   readDataConfig =
-    (registerConfig "read_data")
+    (registerConfig "read_data" "Data returned by read / write operation.")
       { access = ReadOnly
-      , description = "Data returned by read / write operation."
       }
 
   spiDoneConfig =
-    (registerConfig "spi_done")
+    (registerConfig "spi_done" "Set after SPI configuration is done.")
       { access = WriteOnly
-      , description = "Set after SPI configuration is done."
       }
 
   resetSpiConfig =
-    (registerConfig "reset")
+    ( registerConfig
+        "reset"
+        "Reset the SPI core. Useful if you want the page and address to be set again."
+    )
       { access = WriteOnly
-      , description =
-          "Reset the SPI core. Useful if you want the page and address to be set again."
       }
 
   noWrite = pure Nothing

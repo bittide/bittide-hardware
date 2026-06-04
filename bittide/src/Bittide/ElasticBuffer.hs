@@ -315,19 +315,19 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
 
     (_ebAdjustmentAsync, ebAdjustmentAsyncDfActivity) <-
       registerWbDfI
-        (registerConfig "adjustment_async")
+        ( registerConfig
+            "adjustment_async"
+            "Submit an adjustment. Will stall if an adjustment is still in progress."
+        )
           { access = WriteOnly
-          , description =
-              "Submit an adjustment. Will stall if an adjustment is still in progress."
           }
         (0 :: EbAdjustment)
         -< (wbAdjustmentAsync, Fwd (pure Nothing))
 
     (_ebAdjustmentWait, ebAdjustmentWaitDfActivity) <-
       registerWbDfI
-        (registerConfig "adjustment_wait")
+        (registerConfig "adjustment_wait" "Wait until ready to (immediately) accept a new adjustment")
           { access = WriteOnly
-          , description = "Wait until ready to (immediately) accept a new adjustment"
           }
         ()
         -< (wbAdjustmentWait, Fwd (pure Nothing))
@@ -345,44 +345,44 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
     -- Auto-centering state machine
     (_autoCenterReset, Fwd autoCenterResetActivity) <-
       registerWbI
-        (registerConfig "auto_center_reset_unchecked")
+        ( registerConfig
+            "auto_center_reset_unchecked"
+            "Clear total adjustments. You must disable the state machine and wait for it to be idle before resetting it. After resetting, you must also wait for the state machine to become 'idle' again to make sure the registers are cleared."
+        )
           { access = WriteOnly
-          , description =
-              "Clear total adjustments. You must disable the state machine and wait for it to be idle before resetting it. After resetting, you must also wait for the state machine to become 'idle' again to make sure the registers are cleared."
           }
         ()
         -< (wbAutoCenterReset, Fwd (pure Nothing))
 
     (Fwd autoCenterEnable, _autoCenterEnableActivity) <-
       registerWbI
-        (registerConfig "auto_center_enable")
+        (registerConfig "auto_center_enable" "Enable auto-centering state machine")
           { access = ReadWrite
-          , description = "Enable auto-centering state machine"
           }
         False
         -< (wbAutoCenterEnable, Fwd (pure Nothing))
 
     (Fwd autoCenterMargin, _autoCenterMarginActivity) <-
       registerWbI
-        (registerConfig "auto_center_margin")
+        (registerConfig "auto_center_margin" "Margin for auto-centering")
           { access = ReadWrite
-          , description = "Margin for auto-centering"
           }
         (2 :: Unsigned 16)
         -< (wbAutoCenterMargin, Fwd (pure Nothing))
 
     registerWbI_
-      (registerConfig "auto_center_is_idle")
+      (registerConfig "auto_center_is_idle" "Whether the auto-centering state machine is idle")
         { access = ReadOnly
-        , description = "Whether the auto-centering state machine is idle"
         }
       False
       -< (wbAutoCenterIsIdle, Fwd (Just <$> autoCenterIsIdle))
 
     registerWbI_
-      (registerConfig "auto_center_total_adjustments")
+      ( registerConfig
+          "auto_center_total_adjustments"
+          "Total adjustments applied by the auto-centering state machine"
+      )
         { access = ReadOnly
-        , description = "Total adjustments applied by the auto-centering state machine"
         }
       (0 :: Signed 32)
       -< (wbAutoCenterTotalAdjustments, Fwd (Just <$> autoCenterTotalAdjustments))
@@ -429,7 +429,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
 
     (dataCountOut, _dataCountActivity) <-
       registerWbI
-        (registerConfig "data_count"){access = ReadOnly}
+        (registerConfig "data_count" ""){access = ReadOnly}
         0
         -< (wbDataCount, Fwd (Just <$> dataCount))
 
@@ -438,9 +438,8 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       registerWb
         clkRead
         flagsReset
-        (registerConfig "underflow")
+        (registerConfig "underflow" "Sticky underflow flag; can be cleared by writing false")
           { access = ReadOnly
-          , description = "Sticky underflow flag; can be cleared by writing false"
           }
         False
         -< (wbUnderflow, Fwd (flip toMaybe True <$> underflow))
@@ -448,9 +447,8 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
     registerWb_
       clkRead
       flagsReset
-      (registerConfig "underflow_timestamp")
+      (registerConfig "underflow_timestamp" "Local counter value when first underflow occurred")
         { access = ReadOnly
-        , description = "Local counter value when first underflow occurred"
         }
       0
       -< (wbLocalCounterUnderflow, localCounterUnderflow)
@@ -459,9 +457,8 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       registerWb
         clkRead
         flagsReset
-        (registerConfig "overflow")
+        (registerConfig "overflow" "Sticky overflow flag; can be cleared by writing false")
           { access = ReadOnly
-          , description = "Sticky overflow flag; can be cleared by writing false"
           }
         False
         -< (wbOverflow, Fwd (flip toMaybe True <$> overflow1))
@@ -469,9 +466,8 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
     registerWb_
       clkRead
       flagsReset
-      (registerConfig "overflow_timestamp")
+      (registerConfig "overflow_timestamp" "Local counter value when first overflow occurred")
         { access = ReadOnly
-        , description = "Local counter value when first overflow occurred"
         }
       0
       -< (wbLocalCounterOverflow, localCounterOverflow)
@@ -480,7 +476,7 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       registerWb
         clkRead
         flagsReset
-        (registerConfig "min_data_count_seen"){access = ReadOnly}
+        (registerConfig "min_data_count_seen" ""){access = ReadOnly}
         maxBound
         -< (wbMinDataCountSeen, Fwd (Just <$> minDataCountSeen1))
 
@@ -488,16 +484,17 @@ xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
       registerWb
         clkRead
         flagsReset
-        (registerConfig "max_data_count_seen"){access = ReadOnly}
+        (registerConfig "max_data_count_seen" ""){access = ReadOnly}
         minBound
         -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountSeen1))
 
     (_cf, Fwd clearStatusRegisters) <-
       registerWbI
-        (registerConfig "clear_status_registers")
+        ( registerConfig
+            "clear_status_registers"
+            "Clear the underflow and overflow sticky flags, their respective timestamps and the min/max data count seen registers."
+        )
           { access = WriteOnly
-          , description =
-              "Clear the underflow and overflow sticky flags, their respective timestamps and the min/max data count seen registers."
           }
         False
         -< (wbClearStatusRegisters, Fwd (pure Nothing))

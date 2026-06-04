@@ -181,11 +181,11 @@ library
     Protocols.Axi4.Extra
     Protocols.BiDf
     Protocols.Df.Extra
+    Protocols.Experimental.ReqResp.Extra
     Protocols.Extra
     Protocols.Extra.TH
     Protocols.Internal.TH.Extra
     Protocols.Internal.Types.Extra
-    Protocols.ReqResp
     Protocols.Spi
     Protocols.TraceC
     Protocols.Wishbone.Extra

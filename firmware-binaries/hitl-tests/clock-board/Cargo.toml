@@ -22,4 +22,4 @@ bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 ufmt = "0.2.0"
 
 [build-dependencies]
-memmap-generate = { path = "../../../firmware-support/memmap-generate" }
+bittide-build-utils = { path = "../../../firmware-support/bittide-build-utils" }
