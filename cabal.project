@@ -36,7 +36,7 @@ jobs: $ncpus
 source-repository-package
   type: git
   location: https://github.com/QBayLogic/clash-protocols-memmap
-  tag: 599b1f0a5539dc57a66bfa3013b308253d9278da
+  tag: 745be2eff82fd8d712b0e50d825837d2f39fb920
   subdir:
     clash-protocols-memmap
     clash-bitpackc
