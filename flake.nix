@@ -117,9 +117,6 @@
             openocd-riscv
             pkgs.gdb
 
-            # UART communication
-            pkgs.picocom
-
             # mdbook dependencies
             pkgs.mdbook
             pkgs.drawio-headless

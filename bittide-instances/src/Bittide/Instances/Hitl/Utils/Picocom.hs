@@ -2,267 +2,142 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{- | Serial communication with FPGAs for HITL tests.
+
+Historically this module wrapped the external @picocom@ program; it now talks to
+the serial device directly via "System.Hardware.Serial". The module (and most of
+its API) keeps the @Picocom@ name so the call sites need minimal changes.
+
+Two styles are offered:
+
+  * A raw 'SerialHandle' ('start', 'withSerial') for drivers that read and write
+    the port directly.
+  * A 'Chan' 'ByteString' of received lines ('initPicocom',
+    'startWithLoggingChan') for drivers that only consume output. In this style,
+    every received line is also appended to a log file - this replaces
+    @picocom@'s @tee@ and is the primary HITL debug artifact.
+-}
 module Bittide.Instances.Hitl.Utils.Picocom where
 
-import Bittide.Instances.Hitl.Utils.Program
 import Prelude
 
-import Paths_bittide_instances
-
 import Bittide.Hitl (DeviceInfo (..))
-import Control.Concurrent (forkIO, killThread)
+import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Concurrent.Chan
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.ByteString (ByteString, empty)
 import Data.ByteString.Char8 (hGetLine)
-import Data.Maybe (fromJust)
 import GHC.IO.Exception
-import Project.Chan (waitForLine)
-import System.FilePath ((</>))
-import System.IO (IOMode (WriteMode), openFile)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath (takeDirectory, (</>))
+import System.Hardware.Serial (BaudRate)
+import System.IO (IOMode (AppendMode), hClose, hFlush, openFile)
+import System.IO.Error (isDoesNotExistError)
 import Vivado.Tcl (HwTarget)
 
 import GHC.IO.Handle (BufferMode (..), Handle, hIsEOF, hSetBuffering)
-import System.Posix.Env (getEnvironment)
-import System.Process
 
-import qualified System.Timeout.Extra as T
+import qualified Data.ByteString.Char8 as BSC
+import qualified System.Hardware.Serial as Serial
 
+-- | Default baud rate used by most instances.
+defaultBaud :: BaudRate
+defaultBaud = 921600
+
+-- | A serial connection to a device, exposed as a bidirectional 'Handle'.
+newtype SerialHandle = SerialHandle
+  { handle :: Handle
+  }
+
+{- | Open a serial connection to a device and stream every received line to a
+channel and a log file.
+
+Returns the channel and a cleanup action.
+-}
 initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
 initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
-  devNullHandle <- openFile "/dev/null" WriteMode
-
   let
     devPath = deviceInfo.serial
     stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
-    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
 
-  -- Note that script at `devPath` already logs to `stdoutPath` and
-  -- `stderrPath`. This is what we're after: debug logging. To prevent race
-  -- conditions, we need to know when picocom is ready so we also shortly
-  -- interested in stderr in this Haskell process.
-  (picoChan, cleanup) <-
-    startWithLoggingAndEnvChan
-      ( StdStreams
-          { stdin = CreatePipe
-          , stdout = CreatePipe
-          , stderr = UseHandle devNullHandle
-          }
-      )
-      devPath
-      stdoutPath
-      stderrPath
-      []
+  startWithLoggingChan devPath defaultBaud stdoutPath
 
-  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000 $
-    waitForLine picoChan "Terminal ready"
+{- | Open a serial connection at the given baud rate. Returns the handle and a
+cleanup action that closes it.
 
-  pure (picoChan, cleanup)
-
-getStartPath :: IO FilePath
-getStartPath = getDataFileName "data/picocom/start.sh"
-
-data StdStreams = StdStreams
-  { stdin :: StdStream
-  , stdout :: StdStream
-  , stderr :: StdStream
-  }
-
-defaultStdStreams :: StdStreams
-defaultStdStreams = StdStreams CreatePipe CreatePipe CreatePipe
-
--- | Start picocom with the given device path.
-start :: StdStreams -> FilePath -> IO (ProcessHandles, IO ())
-start stdStreams devPath = do
-  startPath <- getStartPath
-
-  let
-    picocomProc =
-      (proc startPath [devPath])
-        { std_in = stdStreams.stdin
-        , std_out = stdStreams.stdout
-        , std_err = stdStreams.stderr
-        , new_session = True
-        }
-
-  picoHandles@(picoStdin, picoStdout, picoStderr, picoPh) <-
-    createProcess picocomProc
-
-  let
-    picoHandles' =
-      ProcessHandles
-        { stdinHandle = fromJust picoStdin
-        , stdoutHandle = fromJust picoStdout
-        , stderrHandle = fromJust picoStderr
-        , process = picoPh
-        }
-
-  pure (picoHandles', cleanupProcess picoHandles)
-
--- | Start picocom with the given device path and output to a channel.
-startWithChan :: StdStreams -> FilePath -> IO (Chan ByteString, IO ())
-startWithChan stdStreams devPath = do
-  (pHandles, cleanupHandles) <- start stdStreams devPath
-  (chan, cleanupChan) <- handleToChan pHandles.stdoutHandle
-  pure (chan, cleanupChan >> cleanupHandles)
-
-{- | Starts a `Chan ByteString` from a given `Handle`. The channel acts as
-a buffer that prevents the handle from blocking on unread output. Bytestrings
-output by the handle can then be read through the channel output.
+Callers typically reset the USB adapter right before opening (see
+'Bittide.Instances.Hitl.Utils.Usb'), during which the device node briefly
+disappears as it re-enumerates. We therefore retry the open for a few seconds
+until the node reappears.
 -}
-handleToChan :: Handle -> IO (Chan ByteString, IO ())
-handleToChan h = do
+start :: FilePath -> BaudRate -> IO (SerialHandle, IO ())
+start devPath baud = do
+  h <- openWithRetry (50 :: Int) -- ~5 s total at 100 ms per attempt
+  pure (SerialHandle h, hClose h)
+ where
+  openWithRetry n =
+    Serial.openSerial devPath (Serial.Settings baud) `catch` \(e :: IOException) ->
+      if n > 0 && isDoesNotExistError e
+        then threadDelay 100_000 >> openWithRetry (n - 1)
+        else throwM e
+
+{- | Open a serial connection and stream every received line to a 'Chan' and a
+log file.
+-}
+startWithLoggingChan :: FilePath -> BaudRate -> FilePath -> IO (Chan ByteString, IO ())
+startWithLoggingChan devPath baud logPath = do
+  (sh, cleanup) <- start devPath baud
+  (chan, cleanupChan) <- handleToChan sh.handle (Just logPath)
+  pure (chan, cleanupChan >> cleanup)
+
+{- | Open a serial connection, run an action with the handle, then clean up.
+
+The caller reads and writes the handle directly; output logging for these
+drivers is handled by the test harness (e.g. dumping remaining output on
+failure), not by a separate reader thread - a reader thread would steal the very
+bytes the driver needs to read.
+-}
+withSerial ::
+  (MonadIO m, MonadMask m) =>
+  FilePath ->
+  BaudRate ->
+  (SerialHandle -> m a) ->
+  m a
+withSerial devPath baud action = do
+  (sh, clean) <- liftIO $ start devPath baud
+  finally (action sh) (liftIO clean)
+
+{- | Starts a 'Chan' 'ByteString' from a given 'Handle'. The channel acts as a
+buffer that prevents the handle from blocking on unread output. Bytestrings
+output by the handle can then be read through the channel output. When a log
+path is given, each line is also appended to that file.
+-}
+handleToChan :: Handle -> Maybe FilePath -> IO (Chan ByteString, IO ())
+handleToChan h mLogPath = do
   c <- newChan
   hSetBuffering h LineBuffering
+  mLogH <- traverse openLog mLogPath
   threadId <-
     forkIO $
-      (readHandle c) `catch` \(e :: IOException) -> do
+      readHandle c mLogH `catch` \(e :: IOException) ->
         putStrLn $ "[handleToChan: " <> show h <> "] IOException: " <> show e
-  let cleanup = killThread threadId
+  let
+    cleanup = do
+      killThread threadId
+      mapM_ hClose mLogH
   pure (c, cleanup)
  where
-  readHandle chan = do
+  openLog path = do
+    createDirectoryIfMissing True (takeDirectory path)
+    openFile path AppendMode
+
+  readHandle chan mLogH = do
     eof <- hIsEOF h
     if eof
       then writeChan chan empty
       else do
         bytes <- hGetLine h
         writeChan chan bytes
-        readHandle chan
-
-{- | Starts Picocom with the given device path and paths for logging stdout and stderr.
-Then perform the action and clean up the picocom process.
--}
-withPicocomWithLogging ::
-  (MonadIO m, MonadMask m) =>
-  StdStreams ->
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  (ProcessHandles -> m a) ->
-  m a
-withPicocomWithLogging stdStreams devPath stdoutPath stderrPath action = do
-  (pico, clean) <- liftIO $ startWithLogging stdStreams devPath stdoutPath stderrPath
-  finally (action pico) (liftIO clean)
-
-{- | Starts Picocom with the given device path, paths for logging stdout and stderr and
-extra environment variables. Then perform the action and clean up the picocom process.
--}
-withPicocomWithLoggingAndEnv ::
-  StdStreams ->
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  [(String, String)] ->
-  (ProcessHandles -> IO a) ->
-  IO a
-withPicocomWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv action = do
-  (pico, clean) <- startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv
-  finally (action pico) clean
-
-withPicocomWithLoggingAndEnvChan ::
-  StdStreams ->
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  [(String, String)] ->
-  (Chan ByteString -> IO a) ->
-  IO a
-withPicocomWithLoggingAndEnvChan stdStreams devPath stdoutPath stderrPath extraEnv action = do
-  (picoChan, clean) <- startWithLoggingAndEnvChan stdStreams devPath stdoutPath stderrPath extraEnv
-  finally (action picoChan) clean
-
-startWithLogging ::
-  StdStreams ->
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  IO (ProcessHandles, IO ())
-startWithLogging stdStreams devPath stdoutPath stderrPath =
-  startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath []
-
-{- | Starts Picocom with the given device path, paths for logging stdout and stderr and
-extra environment variables.
--}
-startWithLoggingAndEnv ::
-  StdStreams ->
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  [(String, String)] ->
-  IO (ProcessHandles, IO ())
-startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
-  startPath <- getStartPath
-  currentEnv <- getEnvironment
-
-  let
-    picocomProc =
-      (proc startPath [devPath])
-        { std_in = stdStreams.stdin
-        , std_out = stdStreams.stdout
-        , std_err = stdStreams.stderr
-        , new_session = True
-        , env =
-            Just
-              ( currentEnv
-                  <> extraEnv
-                  <> [("PICOCOM_STDOUT_LOG", stdoutPath), ("PICOCOM_STDERR_LOG", stderrPath)]
-              )
-        }
-
-  picoHandles@(picoStdin, picoStdout, picoStderr, picoPh) <-
-    createProcess picocomProc
-
-  let
-    picoHandles' =
-      ProcessHandles
-        { stdinHandle = fromJust picoStdin
-        , stdoutHandle = fromJust picoStdout
-        , stderrHandle = fromJust picoStderr
-        , process = picoPh
-        }
-
-  pure (picoHandles', cleanupProcess picoHandles)
-
-startWithLoggingAndEnvChan ::
-  StdStreams ->
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  [(String, String)] ->
-  IO (Chan ByteString, IO ())
-startWithLoggingAndEnvChan stdStreams devPath stdoutPath stderrPath extraEnv = do
-  startPath <- getStartPath
-  currentEnv <- getEnvironment
-
-  let
-    picocomProc =
-      (proc startPath [devPath])
-        { std_in = stdStreams.stdin
-        , std_out = stdStreams.stdout
-        , std_err = stdStreams.stderr
-        , new_session = True
-        , env =
-            Just
-              ( currentEnv
-                  <> extraEnv
-                  <> [("PICOCOM_STDOUT_LOG", stdoutPath), ("PICOCOM_STDERR_LOG", stderrPath)]
-              )
-        }
-
-  picoHandles@(picoStdin, picoStdout, picoStderr, picoPh) <-
-    createProcess picocomProc
-
-  let
-    picoHandles' =
-      ProcessHandles
-        { stdinHandle = fromJust picoStdin
-        , stdoutHandle = fromJust picoStdout
-        , stderrHandle = fromJust picoStderr
-        , process = picoPh
-        }
-
-  (chan, chanCleanup) <- handleToChan picoHandles'.stdoutHandle
-
-  pure (chan, chanCleanup >> cleanupProcess picoHandles)
+        mapM_ (\logH -> BSC.hPutStrLn logH bytes >> hFlush logH) mLogH
+        readHandle chan mLogH

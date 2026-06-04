@@ -9,20 +9,13 @@ module Bittide.Instances.Hitl.Driver.DnaOverSerial where
 import Clash.Prelude
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup
-import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
-import Bittide.Instances.Hitl.Utils.Vivado
 import Control.Monad.Extra
 import Control.Monad.IO.Class
 import Data.ByteString.Internal (w2c)
-import Data.Maybe
 import Data.Word8 (isHexDigit)
 import Numeric
-import Project.FilePath
-import Project.Handle
 import System.Exit
-import System.FilePath
 import System.IO (BufferMode (..), hSetBuffering)
 import System.Timeout
 import Test.Tasty.HUnit
@@ -70,41 +63,19 @@ dnaOverSerialDriver _name targets = do
       liftIO $ assertFailure "Not all FPGAs transmitted the expected DNA"
       pure $ ExitFailure 2
  where
-  initPicocoms :: [IO (ProcessHandles, IO ())]
-  initPicocoms = flip L.map targets $ \(hwT, dI) -> do
-    let targetId = idFromHwT hwT
-    let targetIndex = fromMaybe 9 $ L.findIndex (\d -> d.deviceId == targetId) demoRigInfo
+  -- Must match the gateware's UART baud rate (`dnaOverSerial` uses @SNat \@9600@).
+  baud = 9600
 
-    projectDir <- findParentContaining "cabal.project"
-    let
-      hitlDir = projectDir </> "_build" </> "hitl"
-      stdoutLog = hitlDir </> "picocom-stdout." <> show targetIndex <> ".log"
-      stderrLog = hitlDir </> "picocom-stderr." <> show targetIndex <> ".log"
-    putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
-    putStrLn $ "logging stderr to `" <> stderrLog <> "`"
+  initPicocoms :: [IO (Picocom.SerialHandle, IO ())]
+  initPicocoms = flip L.map targets $ \(_hwT, dI) -> do
+    (pico, picoClean) <- Picocom.start dI.serial baud
 
-    (pico, picoClean) <-
-      Picocom.startWithLoggingAndEnv
-        Picocom.defaultStdStreams
-        dI.serial
-        stdoutLog
-        stderrLog
-        [("PICOCOM_BAUD", "9600")]
-
-    hSetBuffering pico.stdinHandle LineBuffering
-    hSetBuffering pico.stdoutHandle LineBuffering
+    hSetBuffering pico.handle LineBuffering
 
     pure (pico, picoClean)
 
-  checkDna :: DeviceInfo -> ProcessHandles -> IO Bool
+  checkDna :: DeviceInfo -> Picocom.SerialHandle -> IO Bool
   checkDna d pico = do
-    terminalReadyResult <-
-      timeout 10_000_000 $ waitForLine pico.stdoutHandle "Terminal ready"
-    when (isNothing terminalReadyResult) $ do
-      assertFailure "Timeout waiting for \"Terminal ready\""
-
-    putStrLn "Terminal is ready!"
-
     receivedDna0 <- timeout 10_000_000 $ findDna pico ""
     receivedDna <- case receivedDna0 of
       Just rDna -> return rDna
@@ -119,9 +90,9 @@ dnaOverSerialDriver _name targets = do
     putStrLn $ "Differences:  " <> differences
     pure match
 
-  findDna :: ProcessHandles -> String -> IO String
+  findDna :: Picocom.SerialHandle -> String -> IO String
   findDna pico prev = do
-    get <- BS.hGet pico.stdoutHandle 1
+    get <- BS.hGet pico.handle 1
     case BS.unpack get of
       [] -> error "Unexpected end of stream while reading DNA"
       (nC : _) ->
