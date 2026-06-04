@@ -227,7 +227,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      REPORT_NAME: ${{ matrix.target.top }}
+      REPORT_NAME: ${{ matrix.target.top }}-${{ matrix.target.iteration }}
 
     steps:
       - name: Checkout
@@ -242,7 +242,7 @@ jobs:
 
       - name: Download HITL data
         run: |
-          gh run download ${{ github.run_id }} -p "${{ matrix.target.top }}-hitl-data"
+          gh run download ${{ github.run_id }} -p "${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data"
 
       - name: Generate clock control CSVs
         run: |
@@ -250,31 +250,31 @@ jobs:
           set +f
 
           # Note these aren't necessary to generate the reports, but are useful for debugging
-          cabal run bittide-instances:samples-to csv ${{ matrix.target.top }}-hitl-data/hitl/*/*.bin
-          cabal run bittide-instances:samples-to ppm-csv ${{ matrix.target.top }}-hitl-data/hitl/*/*.bin
+          cabal run bittide-instances:samples-to csv ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.bin
+          cabal run bittide-instances:samples-to ppm-csv ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.bin
 
       - name: Generate clock control reports
         run: |
-          cabal run bittide-instances:samples-to multi-report ${{ matrix.target.top }}-hitl-data/hitl
+          cabal run bittide-instances:samples-to multi-report ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl
 
       - name: Upload report
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: ${{ matrix.target.top }}-clock-report
+          name: ${{ matrix.target.top }}-${{ matrix.target.iteration }}-clock-report
           path: |
-            ${{ matrix.target.top }}-hitl-data/hitl/*.pdf
+            ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*.pdf
           retention-days: 14
 
       - name: Upload sources
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: ${{ matrix.target.top }}-clock-report-sources
+          name: ${{ matrix.target.top }}-${{ matrix.target.iteration }}-clock-report-sources
           path: |
-            ${{ matrix.target.top }}-hitl-data/hitl/*/*.json
-            ${{ matrix.target.top }}-hitl-data/hitl/*/*.bin
-            ${{ matrix.target.top }}-hitl-data/hitl/*/*.csv
+            ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.json
+            ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.bin
+            ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.csv
           retention-days: 14
 
   should-run-haskell-tests:
@@ -527,7 +527,11 @@ jobs:
       - name: Set HITL matrix
         id: set-hitl
         run: |
-          jq '[.[] | select(.stage=="test")]' checks.json > checks.hitl.json
+          # Expand each entry by its `repeat` field (default 1), tagging each
+          # expansion with a 1-based `iteration` so downstream jobs can give
+          # repeated runs distinct artifact names.
+          jq '[.[] | select(.stage=="test") | . as $row | ($row.repeat // 1) as $rep | ($rep | tostring | length) as $w | range($rep) | $row + {iteration: ((. + 1) | tostring | (("0" * $w) + .)[-$w:])}]' \
+            checks.json > checks.hitl.json
           cat checks.hitl.json
           echo "matrix=$(cat checks.hitl.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
 
@@ -810,7 +814,7 @@ jobs:
 
       - name: Run tests on hardware
         run: |
-          export VIVADO_HS_LOG_DIR="$(git rev-parse --show-toplevel)/_build/hitl/vivado-run/"
+          export VIVADO_HS_LOG_DIR="$(git rev-parse --show-toplevel)/_build/hitl/vivado-run-${{ matrix.target.iteration }}/"
           if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
             mkdir -p "${VIVADO_HS_LOG_DIR}"
           fi
@@ -823,7 +827,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.target.top }}-hitl-data
+          name: ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data
           path: |
             _build/vivado/*/ila-data
             _build/hitl/*
