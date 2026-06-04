@@ -206,6 +206,7 @@ library
     Bittide.ClockControl.Si539xSpi
     Bittide.ClockControl.Topology
     Bittide.ClockControl.Topology.LinkMasks
+    Bittide.ClockControl.Ugn.Grooming
     Bittide.Counter
     Bittide.Df
     Bittide.DoubleBufferedRam
@@ -294,6 +295,7 @@ test-suite unittests
     Tests.Clash.Protocols.Wishbone.Extra
     Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
+    Tests.ClockControl.Ugn.Grooming
     Tests.Counter
     Tests.DelayWishbone
     Tests.Df
