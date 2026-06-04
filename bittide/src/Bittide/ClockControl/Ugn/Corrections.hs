@@ -1,11 +1,6 @@
 -- SPDX-FileCopyrightText: 2026 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE AllowAmbiguousTypes #-}
-
--- The number of corrections @n@ is fixed by the caller via a type application
--- (e.g. @correctionsWb \@LinkCount@); it no longer appears in the circuit's
--- input/output, hence 'AllowAmbiguousTypes'.
 
 {- |
 A small Wishbone scratch peripheral holding the UGN grooming corrections that the
@@ -57,11 +52,11 @@ correctionsWb ::
   ( HasCallStack
   , C.HiddenClockResetEnable dom
   , KnownNat addrW
-  , KnownNat n
   , ?byteOrder :: ByteOrder
   ) =>
+  SNat n ->
   Circuit (BitboneMm dom addrW) ()
-correctionsWb = circuit $ \bus -> do
+correctionsWb SNat = circuit $ \bus -> do
   [wbCorrections, wbValid] <- deviceWbI (deviceConfig "UgnCorrections") -< bus
   registerWbI_ correctionsConfig initCorrections -< (wbCorrections, Fwd noWrite)
   registerWbI_ validConfig False -< (wbValid, Fwd noWrite)
