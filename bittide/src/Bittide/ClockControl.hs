@@ -69,6 +69,9 @@ data ToFincFdecState dom
   | Idle
   deriving (Generic, NFDataX)
 
+type FINC = Bool
+type FDEC = Bool
+
 {- | Convert 'SpeedChange' to a pair of (FINC, FDEC). This is currently hardcoded
 to work on the Si5395 constraints:
 
@@ -83,9 +86,9 @@ speedChangeToFincFdec ::
   Clock dom ->
   Reset dom ->
   Signal dom SpeedChange ->
-  Signal dom (Bool, Bool)
+  Signal dom (FINC, FDEC)
 speedChangeToFincFdec clk rst =
-  dflipflop clk . fmap conv . mealy clk rst enableGen go (Wait maxBound)
+  dflipflop clk . fmap speedChangeToPins . mealy clk rst enableGen go (Wait maxBound)
  where
   go :: ToFincFdecState dom -> SpeedChange -> (ToFincFdecState dom, SpeedChange)
   go (Wait n) _s
@@ -96,14 +99,6 @@ speedChangeToFincFdec clk rst =
     | otherwise = (Pulse (n - 1) s, s)
   go Idle NoChange = (Idle, NoChange)
   go Idle s = (Pulse maxBound s, NoChange)
-
-  --               FINC   FDEC
-  conv NoChange = (False, False)
-  conv SpeedUp = (True, False)
-  conv SlowDown = (False, True)
-
-type FINC = Bool
-type FDEC = Bool
 
 speedChangeToPins :: SpeedChange -> (FINC, FDEC)
 speedChangeToPins = \case
@@ -163,7 +158,7 @@ speedChangeToStickyPins ::
   Enable dom ->
   SNat prd ->
   Signal dom (Maybe SpeedChange) ->
-  Signal dom (Bool, Bool)
+  Signal dom (FINC, FDEC)
 speedChangeToStickyPins clk rst ena SNat msc = speedChangeToPins <$> stickySC
  where
   sc = fromMaybe NoChange <$> msc
