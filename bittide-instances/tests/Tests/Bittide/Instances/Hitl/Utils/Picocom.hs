@@ -49,7 +49,7 @@ testWritingToChan = do
   let outputLog = "outputChan.log"
 
   (stdout, pCleanup) <- createVerboseProcess outputLog
-  (_chan, chanCleanup) <- handleToChan stdout
+  (_chan, chanCleanup) <- handleToChan stdout Nothing
 
   -- Never read chan output
   threadDelay 3_000_000
