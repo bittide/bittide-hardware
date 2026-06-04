@@ -31,9 +31,15 @@ ringBufferDepth :: SNat RingBufferDepth
 ringBufferDepth = SNat
 
 mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
-mkUserCore bitClk bitRst bitEna localCounter maybeDna =
+mkUserCore bitClk bitRst bitEna localCounter maybeDna appReset =
   circuit $ \(userCoreBusses, Fwd rxs2Raw, handshakeOut) -> do
     [muProgrammableMuxBus, peConfigBus] <- idC -< userCoreBusses
+
+    -- The application counter is the relabeled time base: it starts counting when
+    -- the management unit releases 'appReset' (see 'timedResetWb' in the MU), so the
+    -- per-node release timing realizes the UGN-grooming relabel. The reset itself
+    -- lives outside the user core (in the layer with the management unit).
+    let appCounter = register bitClk appReset bitEna 0 (appCounter + 1)
 
     -- Start business logic
     (readLinkI, writeLinkI) <-
@@ -46,9 +52,12 @@ mkUserCore bitClk bitRst bitEna localCounter maybeDna =
     -- Stop business logic
 
     -- Start programmable mux
+    -- The programmable mux is driven by the relabeled application counter (started
+    -- by the timed reset), so a static schedule (fixed `first_b_cycle`) fires at the
+    -- correct physical moment once the node has been relabeled to the reference.
     (Fwd businessLogicReset, txsOut) <-
       withClockResetEnable bitClk bitRst bitEna
-        $ programmableMux localCounter
+        $ programmableMux appCounter
         -< (muProgrammableMuxBus, handshakeOut, Fwd (bundle txsBl))
     -- Stop programmable mux
 
