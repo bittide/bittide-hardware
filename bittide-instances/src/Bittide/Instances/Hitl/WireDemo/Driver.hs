@@ -23,10 +23,12 @@ import Bittide.Instances.Hitl.Utils.Relabel (
   computeRelabel,
   hardwareUgnEdges,
   readCurrentTime,
+  ugnEdges,
   writeCorrections,
   writeReleaseCycle,
  )
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..), indexToNodeId)
+import Bittide.Instances.Hitl.Utils.UgnGrooming (safeMargin)
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent (threadDelay)
@@ -81,46 +83,43 @@ base is a short head-start before the first node's PE fires.
 appScheduleBase :: Unsigned 64
 appScheduleBase = 1000
 
-{- | Target one-way link latencies (in clock cycles) for each chain hop: the stored
-@λ^safe@ every boot is groomed onto. These are the values 'targetUgns' is built from.
-
-Because grooming only inserts frames (@λ^safe >= λ^obs@), each value must sit at or
-above the rig's observed one-way latency on every boot, with a small margin (the gap
-becomes the inserted frames, so it must stay within the elastic buffer's safe range).
-Observed one-way latency was in @[36, 44]@ cycles over several boots; the long hop 1
-runs noticeably higher than the rest.
+{- | Frames of safety margin added to the golden UGNs to form @λ^safe@ (@λ^safe =
+golden + ε@). Each boot is groomed up to @λ^safe@, so @ε@ is the number of frames the
+elastic buffer inserts on top of matching the golden latency; it must cover the small
+boot-to-boot latency drift yet stay within the buffer's safe range (~±12).
 -}
-targetHopLatencies :: Vec (FpgaCount - 1) (Signed 64)
-targetHopLatencies = 40 :> 46 :> 41 :> 41 :> 39 :> 40 :> 39 :> Nil
+marginFrames :: Signed 64
+marginFrames = 5
 
--- | Chain node ids in FPGA-index order, and the directed hops between them.
-chainNodeIds :: [BitVector 32]
-chainNodeIds = L.map indexToNodeId (toList (indicesI :: Vec FpgaCount (Index FpgaCount)))
+{- | Golden UGN graph: a full set of raw per-node, per-link UGNs (@λ = local - remote@)
+captured from a passing CI boot of this rig (FPGA-indexed, link-indexed like
+'fpgaSetup'). This is the stored reference every boot is groomed onto.
 
-chainHops :: [(BitVector 32, BitVector 32)]
-chainHops = L.zip chainNodeIds (L.tail chainNodeIds)
-
--- | Both directions of every chain hop (the node pairs carrying a chain UGN).
-chainPairs :: [(BitVector 32, BitVector 32)]
-chainPairs = L.concatMap (\(a, b) -> [(a, b), (b, a)]) chainHops
-
-{- | Target UGNs (@λ^safe@) described as a graph, the same way measured UGNs are: the
-target one-way latency on both directions of every chain hop. Both the fixed
-application schedule ('appSchedule') and the grooming target ('computeRelabel') are
-derived from this, so the chain latencies live in one place. Ports are irrelevant --
-grooming matches edges by node pair.
+Because it is a real boot of the same rig, @λ^safe - λ@ for any later boot is a pure
+counter-offset coboundary (the physical link latencies — asymmetry and all — are
+identical and cancel). Bellman-Ford ('computeRelabel') therefore removes the offset
+exactly on every node and the residual frames are just 'marginFrames'.
 -}
-targetUgns :: [UgnEdge]
-targetUgns =
-  L.concat
-    [ [UgnEdge a 0 b 0 lat, UgnEdge b 0 a 0 lat]
-    | ((a, b), lat) <- L.zip chainHops (toList targetHopLatencies)
-    ]
+goldenUgns :: Vec FpgaCount (Vec LinkCount (Signed 64))
+{- FOURMOLU_DISABLE -}
+goldenUgns =
+       ( 106204 :>  392191 :>   44456 :> -137763 :>  397168 :>   63442 :>  201544 :> Nil)
+    :> ( 189459 :>  -95303 :> -339270 :>  195662 :> -138065 :> -157052 :> -201469 :> Nil)
+    :> (-189373 :> -390884 :>    6246 :> -327481 :> -346468 :> -528687 :> -284719 :> Nil)
+    :> (-106130 :>   95377 :>  -42724 :>  -61711 :> -243930 :>  290999 :>  284794 :> Nil)
+    :> (  19024 :>  352751 :>  -44380 :>   61786 :>  346542 :>  157126 :> -182181 :> Nil)
+    :> ( 534966 :>  201243 :>  339345 :>  137839 :>  244005 :>  528761 :>  182256 :> Nil)
+    :> (-534895 :> -352673 :>   -6170 :> -195584 :> -397092 :> -290924 :> -333687 :> Nil)
+    :> ( -18949 :> -201167 :>   42800 :>  327557 :>  138138 :>  -63366 :>  333764 :> Nil)
+    :> Nil
+{- FOURMOLU_ENABLE -}
 
--- | The target one-way latency of a single directed hop, read out of 'targetUgns'.
-targetChainStep :: BitVector 32 -> BitVector 32 -> Signed 64
-targetChainStep src dst =
-  L.head [e.ugn | e <- targetUgns, e.srcNode == src, e.dstNode == dst]
+{- | The stored @λ^safe@: the golden UGN graph plus 'marginFrames'. Every boot is
+groomed onto this (see 'computeRelabel'), so the application sees the same per-edge UGNs
+every run and the schedule is fixed.
+-}
+lambdaSafe :: [UgnEdge]
+lambdaSafe = safeMargin marginFrames (ugnEdges goldenUgns)
 
 {- | Collect the configuration for the 'wireDemoPeConfig' and the 'programmableMux' in
 a single data structure for easier schedule generation.
@@ -151,10 +150,13 @@ chainTopology fpgaTable = imap node fpgaTable
     writeFpgaIdx = if fpgaIndex == maxBound then Nothing else Just (fpgaIndex + 1)
     toLink target = fromJust (elemIndex target links)
 
-{- | The fixed application-domain schedule, derived entirely from 'targetUgns' (and the
-structural chain topology), hence constant across runs. Each node's @first_b_cycle@ is
-the running sum of the per-hop application steps @1 + targetLatency + internalDelay@;
-the boot offsets are not here -- they live in the per-node timed-reset release.
+{- | The fixed application-domain schedule, derived entirely from 'lambdaSafe' (and the
+structural chain topology), hence constant across runs. After grooming, every node's
+application counter is in the golden frame, so the PE chain fires at the golden boot's
+schedule: per hop @k -> k+1@ the step is @1 + λ^safe_{k->k+1} + internalDelay@. Because
+@λ^safe@ carries the golden boot's counter offsets, the running sum swings by those
+offsets; it is shifted so the earliest @first_b_cycle@ is 'appScheduleBase' (all
+non-negative). Boot offsets are removed by the per-node timed-reset release, not here.
 -}
 appSchedule :: Vec FpgaCount (NodeConfig (FpgaCount - 1))
 appSchedule =
@@ -163,11 +165,13 @@ appSchedule =
     appFbcs
     (chainTopology fpgaSetup)
  where
-  appStep k =
-    checkedFromIntegral
-      (1 + targetChainStep (indexToNodeId k) (indexToNodeId (k + 1)) + fromIntegral internalDelay)
-  appSteps = map appStep (init indicesI) :: Vec (FpgaCount - 1) (Unsigned 64)
-  appFbcs = scanl (+) appScheduleBase appSteps
+  safeOf src dst = L.head [e.ugn | e <- lambdaSafe, e.srcNode == src, e.dstNode == dst]
+  step k = 1 + toInteger (safeOf (indexToNodeId k) (indexToNodeId (k + 1))) + toInteger internalDelay
+  steps = map step (init indicesI) :: Vec (FpgaCount - 1) Integer
+  cumulative = scanl (+) 0 steps :: Vec FpgaCount Integer
+  minCumulative = minimum cumulative
+  appFbcs =
+    map (\c -> checkedFromIntegral (toInteger appScheduleBase + c - minCumulative)) cumulative
 
 {- | Read the hardware UGNs of the given device using the given GDB connection. Requires
 the CPU to be halted.
@@ -388,18 +392,16 @@ driver testName targets = do
             -- node's reset could release before it is fully configured.
             sharedBase = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
 
-            -- This boot's measured UGN edges, restricted to the chain (grooming matches
-            -- edges by node pair against the chain 'targetUgns').
-            measuredEdges =
-              L.filter
-                (\e -> (e.srcNode, e.dstNode) `elem` chainPairs)
-                (hardwareUgnEdges ugnPairsTableV)
+            -- This boot's measured UGN edges for the FULL graph (every node, every
+            -- link) -- the grooming is independent of the application and adjusts all
+            -- elastic buffers.
+            measuredEdges = hardwareUgnEdges ugnPairsTableV
 
-          -- Groom this boot's measured UGNs onto the target (Bellman-Ford feasibility +
-          -- round-trip split). 'appSchedule' is fixed and derived from the same
-          -- 'targetUgns'.
+          -- Groom this boot's measured UGNs onto the stored 'lambdaSafe' (Bellman-Ford):
+          -- per-node reset offsets + per-link frame corrections for every edge.
+          -- 'appSchedule' is fixed and derived from the same 'lambdaSafe'.
           RelabelPlan{resetOffsets, corrections = correctionsPerNode} <-
-            case computeRelabel measuredEdges targetUgns of
+            case computeRelabel measuredEdges lambdaSafe of
               Left ns ->
                 fail
                   $ "UGN grooming infeasible (UGNs changed too much); negative cycle through nodes: "
@@ -415,7 +417,8 @@ driver testName targets = do
           liftIO $ do
             putStrLn
               [i|Shared reference base (node 0 now + #{natToNum @StartDelay :: Integer}s): #{sharedBase}|]
-            putStrLn [i|Target one-way latencies (lambda^safe): #{toList targetHopLatencies}|]
+            putStrLn
+              [i|Grooming onto stored lambda^safe (#{L.length lambdaSafe} edges, margin #{marginFrames})|]
             putStrLn "Per-node reset offset (relabel q, gauged to node 0):"
             mapM_ print (toList resetOffsets)
             putStrLn "Per-node tReset (= sharedBase + reset offset):"

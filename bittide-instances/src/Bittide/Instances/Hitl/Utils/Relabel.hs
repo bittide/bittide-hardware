@@ -23,7 +23,8 @@ the (small, frame-sized) per-link residual reaches @λ^safe@ via the elastic buf
 insertions, but small removals are fine too (within the elastic buffer's safe range).
 -}
 module Bittide.Instances.Hitl.Utils.Relabel (
-  -- * Building UGN edges from hardware captures
+  -- * Building UGN edges
+  ugnEdges,
   hardwareUgnEdges,
 
   -- * Computing a relabel
@@ -54,24 +55,30 @@ import qualified Data.List as L
 import qualified Data.Map.Strict as Map
 import qualified Gdb
 
-{- | Turn the per-node, per-link captured @(localCounter, remoteCounter)@ pairs into
-'UgnEdge's keyed by DNA node id. The outer vector is FPGA-indexed (the capturing /
-destination node); each inner vector is link-indexed.
+{- | Turn a per-node, per-link table of UGN values (@λ@) into 'UgnEdge's keyed by DNA
+node id. The outer vector is FPGA-indexed (the capturing / destination node); each
+inner vector is link-indexed (matching 'knownLinkConfigs').
 -}
-hardwareUgnEdges ::
-  Vec FpgaCount (Vec LinkCount (Unsigned 64, Unsigned 64)) -> [UgnEdge]
-hardwareUgnEdges captures =
-  L.concat (toList (imap nodeEdges captures))
+ugnEdges :: Vec FpgaCount (Vec LinkCount (Signed 64)) -> [UgnEdge]
+ugnEdges lams =
+  L.concat (toList (imap nodeEdges lams))
  where
   nodeEdges dstIndex links = toList (imap (edge dstIndex) links)
-  edge dstIndex port (localCounter, remoteCounter) =
+  edge dstIndex port lam =
     UgnEdge
       { srcNode = indexToNodeId (knownLinkConfigs !! dstIndex !! port)
       , srcPort = port
       , dstNode = indexToNodeId dstIndex
       , dstPort = port
-      , ugn = bitCoerce localCounter - bitCoerce remoteCounter
+      , ugn = lam
       }
+
+{- | As 'ugnEdges', but from raw @(localCounter, remoteCounter)@ captures: the UGN is
+their signed difference @local - remote@.
+-}
+hardwareUgnEdges ::
+  Vec FpgaCount (Vec LinkCount (Unsigned 64, Unsigned 64)) -> [UgnEdge]
+hardwareUgnEdges = ugnEdges . map (map (\(l, r) -> bitCoerce l - bitCoerce r))
 
 {- | The result of grooming a measured boot onto a target: per-node reset offsets and
 per-node, per-link frame corrections, both FPGA-/link-indexed and ready to apply.
@@ -94,27 +101,20 @@ data RelabelPlan = RelabelPlan
 Returns 'Left' (with the witnessing node ids) if the UGNs changed too much to fit under
 @λ^safe@.
 
-The relabel is the /round-trip split/, not the Bellman-Ford potential. Bellman-Ford
-('groomToSafe') is used only as the feasibility check: it answers "are the groomed UGNs
-allowed" and witnesses the offending negative cycle when not. Its shortest-path
-potentials are deliberately /not/ used for the timing — they place each hop on a
-forward- or reverse-slack boundary, so the relabel would absorb link-latency asymmetry,
-not just the boot offset, and that error accumulates and breaks a directed transport
-chain.
+This is a thin wrapper over 'groomToSafe' (Bellman-Ford). When @λ^safe@ is a real
+captured boot of the same rig, @λ^safe - λ@ is a pure coboundary — the physical link
+latencies (asymmetry and all) are identical between two boots, so they cancel and only
+the boot-offset difference remains. Bellman-Ford's relabel @q@ removes that offset
+exactly on every node, and the residual @frames = λ^safe - relabeled λ@ are the small,
+non-negative (insertions-only) per-link corrections. So:
 
-Instead, for each hop @i <-> j@ (both directions must be present) the round trip is
-split into a boot offset and a one-way latency:
+  * @resetOffsets_i = -(q_i - q_0)@ — the reset release that applies the relabel
+    (gauged so node 0 is 0); and
+  * @corrections@ — the per-receiving-link frames, keyed by @(dstNode, dstPort)@.
 
-  * @O_{i->j} = (λ_{i->j} - λ_{j->i}) \`div\` 2@ — the boot offset.
-  * @λ_{i->j} - O_{i->j}@ — the measured one-way latency (the exact complement of the
-    offset, so the two reconstruct @λ_{i->j}@ with no rounding drift).
-
-The per-node reset offset is the offset potential @φ@ (@φ[node 0] = 0@,
-@φ[j] = φ[i] + O_{i->j}@ along a spanning tree of the measured graph); the reset release
-removes it. The per-link correction @λ^safe_{i->j} - (λ_{i->j} - O_{i->j})@ is the
-frames the receiving node inserts (or removes) to bring the link's latency to the
-target. Edges are matched by @(srcNode, dstNode)@; only hops present in both the
-measured and target sets are groomed.
+Edges are matched by @(srcNode, dstNode)@; pass the full measured + target graphs to
+groom every link. Returns 'Left' (with the witnessing node ids) if @λ^safe@ is
+unreachable (a negative cycle in the slack graph).
 -}
 computeRelabel ::
   -- | Measured UGNs @λ@
@@ -125,54 +125,16 @@ computeRelabel ::
 computeRelabel measured target =
   case groomToSafe measured target of
     UgnsChangedTooMuch ns -> Left ns
-    Groomed{} ->
+    Groomed{correction = q, frames} ->
       Right
         RelabelPlan
-          { resetOffsets = (\idx -> fromInteger (phiOf (indexToNodeId idx))) <$> indicesI
+          { resetOffsets = (\idx -> negate (qOf idx - qOf 0)) <$> indicesI
           , corrections = (\idx -> (\port -> frameOf idx port) <$> indicesI) <$> indicesI
           }
- where
-  root = indexToNodeId (0 :: Index FpgaCount)
-
-  measuredOf = Map.fromList [((e.srcNode, e.dstNode), toInteger e.ugn) | e <- measured]
-  targetOf = Map.fromList [((e.srcNode, e.dstNode), toInteger e.ugn) | e <- target]
-
-  -- Boot-offset half of a hop's round trip (the one-way latency cancels).
-  offsetOf src dst = do
-    fwd <- Map.lookup (src, dst) measuredOf
-    rev <- Map.lookup (dst, src) measuredOf
-    pure ((fwd - rev) `div` 2)
-
-  -- Frames to bring each receiving link's latency to the target, keyed by the receiving
-  -- (node, port): λ^safe_{i->j} - (λ_{i->j} - O_{i->j}).
-  frameByDst =
-    Map.fromList
-      [ ((e.dstNode, e.dstPort), tgt - (toInteger e.ugn - o))
-      | e <- measured
-      , Just o <- [offsetOf e.srcNode e.dstNode]
-      , Just tgt <- [Map.lookup (e.srcNode, e.dstNode) targetOf]
-      ]
-  frameOf idx port = fromInteger (Map.findWithDefault 0 (indexToNodeId idx, port) frameByDst)
-
-  -- Offset potential φ over a spanning tree (BFS) of the measured graph, rooted at
-  -- node 0: the per-node boot offset removed by the reset release.
-  adjacency =
-    Map.fromListWith
-      (<>)
-      [(e.srcNode, [(e.dstNode, o)]) | e <- measured, Just o <- [offsetOf e.srcNode e.dstNode]]
-  phi = bfs (Map.singleton root 0) [root]
-   where
-    bfs acc [] = acc
-    bfs acc (u : queue) = bfs acc' (queue <> new)
      where
-      (acc', new) =
-        L.foldl'
-          ( \(a, ns) (n, o) ->
-              if Map.member n a then (a, ns) else (Map.insert n (a Map.! u + o) a, ns <> [n])
-          )
-          (acc, [])
-          (Map.findWithDefault [] u adjacency)
-  phiOf node = Map.findWithDefault 0 node phi
+      qOf idx = Map.findWithDefault 0 (indexToNodeId idx) q
+      frameByDst = Map.fromList [((e.dstNode, e.dstPort), f) | (e, f) <- frames]
+      frameOf idx port = Map.findWithDefault 0 (indexToNodeId idx, port) frameByDst
 
 {- | Read the current local-counter value from a device's @Timer@ peripheral. Requires
 the CPU to be halted.
