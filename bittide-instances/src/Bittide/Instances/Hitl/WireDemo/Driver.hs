@@ -17,6 +17,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, demoRigInfo, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Gdb (
   initGdb,
+  readAppCounter,
   readCurrentTime,
   readHardwareUgns,
   writeCorrections,
@@ -525,6 +526,21 @@ driver testName targets = do
             newCurrentTime <-
               readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head managementUnitGdbs)
             putStrLn [i|Clock is now: #{newCurrentTime}|]
+
+            -- Relabel-landing check: with the app running, read each node's app_counter
+            -- and localCounter. If the timed-reset relabel landed, localCounter -
+            -- app_counter == tReset for that node. A divergence pinpoints a node whose
+            -- reset did not release at the intended (relabeled) cycle.
+            putStrLn "\n=== Relabel landing (localCounter - app_counter should == tReset) ==="
+            forM_ (L.zip3 targets managementUnitGdbs (toList tResets)) $ \(tgt@(_, dev), gdb, tReset) -> do
+              appCtr <- readAppCounter MemoryMaps.managementUnit tgt gdb
+              locCtr <- readCurrentTime MemoryMaps.managementUnit tgt gdb
+              let
+                observed = toInteger locCtr - toInteger appCtr
+                did = dev.deviceId
+                diff = observed - toInteger tReset
+              putStrLn
+                [i|  #{did}: app_counter=#{appCtr} loc-app=#{observed} tReset=#{tReset} diff=#{diff}|]
 
           let
             dnas = L.map (.dna) demoRigInfo
