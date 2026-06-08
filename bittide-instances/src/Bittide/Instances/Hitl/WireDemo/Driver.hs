@@ -209,6 +209,16 @@ readHardwareUgns mm (_, d) gdb = do
   liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
   pure $ adjustLocalCounter <$> ugnTriples
 
+{- | Read the relabeled application counter exposed by the wire-demo user core
+('appCounterReadbackWb'). With the application running, @localCounter - app_counter@
+equals the node's @tReset@ (the relabel release point), letting the host verify the
+relabel actually landed on hardware. Requires the CPU to be halted.
+-}
+readAppCounter :: (HasCallStack) => MemoryMap -> (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
+readAppCounter mm (_, _) gdb = do
+  addr <- expectRight $ getPathAddress mm ["0", "AppCounterReadback", "app_counter"]
+  Gdb.readLe gdb addr
+
 writePeConfig ::
   ( HasCallStack
   , KnownNat linkCount
@@ -493,6 +503,21 @@ driver testName targets = do
             newCurrentTime <-
               readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head managementUnitGdbs)
             putStrLn [i|Clock is now: #{newCurrentTime}|]
+
+            -- Relabel-landing check: with the app running, read each node's app_counter
+            -- and localCounter. If the timed-reset relabel landed, localCounter -
+            -- app_counter == tReset for that node. A divergence pinpoints a node whose
+            -- reset did not release at the intended (relabeled) cycle.
+            putStrLn "\n=== Relabel landing (localCounter - app_counter should == tReset) ==="
+            forM_ (L.zip3 targets managementUnitGdbs (toList tResets)) $ \(tgt@(_, dev), gdb, tReset) -> do
+              appCtr <- readAppCounter MemoryMaps.managementUnit tgt gdb
+              locCtr <- readCurrentTime MemoryMaps.managementUnit tgt gdb
+              let
+                observed = toInteger locCtr - toInteger appCtr
+                did = dev.deviceId
+                diff = observed - toInteger tReset
+              putStrLn
+                [i|  #{did}: app_counter=#{appCtr} loc-app=#{observed} tReset=#{tReset} diff=#{diff}|]
 
           let
             dnas = L.map (.dna) demoRigInfo
