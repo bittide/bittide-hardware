@@ -229,7 +229,7 @@ managementUnit externalCounter maybeDna =
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
     -- Host-written UGN grooming corrections, polled and applied by the MU CPU.
-    correctionsWb @LinkCount -< correctionsBus
+    correctionsWb (SNat @LinkCount) -< correctionsBus
     -- Application reset for the demo's user core: the management unit chooses the
     -- local-counter cycle at which the application leaves reset (the UGN-grooming
     -- relabel). The reset lives here, in the layer around the user core; the
