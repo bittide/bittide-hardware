@@ -28,7 +28,7 @@ import Bittide.Instances.Hitl.Utils.Relabel (
   writeReleaseCycle,
  )
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..), indexToNodeId)
-import Bittide.Instances.Hitl.Utils.UgnGrooming (safeMargin)
+import Bittide.Instances.Hitl.Utils.UgnGrooming (canonicalizeUgn, safeMargin)
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent (threadDelay)
@@ -95,10 +95,8 @@ marginFrames = 5
 captured from a passing CI boot of this rig (FPGA-indexed, link-indexed like
 'fpgaSetup'). This is the stored reference every boot is groomed onto.
 
-Because it is a real boot of the same rig, @λ^safe - λ@ for any later boot is a pure
-counter-offset coboundary (the physical link latencies — asymmetry and all — are
-identical and cancel). Bellman-Ford ('computeRelabel') therefore removes the offset
-exactly on every node and the residual frames are just 'marginFrames'.
+It is stored raw (with its boot-time counter offsets); 'lambdaSafe' relabels it into a
+small, non-negative gauge before use.
 -}
 goldenUgns :: Vec FpgaCount (Vec LinkCount (Signed 64))
 {- FOURMOLU_DISABLE -}
@@ -114,12 +112,19 @@ goldenUgns =
     :> Nil
 {- FOURMOLU_ENABLE -}
 
-{- | The stored @λ^safe@: the golden UGN graph plus 'marginFrames'. Every boot is
-groomed onto this (see 'computeRelabel'), so the application sees the same per-edge UGNs
-every run and the schedule is fixed.
+{- | The stored @λ^safe@: the golden UGN graph relabeled into its minimal non-negative
+gauge ('canonicalizeUgn'), plus 'marginFrames'. Every boot is groomed onto this (see
+'computeRelabel'), so the application sees the same per-edge UGNs every run and the
+schedule is fixed.
+
+The canonical gauge keeps the per-link UGNs (and the schedule derived from them) small
+and non-negative — the range the depth-bounded programmable mux / elastic buffers work
+in — while still honouring the true /asymmetric/ cycle constraints. (Grooming directly
+onto the raw golden UGNs is mathematically equivalent but leaves the app-frame UGNs at
+golden's huge, partly-negative boot values, which the application cannot schedule.)
 -}
 lambdaSafe :: [UgnEdge]
-lambdaSafe = safeMargin marginFrames (ugnEdges goldenUgns)
+lambdaSafe = safeMargin marginFrames (canonicalizeUgn (ugnEdges goldenUgns))
 
 {- | Collect the configuration for the 'wireDemoPeConfig' and the 'programmableMux' in
 a single data structure for easier schedule generation.

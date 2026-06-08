@@ -101,16 +101,19 @@ data RelabelPlan = RelabelPlan
 Returns 'Left' (with the witnessing node ids) if the UGNs changed too much to fit under
 @λ^safe@.
 
-This is a thin wrapper over 'groomToSafe' (Bellman-Ford). When @λ^safe@ is a real
-captured boot of the same rig, @λ^safe - λ@ is a pure coboundary — the physical link
-latencies (asymmetry and all) are identical between two boots, so they cancel and only
-the boot-offset difference remains. Bellman-Ford's relabel @q@ removes that offset
-exactly on every node, and the residual @frames = λ^safe - relabeled λ@ are the small,
-non-negative (insertions-only) per-link corrections. So:
+This is a thin wrapper over 'groomToSafe' (Bellman-Ford, per the UGN grooming slides).
+The relabel @q@ is the per-node potential that fits this boot's @λ@ under the stored
+@λ^safe@ (@λ + B^T q <= λ^safe@); the residual @frames = λ^safe - (λ + B^T q)@ are the
+small, non-negative per-link corrections the elastic buffers insert. So:
 
   * @resetOffsets_i = -(q_i - q_0)@ — the reset release that applies the relabel
     (gauged so node 0 is 0); and
   * @corrections@ — the per-receiving-link frames, keyed by @(dstNode, dstPort)@.
+
+When @λ^safe@ is stored in a small non-negative gauge (see 'lambdaSafe'), the relabel
+absorbs this boot's counter offsets so the groomed app-frame UGNs land back on @λ^safe@
+— small, non-negative, and identical every run, which is what makes a single fixed
+schedule reusable.
 
 Edges are matched by @(srcNode, dstNode)@; pass the full measured + target graphs to
 groom every link. Returns 'Left' (with the witnessing node ids) if @λ^safe@ is

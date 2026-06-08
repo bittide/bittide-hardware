@@ -19,6 +19,7 @@ relaxation, and the resulting frame counts are narrowed back with a bounds check
 module Bittide.Instances.Hitl.Utils.UgnGrooming (
   ugnGraph,
   safeMargin,
+  canonicalizeUgn,
   isAllowedUgn,
   GroomUgnResult (..),
   groomToSafe,
@@ -49,6 +50,31 @@ record-update style of 'Bittide.Instances.Hitl.Utils.Ugn.addLatencyEdge'.
 -}
 safeMargin :: Signed 64 -> [UgnEdge] -> [UgnEdge]
 safeMargin eps = map (\e -> e{ugn = e.ugn + eps})
+
+{- | Relabel UGN edges to their minimal non-negative form: the Bellman-Ford reduced
+costs @λ_{i->j} + q_i - q_j@ (potentials @q@ from the super-source), which are all
+@>= 0@ and leave every round-trip / cycle sum unchanged.
+
+This is a pure gauge change (a relabeling), so it represents the /same/ physical
+system, but in a gauge where the UGNs are small and non-negative. Storing
+@λ^safe@ in this gauge keeps the application's per-link UGNs (and hence its fixed
+schedule) inside the working range a depth-bounded mux/elastic-buffer needs, while
+still honouring the true /asymmetric/ cycle constraints (unlike a symmetric
+midpoint, which is only a valid relabeling on an acyclic graph).
+
+If the edges are not physically allowed (a negative cycle), they are returned
+unchanged.
+-}
+canonicalizeUgn :: [UgnEdge] -> [UgnEdge]
+canonicalizeUgn es =
+  case G.potentials (ugnGraph es) of
+    Nothing -> es
+    Just q ->
+      [ e{ugn = checkedFromIntegral (toInteger e.ugn + qOf e.srcNode - qOf e.dstNode)}
+      | e <- es
+      ]
+     where
+      qOf n = Map.findWithDefault 0 n q
 
 -- | Are these measured UGNs physically allowed (no negative cycle)?
 isAllowedUgn :: [UgnEdge] -> Bool
