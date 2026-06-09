@@ -57,7 +57,7 @@ import Clash.Prelude (
 import Protocols
 
 import Bittide.CaptureUgn (captureUgns, sendUgn)
-import Bittide.ClockControl (SpeedChange)
+import Bittide.ClockControl (SpeedChange (NoChange))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
@@ -244,7 +244,7 @@ core ::
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (BitVector 64))
     )
-    ( CSignal Bittide (Maybe SpeedChange)
+    ( CSignal Bittide SpeedChange
     , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
@@ -374,7 +374,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
              in
               if simulateCc
                 then swCcOut0
-                else pure Nothing
+                else pure NoChange
           else swCcOut0
     -- Stop clock control
 
