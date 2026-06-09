@@ -186,11 +186,9 @@ bringUp bufferDepth mkUserCore refClk refRst =
       frequencyAdjustments :: Signal Bittide (FINC, FDEC)
       frequencyAdjustments =
         delay bittideClk enableGen minBound
-          $ speedChangeToStickyPins
+          $ speedChangeToFincFdec
             bittideClk
             bittideRst
-            enableGen
-            (SNat @Si539xHoldTime)
             speedChanges
 
     idC -< (spi, sync, uartTx, Fwd frequencyAdjustments)
