@@ -214,4 +214,34 @@ impl Si539xSpi {
             self.write(write_op);
         }
     }
+
+    /// Do a frequency increment 'n' times.
+    ///
+    /// Waits for 1 us between SPI transactions to adhere to the maximum update rate of
+    /// 1 us of the Si5395.
+    pub fn finc(&self, timer: &Timer, n: u8) {
+        for _ in 0..n {
+            self.write(ConfigEntry {
+                page: 0x00,
+                address: 0x1D,
+                data: 0b1 << 0,
+            });
+            timer.wait(Duration::from_micros(1));
+        }
+    }
+
+    /// Do a frequency decrement 'n' times.
+    ///
+    /// Waits for 1 us between SPI transactions to adhere to the maximum update rate of
+    /// 1 us of the Si5395.
+    pub fn fdec(&self, timer: &Timer, n: u8) {
+        for _ in 0..n {
+            self.write(ConfigEntry {
+                page: 0x00,
+                address: 0x1D,
+                data: 0b1 << 1,
+            });
+            timer.wait(Duration::from_micros(1));
+        }
+    }
 }
