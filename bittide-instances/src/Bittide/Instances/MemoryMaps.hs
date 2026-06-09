@@ -21,6 +21,7 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as WireDemo
@@ -51,6 +52,7 @@ $( do
            , ("DnaPortE2Test", DnaPortE2.dutMm)
            , ("Ethernet", vexRiscvEthernetMM)
            , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
+           , ("FincFdecTests", FincFdec.memoryMap)
            , ("Freeze", freezeMM)
            , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)
            , ("ProcessingElement", vexRiscvUartHelloMM)
