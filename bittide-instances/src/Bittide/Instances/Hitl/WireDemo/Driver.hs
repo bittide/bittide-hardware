@@ -10,6 +10,7 @@ module Bittide.Instances.Hitl.WireDemo.Driver where
 import Clash.Prelude
 
 import Bittide.ClockControl.Config (defCcConf)
+import Bittide.Graph.Weighted (Graph)
 import Bittide.Hitl
 import Bittide.Instances.Domains (GthTx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, demoRigInfo, fpgaSetup)
@@ -23,12 +24,11 @@ import Bittide.Instances.Hitl.Utils.Relabel (
   computeRelabel,
   hardwareUgnEdges,
   readCurrentTime,
-  ugnEdges,
   writeCorrections,
   writeReleaseCycle,
  )
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..), indexToNodeId)
-import Bittide.Instances.Hitl.Utils.UgnGrooming (canonicalizeUgn, safeMargin)
+import Bittide.Instances.Hitl.Utils.UgnGrooming (safeMargin, ugnGraph)
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent (threadDelay)
@@ -91,40 +91,108 @@ boot-to-boot latency drift yet stay within the buffer's safe range (~±12).
 marginFrames :: Signed 64
 marginFrames = 5
 
-{- | Golden UGN graph: a full set of raw per-node, per-link UGNs (@λ = local - remote@)
-captured from a passing CI boot of this rig (FPGA-indexed, link-indexed like
-'fpgaSetup'). This is the stored reference every boot is groomed onto.
+{- | Golden UGN graph: a full set of per-link UGNs (@λ = local - remote@) captured from a
+passing CI boot of this rig, stored as a 'UgnEdge' list keyed by DNA-derived node id and
+port. This is the stored reference every boot is groomed onto.
 
-It is stored raw (with its boot-time counter offsets); 'lambdaSafe' relabels it into a
+The UGNs carry their boot-time counter offsets; 'lambdaSafe' relabels them into a
 small, non-negative gauge before use.
 -}
-goldenUgns :: Vec FpgaCount (Vec LinkCount (Signed 64))
+goldenUgns :: [UgnEdge]
 {- FOURMOLU_DISABLE -}
 goldenUgns =
-       ( 106204 :>  392191 :>   44456 :> -137763 :>  397168 :>   63442 :>  201544 :> Nil)
-    :> ( 189459 :>  -95303 :> -339270 :>  195662 :> -138065 :> -157052 :> -201469 :> Nil)
-    :> (-189373 :> -390884 :>    6246 :> -327481 :> -346468 :> -528687 :> -284719 :> Nil)
-    :> (-106130 :>   95377 :>  -42724 :>  -61711 :> -243930 :>  290999 :>  284794 :> Nil)
-    :> (  19024 :>  352751 :>  -44380 :>   61786 :>  346542 :>  157126 :> -182181 :> Nil)
-    :> ( 534966 :>  201243 :>  339345 :>  137839 :>  244005 :>  528761 :>  182256 :> Nil)
-    :> (-534895 :> -352673 :>   -6170 :> -195584 :> -397092 :> -290924 :> -333687 :> Nil)
-    :> ( -18949 :> -201167 :>   42800 :>  327557 :>  138138 :>  -63366 :>  333764 :> Nil)
-    :> Nil
+  -- node 0 = 0x044164c5, node 1 = 0x05108285, node 2 = 0x2c808445, node 3 = 0x2c702305
+  -- node 4 = 0x2581a285, node 5 = 0x2d01c345, node 6 = 0x04308185, node 7 = 0x2d20e405
+  --                                                             srcNode   srcPort  dstNode   dstPort     ugn
+  -- → node 0
+  [ UgnEdge { srcNode = 0x2c702305, srcPort = 0, dstNode = 0x044164c5, dstPort = 0, ugn =  106204 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 1, dstNode = 0x044164c5, dstPort = 1, ugn =  392191 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 2, dstNode = 0x044164c5, dstPort = 2, ugn =   44456 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 3, dstNode = 0x044164c5, dstPort = 3, ugn = -137763 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 4, dstNode = 0x044164c5, dstPort = 4, ugn =  397168 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 5, dstNode = 0x044164c5, dstPort = 5, ugn =   63442 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 6, dstNode = 0x044164c5, dstPort = 6, ugn =  201544 }
+  -- → node 1
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 0, dstNode = 0x05108285, dstPort = 0, ugn =  189459 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 1, dstNode = 0x05108285, dstPort = 1, ugn =  -95303 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 2, dstNode = 0x05108285, dstPort = 2, ugn = -339270 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 3, dstNode = 0x05108285, dstPort = 3, ugn =  195662 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 4, dstNode = 0x05108285, dstPort = 4, ugn = -138065 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 5, dstNode = 0x05108285, dstPort = 5, ugn = -157052 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 6, dstNode = 0x05108285, dstPort = 6, ugn = -201469 }
+  -- → node 2
+  , UgnEdge { srcNode = 0x05108285, srcPort = 0, dstNode = 0x2c808445, dstPort = 0, ugn = -189373 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 1, dstNode = 0x2c808445, dstPort = 1, ugn = -390884 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 2, dstNode = 0x2c808445, dstPort = 2, ugn =    6246 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 3, dstNode = 0x2c808445, dstPort = 3, ugn = -327481 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 4, dstNode = 0x2c808445, dstPort = 4, ugn = -346468 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 5, dstNode = 0x2c808445, dstPort = 5, ugn = -528687 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 6, dstNode = 0x2c808445, dstPort = 6, ugn = -284719 }
+  -- → node 3
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 0, dstNode = 0x2c702305, dstPort = 0, ugn = -106130 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 1, dstNode = 0x2c702305, dstPort = 1, ugn =   95377 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 2, dstNode = 0x2c702305, dstPort = 2, ugn =  -42724 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 3, dstNode = 0x2c702305, dstPort = 3, ugn =  -61711 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 4, dstNode = 0x2c702305, dstPort = 4, ugn = -243930 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 5, dstNode = 0x2c702305, dstPort = 5, ugn =  290999 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 6, dstNode = 0x2c702305, dstPort = 6, ugn =  284794 }
+  -- → node 4
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 0, dstNode = 0x2581a285, dstPort = 0, ugn =   19024 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 1, dstNode = 0x2581a285, dstPort = 1, ugn =  352751 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 2, dstNode = 0x2581a285, dstPort = 2, ugn =  -44380 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 3, dstNode = 0x2581a285, dstPort = 3, ugn =   61786 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 4, dstNode = 0x2581a285, dstPort = 4, ugn =  346542 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 5, dstNode = 0x2581a285, dstPort = 5, ugn =  157126 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 6, dstNode = 0x2581a285, dstPort = 6, ugn = -182181 }
+  -- → node 5
+  , UgnEdge { srcNode = 0x04308185, srcPort = 0, dstNode = 0x2d01c345, dstPort = 0, ugn =  534966 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 1, dstNode = 0x2d01c345, dstPort = 1, ugn =  201243 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 2, dstNode = 0x2d01c345, dstPort = 2, ugn =  339345 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 3, dstNode = 0x2d01c345, dstPort = 3, ugn =  137839 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 4, dstNode = 0x2d01c345, dstPort = 4, ugn =  244005 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 5, dstNode = 0x2d01c345, dstPort = 5, ugn =  528761 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 6, dstNode = 0x2d01c345, dstPort = 6, ugn =  182256 }
+  -- → node 6
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 0, dstNode = 0x04308185, dstPort = 0, ugn = -534895 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 1, dstNode = 0x04308185, dstPort = 1, ugn = -352673 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 2, dstNode = 0x04308185, dstPort = 2, ugn =   -6170 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 3, dstNode = 0x04308185, dstPort = 3, ugn = -195584 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 4, dstNode = 0x04308185, dstPort = 4, ugn = -397092 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 5, dstNode = 0x04308185, dstPort = 5, ugn = -290924 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 6, dstNode = 0x04308185, dstPort = 6, ugn = -333687 }
+  -- → node 7
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 0, dstNode = 0x2d20e405, dstPort = 0, ugn =  -18949 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 1, dstNode = 0x2d20e405, dstPort = 1, ugn = -201167 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 2, dstNode = 0x2d20e405, dstPort = 2, ugn =   42800 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 3, dstNode = 0x2d20e405, dstPort = 3, ugn =  327557 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 4, dstNode = 0x2d20e405, dstPort = 4, ugn =  138138 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 5, dstNode = 0x2d20e405, dstPort = 5, ugn =  -63366 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 6, dstNode = 0x2d20e405, dstPort = 6, ugn =  333764 }
+  ]
 {- FOURMOLU_ENABLE -}
 
-{- | The stored @λ^safe@: the golden UGN graph relabeled into its minimal non-negative
-gauge ('canonicalizeUgn'), plus 'marginFrames'. Every boot is groomed onto this (see
-'computeRelabel'), so the application sees the same per-edge UGNs every run and the
-schedule is fixed.
+{- | Weighted directed graph of 'goldenUgns', keyed on DNA-derived node ids. Useful for
+looking up the latency from one node to another, checking reachability, and as input to
+grooming or canonicalization algorithms.
+-}
+goldenGraph :: Graph (BitVector 32) Integer
+goldenGraph = ugnGraph goldenUgns
 
-The canonical gauge keeps the per-link UGNs (and the schedule derived from them) small
-and non-negative — the range the depth-bounded programmable mux / elastic buffers work
-in — while still honouring the true /asymmetric/ cycle constraints. (Grooming directly
-onto the raw golden UGNs is mathematically equivalent but leaves the app-frame UGNs at
-golden's huge, partly-negative boot values, which the application cannot schedule.)
+{- | The stored @λ^safe = λ^obs + ε@: 'goldenUgns' (the raw observed UGNs from the
+reference boot) shifted up by a small safety margin 'marginFrames'. Every subsequent
+boot is groomed onto this target (see 'computeRelabel').
+
+We intentionally store the raw gauge, /not/ a canonicalized form. The raw UGNs carry
+large boot-time counter offsets, but the Bellman-Ford relabeling @q@ at each boot
+absorbs those offsets exactly (via the timed-reset release). The per-link frame
+corrections that remain are @λ^safe − (λ_new + B^T q) ≈ ε ± physical drift@, which is
+a small number of frames well within the elastic buffer's adjustable range. Applying
+a gauge change (e.g. 'canonicalizeUgn') before adding the margin would force some
+target UGNs to zero — physically impossible for links across transceivers and fiber,
+and it would require inserting large negative frame counts.
 -}
 lambdaSafe :: [UgnEdge]
-lambdaSafe = safeMargin marginFrames (canonicalizeUgn (ugnEdges goldenUgns))
+lambdaSafe = safeMargin marginFrames goldenUgns
 
 {- | Collect the configuration for the 'wireDemoPeConfig' and the 'programmableMux' in
 a single data structure for easier schedule generation.
