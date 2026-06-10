@@ -73,6 +73,60 @@ case_groomToSafe_infeasible = do
     UgnsChangedTooMuch _ -> pure ()
     Groomed{} -> assertFailure "expected UgnsChangedTooMuch"
 
+-- * symmetrizeUgn
+
+case_symmetrize_removes_gradient :: Assertion
+case_symmetrize_removes_gradient = do
+  -- UGN(i->j) = base(i,j) + g_i - g_j, with symmetric base and node offsets g = [0,4,9].
+  -- The imbalance is a pure gradient, so symmetrizeUgn must restore base on both directions.
+  let
+    es =
+      [ mkEdge 0 0 1 0 6
+      , mkEdge 1 0 0 0 14 -- base 10
+      , mkEdge 1 0 2 0 15
+      , mkEdge 2 0 1 0 25 -- base 20
+      , mkEdge 0 0 2 0 21
+      , mkEdge 2 0 0 0 39 -- base 30
+      ]
+    m = Map.fromList [((e.srcNode, e.dstNode), e.ugn) | e <- symmetrizeUgn es]
+    dirs i j = (Map.findWithDefault 0 (i, j) m, Map.findWithDefault 0 (j, i) m)
+  dirs 0 1 @?= (10, 10)
+  dirs 1 2 @?= (20, 20)
+  dirs 0 2 @?= (30, 30)
+
+{- | On a complete mesh whose only asymmetry is a per-node offset (a pure gradient),
+'symmetrizeUgn' removes it entirely: both directions of every link end up equal to the
+symmetric base. It also leaves every round-trip unchanged (a relabel is a gauge change).
+-}
+prop_symmetrize_balances_pure_gradient :: H.Property
+prop_symmetrize_balances_pure_gradient = H.property $ do
+  k <- H.forAll $ Gen.int (Range.linear 2 6)
+  let
+    ns = [0 .. fromIntegral (k - 1)] :: [BitVector 32]
+    pairs = [(i, j) | i <- ns, j <- ns, i < j]
+  gs <-
+    H.forAll $
+      Gen.list (Range.singleton k) (Gen.integral (Range.linearFrom (0 :: Integer) (-10_000) 10_000))
+  bases <-
+    H.forAll $
+      Gen.list (Range.singleton (length pairs)) (Gen.integral (Range.linear (0 :: Integer) 10_000))
+  let
+    gOf x = Map.findWithDefault 0 x (Map.fromList (zip ns gs))
+    es =
+      concat
+        [ [ mkEdge i 0 j 0 (fromIntegral (base + gOf i - gOf j))
+          , mkEdge j 0 i 0 (fromIntegral (base + gOf j - gOf i))
+          ]
+        | ((i, j), base) <- zip pairs bases
+        ]
+    m = Map.fromList [((e.srcNode, e.dstNode), e.ugn) | e <- symmetrizeUgn es]
+  forM_ (zip pairs bases) $ \((i, j), base) -> do
+    let
+      fwd = Map.findWithDefault 0 (i, j) m
+      bwd = Map.findWithDefault 0 (j, i) m
+    fwd === fromIntegral base -- pure-gradient imbalance fully removed
+    bwd === fromIntegral base
+
 -- * Property: a relabel plan restores a freshly-booted mesh to a prior state
 
 -- | The four nodes of the modelled mesh, identified by their (DNA-derived) node ids.
