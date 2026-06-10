@@ -89,7 +89,7 @@ elastic buffer inserts on top of matching the golden latency; it must cover the 
 boot-to-boot latency drift yet stay within the buffer's safe range (~±12).
 -}
 marginFrames :: Signed 64
-marginFrames = 0
+marginFrames = 3
 
 {- | Golden UGN graph: a full set of per-link UGNs (@λ = local - remote@) captured from a
 passing CI boot of this rig, stored as a 'UgnEdge' list keyed by DNA-derived node id and
