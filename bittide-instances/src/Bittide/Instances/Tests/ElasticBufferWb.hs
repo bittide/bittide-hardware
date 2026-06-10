@@ -82,7 +82,9 @@ dut dumpVcd peConfig =
         xilinxElasticBufferWb
           clockGen
           (resetGenN d2)
-          d5
+          -- Keep this in sync with 'Bittide.Instances.Hitl.GenericDemo.Core.FifoSize'
+          -- so the generated @ElasticBuffer@ HAL device stays a single shared device.
+          d6
           localCounter
           clockGen
           (pure () :: Signal XilinxSystem ())
