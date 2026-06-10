@@ -37,7 +37,7 @@ import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..))
 
 import Data.List (sortOn, tails)
 import Data.Map.Strict (Map)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 
 import qualified Bittide.Graph.Weighted as G
 import qualified Data.Map.Strict as Map
@@ -80,24 +80,30 @@ canonicalizeUgn es =
       qOf n = Map.findWithDefault 0 n q
 
 {- | Best-effort /relabeling/ that makes the two directions of every link carry as nearly
-equal a UGN as possible.
+equal a UGN as possible while keeping every UGN non-negative.
 
 This is a relabel (@λ'_{i->j} = λ_{i->j} + q_i - q_j@), so — unlike a per-link midpoint —
 it leaves every round-trip and every cycle sum unchanged: the physical latency
 characteristics are preserved exactly. A relabel only redistributes each link's fixed
 round-trip between its two directions.
 
-Perfect symmetry (both directions equal on every link) is reachable by a relabel only
-when the per-link imbalance is curl-free (the "symmetric midpoint is a valid relabeling
-only on an acyclic graph" caveat). In general it is not, so we minimise the cost
+It is computed in two relabeling passes (their composition is again a relabel):
 
-  @cost(q) = Σ_{neighbours i,j} (λ'_{i->j} - λ'_{j->i})^2@
+  1. A symmetrizing pass that minimises the cost
 
-— the squared difference between the two directions of every link, summed over all
-neighbouring node pairs. That is a graph-Laplacian least-squares problem (see
-'symmetrizingPotentials'): the per-node clock/boot-offset (gradient) part of the imbalance
-is cancelled completely, and only the irreducible /physical/ asymmetry (forward path ≠
-reverse path, the curl) remains, spread across the links it touches.
+       @cost(q) = Σ_{neighbours i,j} (λ'_{i->j} - λ'_{j->i})^2@
+
+     — the squared difference between the two directions of every link, summed over all
+     neighbouring node pairs (see 'symmetrizingPotentials', a graph-Laplacian
+     least-squares solve). Perfect symmetry is reachable by a relabel only when the
+     per-link imbalance is curl-free (the "symmetric midpoint is a valid relabeling only
+     on an acyclic graph" caveat); otherwise the irreducible /physical/ asymmetry (the
+     curl) remains.
+  2. A non-negativity pass ('canonicalizeUgn'-style Bellman-Ford potentials) that, where
+     the cost-minimisation pushed a direction below zero, relabels it back to @>= 0@ — at
+     the price of some asymmetry on exactly those (already curl-limited) links. This is
+     always possible for physically allowed UGNs (no negative cycle); if the UGNs are not
+     allowed there is no non-negative relabel and the edges are returned unchanged.
 
 Potentials are rounded to integers (the relabel is realised as integer cycle offsets).
 -}
@@ -108,24 +114,32 @@ symmetrizeUgn es =
   q = symmetrizingPotentials es
   qOf n = Map.findWithDefault 0 n q
 
-{- | Integer per-node potentials @q@ that least-squares minimise the total squared
-directional imbalance @Σ (λ_{i->j} + q_i - q_j - (λ_{j->i} + q_j - q_i))^2@ over all
-neighbouring node pairs (see 'symmetrizeUgn'). Equivalently, with the antisymmetric
-half-difference @A_{i->j} = (λ_{i->j} - λ_{j->i}) / 2@, it minimises @Σ (A_{i->j} + q_i -
-q_j)^2@, whose stationarity condition is the graph-Laplacian normal equations @L q = b@
-with @b_i = -Σ_j A_{i->j}@. The relabel is gauge-free (a constant shift of all @q@ leaves
-every UGN unchanged), so node 0 is pinned to 0. Potentials are rounded to integers.
+{- | Integer per-node potentials @q@ for 'symmetrizeUgn': the composition of a
+symmetrizing least-squares relabel and a non-negativity-restoring relabel.
+
+The symmetrizing part minimises the total squared directional imbalance @Σ (A_{i->j} + q_i
+- q_j)^2@ (with @A_{i->j} = (λ_{i->j} - λ_{j->i}) / 2@), whose stationarity condition is
+the graph-Laplacian normal equations @L q = b@, @b_i = -Σ_j A_{i->j}@. The relabel is
+gauge-free, so node 0 is pinned to 0 and potentials are rounded to integers. The
+non-negativity part adds the Bellman-Ford potentials of the residual graph (the UGNs after
+the symmetrizing relabel), which are @0@ wherever nothing went negative.
 -}
 symmetrizingPotentials :: [UgnEdge] -> Map (BitVector 32) Integer
 symmetrizingPotentials es
-  | n == 0 || null links = Map.fromList [(node, 0) | node <- nodes]
-  | otherwise = Map.fromList (zip nodes (map round qReal))
+  | n == 0 = Map.empty
+  | otherwise = Map.unionWith (+) lsPotentials nonNegPotentials
  where
   ugnOf = Map.fromList [((e.srcNode, e.dstNode), toInteger e.ugn) | e <- es]
   -- All node ids, deduplicated and in a stable order.
   nodes = Map.keys (Map.fromList [(node, ()) | e <- es, node <- [e.srcNode, e.dstNode]])
   n = length nodes
   indexOf = (Map.fromList (zip nodes [0 ..]) Map.!)
+  zeroes = Map.fromList [(node, 0) | node <- nodes]
+
+  -- Pass 1: symmetrizing least-squares relabel.
+  lsPotentials
+    | null links = zeroes
+    | otherwise = Map.fromList (zip nodes (map round qReal))
   {- Antisymmetric half-difference of each bidirectional link, keyed by node /position/.
   @i < j@ (by position) so each undirected link appears once. -}
   links =
@@ -154,6 +168,15 @@ symmetrizingPotentials es
    where
     sub = [[lap !! a !! b | b <- [1 .. n - 1]] | a <- [1 .. n - 1]]
     subRhs = [rhs !! a | a <- [1 .. n - 1]]
+
+  -- Pass 2: restore non-negativity. Relabel the UGNs by pass 1, then take the Bellman-Ford
+  -- potentials of the result (>= 0 reduced costs). For physically allowed UGNs this always
+  -- succeeds; the potentials are 0 wherever pass 1 already left the UGNs non-negative.
+  lsOf node = Map.findWithDefault 0 node lsPotentials
+  residual =
+    G.fromEdges
+      [(e.srcNode, e.dstNode, toInteger e.ugn + lsOf e.srcNode - lsOf e.dstNode) | e <- es]
+  nonNegPotentials = fromMaybe zeroes (G.potentials residual)
 
 {- | Solve a small dense linear system @A x = b@ by Gaussian elimination with partial
 pivoting. Intended for the tiny (node-count sized) systems in 'symmetrizingPotentials'.

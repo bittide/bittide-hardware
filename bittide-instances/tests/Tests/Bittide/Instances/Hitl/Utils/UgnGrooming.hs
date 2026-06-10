@@ -13,6 +13,8 @@ import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..))
 import Bittide.Instances.Hitl.Utils.UgnGrooming
 
+import qualified Bittide.Instances.Hitl.WireDemo.Driver as WD
+
 import Control.Monad (forM_)
 import Data.List (sort)
 import Test.Tasty
@@ -159,6 +161,55 @@ prop_symmetrize_preserves_roundtrips = H.property $ do
       fwd = Map.findWithDefault 0 (i, j) m
       bwd = Map.findWithDefault 0 (j, i) m
     fwd + bwd === fromIntegral rt -- round-trip preserved (it is a relabel)
+
+{- | Non-negativity is a hard requirement. On a physically allowed mesh (built here from a
+symmetric base + per-node offsets + bounded curl, so every cycle sum stays positive),
+'symmetrizeUgn' must leave no negative UGN — even though individual input UGNs may be very
+negative due to the offsets.
+-}
+prop_symmetrize_nonneg :: H.Property
+prop_symmetrize_nonneg = H.property $ do
+  k <- H.forAll $ Gen.int (Range.linear 2 6)
+  let
+    ns = [0 .. fromIntegral (k - 1)] :: [BitVector 32]
+    pairs = [(i, j) | i <- ns, j <- ns, i < j]
+  gs <-
+    H.forAll $
+      Gen.list (Range.singleton k) (Gen.integral (Range.linearFrom (0 :: Integer) (-5000) 5000))
+  bases <-
+    H.forAll $
+      Gen.list (Range.singleton (length pairs)) (Gen.integral (Range.linear (200 :: Integer) 400))
+  asyms <-
+    H.forAll $
+      Gen.list (Range.singleton (length pairs)) (Gen.integral (Range.linearFrom (0 :: Integer) (-50) 50))
+  let
+    gOf x = Map.findWithDefault 0 x (Map.fromList (zip ns gs))
+    es =
+      concat
+        -- base (symmetric) + offset gradient + curl (asym); base dominates so it stays allowed.
+        [ [ mkEdge i 0 j 0 (fromIntegral (base + gOf i - gOf j + asym))
+          , mkEdge j 0 i 0 (fromIntegral (base + gOf j - gOf i - asym))
+          ]
+        | ((i, j), base, asym) <- zip3 pairs bases asyms
+        ]
+    sym = symmetrizeUgn es
+  H.assert (all ((>= 0) . (.ugn)) sym)
+
+{- | The stored golden UGN reference is a real, asymmetric (curl-bearing) mesh. Symmetrizing
+it must keep every UGN non-negative (hard requirement, exercised through the
+non-negativity-restoring pass) and preserve every round-trip (it is a relabel).
+-}
+case_symmetrize_golden_nonneg :: Assertion
+case_symmetrize_golden_nonneg = do
+  let
+    sym = symmetrizeUgn WD.goldenUgns
+    m = Map.fromList [((e.srcNode, e.dstNode), e.ugn) | e <- sym]
+    g = Map.fromList [((e.srcNode, e.dstNode), e.ugn) | e <- WD.goldenUgns]
+    prs = [(i, j) | e <- WD.goldenUgns, let i = e.srcNode, let j = e.dstNode, i < j]
+  assertBool "all non-negative" (all ((>= 0) . (.ugn)) sym)
+  assertBool
+    "round-trips preserved"
+    (and [m Map.! (i, j) + m Map.! (j, i) == g Map.! (i, j) + g Map.! (j, i) | (i, j) <- prs])
 
 -- * Property: a relabel plan restores a freshly-booted mesh to a prior state
 
