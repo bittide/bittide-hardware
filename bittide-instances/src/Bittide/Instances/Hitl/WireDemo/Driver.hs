@@ -99,6 +99,13 @@ port. This is the stored reference every boot is groomed onto.
 
 The UGNs carry their boot-time counter offsets; 'lambdaSafe' relabels them into a
 small, non-negative gauge before use.
+
+These were originally captured with a 32-entry elastic buffer (FifoSize=5, midpoint
+16). The buffer is now 64 entries ('Bittide.Instances.Hitl.GenericDemo.Core.FifoSize'
+= 6, midpoint 32), which adds 16 cycles of nominal occupancy per buffer. Each UGN
+crosses exactly one (receive-side) elastic buffer, so every value below has been
+shifted up by +16 to track the deeper buffer; a fresh capture at FifoSize=6 would
+reproduce these directly.
 -}
 goldenUgns :: [UgnEdge]
 {- FOURMOLU_DISABLE -}
@@ -107,69 +114,69 @@ goldenUgns =
   -- node 4 = 0x2581a285, node 5 = 0x2d01c345, node 6 = 0x04308185, node 7 = 0x2d20e405
   --                                                             srcNode   srcPort  dstNode   dstPort     ugn
   -- → node 0
-  [ UgnEdge { srcNode = 0x2c702305, srcPort = 0, dstNode = 0x044164c5, dstPort = 0, ugn =  106204 }
-  , UgnEdge { srcNode = 0x2c808445, srcPort = 1, dstNode = 0x044164c5, dstPort = 1, ugn =  392191 }
-  , UgnEdge { srcNode = 0x2581a285, srcPort = 2, dstNode = 0x044164c5, dstPort = 2, ugn =   44456 }
-  , UgnEdge { srcNode = 0x2d01c345, srcPort = 3, dstNode = 0x044164c5, dstPort = 3, ugn = -137763 }
-  , UgnEdge { srcNode = 0x04308185, srcPort = 4, dstNode = 0x044164c5, dstPort = 4, ugn =  397168 }
-  , UgnEdge { srcNode = 0x2d20e405, srcPort = 5, dstNode = 0x044164c5, dstPort = 5, ugn =   63442 }
-  , UgnEdge { srcNode = 0x05108285, srcPort = 6, dstNode = 0x044164c5, dstPort = 6, ugn =  201544 }
+  [ UgnEdge { srcNode = 0x2c702305, srcPort = 0, dstNode = 0x044164c5, dstPort = 0, ugn =  106220 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 1, dstNode = 0x044164c5, dstPort = 1, ugn =  392207 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 2, dstNode = 0x044164c5, dstPort = 2, ugn =   44472 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 3, dstNode = 0x044164c5, dstPort = 3, ugn = -137747 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 4, dstNode = 0x044164c5, dstPort = 4, ugn =  397184 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 5, dstNode = 0x044164c5, dstPort = 5, ugn =   63458 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 6, dstNode = 0x044164c5, dstPort = 6, ugn =  201560 }
   -- → node 1
-  , UgnEdge { srcNode = 0x2c808445, srcPort = 0, dstNode = 0x05108285, dstPort = 0, ugn =  189459 }
-  , UgnEdge { srcNode = 0x2c702305, srcPort = 1, dstNode = 0x05108285, dstPort = 1, ugn =  -95303 }
-  , UgnEdge { srcNode = 0x2d01c345, srcPort = 2, dstNode = 0x05108285, dstPort = 2, ugn = -339270 }
-  , UgnEdge { srcNode = 0x04308185, srcPort = 3, dstNode = 0x05108285, dstPort = 3, ugn =  195662 }
-  , UgnEdge { srcNode = 0x2d20e405, srcPort = 4, dstNode = 0x05108285, dstPort = 4, ugn = -138065 }
-  , UgnEdge { srcNode = 0x2581a285, srcPort = 5, dstNode = 0x05108285, dstPort = 5, ugn = -157052 }
-  , UgnEdge { srcNode = 0x044164c5, srcPort = 6, dstNode = 0x05108285, dstPort = 6, ugn = -201469 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 0, dstNode = 0x05108285, dstPort = 0, ugn =  189475 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 1, dstNode = 0x05108285, dstPort = 1, ugn =  -95287 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 2, dstNode = 0x05108285, dstPort = 2, ugn = -339254 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 3, dstNode = 0x05108285, dstPort = 3, ugn =  195678 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 4, dstNode = 0x05108285, dstPort = 4, ugn = -138049 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 5, dstNode = 0x05108285, dstPort = 5, ugn = -157036 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 6, dstNode = 0x05108285, dstPort = 6, ugn = -201453 }
   -- → node 2
-  , UgnEdge { srcNode = 0x05108285, srcPort = 0, dstNode = 0x2c808445, dstPort = 0, ugn = -189373 }
-  , UgnEdge { srcNode = 0x044164c5, srcPort = 1, dstNode = 0x2c808445, dstPort = 1, ugn = -390884 }
-  , UgnEdge { srcNode = 0x04308185, srcPort = 2, dstNode = 0x2c808445, dstPort = 2, ugn =    6246 }
-  , UgnEdge { srcNode = 0x2d20e405, srcPort = 3, dstNode = 0x2c808445, dstPort = 3, ugn = -327481 }
-  , UgnEdge { srcNode = 0x2581a285, srcPort = 4, dstNode = 0x2c808445, dstPort = 4, ugn = -346468 }
-  , UgnEdge { srcNode = 0x2d01c345, srcPort = 5, dstNode = 0x2c808445, dstPort = 5, ugn = -528687 }
-  , UgnEdge { srcNode = 0x2c702305, srcPort = 6, dstNode = 0x2c808445, dstPort = 6, ugn = -284719 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 0, dstNode = 0x2c808445, dstPort = 0, ugn = -189357 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 1, dstNode = 0x2c808445, dstPort = 1, ugn = -390868 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 2, dstNode = 0x2c808445, dstPort = 2, ugn =    6262 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 3, dstNode = 0x2c808445, dstPort = 3, ugn = -327465 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 4, dstNode = 0x2c808445, dstPort = 4, ugn = -346452 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 5, dstNode = 0x2c808445, dstPort = 5, ugn = -528671 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 6, dstNode = 0x2c808445, dstPort = 6, ugn = -284703 }
   -- → node 3
-  , UgnEdge { srcNode = 0x044164c5, srcPort = 0, dstNode = 0x2c702305, dstPort = 0, ugn = -106130 }
-  , UgnEdge { srcNode = 0x05108285, srcPort = 1, dstNode = 0x2c702305, dstPort = 1, ugn =   95377 }
-  , UgnEdge { srcNode = 0x2d20e405, srcPort = 2, dstNode = 0x2c702305, dstPort = 2, ugn =  -42724 }
-  , UgnEdge { srcNode = 0x2581a285, srcPort = 3, dstNode = 0x2c702305, dstPort = 3, ugn =  -61711 }
-  , UgnEdge { srcNode = 0x2d01c345, srcPort = 4, dstNode = 0x2c702305, dstPort = 4, ugn = -243930 }
-  , UgnEdge { srcNode = 0x04308185, srcPort = 5, dstNode = 0x2c702305, dstPort = 5, ugn =  290999 }
-  , UgnEdge { srcNode = 0x2c808445, srcPort = 6, dstNode = 0x2c702305, dstPort = 6, ugn =  284794 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 0, dstNode = 0x2c702305, dstPort = 0, ugn = -106114 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 1, dstNode = 0x2c702305, dstPort = 1, ugn =   95393 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 2, dstNode = 0x2c702305, dstPort = 2, ugn =  -42708 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 3, dstNode = 0x2c702305, dstPort = 3, ugn =  -61695 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 4, dstNode = 0x2c702305, dstPort = 4, ugn = -243914 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 5, dstNode = 0x2c702305, dstPort = 5, ugn =  291015 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 6, dstNode = 0x2c702305, dstPort = 6, ugn =  284810 }
   -- → node 4
-  , UgnEdge { srcNode = 0x2d20e405, srcPort = 0, dstNode = 0x2581a285, dstPort = 0, ugn =   19024 }
-  , UgnEdge { srcNode = 0x04308185, srcPort = 1, dstNode = 0x2581a285, dstPort = 1, ugn =  352751 }
-  , UgnEdge { srcNode = 0x044164c5, srcPort = 2, dstNode = 0x2581a285, dstPort = 2, ugn =  -44380 }
-  , UgnEdge { srcNode = 0x2c702305, srcPort = 3, dstNode = 0x2581a285, dstPort = 3, ugn =   61786 }
-  , UgnEdge { srcNode = 0x2c808445, srcPort = 4, dstNode = 0x2581a285, dstPort = 4, ugn =  346542 }
-  , UgnEdge { srcNode = 0x05108285, srcPort = 5, dstNode = 0x2581a285, dstPort = 5, ugn =  157126 }
-  , UgnEdge { srcNode = 0x2d01c345, srcPort = 6, dstNode = 0x2581a285, dstPort = 6, ugn = -182181 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 0, dstNode = 0x2581a285, dstPort = 0, ugn =   19040 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 1, dstNode = 0x2581a285, dstPort = 1, ugn =  352767 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 2, dstNode = 0x2581a285, dstPort = 2, ugn =  -44364 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 3, dstNode = 0x2581a285, dstPort = 3, ugn =   61802 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 4, dstNode = 0x2581a285, dstPort = 4, ugn =  346558 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 5, dstNode = 0x2581a285, dstPort = 5, ugn =  157142 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 6, dstNode = 0x2581a285, dstPort = 6, ugn = -182165 }
   -- → node 5
-  , UgnEdge { srcNode = 0x04308185, srcPort = 0, dstNode = 0x2d01c345, dstPort = 0, ugn =  534966 }
-  , UgnEdge { srcNode = 0x2d20e405, srcPort = 1, dstNode = 0x2d01c345, dstPort = 1, ugn =  201243 }
-  , UgnEdge { srcNode = 0x05108285, srcPort = 2, dstNode = 0x2d01c345, dstPort = 2, ugn =  339345 }
-  , UgnEdge { srcNode = 0x044164c5, srcPort = 3, dstNode = 0x2d01c345, dstPort = 3, ugn =  137839 }
-  , UgnEdge { srcNode = 0x2c702305, srcPort = 4, dstNode = 0x2d01c345, dstPort = 4, ugn =  244005 }
-  , UgnEdge { srcNode = 0x2c808445, srcPort = 5, dstNode = 0x2d01c345, dstPort = 5, ugn =  528761 }
-  , UgnEdge { srcNode = 0x2581a285, srcPort = 6, dstNode = 0x2d01c345, dstPort = 6, ugn =  182256 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 0, dstNode = 0x2d01c345, dstPort = 0, ugn =  534982 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 1, dstNode = 0x2d01c345, dstPort = 1, ugn =  201259 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 2, dstNode = 0x2d01c345, dstPort = 2, ugn =  339361 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 3, dstNode = 0x2d01c345, dstPort = 3, ugn =  137855 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 4, dstNode = 0x2d01c345, dstPort = 4, ugn =  244021 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 5, dstNode = 0x2d01c345, dstPort = 5, ugn =  528777 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 6, dstNode = 0x2d01c345, dstPort = 6, ugn =  182272 }
   -- → node 6
-  , UgnEdge { srcNode = 0x2d01c345, srcPort = 0, dstNode = 0x04308185, dstPort = 0, ugn = -534895 }
-  , UgnEdge { srcNode = 0x2581a285, srcPort = 1, dstNode = 0x04308185, dstPort = 1, ugn = -352673 }
-  , UgnEdge { srcNode = 0x2c808445, srcPort = 2, dstNode = 0x04308185, dstPort = 2, ugn =   -6170 }
-  , UgnEdge { srcNode = 0x05108285, srcPort = 3, dstNode = 0x04308185, dstPort = 3, ugn = -195584 }
-  , UgnEdge { srcNode = 0x044164c5, srcPort = 4, dstNode = 0x04308185, dstPort = 4, ugn = -397092 }
-  , UgnEdge { srcNode = 0x2c702305, srcPort = 5, dstNode = 0x04308185, dstPort = 5, ugn = -290924 }
-  , UgnEdge { srcNode = 0x2d20e405, srcPort = 6, dstNode = 0x04308185, dstPort = 6, ugn = -333687 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 0, dstNode = 0x04308185, dstPort = 0, ugn = -534879 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 1, dstNode = 0x04308185, dstPort = 1, ugn = -352657 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 2, dstNode = 0x04308185, dstPort = 2, ugn =   -6154 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 3, dstNode = 0x04308185, dstPort = 3, ugn = -195568 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 4, dstNode = 0x04308185, dstPort = 4, ugn = -397076 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 5, dstNode = 0x04308185, dstPort = 5, ugn = -290908 }
+  , UgnEdge { srcNode = 0x2d20e405, srcPort = 6, dstNode = 0x04308185, dstPort = 6, ugn = -333671 }
   -- → node 7
-  , UgnEdge { srcNode = 0x2581a285, srcPort = 0, dstNode = 0x2d20e405, dstPort = 0, ugn =  -18949 }
-  , UgnEdge { srcNode = 0x2d01c345, srcPort = 1, dstNode = 0x2d20e405, dstPort = 1, ugn = -201167 }
-  , UgnEdge { srcNode = 0x2c702305, srcPort = 2, dstNode = 0x2d20e405, dstPort = 2, ugn =   42800 }
-  , UgnEdge { srcNode = 0x2c808445, srcPort = 3, dstNode = 0x2d20e405, dstPort = 3, ugn =  327557 }
-  , UgnEdge { srcNode = 0x05108285, srcPort = 4, dstNode = 0x2d20e405, dstPort = 4, ugn =  138138 }
-  , UgnEdge { srcNode = 0x044164c5, srcPort = 5, dstNode = 0x2d20e405, dstPort = 5, ugn =  -63366 }
-  , UgnEdge { srcNode = 0x04308185, srcPort = 6, dstNode = 0x2d20e405, dstPort = 6, ugn =  333764 }
+  , UgnEdge { srcNode = 0x2581a285, srcPort = 0, dstNode = 0x2d20e405, dstPort = 0, ugn =  -18933 }
+  , UgnEdge { srcNode = 0x2d01c345, srcPort = 1, dstNode = 0x2d20e405, dstPort = 1, ugn = -201151 }
+  , UgnEdge { srcNode = 0x2c702305, srcPort = 2, dstNode = 0x2d20e405, dstPort = 2, ugn =   42816 }
+  , UgnEdge { srcNode = 0x2c808445, srcPort = 3, dstNode = 0x2d20e405, dstPort = 3, ugn =  327573 }
+  , UgnEdge { srcNode = 0x05108285, srcPort = 4, dstNode = 0x2d20e405, dstPort = 4, ugn =  138154 }
+  , UgnEdge { srcNode = 0x044164c5, srcPort = 5, dstNode = 0x2d20e405, dstPort = 5, ugn =  -63350 }
+  , UgnEdge { srcNode = 0x04308185, srcPort = 6, dstNode = 0x2d20e405, dstPort = 6, ugn =  333780 }
   ]
 {- FOURMOLU_ENABLE -}
 
