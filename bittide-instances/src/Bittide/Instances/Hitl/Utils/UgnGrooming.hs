@@ -21,6 +21,7 @@ module Bittide.Instances.Hitl.Utils.UgnGrooming (
   safeMargin,
   canonicalizeUgn,
   symmetrizeUgn,
+  symmetrizingPotentials,
   isAllowedUgn,
   GroomUgnResult (..),
   groomToSafe,
@@ -34,6 +35,7 @@ import Bittide.ClockControl.Ugn.Grooming (GroomResult (..), groomCorrection, isA
 import Bittide.Graph.Weighted (Graph)
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..))
 
+import Data.List (sortOn, tails)
 import Data.Map.Strict (Map)
 import Data.Maybe (mapMaybe)
 
@@ -77,37 +79,109 @@ canonicalizeUgn es =
      where
       qOf n = Map.findWithDefault 0 n q
 
-{- | Symmetrize UGN edges so the two directions of every (bidirectional) link carry as
-nearly equal a UGN as possible: each direction is set to half the link's round-trip,
-@λ'_{i->j} = ⌊rt/2⌋@ and @λ'_{j->i} = ⌈rt/2⌉@ where @rt = λ_{i->j} + λ_{j->i}@ (the
-lower-id direction takes the floor). This guarantees:
+{- | Best-effort /relabeling/ that makes the two directions of every link carry as nearly
+equal a UGN as possible.
 
-  * the two directions differ by at most one (exactly @rt \`mod\` 2@), and
-  * non-negative UGNs, since a physically allowed round-trip is @>= 0@.
+This is a relabel (@λ'_{i->j} = λ_{i->j} + q_i - q_j@), so — unlike a per-link midpoint —
+it leaves every round-trip and every cycle sum unchanged: the physical latency
+characteristics are preserved exactly. A relabel only redistributes each link's fixed
+round-trip between its two directions.
 
-It preserves each link's round-trip exactly but, unlike 'canonicalizeUgn', is /not/ a
-gauge relabeling — splitting every link at its midpoint cannot be realized by a single
-per-node potential when the physical asymmetry has nonzero curl (the "symmetric midpoint
-is only a valid relabeling on an acyclic graph" caveat). It is instead a canonical,
-boot-offset-free symmetric form: the large per-node counter offsets cancel in the
-round-trip, so the result is small and balanced.
+Perfect symmetry (both directions equal on every link) is reachable by a relabel only
+when the per-link imbalance is curl-free (the "symmetric midpoint is a valid relabeling
+only on an acyclic graph" caveat). In general it is not, so we minimise the cost
 
-Edges without a reverse-direction counterpart are left unchanged.
+  @cost(q) = Σ_{neighbours i,j} (λ'_{i->j} - λ'_{j->i})^2@
+
+— the squared difference between the two directions of every link, summed over all
+neighbouring node pairs. That is a graph-Laplacian least-squares problem (see
+'symmetrizingPotentials'): the per-node clock/boot-offset (gradient) part of the imbalance
+is cancelled completely, and only the irreducible /physical/ asymmetry (forward path ≠
+reverse path, the curl) remains, spread across the links it touches.
+
+Potentials are rounded to integers (the relabel is realised as integer cycle offsets).
 -}
 symmetrizeUgn :: [UgnEdge] -> [UgnEdge]
-symmetrizeUgn es = map symmetrize es
+symmetrizeUgn es =
+  [e{ugn = e.ugn + checkedFromIntegral (qOf e.srcNode - qOf e.dstNode)} | e <- es]
+ where
+  q = symmetrizingPotentials es
+  qOf n = Map.findWithDefault 0 n q
+
+{- | Integer per-node potentials @q@ that least-squares minimise the total squared
+directional imbalance @Σ (λ_{i->j} + q_i - q_j - (λ_{j->i} + q_j - q_i))^2@ over all
+neighbouring node pairs (see 'symmetrizeUgn'). Equivalently, with the antisymmetric
+half-difference @A_{i->j} = (λ_{i->j} - λ_{j->i}) / 2@, it minimises @Σ (A_{i->j} + q_i -
+q_j)^2@, whose stationarity condition is the graph-Laplacian normal equations @L q = b@
+with @b_i = -Σ_j A_{i->j}@. The relabel is gauge-free (a constant shift of all @q@ leaves
+every UGN unchanged), so node 0 is pinned to 0. Potentials are rounded to integers.
+-}
+symmetrizingPotentials :: [UgnEdge] -> Map (BitVector 32) Integer
+symmetrizingPotentials es
+  | n == 0 || null links = Map.fromList [(node, 0) | node <- nodes]
+  | otherwise = Map.fromList (zip nodes (map round qReal))
  where
   ugnOf = Map.fromList [((e.srcNode, e.dstNode), toInteger e.ugn) | e <- es]
-  symmetrize e =
-    case Map.lookup (e.dstNode, e.srcNode) ugnOf of
-      Nothing -> e
-      Just rev ->
-        let
-          roundTrip = toInteger e.ugn + rev
-          half = roundTrip `div` 2 -- floor, since a physical round-trip is >= 0
-          balanced = if e.srcNode < e.dstNode then half else roundTrip - half
-         in
-          e{ugn = checkedFromIntegral balanced}
+  -- All node ids, deduplicated and in a stable order.
+  nodes = Map.keys (Map.fromList [(node, ()) | e <- es, node <- [e.srcNode, e.dstNode]])
+  n = length nodes
+  indexOf = (Map.fromList (zip nodes [0 ..]) Map.!)
+  {- Antisymmetric half-difference of each bidirectional link, keyed by node /position/.
+  @i < j@ (by position) so each undirected link appears once. -}
+  links =
+    [ (indexOf i, indexOf j, fromIntegral (uij - uji) / 2 :: Double)
+    | (i : rest) <- tails nodes
+    , j <- rest
+    , Just uij <- [Map.lookup (i, j) ugnOf]
+    , Just uji <- [Map.lookup (j, i) ugnOf]
+    ]
+  -- Graph-Laplacian normal equations L q = rhs for min Σ (A + q_i − q_j)².
+  lap =
+    [ [if a == b then fromIntegral (degree a) else if linked a b then -1 else 0 | b <- [0 .. n - 1]]
+    | a <- [0 .. n - 1]
+    ]
+  rhs = [sum [contrib a lk | lk <- links] | a <- [0 .. n - 1]]
+  degree a = length [() | (i, j, _) <- links, i == a || j == a]
+  linked a b = any (\(i, j, _) -> (i, j) == (a, b) || (i, j) == (b, a)) links
+  contrib a (i, j, w)
+    | a == i = -w
+    | a == j = w
+    | otherwise = 0
+  -- L has the all-ones vector in its kernel; pin node 0 to 0 and solve the rest.
+  qReal
+    | n == 1 = [0]
+    | otherwise = 0 : solveLinear sub subRhs
+   where
+    sub = [[lap !! a !! b | b <- [1 .. n - 1]] | a <- [1 .. n - 1]]
+    subRhs = [rhs !! a | a <- [1 .. n - 1]]
+
+{- | Solve a small dense linear system @A x = b@ by Gaussian elimination with partial
+pivoting. Intended for the tiny (node-count sized) systems in 'symmetrizingPotentials'.
+-}
+solveLinear :: [[Double]] -> [Double] -> [Double]
+solveLinear a b = solve (zipWith (,) a b)
+ where
+  -- Each equation is (coefficients, rhs); eliminate the leading variable each level.
+  solve eqs =
+    case sortOn (\(cs, _) -> negate (abs (firstCoeff cs))) eqs of
+      [] -> []
+      (pivotCoeffs, pivotRhs) : rest ->
+        case pivotCoeffs of
+          [] -> []
+          lead : leadTail ->
+            let
+              norm = map (/ lead) leadTail -- normalised coeffs for the remaining vars
+              normRhs = pivotRhs / lead
+              reduce (cs, r) = case cs of
+                c0 : csTail -> (zipWith (\cv nv -> cv - c0 * nv) csTail norm, r - c0 * normRhs)
+                [] -> (cs, r)
+              xsRest = solve (map reduce rest)
+              x0 = normRhs - sum (zipWith (*) norm xsRest)
+             in
+              x0 : xsRest
+  firstCoeff cs = case cs of
+    x : _ -> x
+    [] -> 0
 
 -- | Are these measured UGNs physically allowed (no negative cycle)?
 isAllowedUgn :: [UgnEdge] -> Bool

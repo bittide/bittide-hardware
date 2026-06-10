@@ -127,21 +127,22 @@ prop_symmetrize_balances_pure_gradient = H.property $ do
     fwd === fromIntegral base -- pure-gradient imbalance fully removed
     bwd === fromIntegral base
 
-{- | 'symmetrizeUgn' guarantees, for arbitrary inputs whose round-trips are non-negative
-(any physically allowed UGN set): no negative output UGN, and the two directions of every
-bidirectional link deviate by at most one.
+{- | 'symmetrizeUgn' is a /relabel/, so it must preserve the latency characteristics: the
+round-trip of every link (and indeed every cycle sum) is unchanged. Here we check the
+per-link round-trips on an arbitrary mesh.
 -}
-prop_symmetrize_nonneg_and_balanced :: H.Property
-prop_symmetrize_nonneg_and_balanced = H.property $ do
+prop_symmetrize_preserves_roundtrips :: H.Property
+prop_symmetrize_preserves_roundtrips = H.property $ do
   k <- H.forAll $ Gen.int (Range.linear 2 6)
   let
     ns = [0 .. fromIntegral (k - 1)] :: [BitVector 32]
     pairs = [(i, j) | i <- ns, j <- ns, i < j]
-  -- Per pair: a non-negative round-trip and an arbitrary (possibly boot-offset-laden) split.
-  rts <-
+  fwds <-
     H.forAll $
-      Gen.list (Range.singleton (length pairs)) (Gen.integral (Range.linear (0 :: Integer) 4000))
-  splits <-
+      Gen.list
+        (Range.singleton (length pairs))
+        (Gen.integral (Range.linearFrom (0 :: Integer) (-5000) 5000))
+  bwds <-
     H.forAll $
       Gen.list
         (Range.singleton (length pairs))
@@ -149,19 +150,15 @@ prop_symmetrize_nonneg_and_balanced = H.property $ do
   let
     es =
       concat
-        [ [mkEdge i 0 j 0 (fromIntegral x), mkEdge j 0 i 0 (fromIntegral (rt - x))]
-        | ((i, j), rt, x) <- zip3 pairs rts splits
+        [ [mkEdge i 0 j 0 (fromIntegral f), mkEdge j 0 i 0 (fromIntegral b)]
+        | ((i, j), f, b) <- zip3 pairs fwds bwds
         ]
-    sym = symmetrizeUgn es
-    m = Map.fromList [((e.srcNode, e.dstNode), e.ugn) | e <- sym]
-  -- (1) no negative UGNs
-  H.assert (all ((>= 0) . (.ugn)) sym)
-  -- (2) the two directions of each link deviate by at most one
-  forM_ pairs $ \(i, j) -> do
+    m = Map.fromList [((e.srcNode, e.dstNode), e.ugn) | e <- symmetrizeUgn es]
+  forM_ (zip pairs (zipWith (+) fwds bwds)) $ \((i, j), rt) -> do
     let
       fwd = Map.findWithDefault 0 (i, j) m
       bwd = Map.findWithDefault 0 (j, i) m
-    H.assert (abs (fwd - bwd) <= 1)
+    fwd + bwd === fromIntegral rt -- round-trip preserved (it is a relabel)
 
 -- * Property: a relabel plan restores a freshly-booted mesh to a prior state
 
