@@ -91,7 +91,7 @@ depth is 'Bittide.Instances.Hitl.GenericDemo.Core.FifoSize' bits (2^6 = 64 entri
 occupancy range ±32), so margin 5 plus per-link drift stays comfortably within range.
 -}
 marginFrames :: Signed 64
-marginFrames = 5
+marginFrames = 8
 
 {- | Golden UGN graph: a full set of per-link UGNs (@λ = local - remote@) captured from a
 passing CI boot of this rig, stored as a 'UgnEdge' list keyed by DNA-derived node id and
