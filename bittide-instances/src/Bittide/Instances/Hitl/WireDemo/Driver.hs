@@ -28,7 +28,7 @@ import Bittide.Instances.Hitl.Utils.Relabel (
   writeReleaseCycle,
  )
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..), indexToNodeId)
-import Bittide.Instances.Hitl.Utils.UgnGrooming (safeMargin, ugnGraph)
+import Bittide.Instances.Hitl.Utils.UgnGrooming (canonicalizeUgn, safeMargin, ugnGraph)
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent (threadDelay)
@@ -109,7 +109,7 @@ reproduce these directly.
 -}
 goldenUgns :: [UgnEdge]
 {- FOURMOLU_DISABLE -}
-goldenUgns =
+goldenUgns = canonicalizeUgn
   -- node 0 = 0x044164c5, node 1 = 0x05108285, node 2 = 0x2c808445, node 3 = 0x2c702305
   -- node 4 = 0x2581a285, node 5 = 0x2d01c345, node 6 = 0x04308185, node 7 = 0x2d20e405
   --                                                             srcNode   srcPort  dstNode   dstPort     ugn
