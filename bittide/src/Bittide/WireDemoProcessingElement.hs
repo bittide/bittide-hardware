@@ -5,6 +5,7 @@
 module Bittide.WireDemoProcessingElement (
   wireDemoPe,
   wireDemoPeConfig,
+  WriteHoldCycles,
 ) where
 
 import Clash.Prelude
