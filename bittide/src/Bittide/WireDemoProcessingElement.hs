@@ -5,7 +5,6 @@
 module Bittide.WireDemoProcessingElement (
   wireDemoPe,
   wireDemoPeConfig,
-  WriteHoldCycles,
 ) where
 
 import Clash.Prelude
@@ -77,24 +76,12 @@ wireDemoPeConfig = circuit $ \(bus, writtenData) -> do
 
   idC -< Fwd (readLink, writeLink)
 
-{- | Number of cycles the Write state is held. A wider window tolerates elastic-buffer
-drift (Callisto adjustments between frame-correction application and the PE firing)
-that would otherwise cause the read from the upstream node to land in the Idle state
-rather than the Write state.  12 cycles covers the observed 2-7 frame post-correction
-drift with comfortable margin.
--}
-type WriteHoldCycles = 12
-
-data PeState linkCount linkWidth
-  = Read
-  | Write (Index linkCount) (BitVector linkWidth) (Unsigned (CLog 2 WriteHoldCycles))
-  | Idle
+data PeState linkCount linkWidth = Read | Write (Index linkCount) (BitVector linkWidth) | Idle
   deriving (Eq, Show, Generic, NFDataX)
 
-{- | The wireDemoPe is active for a short burst after reset.  In the first cycle
-it samples from the link indicated by the config (or sources static 'dna').  For
-the following 'WriteHoldCycles' cycles it writes
-'value_read_in_first_cycle XOR fpga_dna_lsbs' to the link indicated by the config
+{- | The wireDemoPe is active for two cycles after reset. In the first cycle
+it samples from the link indicated by the config (or sources static 'dna'). In the second cycle,
+it writes 'value_read_in_first_cycle XOR fpga_dna_lsbs' to the link indicated by the config
 (or writes to link '0').
 Writes the local counter to all links by default, which is useful when debugging.
 -}
@@ -143,15 +130,11 @@ wireDemoPe rst maybeDna localCounter = Circuit go
         )
       )
     goMealy Read (links, readIndex, writeIndex, dna, counter) =
-      let
-        value = case readIndex of
-          Just rdIdx -> links !! rdIdx `xor` dna
-          Nothing -> dna
-        nextState = Write (fromMaybe 0 writeIndex) value (natToNum @(WriteHoldCycles - 1))
-       in
-        (nextState, (repeat (resize (pack counter)), Nothing))
-    goMealy (Write writeIndex value remaining) (_, _, _, _, counter) =
-      let nextState = if remaining == 0 then Idle else Write writeIndex value (remaining - 1)
-       in (nextState, (replace writeIndex value (repeat (resize (pack counter))), Just value))
+      let nextState = case readIndex of
+            Just rdIdx -> Write (fromMaybe 0 writeIndex) (links !! rdIdx `xor` dna)
+            Nothing -> Write (fromMaybe 0 writeIndex) dna
+       in (nextState, (repeat (resize (pack counter)), Nothing))
+    goMealy (Write writeIndex value) (_, _, _, _, counter) =
+      (Idle, (replace writeIndex value (repeat (resize (pack counter))), Just value))
     goMealy Idle (_, _, _, _, counter) =
       (Idle, (repeat (resize (pack counter)), Nothing))

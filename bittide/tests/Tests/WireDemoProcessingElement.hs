@@ -9,7 +9,7 @@ import Clash.Prelude
 import Protocols
 import Protocols.Experimental.Simulate (SimulationConfig (..), driveC, sampleC)
 
-import Bittide.WireDemoProcessingElement (WriteHoldCycles, wireDemoPe)
+import Bittide.WireDemoProcessingElement (wireDemoPe)
 
 import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Clash.Hedgehog.Sized.Unsigned (genUnsigned)
@@ -23,9 +23,16 @@ import qualified Data.String.Interpolate as Str
 import qualified Hedgehog as H
 import qualified Hedgehog.Range as Range
 
+splitAtIndex :: Int -> [a] -> ([a], a, [a])
+splitAtIndex n xs =
+  let (before, rest) = L.splitAt n xs
+   in case rest of
+        (x : after) -> (before, x, after)
+        [] -> error "Index out of bounds"
+
 prop_WireDemoPe :: Property
 prop_WireDemoPe = H.property $ do
-  peResetCycle <- H.forAll $ genUnsigned (Range.linear 0 80)
+  peResetCycle <- H.forAll $ genUnsigned (Range.linear 0 90)
   dna <- H.forAll $ genDefinedBitVector
 
   let
@@ -53,35 +60,28 @@ prop_WireDemoPe = H.property $ do
     counter = L.iterate (+ 1) 0
     (outLink, writtenData) = sampleC conf $ dut <| driveC conf counter
 
-    writeStart = fromIntegral (peResetCycle + 1) :: Int
-    writeHoldCycles = fromIntegral (natToNum @WriteHoldCycles :: Word) :: Int
+    readCycle = peResetCycle
+    writeCycle = peResetCycle + 1
+    expectedOutput = resize dna `xor` (pack readCycle)
 
-    -- The value written: link input at readCycle XOR dna.
-    -- The link input at cycle peResetCycle is pack(peResetCycle).
-    expectedOutput = resize dna `xor` (pack peResetCycle)
+    (linkBeforeActive, linkAtWriteCycle, linkAfterActive) = splitAtIndex (fromIntegral writeCycle) outLink
+    (wDataBeforeActive, wDataAtWriteCycle, wDataAfterActive) = splitAtIndex (fromIntegral writeCycle) writtenData
 
-    -- Partition outputs into three regions:
-    --   before the Write window, during the Write window, and after.
-    (linkBefore, linkRest) = L.splitAt writeStart outLink
-    (linkDuring, linkAfter) = L.splitAt writeHoldCycles linkRest
+    interestingCycles :: [Unsigned 64]
+    interestingCycles = L.map unpack $ L.take 10 (L.drop (fromIntegral writeCycle - 5) outLink)
 
-    (wDataBefore, wDataRest) = L.splitAt writeStart writtenData
-    (wDataDuring, wDataAfter) = L.splitAt writeHoldCycles wDataRest
+    firstNonZeroIndex = L.findIndex (/= 0) outLink
 
-  H.footnote
-    [Str.i|writeStart=#{writeStart}, writeHoldCycles=#{writeHoldCycles}, expectedOutput=#{expectedOutput}|]
+  H.footnote [Str.i|Interesting cycles (around reset): #{interestingCycles}|]
+  H.footnote [Str.i|Expected output at cycle #{writeCycle}, but got it at cycle #{firstNonZeroIndex}|]
 
-  -- Before the Write window: link carries the counter (localCounter=0 → 0)
-  H.assert (L.all (== 0) linkBefore)
-  H.assert (L.all (== Nothing) wDataBefore)
+  H.assert (L.all (== 0) linkBeforeActive)
+  linkAtWriteCycle H.=== expectedOutput
+  H.assert (L.all (== 0) linkAfterActive)
 
-  -- During the Write window (WriteHoldCycles cycles): value is present on all cycles
-  H.assert (L.all (== expectedOutput) linkDuring)
-  H.assert (L.all (== Just expectedOutput) wDataDuring)
-
-  -- After the Write window: back to Idle, link carries counter again (0)
-  H.assert (L.all (== 0) linkAfter)
-  H.assert (L.all (== Nothing) wDataAfter)
+  H.assert (L.all (== Nothing) wDataBeforeActive)
+  wDataAtWriteCycle H.=== Just expectedOutput
+  H.assert (L.all (== Nothing) wDataAfterActive)
  where
   simLength = 100
   -- We set the reset inside 'dut' based on the input counter so we don't use it here
