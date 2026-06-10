@@ -99,7 +99,7 @@ import qualified Protocols.Vec as Vec
 -- | The number of CPUs in 'core'
 type InternalCpuCount = 2
 
-type FifoSize = 5 -- = 2^5 = 32
+type FifoSize = 6 -- = 2^6 = 64
 
 {- Internal busses:
     - Instruction memory

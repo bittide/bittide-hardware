@@ -86,10 +86,12 @@ appScheduleBase = 1000
 {- | Frames of safety margin added to the golden UGNs to form @λ^safe@ (@λ^safe =
 golden + ε@). Each boot is groomed up to @λ^safe@, so @ε@ is the number of frames the
 elastic buffer inserts on top of matching the golden latency; it must cover the small
-boot-to-boot latency drift yet stay within the buffer's safe range (~±12).
+boot-to-boot latency drift yet stay within the buffer's safe range. The elastic buffer
+depth is 'Bittide.Instances.Hitl.GenericDemo.Core.FifoSize' bits (2^6 = 64 entries,
+occupancy range ±32), so margin 5 plus per-link drift stays comfortably within range.
 -}
 marginFrames :: Signed 64
-marginFrames = 4
+marginFrames = 5
 
 {- | Golden UGN graph: a full set of per-link UGNs (@λ = local - remote@) captured from a
 passing CI boot of this rig, stored as a 'UgnEdge' list keyed by DNA-derived node id and
