@@ -43,12 +43,13 @@ The Bittide demo designs currently run at 125 MHz. The table below shows how far
 |`sendUgnFast`            |  X  |  X  |  X  |
 |`si5391SpiFast`          |  X  |  X  |  X  |
 |`timeWbFast`             |  X  |  X  |     |
-|`transmitRingBufferFast` |  X  |  X  |     |
-|`uartExampleFast`<sup> 1 </sup> |  X  |  X  |     |
+|`transmitRingBufferFast` <sup> 1 </sup> |  X  |    |     |
+|`uartExampleFast`<sup> 2 </sup> |  X  |  X  |     |
 |`wbStorageFast`          |  X  |     |     |
 |`wireDemoPeFast`         |  X  |  X  |  X  |
 
-<sup> 1 </sup> Contains: `uartInterfaceWb`, `uartBytes`, `uartDf`, `asciiDebugMux` and `dcFifoDf`
+<sup> 1 </sup> Fails at 350 MHz, but does run at 340 MHz
+<sup> 2 </sup> Contains: `uartInterfaceWb`, `uartBytes`, `uartDf`, `asciiDebugMux` and `dcFifoDf`
 
 Note that the table above is missing some components which are used in demos. The table below lists the missing components and the reason there is not yet a high-frequency pnr target for it.
 

@@ -12,7 +12,7 @@ import Protocols
 import Protocols.Df.Extra (tdpbramRamOp)
 import Protocols.Experimental.Wishbone
 
-import Bittide.Instances.Domains (Basic350, Bittide)
+import Bittide.Instances.Domains (Basic340, Basic350, Bittide)
 import Bittide.Instances.Hacks (reducePins)
 import Bittide.RingBuffer (receiveRingBuffer, transmitRingBuffer)
 import Bittide.SharedTypes (withLittleEndian)
@@ -52,7 +52,7 @@ transmitRingBufferPnr = transmitRingBufferExample
 makeTopEntity 'transmitRingBufferPnr
 
 transmitRingBufferFast ::
-  Clock Basic350 -> Reset Basic350 -> Signal Basic350 Bit -> Signal Basic350 Bit
+  Clock Basic340 -> Reset Basic340 -> Signal Basic340 Bit -> Signal Basic340 Bit
 transmitRingBufferFast clk rst = withClock clk $ reducePins dut
  where
   dut wbIn = bundle $ transmitRingBufferExample clk rst wbIn
