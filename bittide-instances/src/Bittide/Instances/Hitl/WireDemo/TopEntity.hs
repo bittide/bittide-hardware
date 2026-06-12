@@ -7,13 +7,14 @@
 module Bittide.Instances.Hitl.WireDemo.TopEntity where
 
 import Bittide.Hitl (HitlTestGroup)
+import Bittide.Instances.Hitl.GenericDemo.Core (muConfig)
 import Bittide.Instances.Hitl.GenericDemo.TopEntity (demoTest, mkTests)
 import Bittide.Instances.Hitl.WireDemo.UserCore (mkUserCore, ringBufferDepth)
 import Clash.Annotations.TH (makeTopEntity)
 
 import qualified Bittide.Instances.Hitl.WireDemo.Driver as Driver
 
-wireDemoTest = demoTest ringBufferDepth mkUserCore
+wireDemoTest = demoTest ringBufferDepth muConfig mkUserCore
 {-# OPAQUE wireDemoTest #-}
 makeTopEntity 'wireDemoTest
 

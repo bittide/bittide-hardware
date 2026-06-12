@@ -7,13 +7,14 @@
 module Bittide.Instances.Hitl.SoftUgnDemo.TopEntity where
 
 import Bittide.Hitl (HitlTestGroup)
+import Bittide.Instances.Hitl.GenericDemo.Core (muConfig)
 import Bittide.Instances.Hitl.GenericDemo.TopEntity (demoTest, mkTests)
 import Bittide.Instances.Hitl.SoftUgnDemo.UserCore (mkUserCore, ringBufferDepth)
 import Clash.Annotations.TH (makeTopEntity)
 
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.Driver as Driver
 
-softUgnDemoTest = demoTest ringBufferDepth mkUserCore
+softUgnDemoTest = demoTest ringBufferDepth muConfig mkUserCore
 {-# OPAQUE softUgnDemoTest #-}
 makeTopEntity 'softUgnDemoTest
 

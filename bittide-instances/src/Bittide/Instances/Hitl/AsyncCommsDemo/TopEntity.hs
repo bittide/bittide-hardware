@@ -7,13 +7,13 @@
 module Bittide.Instances.Hitl.AsyncCommsDemo.TopEntity where
 
 import Bittide.Hitl (HitlTestGroup)
-import Bittide.Instances.Hitl.AsyncCommsDemo.UserCore (mkUserCore, ringBufferDepth)
+import Bittide.Instances.Hitl.AsyncCommsDemo.UserCore (mkUserCore, muConfig, ringBufferDepth)
 import Bittide.Instances.Hitl.GenericDemo.TopEntity (demoTest, mkTests)
 import Clash.Annotations.TH (makeTopEntity)
 
 import qualified Bittide.Instances.Hitl.AsyncCommsDemo.Driver as Driver
 
-asyncCommsDemoTest = demoTest ringBufferDepth mkUserCore
+asyncCommsDemoTest = demoTest ringBufferDepth muConfig mkUserCore
 {-# OPAQUE asyncCommsDemoTest #-}
 makeTopEntity 'asyncCommsDemoTest
 
