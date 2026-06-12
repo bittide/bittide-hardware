@@ -23,7 +23,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "bittide-extra" Control.Exception.Extra (brackets)
 
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Bittide.Instances.Hitl.Utils.Serial as Serial
 import qualified Data.ByteString as BS
 import qualified Data.List as L
 
@@ -38,8 +38,8 @@ dnaOverSerialDriver _name targets = do
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
   liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation
 
-  results <- brackets (liftIO <$> initPicocoms) (liftIO . snd) $ \initPicocomsData -> do
-    let targetPicocoms = fst <$> initPicocomsData
+  results <- brackets (liftIO <$> initSerials) (liftIO . snd) $ \initSerialsData -> do
+    let targetSerials = fst <$> initSerialsData
 
     liftIO $ putStrLn "Starting all targets to read DNA values"
     -- start all targets
@@ -51,9 +51,9 @@ dnaOverSerialDriver _name targets = do
     liftIO $ putStrLn "Serial ports:"
     mapM_ (liftIO . putStrLn) [d.serial | (_, d) <- targets]
 
-    forM (L.zip targets targetPicocoms) $ \((_, d), picoCom) -> do
+    forM (L.zip targets targetSerials) $ \((_, d), serialHandle) -> do
       liftIO $ putStrLn $ "Waiting for output on port: " <> d.serial
-      res <- liftIO $ checkDna d picoCom
+      res <- liftIO $ checkDna d serialHandle
       pure res
 
   liftIO $ print results
@@ -66,17 +66,17 @@ dnaOverSerialDriver _name targets = do
   -- Must match the gateware's UART baud rate (`dnaOverSerial` uses @SNat \@9600@).
   baud = 9600
 
-  initPicocoms :: [IO (Picocom.SerialHandle, IO ())]
-  initPicocoms = flip L.map targets $ \(_hwT, dI) -> do
-    (pico, picoClean) <- Picocom.start dI.serial baud
+  initSerials :: [IO (Serial.SerialHandle, IO ())]
+  initSerials = flip L.map targets $ \(_hwT, dI) -> do
+    (serialHandle, serialClean) <- Serial.start dI.serial baud
 
-    hSetBuffering pico.handle LineBuffering
+    hSetBuffering serialHandle.handle LineBuffering
 
-    pure (pico, picoClean)
+    pure (serialHandle, serialClean)
 
-  checkDna :: DeviceInfo -> Picocom.SerialHandle -> IO Bool
-  checkDna d pico = do
-    receivedDna0 <- timeout 10_000_000 $ findDna pico ""
+  checkDna :: DeviceInfo -> Serial.SerialHandle -> IO Bool
+  checkDna d serialHandle = do
+    receivedDna0 <- timeout 10_000_000 $ findDna serialHandle ""
     receivedDna <- case receivedDna0 of
       Just rDna -> return rDna
       Nothing -> assertFailure "Timeout waiting for DNA"
@@ -90,15 +90,15 @@ dnaOverSerialDriver _name targets = do
     putStrLn $ "Differences:  " <> differences
     pure match
 
-  findDna :: Picocom.SerialHandle -> String -> IO String
-  findDna pico prev = do
-    get <- BS.hGet pico.handle 1
+  findDna :: Serial.SerialHandle -> String -> IO String
+  findDna serialHandle prev = do
+    get <- BS.hGet serialHandle.handle 1
     case BS.unpack get of
       [] -> error "Unexpected end of stream while reading DNA"
       (nC : _) ->
         if isHexDigit nC
-          then findDna pico (prev <> [w2c nC])
+          then findDna serialHandle (prev <> [w2c nC])
           else
             if null prev
-              then findDna pico prev
+              then findDna serialHandle prev
               else return prev

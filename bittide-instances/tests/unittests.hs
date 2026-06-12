@@ -18,7 +18,7 @@ import qualified Df.ElasticBufferWb as ElasticBufferWb
 import qualified Df.WbToDf as WbToDf
 import qualified Tests.Bittide.Instances.Hitl.Utils.MemoryMap as MemoryMap
 import qualified Tests.Bittide.Instances.Hitl.Utils.OpenOcd as OpenOcd
-import qualified Tests.Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Tests.Bittide.Instances.Hitl.Utils.Serial as Serial
 import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.AddressableBytesWb as AddressableBytesWb
 import qualified Wishbone.Axi as Axi
@@ -81,9 +81,9 @@ prepareTests = do
           , MemoryMap.tests
           , NestedInterconnect.tests
           , OpenOcd.tests
-          , Picocom.tests
           , RegisterWb.tests
           , RingBuffer.tests
+          , Serial.tests
           , Time.tests
           , Watchdog.tests
           , WbToDf.tests

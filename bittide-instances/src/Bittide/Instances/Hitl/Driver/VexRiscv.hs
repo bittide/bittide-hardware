@@ -28,7 +28,7 @@ import System.FilePath
 import System.IO
 
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Bittide.Instances.Hitl.Utils.Serial as Serial
 import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
@@ -85,8 +85,8 @@ driverFunc _name targets = do
       expectLine_ ocd.stderrHandle Ocd.waitForInitComplete
 
       putStrLn "Opening serial port..."
-      Picocom.withSerial deviceInfo.serial Picocom.defaultBaud $ \pico -> do
-        hSetBuffering pico.handle LineBuffering
+      Serial.withSerial deviceInfo.serial Serial.defaultBaud $ \serialHandle -> do
+        hSetBuffering serialHandle.handle LineBuffering
 
         let
           -- Dump remaining serial output on failure
@@ -94,7 +94,7 @@ driverFunc _name targets = do
           loggingSequence = do
             threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
             putStrLn "Serial output"
-            serialOut <- readRemainingChars pico.handle
+            serialOut <- readRemainingChars serialHandle.handle
             putStrLn serialOut
 
           tryWithTimeout :: String -> Int -> IO a -> IO a
@@ -122,12 +122,12 @@ driverFunc _name targets = do
           -- This is the last thing that will print when the FPGA has been programmed
           -- and starts entering UART-echo mode.
           tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
-            $ waitForLine pico.handle "Going in echo mode!"
+            $ waitForLine serialHandle.handle "Going in echo mode!"
 
           -- Test UART echo
-          hPutStrLn pico.handle "Hello, UART!"
+          hPutStrLn serialHandle.handle "Hello, UART!"
           tryWithTimeout "Waiting for \"Hello, UART!\"" 10_000_000
-            $ waitForLine pico.handle "Hello, UART!"
+            $ waitForLine serialHandle.handle "Hello, UART!"
 
     updateVio "vioHitlt" [("probe_test_start", "0")]
 
