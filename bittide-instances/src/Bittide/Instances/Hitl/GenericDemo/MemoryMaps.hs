@@ -18,7 +18,7 @@ import Bittide.Instances.Hitl.GenericDemo.BringUp (
   bringUp,
  )
 import Bittide.Instances.Hitl.GenericDemo.Core (NmuExternalBusses, NmuInternalBusses)
-import Bittide.ProcessingElement (PrefixWidth)
+import Bittide.ProcessingElement (PeConfig, PrefixWidth)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Protocols.MemoryMap (MemoryMap)
 import VexRiscv (JtagIn (..))
@@ -35,12 +35,14 @@ extractMemoryMaps ::
   , NmuRemBusWidth userCoreBusses <= 27
   ) =>
   SNat ringBufferDepth ->
+  -- | Processing element configuration
+  PeConfig (NmuExternalBusses userCoreBusses + NmuInternalBusses) ->
   UserCoreCircuit userCoreBusses (NmuRemBusWidth userCoreBusses) ->
   -- | (boot, management unit, clock control)
   (MemoryMap, MemoryMap, MemoryMap)
-extractMemoryMaps bufferDepth mkUserCore = (bootMm, managementUnitMm, clockControlMm)
+extractMemoryMaps bufferDepth muConfig mkUserCore = (bootMm, managementUnitMm, clockControlMm)
  where
-  Circuit circuitFn = bringUp bufferDepth mkUserCore clockGen noReset
+  Circuit circuitFn = bringUp bufferDepth muConfig mkUserCore clockGen noReset
 
   (SimOnly bootMm, SimOnly managementUnitMm, SimOnly clockControlMm) = vecToTuple memoryMaps
 

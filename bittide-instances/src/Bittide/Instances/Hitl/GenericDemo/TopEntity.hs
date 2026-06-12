@@ -34,7 +34,7 @@ import Bittide.Instances.Hitl.GenericDemo.BringUp (
  )
 import Bittide.Instances.Hitl.GenericDemo.Core (NmuExternalBusses, NmuInternalBusses)
 import Bittide.Instances.Hitl.Setup (LinkCount, allHwTargets, channelNames, clockPaths)
-import Bittide.ProcessingElement (PrefixWidth)
+import Bittide.ProcessingElement (PeConfig, PrefixWidth)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import System.Exit (ExitCode)
 import System.FilePath ((</>))
@@ -47,7 +47,7 @@ import qualified Protocols.Spi as Spi
 
 {- | Shared top-entity body for the wire and soft-UGN demos. Wired up by each
 demo's thin @TopEntity.hs@ wrapper, which supplies the demo-specific
-@ringBufferDepth@ and @mkUserCore@.
+@ringBufferDepth@, management unit configuration, and @mkUserCore@.
 -}
 demoTest ::
   forall userCoreBusses ringBufferDepth.
@@ -59,6 +59,8 @@ demoTest ::
   , NmuRemBusWidth userCoreBusses <= 27
   ) =>
   SNat ringBufferDepth ->
+  -- | Management unit processing element configuration
+  PeConfig (NmuExternalBusses userCoreBusses + NmuInternalBusses) ->
   UserCoreCircuit userCoreBusses (NmuRemBusWidth userCoreBusses) ->
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
@@ -81,7 +83,7 @@ demoTest ::
   , "USB_UART_RXD" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncIn =
+demoTest ringBufferDepth muConfig mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncIn =
   ( txs
   , txns
   , txps
@@ -113,7 +115,7 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
         )
     ) =
       toSignals
-        (bringUp ringBufferDepth mkUserCore refClk testReset)
+        (bringUp ringBufferDepth muConfig mkUserCore refClk testReset)
         ( (repeat (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
         , (spiS2M, syncIn, (), ())
         )
