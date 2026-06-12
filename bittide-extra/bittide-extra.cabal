@@ -161,7 +161,6 @@ library
     tasty-hunit,
     template-haskell,
     time,
-    unix,
     word8,
 
   exposed-modules:
@@ -190,7 +189,6 @@ library
     Protocols.Spi
     Protocols.TraceC
     Protocols.Wishbone.Extra
-    System.Hardware.Serial
     System.Timeout.Extra
 
 test-suite unittests
@@ -237,7 +235,6 @@ test-suite doctests
 
   hs-source-dirs: tests/doctests
   build-depends:
-    Cabal-syntax,
     base,
     bittide-extra,
     doctest-parallel >=0.3.0.1,
