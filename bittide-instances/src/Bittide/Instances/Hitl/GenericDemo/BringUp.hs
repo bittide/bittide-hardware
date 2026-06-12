@@ -100,6 +100,8 @@ bringUp ::
   , NmuRemBusWidth userCoreBusses <= 27
   ) =>
   SNat ringBufferDepth ->
+  -- | Management unit processing element configuration
+  PeConfig (NmuExternalBusses userCoreBusses + NmuInternalBusses) ->
   UserCoreCircuit userCoreBusses (NmuRemBusWidth userCoreBusses) ->
   "REFCLK" ::: Clock Basic125 ->
   "TEST_RST" ::: Reset Basic125 ->
@@ -113,7 +115,7 @@ bringUp ::
     , "UART_TX" ::: CSignal Basic125 Bit
     , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
-bringUp bufferDepth mkUserCore refClk refRst =
+bringUp bufferDepth muConfig mkUserCore refClk refRst =
   withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -> do
     ([bootMm], coreMemoryMaps) <- Vec.split -< memoryMaps
 
@@ -158,6 +160,7 @@ bringUp bufferDepth mkUserCore refClk refRst =
       ) <-
       core
         bufferDepth
+        muConfig
         mkUserCore
         (refClk, refRst)
         (bittideClk, bittideRst, enableGen)
