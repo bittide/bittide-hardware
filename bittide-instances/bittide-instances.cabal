@@ -200,8 +200,8 @@ library
     Bittide.Instances.Hitl.Utils.Gdb
     Bittide.Instances.Hitl.Utils.MemoryMap
     Bittide.Instances.Hitl.Utils.OpenOcd
-    Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
+    Bittide.Instances.Hitl.Utils.Serial
     Bittide.Instances.Hitl.Utils.Ugn
     Bittide.Instances.Hitl.Utils.Usb
     Bittide.Instances.Hitl.Utils.Utils
@@ -284,6 +284,7 @@ library
     parsec,
     pretty-show,
     process,
+    sport,
     streaming-bytestring,
     string-interpolate,
     tasty-hunit,
@@ -323,7 +324,7 @@ test-suite unittests
     Df.WbToDf
     Tests.Bittide.Instances.Hitl.Utils.MemoryMap
     Tests.Bittide.Instances.Hitl.Utils.OpenOcd
-    Tests.Bittide.Instances.Hitl.Utils.Picocom
+    Tests.Bittide.Instances.Hitl.Utils.Serial
     Tests.ClockControlWb
     Wishbone.AddressableBytesWb
     Wishbone.Axi

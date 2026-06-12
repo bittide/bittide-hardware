@@ -2,14 +2,14 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Tests.Bittide.Instances.Hitl.Utils.Picocom where
+module Tests.Bittide.Instances.Hitl.Utils.Serial where
 
 import Prelude
 
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Bittide.Instances.Hitl.Utils.Picocom
+import Bittide.Instances.Hitl.Utils.Serial
 import Control.Concurrent (threadDelay)
 import Data.Maybe (fromJust)
 import GHC.IO.Handle (Handle)
@@ -49,7 +49,7 @@ testWritingToChan = do
   let outputLog = "outputChan.log"
 
   (stdout, pCleanup) <- createVerboseProcess outputLog
-  (_chan, chanCleanup) <- handleToChan stdout
+  (_chan, chanCleanup) <- handleToChan stdout Nothing
 
   -- Never read chan output
   threadDelay 3_000_000
@@ -66,7 +66,7 @@ testWritingToChan = do
 tests :: TestTree
 tests =
   testGroup
-    "Picocom tests"
+    "Serial tests"
     [ testCase
         "Ensure that a process tee-ing to a channel will not block"
         testWritingToChan

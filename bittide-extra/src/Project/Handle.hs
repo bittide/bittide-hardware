@@ -5,12 +5,11 @@
 
 module Project.Handle where
 
-import Prelude hiding (filter)
+import Prelude
 
-import Data.ByteString (ByteString, filter, unpack)
+import Data.ByteString (ByteString, unpack)
 import Data.ByteString.Char8 (hGetLine)
 import Data.ByteString.Internal (w2c)
-import Data.Word8 (isAscii, isControl)
 import Debug.Trace
 import System.IO (Handle, hGetChar, hReady)
 import "extra" Data.List.Extra (trimEnd)
@@ -48,8 +47,7 @@ expectLineWith = expectLine' []
   expectLine' acc h r f = do
     byteLine0 <- r h
     let
-      byteLine1 = filter (\c -> isAscii c && not (isControl c)) byteLine0
-      line = w2c <$> unpack byteLine1
+      line = w2c <$> unpack byteLine0
       trimmed = trimEnd line
       acc' = acc <> [line]
       cont = expectLine' acc' h r f

@@ -30,7 +30,7 @@ import Vivado.VivadoM
 
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Bittide.Instances.Hitl.Utils.Serial as Serial
 import qualified Data.ByteString.Lazy as BS
 import qualified Gdb
 import qualified Network.Simple.TCP as NS
@@ -74,8 +74,6 @@ driverFunc _name [d@(_, dI)] = do
   let
     hitlDir = projectDir </> "_build" </> "hitl"
     mkLogPath str = (hitlDir </> str <> ".log")
-    picoOutLog = mkLogPath "picocom-stdout"
-    picoErrLog = mkLogPath "picocom-stderr"
     ocdOutLog = mkLogPath "openocd-stdout"
     ocdErrLog = mkLogPath "openocd-stderr"
     gdbOutLog = mkLogPath "gdb-out.log"
@@ -93,14 +91,9 @@ driverFunc _name [d@(_, dI)] = do
       expectLine_ ocd.stderrHandle Ocd.waitForInitComplete
       putStrLn "  Done"
 
-      putStrLn "Starting Picocom..."
-    Picocom.withPicocomWithLogging Picocom.defaultStdStreams dI.serial picoOutLog picoErrLog $ \pico -> do
-      liftIO $ do
-        hSetBuffering pico.stdinHandle LineBuffering
-        hSetBuffering pico.stdinHandle LineBuffering
-        putStrLn "Waiting for Picocom to be ready..."
-        T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000 $
-          waitForLine pico.stdoutHandle "Terminal ready"
+      putStrLn "Opening serial port..."
+    Serial.withSerial dI.serial Serial.defaultBaud $ \serialHandle -> do
+      liftIO $ hSetBuffering serialHandle.handle LineBuffering
 
       liftIO $ putStrLn "Starting GDB..."
       Gdb.withGdb $ \gdb -> do
@@ -122,15 +115,12 @@ driverFunc _name [d@(_, dI)] = do
         liftIO $ putStrLn "Starting TCP server"
         liftIO $ withServer $ \(serverSock, _) -> do
           let
-            -- Create function to log the output of the processes
+            -- Dump remaining serial output on failure
             loggingSequence = do
               threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
-              putStrLn "Picocom stdout"
-              picocomOut <- readRemainingChars pico.stdoutHandle
-              putStrLn picocomOut
-
-              putStrLn "Picocom StdErr"
-              readRemainingChars pico.stderrHandle >>= putStrLn
+              putStrLn "Serial output"
+              serialOut <- readRemainingChars serialHandle.handle
+              putStrLn serialOut
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
             tryWithTimeout n t io =
@@ -140,7 +130,7 @@ driverFunc _name [d@(_, dI)] = do
           putStrLn "Waiting for \"Starting TCP Client\""
 
           tryWithTimeout "Handshake softcore" 10_000_000 $
-            waitForLine pico.stdoutHandle "Starting TCP Client"
+            waitForLine serialHandle.handle "Starting TCP Client"
 
           let numberOfClients = 1
           putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."

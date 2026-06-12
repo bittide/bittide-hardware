@@ -28,7 +28,7 @@ import System.FilePath
 import System.IO
 
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Bittide.Instances.Hitl.Utils.Serial as Serial
 import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
@@ -64,8 +64,6 @@ driverFunc _name targets = do
     let
       hitlDir = projectDir </> "_build" </> "hitl"
       mkLogPath str = (hitlDir </> str <> show targetIndex <> ".log")
-      picoOutLog = mkLogPath "picocom-stdout"
-      picoErrLog = mkLogPath "picocom-stderr"
       ocdOutLog = mkLogPath "openocd-stdout"
       ocdErrLog = mkLogPath "openocd-stderr"
       gdbOutLog = mkLogPath "gdb-stdout"
@@ -86,62 +84,50 @@ driverFunc _name targets = do
       hSetBuffering ocd.stderrHandle LineBuffering
       expectLine_ ocd.stderrHandle Ocd.waitForInitComplete
 
-      putStrLn "Starting Picocom..."
-      putStrLn $ "Logging output to '" <> hitlDir
-      Picocom.withPicocomWithLogging
-        Picocom.defaultStdStreams
-        deviceInfo.serial
-        picoOutLog
-        picoErrLog
-        $ \pico -> do
-          hSetBuffering pico.stdinHandle LineBuffering
-          hSetBuffering pico.stdoutHandle LineBuffering
+      putStrLn "Opening serial port..."
+      Serial.withSerial deviceInfo.serial Serial.defaultBaud $ \serialHandle -> do
+        hSetBuffering serialHandle.handle LineBuffering
 
-          let
-            -- Create function to log the output of the processes
-            loggingSequence :: IO ()
-            loggingSequence = do
-              threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
-              putStrLn "Picocom stdout"
-              picocomOut <- readRemainingChars pico.stdoutHandle
-              putStrLn picocomOut
-              putStrLn "Picocom StdErr"
-              readRemainingChars pico.stderrHandle >>= putStrLn
+        let
+          -- Dump remaining serial output on failure
+          loggingSequence :: IO ()
+          loggingSequence = do
+            threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+            putStrLn "Serial output"
+            serialOut <- readRemainingChars serialHandle.handle
+            putStrLn serialOut
 
-            tryWithTimeout :: String -> Int -> IO a -> IO a
-            tryWithTimeout n t io =
-              catch (T.tryWithTimeout T.PrintActionTime n t io)
-                $ \(err :: SomeException) -> loggingSequence >> throwM err
+          tryWithTimeout :: String -> Int -> IO a -> IO a
+          tryWithTimeout n t io =
+            catch (T.tryWithTimeout T.PrintActionTime n t io)
+              $ \(err :: SomeException) -> loggingSequence >> throwM err
 
-          tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
-            $ waitForLine pico.stdoutHandle "Terminal ready"
+        -- program the FPGA
+        Gdb.withGdb $ \gdb -> do
+          Gdb.setLogging gdb gdbOutLog
+          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "vexriscv-hello"
+          Gdb.setTarget gdb gdbPort
+          assertEither =<< Gdb.loadBinary gdb
 
-          -- program the FPGA
-          Gdb.withGdb $ \gdb -> do
-            Gdb.setLogging gdb gdbOutLog
-            Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "vexriscv-hello"
-            Gdb.setTarget gdb gdbPort
-            assertEither =<< Gdb.loadBinary gdb
+          -- break test
+          do
+            putStrLn "Testing whether breakpoints work"
+            -- the hyphen in the binary names becomes an underscore because reasons
+            Gdb.setBreakpoints gdb ["vexriscv_hello::test_success"]
+            Gdb.continue gdb
+            Gdb.echo gdb "breakpoint reached"
+            Gdb.runCommand gdb "disable 1"
+            Gdb.continue gdb
 
-            -- break test
-            do
-              putStrLn "Testing whether breakpoints work"
-              -- the hyphen in the binary names becomes an underscore because reasons
-              Gdb.setBreakpoints gdb ["vexriscv_hello::test_success"]
-              Gdb.continue gdb
-              Gdb.echo gdb "breakpoint reached"
-              Gdb.runCommand gdb "disable 1"
-              Gdb.continue gdb
+          -- This is the last thing that will print when the FPGA has been programmed
+          -- and starts entering UART-echo mode.
+          tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
+            $ waitForLine serialHandle.handle "Going in echo mode!"
 
-            -- This is the last thing that will print when the FPGA has been programmed
-            -- and starts entering UART-echo mode.
-            tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
-              $ waitForLine pico.stdoutHandle "Going in echo mode!"
-
-            -- Test UART echo
-            hPutStrLn pico.stdinHandle "Hello, UART!"
-            tryWithTimeout "Waiting for \"Hello, UART!\"" 10_000_000
-              $ waitForLine pico.stdoutHandle "Hello, UART!"
+          -- Test UART echo
+          hPutStrLn serialHandle.handle "Hello, UART!"
+          tryWithTimeout "Waiting for \"Hello, UART!\"" 10_000_000
+            $ waitForLine serialHandle.handle "Hello, UART!"
 
     updateVio "vioHitlt" [("probe_test_start", "0")]
 
