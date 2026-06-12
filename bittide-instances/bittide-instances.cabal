@@ -284,6 +284,7 @@ library
     parsec,
     pretty-show,
     process,
+    sport,
     streaming-bytestring,
     string-interpolate,
     tasty-hunit,

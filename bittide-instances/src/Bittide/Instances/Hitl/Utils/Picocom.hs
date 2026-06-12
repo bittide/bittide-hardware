@@ -5,8 +5,9 @@
 {- | Serial communication with FPGAs for HITL tests.
 
 Historically this module wrapped the external @picocom@ program; it now talks to
-the serial device directly via "System.Hardware.Serial". The module (and most of
-its API) keeps the @Picocom@ name so the call sites need minimal changes.
+the serial device directly via "Sport.Serial" from the @sport@ package. The
+module (and most of its API) keeps the @Picocom@ name so the call sites need
+minimal changes.
 
 Two styles are offered:
 
@@ -31,15 +32,15 @@ import Data.ByteString.Char8 (hGetLine)
 import GHC.IO.Exception
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory, (</>))
-import System.Hardware.Serial (BaudRate)
 import System.IO (IOMode (AppendMode), hClose, hFlush, openFile)
 import System.IO.Error (isDoesNotExistError)
+import System.Posix.Terminal (BaudRate)
 import Vivado.Tcl (HwTarget)
 
 import GHC.IO.Handle (BufferMode (..), Handle, hIsEOF, hSetBuffering)
 
 import qualified Data.ByteString.Char8 as BSC
-import qualified System.Hardware.Serial as Serial
+import qualified Sport.Serial as Serial
 
 -- | Default baud rate used by most instances.
 defaultBaud :: BaudRate
@@ -74,10 +75,13 @@ until the node reappears.
 start :: FilePath -> BaudRate -> IO (SerialHandle, IO ())
 start devPath baud = do
   h <- openWithRetry (50 :: Int) -- ~5 s total at 100 ms per attempt
+  hSetBuffering h NoBuffering
   pure (SerialHandle h, hClose h)
  where
+  serialCfg = Serial.defSerialCfg{Serial.path = devPath, Serial.speed = baud}
+
   openWithRetry n =
-    Serial.openSerial devPath (Serial.Settings baud) `catch` \(e :: IOException) ->
+    Serial.openSerial serialCfg `catch` \(e :: IOException) ->
       if n > 0 && isDoesNotExistError e
         then threadDelay 100_000 >> openWithRetry (n - 1)
         else throwM e
