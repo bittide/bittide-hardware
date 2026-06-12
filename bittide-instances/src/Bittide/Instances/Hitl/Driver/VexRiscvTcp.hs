@@ -30,7 +30,7 @@ import Vivado.VivadoM
 
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Bittide.Instances.Hitl.Utils.Serial as Serial
 import qualified Data.ByteString.Lazy as BS
 import qualified Gdb
 import qualified Network.Simple.TCP as NS
@@ -92,8 +92,8 @@ driverFunc _name [d@(_, dI)] = do
       putStrLn "  Done"
 
       putStrLn "Opening serial port..."
-    Picocom.withSerial dI.serial Picocom.defaultBaud $ \pico -> do
-      liftIO $ hSetBuffering pico.handle LineBuffering
+    Serial.withSerial dI.serial Serial.defaultBaud $ \serialHandle -> do
+      liftIO $ hSetBuffering serialHandle.handle LineBuffering
 
       liftIO $ putStrLn "Starting GDB..."
       Gdb.withGdb $ \gdb -> do
@@ -119,7 +119,7 @@ driverFunc _name [d@(_, dI)] = do
             loggingSequence = do
               threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
               putStrLn "Serial output"
-              serialOut <- readRemainingChars pico.handle
+              serialOut <- readRemainingChars serialHandle.handle
               putStrLn serialOut
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
@@ -130,7 +130,7 @@ driverFunc _name [d@(_, dI)] = do
           putStrLn "Waiting for \"Starting TCP Client\""
 
           tryWithTimeout "Handshake softcore" 10_000_000 $
-            waitForLine pico.handle "Starting TCP Client"
+            waitForLine serialHandle.handle "Starting TCP Client"
 
           let numberOfClients = 1
           putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."

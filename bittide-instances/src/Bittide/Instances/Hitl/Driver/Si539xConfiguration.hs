@@ -18,7 +18,7 @@ import Vivado.VivadoM
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseTapInfo)
-import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Serial (initSerial)
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
@@ -77,14 +77,14 @@ driverFunc _name targets = do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-board") gdbs peTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) gdbs
 
-      let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-      brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+      let serialStarts = liftIO <$> L.zipWith (initSerial hitlDir) targets [0 ..]
+      brackets serialStarts (liftIO . snd) $ \(L.map fst -> serials) -> do
         liftIO $ mapConcurrently_ Gdb.continue gdbs
 
         liftIO
           $ T.tryWithTimeout T.PrintActionTime "Waiting for test success" 15_000_000
-          $ forConcurrently_ picocoms
-          $ \pico ->
-            waitForLine pico "All tests passed"
+          $ forConcurrently_ serials
+          $ \serial ->
+            waitForLine serial "All tests passed"
 
   pure ExitSuccess

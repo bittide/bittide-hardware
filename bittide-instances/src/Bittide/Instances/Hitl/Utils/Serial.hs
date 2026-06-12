@@ -2,23 +2,19 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{- | Serial communication with FPGAs for HITL tests.
-
-Historically this module wrapped the external @picocom@ program; it now talks to
-the serial device directly via "Sport.Serial" from the @sport@ package. The
-module (and most of its API) keeps the @Picocom@ name so the call sites need
-minimal changes.
+{- | Serial communication with FPGAs for HITL tests, built on "Sport.Serial"
+from the @sport@ package.
 
 Two styles are offered:
 
   * A raw 'SerialHandle' ('start', 'withSerial') for drivers that read and write
     the port directly.
-  * A 'Chan' 'ByteString' of received lines ('initPicocom',
+  * A 'Chan' 'ByteString' of received lines ('initSerial',
     'startWithLoggingChan') for drivers that only consume output. In this style,
-    every received line is also appended to a log file - this replaces
-    @picocom@'s @tee@ and is the primary HITL debug artifact.
+    every received line is also appended to a log file - the primary HITL debug
+    artifact.
 -}
-module Bittide.Instances.Hitl.Utils.Picocom where
+module Bittide.Instances.Hitl.Utils.Serial where
 
 import Prelude
 
@@ -40,7 +36,7 @@ import Vivado.Tcl (HwTarget)
 import GHC.IO.Handle (BufferMode (..), Handle, hIsEOF, hSetBuffering)
 
 import qualified Data.ByteString.Char8 as BSC
-import qualified Sport.Serial as Serial
+import qualified Sport.Serial as Sport
 
 -- | Default baud rate used by most instances.
 defaultBaud :: BaudRate
@@ -56,13 +52,13 @@ channel and a log file.
 
 Returns the channel and a cleanup action.
 -}
-initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
-initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
+initSerial :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (Chan ByteString, IO ())
+initSerial hitlDir (_hwTarget, deviceInfo) targetIndex = do
   let
     devPath = deviceInfo.serial
-    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
+    logPath = hitlDir </> "serial-" <> show targetIndex <> ".log"
 
-  startWithLoggingChan devPath defaultBaud stdoutPath
+  startWithLoggingChan devPath defaultBaud logPath
 
 {- | Open a serial connection at the given baud rate. Returns the handle and a
 cleanup action that closes it.
@@ -78,10 +74,10 @@ start devPath baud = do
   hSetBuffering h NoBuffering
   pure (SerialHandle h, hClose h)
  where
-  serialCfg = Serial.defSerialCfg{Serial.path = devPath, Serial.speed = baud}
+  serialCfg = Sport.defSerialCfg{Sport.path = devPath, Sport.speed = baud}
 
   openWithRetry n =
-    Serial.openSerial serialCfg `catch` \(e :: IOException) ->
+    Sport.openSerial serialCfg `catch` \(e :: IOException) ->
       if n > 0 && isDoesNotExistError e
         then threadDelay 100_000 >> openWithRetry (n - 1)
         else throwM e
