@@ -7,6 +7,7 @@
 
 pub mod axi;
 pub mod callisto;
+pub mod hitl;
 pub mod link_startup;
 pub mod mac;
 pub mod sample_store;
