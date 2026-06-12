@@ -120,10 +120,6 @@ jobs:
         run: |
           .github/scripts/self_hosted_docker_check.py
 
-      - name: Check that the 'all' job depends on all other jobs
-        run: |
-          .github/scripts/all_check.py
-
       - name: Check that we don't introduce accidental infinite loops in type checkers
         run: .github/scripts/check_fconstraint_solver_iterations.sh
 
@@ -863,7 +859,7 @@ jobs:
     name: Notify Slack on scheduled failure
     if: ${{ failure() && github.event_name == 'schedule' }}
     needs: [all]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Post failure notification to Slack
         uses: slackapi/slack-github-action@v3.0.3
@@ -879,6 +875,22 @@ jobs:
                   type: "mrkdwn"
                   text: "*Nightly CI failed* on `${{ github.ref_name }}` (commit `${{ github.sha }}`)\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
 
+  fail-on-debug:
+    name: Fail on debug
+    runs-on: ubuntu-24.04
+    if: ${{ always() }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check if 'debug.json' is present
+        run: |
+          # If this is a debug run, always fail. We never want this to be merged.
+          if [[ -f .github/synthesis/debug.json ]]; then
+            echo "This is a debug run, which may never succeed. Remove '.github/synthesis/debug.json' before trying to merge."
+            exit 1
+          fi
+
   all:
     name: All jobs finished
     if: ${{ !cancelled() }}
@@ -890,6 +902,7 @@ jobs:
         bittide-instances-vivado,
         build,
         cachix,
+        fail-on-debug,
         firmware-limit-checks,
         firmware-support-tests,
         generate-control-reports,
@@ -900,32 +913,10 @@ jobs:
         rust-lints,
         should-run-haskell-tests,
       ]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Check dependencies for failures
-        run: |
-          # Test all dependencies for success/failure
-          set -x
-          success="${{ contains(needs.*.result, 'success') }}"
-          fail="${{ contains(needs.*.result, 'failure') }}"
-          set +x
-
-          # Test whether success/fail variables contain sane values
-          if [[ "${success}" != "true" && "${success}" != "false" ]]; then exit 1; fi
-          if [[ "${fail}"    != "true" && "${fail}"    != "false" ]]; then exit 1; fi
-
-          # If this is a debug run, fail even when all dependencies succeeded.
-          if [[ -f .github/synthesis/debug.json ]]; then
-            echo "This is a debug run, which may never succeed. Remove '.github/synthesis/debug.json' before trying to merge."
-            exit 1
-          fi
-
-          # We want to fail if one or more dependencies fail. For safety, we introduce
-          # a second check: if no dependencies succeeded something weird is going on.
-          if [[ "${fail}" == "true" || "${success}" == "false" ]]; then
-            echo "One or more dependency failed, or no dependency succeeded."
-            exit 1
-          fi
+      - uses: actions/checkout@v6
+      - uses: clash-lang/all-jobs-ok@v1
+        with:
+          exclude: |
+            notify-slack
