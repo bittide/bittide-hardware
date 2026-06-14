@@ -877,8 +877,7 @@ jobs:
 
   fail-on-debug:
     name: Fail on debug
-    runs-on: ubuntu-24.04
-    if: ${{ always() }}
+    runs-on: ubuntu-slim
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -913,10 +912,11 @@ jobs:
         rust-lints,
         should-run-haskell-tests,
       ]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     steps:
       - uses: actions/checkout@v6
-      - uses: clash-lang/all-jobs-ok@v1
+      - uses: clash-lang/all-jobs-ok@v2
         with:
+          needs: ${{ toJSON(needs) }}
           exclude: |
             notify-slack
