@@ -5,9 +5,16 @@
 {- | User core for the Manticore demo (milestone 1: a single Manticore chip on
 one FPGA, seams tied off). It instantiates the 'manticoreBittideChip' blackbox
 and exposes the chip's host interface — host registers, @start@, the device
-registers, and the DMI gmem window (program-image load + trace readback) — as
-Wishbone registers on the management unit's bus, so the MU CPU drives the
-whole boot/run/trace flow over GDB (replacing the KCU105 JTAG-to-AXI host).
+registers, and a memory-mapped gmem window (program-image load + trace
+readback) — as Wishbone devices on the management unit's bus, so the MU CPU
+drives the whole boot/run/trace flow over GDB (replacing the KCU105 JTAG-to-AXI
+host).
+
+The gmem window is an 'addressableBytesWb' region whose read/write requests are
+bridged ('gmemReqRespBridge') onto the chip's raw gmem host BRAM port. Because
+it is an addressable memory region (not a register), GDB can bulk-transfer the
+whole program image in one block write — and bulk-read the trace — instead of
+one round-trip per 16-bit word.
 
 The chip does not touch the Bittide links here: the handshake TX is forwarded
 verbatim to the GTH (as in the soft-UGN demo). Seam wiring is a later
@@ -18,7 +25,7 @@ Wishbone layout (two MU busses):
   * @ManticoreControl@: schedule_config, gmem_base, trace_base (RW),
     start (RW, write-strobe), and the device registers + done/idle/clock_active
     (RO).
-  * @ManticoreDmi@: dmi_addr (RW), dmi_wdata (RW, write-strobe), dmi_rdata (RO).
+  * @ManticoreGmem@: the gmem memory region (RW), 32-bit words.
 -}
 module Bittide.Instances.Hitl.ManticoreDemo.UserCore (
   UserCoreBusses,
@@ -31,9 +38,12 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Protocols
 
+import qualified Clash.Prelude as CP
+
 import Bittide.Instances.Domains (Bittide)
 import Bittide.Instances.Hitl.GenericDemo.BringUp (NmuRemBusWidth, UserCoreCircuit)
 import Bittide.Instances.Hitl.ManticoreDemo.Chip (
+  GmemHostWords,
   ManticoreChipIn (..),
   ManticoreChipOut (..),
   ManticoreDeviceRegisters (..),
@@ -50,6 +60,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, ReadWrite), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
+  addressableBytesWb,
   busActivityWrite,
   deviceConfig,
   deviceWbI,
@@ -57,8 +68,9 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI,
   registerWbI_,
  )
+import Protocols.ReqResp (ReqResp)
 
--- | Two MU busses: one for control + device registers, one for the DMI window.
+-- | Two MU busses: control + device registers, and the gmem memory region.
 type UserCoreBusses = 2
 
 {- | Ring-buffer depth of the (unused, milestone-1) link handshake path. Matches
@@ -93,7 +105,7 @@ manticoreUserCoreC ::
     ("GTH_TX" ::: CSignal Bittide (Vec LinkCount (BitVector 64)))
 manticoreUserCoreC bitClk bitRst bitEna =
   circuit $ \(userCoreBusses, _rxs2Raw, handshakeOut) -> do
-    [controlBus, dmiBus] <- idC -< userCoreBusses
+    [controlBus, gmemBus] <- idC -< userCoreBusses
 
     -- ---- control + device registers ----
     [ wbSched
@@ -122,19 +134,20 @@ manticoreUserCoreC bitClk bitRst bitEna =
     (Fwd (_, startAct)) <-
       withCRE (registerWbI (rw "start") (0 :: BitVector 32)) -< (wbStart, Fwd (pure Nothing))
 
-    -- ---- DMI window ----
-    [wbDmiAddr, wbDmiWdata, wbDmiRdata] <-
-      withCRE (deviceWbI (deviceConfig "ManticoreDmi")) -< dmiBus
-
-    (Fwd (dmiAddrV, _)) <-
-      withCRE (registerWbI (rw "dmi_addr") (0 :: BitVector 64)) -< (wbDmiAddr, Fwd (pure Nothing))
-    (Fwd (dmiWdataV, dmiWdataAct)) <-
-      withCRE (registerWbI (rw "dmi_wdata") (0 :: BitVector 16)) -< (wbDmiWdata, Fwd (pure Nothing))
+    -- ---- memory-mapped gmem window ----
+    -- 'addressableBytesWb' presents the chip-local gmem as an addressable
+    -- 32-bit-word region on the MU bus; 'gmemReqRespBridge' turns its
+    -- read/write requests into accesses on the chip's raw gmem host BRAM port
+    -- (feeding back the chip's read data). GDB block-writes the program image
+    -- here and block-reads the trace.
+    [wbGmemWin] <- withCRE (deviceWbI (deviceConfig "ManticoreGmem")) -< gmemBus
+    reqResp <- withCRE (addressableBytesWb @GmemHostWords (rw "data")) -< wbGmemWin
+    Fwd gmemDrive <- withCRE (gmemReqRespBridge (chipOut.gmemDout)) -< reqResp
 
     let
+      (gmemEnS, gmemWeS, gmemAddrS, gmemDinS) = unbundle gmemDrive
       hostRegs = ManticoreHostRegisters <$> schedV <*> gmemV <*> traceV
       startPulse = isJust . busActivityWrite <$> startAct
-      dmiWenPulse = isJust . busActivityWrite <$> dmiWdataAct
 
       chipOut =
         manticoreBittideChip
@@ -143,9 +156,10 @@ manticoreUserCoreC bitClk bitRst bitEna =
           ManticoreChipIn
             { hostRegs
             , start = startPulse
-            , dmiAddr = dmiAddrV
-            , dmiWdata = dmiWdataV
-            , dmiWen = dmiWenPulse
+            , gmemEn = gmemEnS
+            , gmemWe = gmemWeS
+            , gmemAddr = gmemAddrS
+            , gmemDin = gmemDinS
             }
 
       devRegs = chipOut.deviceRegs
@@ -172,9 +186,6 @@ manticoreUserCoreC bitClk bitRst bitEna =
     withCRE (registerWbI_ (ro "clock_active") (0 :: BitVector 32))
       -< (wbCa, Fwd (Just . boolToBv32 <$> chipOut.clockActive))
 
-    withCRE (registerWbI_ (ro "dmi_rdata") (0 :: BitVector 16))
-      -< (wbDmiRdata, Fwd (Just <$> chipOut.dmiRdata))
-
     -- Milestone 1: forward the handshake TX verbatim; the chip does not drive
     -- the links yet.
     idC -< handshakeOut
@@ -187,3 +198,56 @@ manticoreUserCoreC bitClk bitRst bitEna =
 
   ro :: String -> RegisterConfig
   ro name = (registerConfig name){access = ReadOnly}
+
+{- | Bridge between an 'addressableBytesWb' region and the chip's raw gmem host
+BRAM port.
+
+'addressableBytesWb' converts each Wishbone access into a held request — read
+(@Left idx@) or write (@Right (idx, byteMask, data)@) — and only acknowledges
+once we return read data ('Just'). This drives the request onto the chip's gmem
+host port and, after the BRAM read settles, returns the read word.
+
+To break the long combinational path across the chip boundary (Wishbone ->
+bridge -> BRAM -> bridge -> Wishbone), both the drive signals (address / data /
+write-enables) and the read data are registered on the Clash side. The request
+is held stable by the Wishbone master until acknowledged, so the access is
+idempotent while in flight. Total latency request -> response is 3 cycles
+(input register, 1-cycle BRAM read, output register), tracked by a small
+saturating counter; the response is asserted for the single cycle the counter
+is saturated, which acknowledges the Wishbone transfer and drops the request.
+-}
+gmemReqRespBridge ::
+  forall dom nWords aw.
+  ( HiddenClockResetEnable dom
+  , KnownNat nWords
+  , 1 <= nWords
+  , aw ~ CLog 2 nWords
+  , BitSize (Index nWords) ~ aw
+  ) =>
+  -- | Read data from the chip's gmem host port (combinational BRAM output).
+  Signal dom (BitVector 32) ->
+  Circuit
+    ( ReqResp
+        dom
+        (Either (Index nWords) (Index nWords, BitVector 4, BitVector 32))
+        (BitVector 32)
+    )
+    (CSignal dom (Bool, BitVector 4, BitVector aw, BitVector 32))
+gmemReqRespBridge dout = Circuit go
+ where
+  go (req, _) = (resp, drive)
+   where
+    drive = CP.register (False, 0, 0, 0) (mkDrive <$> req)
+    doutReg = CP.register 0 dout
+    cnt = CP.register (0 :: Index 4) cntNext
+    cntNext =
+      mux (isJust <$> resp) (pure 0)
+        $ mux (isJust <$> req) (satSucc SatBound <$> cnt) (pure 0)
+    resp = mux ((== maxBound) <$> cnt) (Just <$> doutReg) (pure Nothing)
+
+  mkDrive ::
+    Maybe (Either (Index nWords) (Index nWords, BitVector 4, BitVector 32)) ->
+    (Bool, BitVector 4, BitVector aw, BitVector 32)
+  mkDrive Nothing = (False, 0, 0, 0)
+  mkDrive (Just (Left idx)) = (True, 0, pack idx, 0)
+  mkDrive (Just (Right (idx, mask, dat))) = (True, mask, pack idx, dat)

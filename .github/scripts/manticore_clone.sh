@@ -11,7 +11,7 @@
 # Configure via environment variables (defaults track the lmbollen forks; the
 # pinned commits below are the branch tips at the time of writing):
 #   MANTICORE_HW_REPO        (default: https://github.com/lmbollen/manticore-hw.git)
-#   MANTICORE_HW_REF         (default: kcu105-port            @ 9f625400)
+#   MANTICORE_HW_REF         (default: kcu105-port            @ 140a1740)
 #   MANTICORE_COMPILER_REPO  (default: https://github.com/lmbollen/manticore-compiler.git)
 #   MANTICORE_COMPILER_REF   (default: kcu105-frontend-fix    @ d0e485e5)
 #   MANTICORE_FRONTEND_REPO  (default: the .gitmodules URL; frontend submodule @ dc0086913)

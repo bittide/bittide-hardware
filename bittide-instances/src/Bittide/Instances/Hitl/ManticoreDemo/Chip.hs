@@ -11,11 +11,11 @@ test group's @externalHdl@), and a trivial Clash-simulation fallback.
 
 The chip runs entirely on the Bittide clock (no MMCM — the compute array sits
 behind a BUFGCE inside the chip). Its host-facing ports — host registers,
-@start@/@done@/@idle@, the device registers, and the DMI gmem window (program
-image load + trace readback) — are flat signals here; the demo's user core
-('Bittide.Instances.Hitl.ManticoreDemo.UserCore') maps them onto the
-management unit's Wishbone bus, replacing the JTAG-to-AXI host of the KCU105
-standalone port.
+@start@/@done@/@idle@, the device registers, and the raw gmem host BRAM port
+(program image load + trace readback) — are flat signals here; the demo's user
+core ('Bittide.Instances.Hitl.ManticoreDemo.UserCore') maps them onto the
+management unit's Wishbone bus (a memory-mapped gmem region), replacing the
+JTAG-to-AXI host of the KCU105 standalone port.
 
 NB: this is milestone 1 (single chip, seams tied off inside the chip). The
 chip does not touch the Bittide links yet.
@@ -25,6 +25,8 @@ module Bittide.Instances.Hitl.ManticoreDemo.Chip (
   ManticoreDeviceRegisters (..),
   ManticoreChipIn (..),
   ManticoreChipOut (..),
+  GmemHostAddrBits,
+  GmemHostWords,
   manticoreBittideChip,
 ) where
 
@@ -33,6 +35,16 @@ import Clash.Prelude
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal
 
 import Bittide.Instances.Domains (Bittide)
+
+{- | Width of the gmem host port's 32-bit-word address. The chip's gmem is
+@gmemAddrBits = 16@ half-words (128 KiB); as 32-bit words that is
+@16 - 1 = 15@ address bits. Keep in sync with @ManticoreBittideChip@'s
+@gmemAddrBits@ in manticore-hw.
+-}
+type GmemHostAddrBits = 15
+
+-- | Number of 32-bit words in the gmem host window (@2 ^ GmemHostAddrBits@).
+type GmemHostWords = 2 ^ GmemHostAddrBits
 
 {- | Host registers written by the management unit (mirror of the Chisel
 @HostRegisters@ bundle, in declaration order).
@@ -66,11 +78,14 @@ data ManticoreChipIn = ManticoreChipIn
   { hostRegs :: Signal Bittide ManticoreHostRegisters
   , start :: Signal Bittide Bool
   -- ^ rising edge launches the configured command (the chip edge-detects it)
-  , dmiAddr :: Signal Bittide (BitVector 64)
-  -- ^ gmem half-word address for the host DMI port
-  , dmiWdata :: Signal Bittide (BitVector 16)
-  , dmiWen :: Signal Bittide Bool
-  -- ^ one-cycle write strobe for the host DMI port
+  , gmemEn :: Signal Bittide Bool
+  -- ^ chip-enable for the raw gmem host BRAM port (port A)
+  , gmemWe :: Signal Bittide (BitVector 4)
+  -- ^ per-byte write enables for the gmem host port
+  , gmemAddr :: Signal Bittide (BitVector GmemHostAddrBits)
+  -- ^ 32-bit-word address into gmem
+  , gmemDin :: Signal Bittide (BitVector 32)
+  -- ^ write data for the gmem host port
   }
 
 -- | Everything produced by the chip, all in the 'Bittide' domain.
@@ -80,7 +95,8 @@ data ManticoreChipOut = ManticoreChipOut
   , idle :: Signal Bittide Bool
   , clockActive :: Signal Bittide Bool
   -- ^ diagnostics: compute clock currently enabled
-  , dmiRdata :: Signal Bittide (BitVector 16)
+  , gmemDout :: Signal Bittide (BitVector 32)
+  -- ^ read data from the raw gmem host BRAM port (1-cycle read latency)
   }
 
 {- | Instantiate one Manticore chip on the Bittide clock.
@@ -99,16 +115,16 @@ manticoreBittideChip clk rst input
   | clashSimulation = simChip
   | otherwise = synthChip
  where
-  ManticoreChipIn{hostRegs, start, dmiAddr, dmiWdata, dmiWen} = input
+  ManticoreChipIn{hostRegs, start, gmemEn, gmemWe, gmemAddr, gmemDin} = input
 
-  -- Clash-simulation stub: the chip sits idle and the DMI reads back zero.
+  -- Clash-simulation stub: the chip sits idle and the gmem port reads zero.
   simChip =
     ManticoreChipOut
       { deviceRegs = pure (deepErrorX "ManticoreBittideChip: not modelled in Clash simulation")
       , done = pure False
       , idle = pure True
       , clockActive = pure False
-      , dmiRdata = pure 0
+      , gmemDout = pure 0
       }
 
   synthChip =
@@ -125,7 +141,7 @@ manticoreBittideChip clk rst input
       , done
       , idle
       , clockActive
-      , dmiRdata
+      , gmemDout
       }
    where
     scheduleConfig = (.scheduleConfig) <$> hostRegs
@@ -142,7 +158,7 @@ manticoreBittideChip clk rst input
       , unPort @(Port "ctrl_done" Bittide Bool) -> done
       , unPort @(Port "ctrl_idle" Bittide Bool) -> idle
       , unPort @(Port "clock_active" Bittide Bool) -> clockActive
-      , unPort @(Port "dmi_rdata" Bittide (BitVector 16)) -> dmiRdata
+      , unPort @(Port "gmem_host_dout" Bittide (BitVector 32)) -> gmemDout
       ) = go
 
     go =
@@ -154,6 +170,7 @@ manticoreBittideChip clk rst input
         (Port @"host_regs_global_memory_instruction_base" gmemBase)
         (Port @"host_regs_trace_dump_base" traceBase)
         (Port @"ctrl_start" start)
-        (Port @"dmi_addr" dmiAddr)
-        (Port @"dmi_wdata" dmiWdata)
-        (Port @"dmi_wen" dmiWen)
+        (Port @"gmem_host_en" gmemEn)
+        (Port @"gmem_host_we" gmemWe)
+        (Port @"gmem_host_addr" gmemAddr)
+        (Port @"gmem_host_din" gmemDin)

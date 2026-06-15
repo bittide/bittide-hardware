@@ -11,20 +11,20 @@
 
 Runs a Manticore program on one FPGA of the rig and reads its @$display@ trace
 back, mirroring the (board-verified) KCU105 @run_manifest.py@ host flow, but
-over the management-unit (MU) GDB instead of JTAG-to-AXI, and through the
-chip's DMI gmem window instead of a flat AXI memory:
+over the management-unit (MU) GDB instead of JTAG-to-AXI, and through a
+memory-mapped gmem region on the MU bus instead of a flat AXI memory:
 
   1. Bring up the boot CPU (Si539x clock config) — reuse the demo boot
      firmware; it is independent of the user core.
   2. Attach GDB to the (halted) MU; its bus reaches the chip's Wishbone host
-     registers (ManticoreControl / ManticoreDmi), so the driver pokes them
-     directly — no Manticore-specific MU firmware needed.
+     registers (ManticoreControl) and the gmem region (ManticoreGmem), so the
+     driver pokes them directly — no Manticore-specific MU firmware needed.
   3. Load the program image (manifest.json + exec.bin streams produced by
-     .github/scripts/manticore_compile_program.sh) into gmem over the DMI
-     window; zero words are skipped (BRAM powers up to zero).
+     .github/scripts/manticore_compile_program.sh) into the gmem region with a
+     bulk GDB @restore@ (one round-trip per binary, not per word).
   4. Run each initializer (CMD_START, expect FINISH), then the main program;
-     on each FLUSH (a @$display@) read the trace record over the DMI window and
-     resume, until FINISH.
+     on each FLUSH (a @$display@) read the trace record from the gmem region
+     and resume, until FINISH.
   5. Check the collected trace against the golden values.
 
 NB milestone 1: single chip, MU halted + poked over GDB. The MU/clock-control
@@ -44,11 +44,12 @@ import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (Value (Array, Number, Object, String))
-import Data.Bits (shiftL, (.|.))
+import Data.Bits (shiftL, shiftR, (.|.))
 import Data.Default (def)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Word (Word16, Word32, Word64)
+import Numeric (showHex)
 import Project.FilePath (findParentContaining)
 import Project.Handle (assertEither)
 import System.Exit (ExitCode (..))
@@ -236,26 +237,36 @@ runManticore gdb bins excMap = do
     aVc = regAddr "ManticoreControl" "virtual_cycles"
     aDone = regAddr "ManticoreControl" "done"
     aIdle = regAddr "ManticoreControl" "idle"
-    aDmiAddr = regAddr "ManticoreDmi" "dmi_addr"
-    aDmiWdata = regAddr "ManticoreDmi" "dmi_wdata"
-    aDmiRdata = regAddr "ManticoreDmi" "dmi_rdata"
+    -- Base byte address of the memory-mapped gmem region on the MU bus. The
+    -- region is 32-bit-word addressable with byte write-enables; gmem 16-bit
+    -- half-word @h@ lives at byte offset @h * 2@ (little-endian within each
+    -- 32-bit word, matching the chip's GmemHalfWordAdapter).
+    aGmemRegion = regAddr "ManticoreGmem" "data"
 
     poke64 :: Integer -> Word64 -> IO ()
     poke64 a v = Gdb.writeLe gdb a v
-    poke16 :: Integer -> Word16 -> IO ()
-    poke16 a v = Gdb.writeLe gdb a v
     peek32 :: Integer -> IO Int
     peek32 a = fromIntegral <$> (Gdb.readLe gdb a :: IO Word32)
     peek64 :: Integer -> IO Int
     peek64 a = fromIntegral <$> (Gdb.readLe gdb a :: IO Word64)
 
-    dmiWrite :: Int -> Word16 -> IO ()
-    dmiWrite off val = poke64 aDmiAddr (fromIntegral off) >> poke16 aDmiWdata val
-    dmiRead :: Int -> IO Int
-    dmiRead off = do
-      poke64 aDmiAddr (fromIntegral off)
-      _ <- (Gdb.readLe gdb aDmiRdata :: IO Word16) -- registered read: 1-cycle latency
-      fromIntegral <$> (Gdb.readLe gdb aDmiRdata :: IO Word16)
+    -- Bulk-load a contiguous run of 16-bit gmem words starting at half-word
+    -- offset @hwBase@, in a single GDB `restore` (one round-trip, not one per
+    -- word). Empty runs are skipped.
+    restoreWords :: Int -> [Word16] -> IO ()
+    restoreWords _ [] = pure ()
+    restoreWords hwBase ws = do
+      let
+        bytes = BS.pack (concatMap (\w -> [fromIntegral w, fromIntegral (w `shiftR` 8)]) ws)
+        addr = aGmemRegion + fromIntegral (hwBase * 2)
+        path = "/tmp/manticore_gmem_" <> show hwBase <> ".bin"
+      BS.writeFile path bytes
+      Gdb.runCommand gdb ("restore " <> path <> " binary 0x" <> showHex addr "")
+
+    -- Read one 16-bit gmem half-word at half-word offset @hwOff@.
+    gmemRead16 :: Int -> IO Int
+    gmemRead16 hwOff =
+      fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral (hwOff * 2)) :: IO Word16)
 
     classify eid
       | eid > (0xFFFF :: Int) = "TIMEOUT"
@@ -281,10 +292,8 @@ runManticore gdb bins excMap = do
       putStrLn $ "  " <> name <> " eid=" <> show eid <> " vcycles=" <> show vc <> " -> " <> k
       pure (eid, k)
 
-  putStrLn "Loading Manticore image over the DMI window (skipping zero words)..."
-  forM_ bins $ \b ->
-    forM_ (zip [binBase b ..] (binWords b)) $ \(off, w) ->
-      when (w /= 0) (dmiWrite off w)
+  putStrLn "Loading Manticore image into the gmem region (bulk restore)..."
+  forM_ bins $ \b -> restoreWords (binBase b) (binWords b)
 
   poke64 aTrace 0
 
@@ -293,13 +302,11 @@ runManticore gdb bins excMap = do
 
   traceRef <- newIORef []
   let
-    -- One $display record: value is gmem words 2..3 (offsets 4 and 6 bytes →
-    -- word indices 2,3), per run_manifest.py's RF-write decode.
-    -- value low/high half-words: gmem 16-bit words 5 and 6 (run_manifest.py's
-    -- 32-bit words 2..3 RF-write decode, in 16-bit-word terms).
+    -- One $display record: the written value is gmem 16-bit half-words 5 and 6
+    -- (run_manifest.py's 32-bit words 2..3 RF-write decode, in 16-bit terms).
     readTraceVal = do
-      lo <- dmiRead 5
-      hi <- dmiRead 6
+      lo <- gmemRead16 5
+      hi <- gmemRead16 6
       pure (lo .|. (hi `shiftL` 16) :: Int)
     loop kind guard
       | kind == "FLUSH" && guard < (100000 :: Int) = do
