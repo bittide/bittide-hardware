@@ -127,6 +127,11 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
         (pure Nothing)
         spiS2M
 
+  ((_memoryMap, jtagOut), (uartTx, spiDone, spiM2S, transceiverWb))
+    toSignals
+      (withLittleEndian $ bootPe peConfig)
+      (((), jtagIn), (pure 0, (), spiS2M, ()))
+
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
