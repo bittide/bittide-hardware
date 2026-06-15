@@ -8,205 +8,189 @@ FINC and FDEC pins.
 -}
 module Bittide.Instances.Hitl.FincFdec where
 
-import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx (withXilinx)
 import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
-import Clash.Xilinx.ClockGen (clockWizardDifferential)
+import Clash.Prelude (HiddenClock, HiddenReset, withClock, withClockResetEnable, withReset)
+import Protocols
 
-import Bittide.ClockControl (
-  SpeedChange (NoChange, SlowDown, SpeedUp),
-  speedChangeToFincFdec,
+import Clash.Annotations.TH (makeTopEntity)
+import Clash.Class.BitPackC (ByteOrder)
+import Clash.Cores.Uart (ValidBaud)
+import Clash.Cores.Xilinx (withXilinx)
+import Clash.Xilinx.ClockGen (clockWizardDifferential)
+import Protocols.MemoryMap (Access (WriteOnly), MemoryMap, Mm, getMMAny)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (..),
+  deviceConfig,
+  deviceWbI,
+  registerConfig,
+  registerWbI,
  )
-import Bittide.ClockControl.Si539xSpi (ConfigState (Finished), si539xSpi)
-import Bittide.Counter (domainDiffCounter)
+import Protocols.Spi
+import VexRiscv
+
+import Bittide.ClockControl (FDEC, FINC, SpeedChange (..), speedChangeToFincFdec)
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
+import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
+  HitlTestCase (..),
   HitlTestGroup (..),
-  hitlVio,
-  testCasesFromEnum,
+  hitlVioBool,
+  paramForHwTargets,
  )
-import Bittide.Instances.Common (commonSpiConfig)
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup (allHwTargets)
+import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.SharedTypes (BitboneMm, withLittleEndian)
+import Bittide.Wishbone (timeWb, uartDf, uartInterfaceWb)
 
-import Data.Maybe (isJust)
+import GHC.Stack (HasCallStack)
 import System.FilePath ((</>))
 
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Instances.Hitl.Driver.FincFdec as Driver
+import qualified Clash.Class.Cdc as Cdc
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
 
-data TestState = Busy | Fail | Success
-data Test
-  = -- | Keep pressing FDEC, see if counter falls below certain threshold
-    FDec
-  | -- | Keep pressing FINC, see if counter exceeds certain threshold
-    FInc
-  | -- | 'FDec' test followed by an 'FInc' one
-    FDecInc
-  | -- | 'FInc' test followed by an 'FDec' one
-    FIncDec
-  deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
+type Baud = 921_600
 
-{- | Counter threshold after which a test is considered passed/failed. In theory
-clocks can diverge at +-20 kHz (at 200 MHz), which gives the tests 500 ms to
-adjust their clocks - which should be plenty.
+baud :: SNat Baud
+baud = SNat
+
+{- | Memory mapped component to control the FINC and FDEC pins. Note that you still need to
+convert from 'SpeedChange' to the FINC/FDEC pins using 'speedChangeToFincFdec'.
 -}
-threshold :: Signed 32
-threshold = 20_000
+hardwareSpeedChange ::
+  forall aw dom.
+  ( HasCallStack
+  , HiddenClock dom
+  , HiddenReset dom
+  , KnownNat aw
+  , 1 <= aw
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Circuit (BitboneMm dom aw) (CSignal dom SpeedChange)
+hardwareSpeedChange = circuit $ \(mm, wb) -> do
+  [speedChangeBus] <- deviceWbI (deviceConfig "HardwareSpeedChange") -< (mm, wb)
 
-testStateToDoneSuccess :: TestState -> (Bool, Bool)
-testStateToDoneSuccess = \case
-  Busy -> (False, False)
-  Fail -> (True, False)
-  Success -> (True, True)
+  (speedChange, _speedChangeActivity) <-
+    registerWbI speedChangeConfig NoChange -< (speedChangeBus, Fwd (pure Nothing))
 
-goFincFdecTests ::
-  Clock Basic200 ->
-  Reset Basic200 ->
-  Clock Ext200 ->
-  Signal Basic200 Test ->
-  Signal Basic200 Spi.S2M ->
-  ""
-    ::: ( Signal Basic200 TestState
-        , -- Freq increase / freq decrease request to clock board
-          ""
-            ::: ( "FINC" ::: Signal Basic200 Bool
-                , "FDEC" ::: Signal Basic200 Bool
-                )
-        , -- SPI to clock board:
-          "" ::: Signal Basic200 Spi.M2S
-        , -- Debug signals:
-          ""
-            ::: ( "SPI_BUSY" ::: Signal Basic200 Bool
-                , "SPI_STATE" ::: Signal Basic200 (BitVector 40)
-                , "SI_LOCKED" ::: Signal Basic200 Bool
-                , "COUNTER_ACTIVE" ::: Signal Basic200 Bool
-                , "COUNTER" ::: Signal Basic200 (Signed 32)
-                )
-        )
-goFincFdecTests clk rst clkControlled testSelect spiS2M =
-  (testResult, fIncDec, spiM2S, debugSignals)
+  idC -< speedChange
  where
-  debugSignals = (spiBusy, pack <$> spiState, siClkLocked, counterActive, counter)
+  speedChangeConfig = (registerConfig "speed_change" ""){access = WriteOnly}
 
-  (_, spiBusy, spiState@(fmap (== Finished) -> siClkLocked), spiM2S) =
-    withClockResetEnable clk rst enableGen
-      $ si539xSpi
-        commonSpiConfig
-        (SNat @(Microseconds 1))
-        (pure Nothing)
-        spiS2M
+fincFdecPe ::
+  forall free sky vendor.
+  ( HasCallStack
+  , KnownDomain free
+  , KnownDomain sky
+  , HasSynchronousReset free
+  , HasSynchronousReset sky
+  , 1 <= DomainPeriod free
+  , ValidBaud free Baud
+  , ?byteOrder :: ByteOrder
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidGray vendor 8 sky free
+  , Cdc.GrayConstraints vendor 8 sky free
+  ) =>
+  Clock free ->
+  Reset free ->
+  Clock sky ->
+  Circuit
+    ( ToConstBwd Mm
+    , Jtag free
+    )
+    ( "UART_TX" ::: CSignal free Bit
+    , Spi free
+    , CSignal free SpeedChange
+    )
+fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
+  [timeBus, uartBus, siBus, dcBus, speedChangeBus] <-
+    withClockResetEnable freeClk freeRst enableGen
+      $ processingElement NoDumpVcd peConfig
+      -< (mm, jtag)
 
-  rstTest = unsafeFromActiveLow siClkLocked
-  rstControlled = convertReset clk clkControlled rst
+  Fwd _localCounter <- withClockResetEnable freeClk freeRst enableGen $ timeWb Nothing -< timeBus
+  (uartTx, _uartStatus) <-
+    withClockResetEnable freeClk freeRst enableGen
+      $ uartInterfaceWb d16 d16
+      $ uartDf baud
+      -< (uartBus, Fwd (pure low))
+  (Fwd spiDone, spiOut) <-
+    withClockResetEnable freeClk freeRst enableGen
+      $ si539xSpiWb (SNat @(Microseconds 10))
+      -< siBus
 
-  (counter, counterActive) =
-    unbundle
-      $
-      -- Note that in a "real" Bittide system the clocks would be wired up the
-      -- other way around: the controlled domain would be the target domain. We
-      -- don't do that here because we know 'rstControlled' will come out of
-      -- reset much earlier than 'rstTest'. Doing it the "proper" way would
-      -- therefore introduce extra complexity, without adding to the test's
-      -- coverage.
-      (withXilinx domainDiffCounter) clkControlled rstControlled clk rstTest
+  let skyRst = convertReset freeClk skyClk (unsafeFromActiveLow spiDone)
+  Fwd _domainDiff <- domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
 
-  fIncDec = unbundle $ speedChangeToFincFdec clk rstTest fIncDecRequest
+  speedChange <- withClock freeClk $ withReset freeRst $ hardwareSpeedChange -< speedChangeBus
 
-  (fIncDecRequest, testResult) =
-    unbundle
-      $ (!!)
-      <$> bundle (fDecResult :> fIncResult :> fDecIncResult :> fIncDecResult :> Nil)
-      <*> fmap fromEnum testSelect
-
-  fDecResult = goFdec <$> counter
-  fIncResult = goFinc <$> counter
-  fDecIncResult = mealy clk rstTest enableGen goFdecFinc FDec counter
-  fIncDecResult = mealy clk rstTest enableGen goFincFdec FInc counter
-
-  -- Keep pressing FDEC, expect counter to go below -@threshold@
-  goFdec :: Signed 32 -> (SpeedChange, TestState)
-  goFdec n
-    | n > threshold = (NoChange, Fail)
-    | n < -threshold = (NoChange, Success)
-    | otherwise = (SlowDown, Busy)
-
-  -- Keep pressing FINC, expect counter to go above @threshold@
-  goFinc :: Signed 32 -> (SpeedChange, TestState)
-  goFinc n
-    | n > threshold = (NoChange, Success)
-    | n < -threshold = (NoChange, Fail)
-    | otherwise = (SpeedUp, Busy)
-
-  -- Keep pressing FDEC, expect counter to go below -@threshold@, then keep pressing
-  -- FINC, expect counter to go above 0.
-  goFdecFinc :: Test -> Signed 32 -> (Test, (SpeedChange, TestState))
-  goFdecFinc FDec n
-    | n > threshold = (FDec, (NoChange, Fail))
-    | n < -threshold = (FInc, (NoChange, Busy))
-    | otherwise = (FDec, (SlowDown, Busy))
-  goFdecFinc FInc n
-    | n > 0 = (FInc, (NoChange, Success))
-    | n < -(3 * threshold) = (FInc, (NoChange, Fail))
-    | otherwise = (FInc, (SpeedUp, Busy))
-  goFdecFinc s _ = (s, (NoChange, Fail)) -- Illegal state
-
-  -- Keep pressing FINC, expect counter to go above @threshold@, then keep pressing
-  -- FDEC, expect counter to go below 0.
-  goFincFdec :: Test -> Signed 32 -> (Test, (SpeedChange, TestState))
-  goFincFdec FInc n
-    | n > threshold = (FDec, (NoChange, Busy))
-    | n < -threshold = (FInc, (NoChange, Fail))
-    | otherwise = (FInc, (SpeedUp, Busy))
-  goFincFdec FDec n
-    | n > (3 * threshold) = (FDec, (NoChange, Fail))
-    | n < 0 = (FDec, (NoChange, Success))
-    | otherwise = (FDec, (SlowDown, Busy))
-  goFincFdec s _ = (s, (NoChange, Fail)) -- Illegal state
+  idC -< (uartTx, spiOut, speedChange)
+ where
+  peConfig =
+    PeConfig
+      { cpu = Riscv32imc.vexRiscv0
+      , depthI = SNat @(Div (8 * 1024) 4)
+      , depthD = SNat @(Div (8 * 1024) 4)
+      , initI = Nothing
+      , initD = Nothing
+      , iBusTimeout = d0
+      , dBusTimeout = d0
+      , includeIlaWb = False
+      }
 
 fincFdecTests ::
   -- Pins from internal oscillator:
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   -- Pins from clock board:
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
-  Signal Basic200 Spi.S2M ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext125 ->
+  "JTAG" ::: Signal Basic125 JtagIn ->
+  "USB_UART_TXD" ::: Signal Basic125 Bit ->
+  Signal Basic125 Spi.S2M ->
   ""
-    ::: ( ""
-            ::: ( "done" ::: Signal Basic200 Bool
-                , "success" ::: Signal Basic200 Bool
-                )
+    ::: ( "JTAG" ::: Signal Basic125 JtagOut
+        , "USB_UART_RXD" ::: Signal Basic125 Bit
+        , -- SPI to clock board:
+          "" ::: Signal Basic125 Spi.M2S
         , -- Freq increase / freq decrease request to clock board
           ""
-            ::: ( "FINC" ::: Signal Basic200 Bool
-                , "FDEC" ::: Signal Basic200 Bool
+            ::: ( "FINC" ::: Signal Basic125 FINC
+                , "FDEC" ::: Signal Basic125 FDEC
                 )
-        , -- SPI to clock board:
-          "" ::: Signal Basic200 Spi.M2S
         )
-fincFdecTests diffClk controlledDiffClock spiS2M =
-  ((testDone, testSuccess), fIncDec, spiM2S)
+fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
+  (jtagOut, uartTx, spiM2S, fincFdec)
  where
-  (_, odivClk) = Gth.ibufds_gte3 controlledDiffClock
-  clkControlled = Gth.bufgGt d0 odivClk noReset
+  freeClk :: Clock Basic125
+  freeRst :: Reset Basic125
+  (freeClk, freeRst) = clockWizardDifferential freeClkDiff noReset
 
-  (clk, clkStableRst) = clockWizardDifferential diffClk noReset
+  (_, odivClk) = Gth.ibufds_gte3 boardClkDiff
 
-  started = isJust <$> testInput
-  testRst = orReset clkStableRst (unsafeFromActiveLow started)
+  boardClk :: Clock Basic125A
+  boardClk = Gth.bufgGt d0 odivClk noReset
 
-  (testResult, fIncDec, spiM2S, _debugSignals) =
-    goFincFdecTests clk testRst clkControlled (fromJustX <$> testInput) spiS2M
+  testStart :: Signal Basic125 Bool
+  testStart = hitlVioBool freeClk testStart (pure True)
 
-  (testDone, testSuccess) = unbundle $ testStateToDoneSuccess <$> testResult
+  testRst = unsafeFromActiveLow testStart `orReset` freeRst
 
-  -- For debugging, add to separate VIO?
-  -- clkStable1 = unsafeToActiveLow clkStableRst
-  -- testRstBool = unsafeToActiveHigh testRst
-  -- (fInc, fDec) = fIncDec
-  -- (spiBusy, spiState, siClkLocked, counterActive, counter) = debugSignals
+  ((_memoryMap, jtagOut), (uartTx, spiM2S, speedChange)) =
+    toSignals
+      (withXilinx $ withLittleEndian $ fincFdecPe freeClk testRst boardClk)
+      (((), jtagIn), ((), spiS2M, ()))
 
-  testInput :: Signal Basic200 (Maybe Test)
-  testInput = hitlVio FDec clk testDone testSuccess
+  fincFdec = unbundle $ speedChangeToFincFdec freeClk testRst speedChange
+
+memoryMap :: MemoryMap
+memoryMap =
+  getMMAny
+    $ withXilinx
+    $ withLittleEndian
+    $ fincFdecPe @Basic125 @Basic125A clockGen resetGen clockGen
+
 {-# OPAQUE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
 
@@ -215,12 +199,21 @@ tests =
   HitlTestGroup
     { topEntity = 'fincFdecTests
     , targetXdcs =
-        [ "fincFdecTests.xdc"
+        [ "si539xConfigTest.xdc"
+        , "jtag" </> "config.xdc"
+        , "jtag" </> "pmod1.xdc"
+        , "uart" </> "pmod1.xdc"
         , "si539x" </> "fincfdec.xdc"
         , "si539x" </> "spi.xdc"
         ]
     , externalHdl = []
-    , testCases = testCasesFromEnum @Test allHwTargets ()
-    , mDriverProc = Nothing
+    , testCases =
+        [ HitlTestCase
+            { name = "FincFdecTests"
+            , parameters = paramForHwTargets allHwTargets ()
+            , postProcData = ()
+            }
+        ]
+    , mDriverProc = Just Driver.driver
     , mPostProc = Nothing
     }

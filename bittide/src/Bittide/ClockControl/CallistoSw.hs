@@ -9,12 +9,14 @@ module Bittide.ClockControl.CallistoSw (
 
 import Clash.Prelude hiding (PeriodToCycles)
 
+import Data.Maybe (fromMaybe)
+
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Functor.Extra ((<<$>>))
 import Protocols
 import VexRiscv
 
-import Bittide.ClockControl (SpeedChange)
+import Bittide.ClockControl (SpeedChange (NoChange))
 import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.Counter (domainDiffCountersWbC)
@@ -84,7 +86,7 @@ callistoSwClockControlC ::
       )
     )
     ( Sync dom free
-    , CSignal dom (Maybe SpeedChange)
+    , CSignal dom SpeedChange
     , Vec
         otherWb
         (BitboneMm dom (SwcccRemBusWidth otherWb))
@@ -102,7 +104,10 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
       ) <-
       Vec.split -< allWishbone
 
-    speedChanges <- clockControlWb linkMask linksOk (unbundle diffCounters) -< clockControlBus
+    speedChange <-
+      applyC (fmap (fromMaybe NoChange)) id
+        <| clockControlWb linkMask linksOk (unbundle diffCounters)
+        -< clockControlBus
 
     clockControlBus <- arbiterMm -< [ccClockControlBusWide, muClockControlBusWide]
     -- We need to extend the width of both wishbone busses since we don't know which
@@ -136,4 +141,4 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
 
     let diffCounters = fst <<$>> domainDiffs
 
-    idC -< (sync, speedChanges, wbRest)
+    idC -< (sync, speedChange, wbRest)

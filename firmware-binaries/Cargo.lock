@@ -323,6 +323,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "784a4df722dc6267a04af36895398f59d21d07dce47232adf31ec0ff2fa45e67"
 
 [[package]]
+name = "finc-fdec"
+version = "0.1.0"
+dependencies = [
+ "bittide-build-utils",
+ "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "riscv-rt 0.11.0",
+ "ufmt",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
