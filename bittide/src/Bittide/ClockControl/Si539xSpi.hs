@@ -235,38 +235,16 @@ si539xSpiWb minTargetPs =
 
   defRegOp = RegisterOperation{page = 0, address = 0, write = Nothing}
 
--- | Like 'si539xSpi', but packed as a 'Circuit'.
-si539xSpiC ::
-  forall dom preambleEntries configEntries postambleEntries minTargetPeriodPs.
-  ( HiddenClockResetEnable dom
-  , KnownNat preambleEntries
-  , 1 <= preambleEntries
-  , KnownNat configEntries
-  , KnownNat postambleEntries
-  , 1 <= (preambleEntries + configEntries + postambleEntries)
-  ) =>
-  -- | Initial configuration for the @Si539x@ chip.
-  Si539xRegisterMap preambleEntries configEntries postambleEntries ->
-  -- | Minimum period of the SPI clock frequency for the SPI clock divider.
-  SNat minTargetPeriodPs ->
-  Circuit
-    (CSignal dom (Maybe RegisterOperation))
-    ( CSignal dom (Maybe Byte)
-    , CSignal dom Busy
-    , CSignal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
-    , Spi dom
-    )
-si539xSpiC config minPs = Circuit go
- where
-  go (regOp, (_, _, _, s2m)) = ((), (readByte, busy, state, spiM2S))
-   where
-    (readByte, busy, state, spiM2S) =
-      si539xSpi config minPs regOp s2m
-
 {- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
 This component will first write and verify the initial configuration before becoming
 available for external circuitry. For an interface that does not initially configure the
 chip, see 'si539xDriver'.
+
+TODO before we can remove this function:
+- Add bootPe to 'LinkConfiguration.linkConfigurationTest'
+- Add bootPe to 'Transceivers.transceiversUpTest'
+- Remove fast pnr
+- Remove software test at 'Tests.ClockControl.Si539xSpi'
 -}
 si539xSpi ::
   forall dom preambleEntries configEntries postambleEntries minTargetPeriodPs.
@@ -494,93 +472,6 @@ si539xSpiDriver SNat incomingOpS s2m = (fromSlave, decoderBusy, spiM2S)
       spiBytes = spiCommandToBytes spiCommand
       output = toMaybe (not commandAcknowledged && idleCycles == 0) spiBytes
 {-# OPAQUE si539xSpiDriver #-}
-
--- TODO: Look into replacing dcFifo with XPM_CDC_Handshake.
-
-{- | Consumes 'SpeedChange's produced by a clock control algorithm and produces a
-'RegisterOperation' for the 'si539xSpi' core. Consumption rate of 'SpeedUp's and
-'SlowDown' depends on the availability of the SPI core. Uses 'dcFifo' with a depth
-of 16 elements for clock domain crossing. This is an alternative to controlling the
-FINC / FDEC pins directly, the advantages are that we already have to use SPI
-to configure the chips, so we require less wiring / IO, and we don´t have to concern
-ourselves with the timing requirements for controlling FINC / FDEC directly. The only
-downside is that it  is not as instantaneous as controlling the pins.
--}
-spiFrequencyController ::
-  forall domCallisto domSpi freqIncrementRange freqDecrementRange.
-  (KnownDomain domCallisto, KnownDomain domSpi) =>
-  -- | The number of times we can increment the frequency from its initial value.
-  SNat freqIncrementRange ->
-  -- | The number of times we can decrement the frequency from its initial value.
-  SNat freqDecrementRange ->
-  -- | Callisto domain's clock.
-  Clock domCallisto ->
-  -- | Callisto domain's reset.
-  Reset domCallisto ->
-  -- | Callisto domain's enable.
-  Enable domCallisto ->
-  -- | SPI domain's clock.
-  Clock domSpi ->
-  -- | SPI domain's reset.
-  Reset domSpi ->
-  -- | SPI domain's enable.
-  Enable domSpi ->
-  -- | Requested 'SpeedChange'.
-  Signal domCallisto SpeedChange ->
-  -- | Incoming 'Busy' signal from the 'si539xSpi' component.
-  Signal domSpi Busy ->
-  -- | Outgoing 'RegisterOperation'.
-  Signal domSpi (Maybe RegisterOperation)
-spiFrequencyController
-  SNat
-  SNat
-  clkCallisto
-  rstCallisto
-  enCallisto
-  clkSpi
-  rstSpi
-  enSpi
-  speedChange
-  spiBusy = spiOp
-   where
-    fifoIn =
-      mux
-        (speedChange .==. pure NoChange .||. not <$> fromEnable enCallisto)
-        (pure Nothing)
-        (Just <$> speedChange)
-
-    FifoOut{fifoData, isEmpty} =
-      dcFifo (defConfig @4) clkCallisto rstCallisto clkSpi rstSpi fifoIn readEnable
-
-    (spiOp, readEnable) =
-      withClockResetEnable
-        clkSpi
-        rstSpi
-        enSpi
-        mealyB
-        go
-        initState
-        (spiBusy, isEmpty, fifoData)
-
-    initState :: (Bool, Index (1 + freqIncrementRange + freqDecrementRange))
-    initState = (False, natToNum @freqIncrementRange)
-
-    go (fifoValid, stepCount) (spiBusyGo, isEmptyGo, fifoDataGo) =
-      ((readEnableGo, stepCountNext), (spiOpGo, readEnableGo))
-     where
-      readEnableGo = not (isEmptyGo || spiBusyGo)
-      stepCountNext = case (fifoValid, spiBusyGo, fifoDataGo) of
-        (True, False, SpeedUp) -> satSucc SatBound stepCount
-        (True, False, SlowDown) -> satPred SatBound stepCount
-        _ -> stepCount
-
-      spiOpGo = case (fifoValid, fifoDataGo, stepCount == maxBound, stepCount == minBound) of
-        (True, SpeedUp, False, _) ->
-          Just RegisterOperation{page = 0x00, address = 0x1D, write = Just 1}
-        (True, SlowDown, _, False) ->
-          Just RegisterOperation{page = 0x00, address = 0x1D, write = Just 2}
-        _ -> Nothing
-{-# OPAQUE spiFrequencyController #-}
 
 {- | When this component receives @True@, it will hold it for @holdCycles@ number of
 clock cycles. This implementation does not scale well to large values for @holdCycles@
