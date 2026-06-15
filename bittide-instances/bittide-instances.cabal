@@ -184,6 +184,10 @@ library
     Bittide.Instances.Hitl.GenericDemo.MemoryMaps
     Bittide.Instances.Hitl.GenericDemo.TopEntity
     Bittide.Instances.Hitl.LinkConfiguration
+    Bittide.Instances.Hitl.ManticoreDemo.Chip
+    Bittide.Instances.Hitl.ManticoreDemo.Driver
+    Bittide.Instances.Hitl.ManticoreDemo.TopEntity
+    Bittide.Instances.Hitl.ManticoreDemo.UserCore
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Setup

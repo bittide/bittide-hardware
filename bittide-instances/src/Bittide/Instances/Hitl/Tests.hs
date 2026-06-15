@@ -26,6 +26,7 @@ import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
+import qualified Bittide.Instances.Hitl.ManticoreDemo.TopEntity as ManticoreDemo
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.TopEntity as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
@@ -44,6 +45,7 @@ hitlTests =
     <> [Ethernet.tests]
     <> [FincFdec.tests]
     <> [LinkConfiguration.tests]
+    <> [ManticoreDemo.tests]
     <> [Si539xConfiguration.tests]
     <> [SoftUgnDemo.tests]
     <> [SyncInSyncOut.tests]
