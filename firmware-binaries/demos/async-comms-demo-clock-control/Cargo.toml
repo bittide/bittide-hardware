@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "async-comms-demo-clock-control"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+
+[lints]
+workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bittide-cpus = { path = "../../../firmware-support/bittide-cpus" }
+bittide-hal = { path = "../../../firmware-support/bittide-hal" }
+riscv-rt = "0.11.0"
+
+[build-dependencies]
+bittide-build-utils = { path = "../../../firmware-support/bittide-build-utils" }

@@ -26,4 +26,4 @@ The Transmit Ring Buffer consists of:
 
 2.  **CPU Access**:
     -   The CPU writes data to the buffer using the Wishbone interface.
-    -   Because the hardware continuously reads from the buffer, the CPU must ensure it writes data before the hardware's read counter reaches that address. See [Ring Buffer Alignment](../ringbuffer-alignment.md) and [Asynchronous Communication](../asynchronous-communication.md) for protocols that handle this.
+    -   Because the hardware continuously reads from the buffer, the CPU must ensure it writes data before the hardware's read counter reaches that address. See [Ring Buffer Alignment](../ring-buffer-alignment.md) and [Asynchronous Communication](../asynchronous-communication.md) for protocols that handle this.

@@ -43,6 +43,7 @@ module Bittide.Instances.Hitl.GenericDemo.Core (
   NmuRemBusWidth,
   UserCoreCircuit,
   core,
+  muConfig,
 ) where
 
 import Clash.Explicit.Prelude
@@ -194,6 +195,8 @@ managementUnit ::
   , KnownNat userCoreBusses
   , PrefixWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses) <= 30
   ) =>
+  -- | Processing element configuration
+  PeConfig (NmuExternalBusses userCoreBusses + NmuInternalBusses) ->
   -- | External counter
   Signal dom (Unsigned 64) ->
   -- | DNA value
@@ -207,10 +210,10 @@ managementUnit ::
         , Bitbone dom (NmuRemBusWidth userCoreBusses)
         )
     )
-managementUnit externalCounter maybeDna =
+managementUnit peConfig externalCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
-    allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
+    allBusses <- processingElement NoDumpVcd peConfig -< (mm, jtag)
     ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
 
     -- Peripherals
@@ -232,6 +235,8 @@ core ::
   , 1 <= NmuRemBusWidth userCoreBusses
   ) =>
   SNat ringBufferDepth ->
+  -- | Management unit processing element configuration
+  PeConfig (NmuExternalBusses userCoreBusses + NmuInternalBusses) ->
   UserCoreCircuit userCoreBusses (NmuRemBusWidth userCoreBusses) ->
   (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->
@@ -250,7 +255,7 @@ core ::
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: BitboneMm Bittide (NmuRemBusWidth userCoreBusses)
     )
-core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
+core bufferDepth peConfig mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
   $ circuit
   $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muMm, ccMm] <- idC -< memoryMaps
@@ -263,7 +268,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
 
     -- Start management unit
     (muUartBytesBittide, muWbAll) <-
-      withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
+      withBittideClockResetEnable managementUnit peConfig localCounter maybeDna -< (muMm, muJtag)
     (ebWbs, muWbs1) <- Vec.split -< muWbAll
     (rxBufferBusses, muWbs2) <- Vec.split -< muWbs1
     (txBufferBusses, muWbs3) <- Vec.split -< muWbs2
