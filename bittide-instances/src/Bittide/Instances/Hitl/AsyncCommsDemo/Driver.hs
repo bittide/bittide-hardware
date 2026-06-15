@@ -13,7 +13,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
-import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Serial (initSerial)
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
@@ -63,8 +63,8 @@ driver testName targets = do
     optionalBootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
     openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalBootInitArgs
 
-  let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-  brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+  let serialStarts = liftIO <$> L.zipWith (initSerial hitlDir) targets [0 ..]
+  brackets serialStarts (liftIO . snd) $ \(L.map fst -> serials) -> do
     brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
       let bootTapInfos = parseBootTapInfo <$> initOcdsData
 
@@ -75,9 +75,9 @@ driver testName targets = do
         liftIO $ mapConcurrently_ Gdb.continue bootGdbs
         liftIO
           $ T.tryWithTimeout T.PrintActionTime "Waiting for done" 60_000_000
-          $ forConcurrently_ picocoms
-          $ \pico ->
-            waitForLine pico "[BT] Going into infinite loop.."
+          $ forConcurrently_ serials
+          $ \serial ->
+            waitForLine serial "[BT] Going into infinite loop.."
 
   let
     optionalInitArgs = L.repeat def
@@ -105,7 +105,7 @@ driver testName targets = do
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO
           $ zipWithConcurrently3_ (initGdb hitlDir "async-comms-demo-management-unit") muGdbs muTapInfos targets
-        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+        brackets serialStarts (liftIO . snd) $ \(L.map fst -> serials) -> do
           let goDumpCcSamples = dumpCcSamples MemoryMaps.clockControl hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
           liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
@@ -116,9 +116,9 @@ driver testName targets = do
               "Waiting for CPU test status"
               (60_000_000)
               goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico "[MU] Demo complete."
+            $ forConcurrently_ serials
+            $ \serial ->
+              waitForLine serial "[MU] Demo complete."
 
           liftIO goDumpCcSamples
 
