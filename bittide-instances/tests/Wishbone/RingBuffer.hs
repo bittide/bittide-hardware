@@ -20,6 +20,7 @@ import Test.Tasty.TH
 
 import Bittide.Instances.Tests.RingBuffer (
   simResultRingBuffer,
+  simResultTcpOpen,
  )
 
 import qualified Hedgehog as H
@@ -38,6 +39,23 @@ prop_ring_buffer_test =
         Nothing -> error [i|Invalid latency value: #{latency}|]
     H.annotate [i|Result of ring_buffer_test with latency #{latency} cycles: \n#{result}|]
     H.assert ("TEST PASSED" `isInfixOf` result)
+
+prop_tcp_open_test :: H.Property
+prop_tcp_open_test =
+  -- This test is _very_ slow, so we only run it once.
+  H.withTests 1 $ H.property $ do
+    latency <- H.forAll $ Gen.integral (Range.constant 0 100)
+    liftIO
+      $ putStrLn
+      $ "Testing tcp_simultaneous_open_test with latency "
+      <> show latency
+      <> " cycles"
+    result <- liftIO
+      $ case someNatVal (fromInteger latency) of
+        Just (SomeNat (_ :: Proxy n)) -> simResultTcpOpen (SNat @n)
+        Nothing -> error [i|Invalid latency value: #{latency}|]
+    H.annotate [i|Result of tcp_simultaneous_open_test with latency #{latency} cycles: \n#{result}|]
+    H.assert ("=== Simultaneous Open Success ===" `isInfixOf` result)
 
 tests :: TestTree
 tests = $(testGroupGenerator)

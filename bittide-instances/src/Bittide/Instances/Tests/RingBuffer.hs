@@ -21,6 +21,7 @@ import Project.FilePath
 import Protocols
 import Protocols.Df.Extra (tdpbramRamOp)
 import Protocols.Experimental.Simulate (SimulationConfig (..), sampleC)
+import Protocols.Extra (fmapC)
 import Protocols.Idle
 import Protocols.MemoryMap
 import VexRiscv (DumpVcd (NoDumpVcd))
@@ -33,12 +34,19 @@ import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
 
 import qualified Data.List as L
+import qualified Protocols.Vec as Vec
 
 createDomain vSystem{vName = "Slow", vPeriod = hzToPeriod 1_000_000}
 
 -- | Memory depth for the ringbuffers (16 entries of 8 bytes each)
 memDepth :: SNat 16
 memDepth = SNat
+
+{- | Apply the same circuit to every element of a vector of protocols. This is
+just 'fmapC' with an explicit 'SNat' argument to guide type inference.
+-}
+replicateC :: forall n a b. SNat n -> Circuit a b -> Circuit (Vec n a) (Vec n b)
+replicateC SNat = fmapC
 
 dutMM :: (HasCallStack) => Protocols.MemoryMap.MemoryMap
 dutMM =
@@ -52,25 +60,34 @@ dutMM =
 dutWithPeConfig ::
   (HasCallStack, HiddenClockResetEnable dom, 1 <= DomainPeriod dom, KnownNat latency) =>
   SNat latency ->
-  PeConfig 6 ->
+  PeConfig 8 ->
   Circuit (ToConstBwd Mm) (Df dom (BitVector 8))
 dutWithPeConfig latency peConfig = withLittleEndian $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
-  [uartBus, wbTx, wbRx, timeBus] <-
-    processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
+  ([uartBus, timeBus], wbTxs0, wbRxs0) <-
+    Vec.split3
+      <| processingElement NoDumpVcd peConfig
+      -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
-  txOut <- transmitRingBuffer (tdpbramRamOp tdpbram hasClock hasClock) memDepth -< wbTx
-  txOutDelayed <- applyC (toSignal . delayN latency 0 . fromSignal) id -< txOut
-  receiveRingBuffer (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth
-    -< (wbRx, txOutDelayed)
+  txOuts <-
+    replicateC
+      d2
+      (transmitRingBuffer (tdpbramRamOp tdpbram hasClock hasClock) memDepth)
+      -< wbTxs0
+  -- Add configurable latency between TX and RX ringbuffers
+  txOutDelayeds <- fmapC (applyC (toSignal . delayN latency 0 . fromSignal) id) -< txOuts
+  idleSink
+    <| fmapC (receiveRingBuffer (\ena -> blockRam hasClock ena (replicate memDepth 0)) memDepth)
+    <| Vec.zip
+    -< (wbRxs0, txOutDelayeds)
   _cnt <- timeWb Nothing -< timeBus
   idC -< uartTx
 {-# OPAQUE dutWithPeConfig #-}
 
-type IMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (80 * 1024) 4
 type DMemWords = DivRU (64 * 1024) 4
 
-peConfigFromBinaryName :: String -> IO (PeConfig 6)
+peConfigFromBinaryName :: String -> IO (PeConfig 8)
 peConfigFromBinaryName binaryName = do
   peConfigFromElf
     (SNat @IMemWords)
@@ -88,13 +105,18 @@ takeUntilList prefix xs@(y : ys)
   | prefix `L.isPrefixOf` xs = []
   | otherwise = y : takeUntilList prefix ys
 
--- RingBuffer test simulation
-simRingBuffer :: IO ()
-simRingBuffer = putStr =<< simResultRingBuffer d4
-
-simResultRingBuffer :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> IO String
-simResultRingBuffer latency = do
-  peConfig <- peConfigFromBinaryName "ring_buffer_test"
+{- | Simulate the ring buffer DUT loaded with the given firmware binary,
+returning the UART output up to the test-complete marker.
+-}
+simResultForBinary ::
+  forall latency.
+  (HasCallStack, KnownNat latency) =>
+  Int ->
+  String ->
+  SNat latency ->
+  IO String
+simResultForBinary timeout binaryName latency = do
+  peConfig <- peConfigFromBinaryName binaryName
   let
     dutNoMm = circuit $ do
       mm <- ignoreMM
@@ -103,6 +125,20 @@ simResultRingBuffer latency = do
           $ (dutWithPeConfig @System latency peConfig)
           -< mm
       idC -< uartTx
-    uartStream = sampleC def{timeoutAfter = 1_000_000} dutNoMm
+    uartStream = sampleC def{timeoutAfter = timeout} dutNoMm
     result = takeUntilList "=== Test Complete ===" $ chr . fromIntegral <$> catMaybes uartStream
   pure result
+
+-- RingBuffer test simulation
+simRingBuffer :: IO ()
+simRingBuffer = putStr =<< simResultRingBuffer d4
+
+simResultRingBuffer :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> IO String
+simResultRingBuffer = simResultForBinary 1_500_000 "ring_buffer_test"
+
+-- TCP simultaneous open test simulation
+simTcpOpen :: IO ()
+simTcpOpen = putStr =<< simResultTcpOpen d4
+
+simResultTcpOpen :: forall latency. (HasCallStack, KnownNat latency) => SNat latency -> IO String
+simResultTcpOpen = simResultForBinary 2_000_000 "tcp_simultaneous_open_test"

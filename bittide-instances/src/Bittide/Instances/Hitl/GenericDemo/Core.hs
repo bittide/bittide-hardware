@@ -43,6 +43,7 @@ module Bittide.Instances.Hitl.GenericDemo.Core (
   NmuRemBusWidth,
   UserCoreCircuit,
   core,
+  muConfig,
 ) where
 
 import Clash.Explicit.Prelude
@@ -59,6 +60,7 @@ import Protocols
 import Bittide.CaptureUgn (captureUgns, sendUgn)
 import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.ClockControl.Ugn.Corrections (correctionsWb)
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
 import Bittide.Extra.Maybe (toMaybe)
@@ -76,6 +78,7 @@ import Bittide.ProcessingElement (
 import Bittide.RingBuffer (receiveRingBuffer, transmitRingBuffer)
 import Bittide.SharedTypes (Bitbone, BitboneMm)
 import Bittide.Sync (Sync)
+import Bittide.TimedReset (timedResetWb)
 import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterfaceWb)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx (withXilinx)
@@ -97,7 +100,7 @@ import qualified Protocols.Vec as Vec
 -- | The number of CPUs in 'core'
 type InternalCpuCount = 2
 
-type FifoSize = 5 -- = 2^5 = 32
+type FifoSize = 6 -- = 2^6 = 64
 
 {- Internal busses:
     - Instruction memory
@@ -105,8 +108,10 @@ type FifoSize = 5 -- = 2^5 = 32
     - `timeWb`
     - DNA
     - UART
+    - UGN grooming corrections
+    - application reset (TimedReset)
 -}
-type NmuInternalBusses = 3 + PeInternalBusses
+type NmuInternalBusses = 5 + PeInternalBusses
 
 {- Busses per link:
     - Elastic buffer
@@ -144,6 +149,10 @@ type UserCoreCircuit userCoreBusses muRemBusWidth =
     Enable Bittide ->
     Signal Bittide (Unsigned 64) ->
     Signal Bittide (Maybe (BitVector 96)) ->
+    -- Application reset, released by the management unit's 'timedResetWb' at a
+    -- chosen local-counter cycle (the UGN-grooming relabel). Demos that have an
+    -- application counter gate it on this reset; others may ignore it.
+    Reset Bittide ->
     Circuit
       ( Vec userCoreBusses (ToConstBwd Mm, Bitbone Bittide muRemBusWidth)
       , "RXS2_RAW" ::: CSignal Bittide (Vec LinkCount (BitVector 64))
@@ -194,6 +203,8 @@ managementUnit ::
   , KnownNat userCoreBusses
   , PrefixWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses) <= 30
   ) =>
+  -- | Processing element configuration
+  PeConfig (NmuExternalBusses userCoreBusses + NmuInternalBusses) ->
   -- | External counter
   Signal dom (Unsigned 64) ->
   -- | DNA value
@@ -201,26 +212,35 @@ managementUnit ::
   Circuit
     (ToConstBwd Mm.Mm, Jtag dom)
     ( Df dom (BitVector 8)
+    , "APP_RESET" ::: Reset dom
     , Vec
         (NmuExternalBusses userCoreBusses)
         ( ToConstBwd Mm.Mm
         , Bitbone dom (NmuRemBusWidth userCoreBusses)
         )
     )
-managementUnit externalCounter maybeDna =
+managementUnit peConfig externalCounter maybeDna =
   circuit $ \(mm, jtag) -> do
     -- Core and interconnect
-    allBusses <- processingElement NoDumpVcd muConfig -< (mm, jtag)
-    ([timeBus, uartBus, dnaBus], restBusses) <- Vec.split -< allBusses
+    allBusses <- processingElement NoDumpVcd peConfig -< (mm, jtag)
+    ([timeBus, uartBus, dnaBus, correctionsBus, timedResetBus], restBusses) <-
+      Vec.split -< allBusses
 
     -- Peripherals
     _localCounter <- timeWb (Just externalCounter) -< timeBus
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     readDnaPortE2WbWorker maybeDna -< dnaBus
+    -- Host-written UGN grooming corrections, polled and applied by the MU CPU.
+    correctionsWb (SNat @LinkCount) -< correctionsBus
+    -- Application reset for the demo's user core: the management unit chooses the
+    -- local-counter cycle at which the application leaves reset (the UGN-grooming
+    -- relabel). The reset lives here, in the layer around the user core; the
+    -- application counter it gates lives in the user core itself.
+    appReset <- timedResetWb externalCounter -< timedResetBus
 
     -- Output
-    idC -< (uartOut, restBusses)
+    idC -< (uartOut, appReset, restBusses)
 
 core ::
   forall userCoreBusses ringBufferDepth.
@@ -232,6 +252,8 @@ core ::
   , 1 <= NmuRemBusWidth userCoreBusses
   ) =>
   SNat ringBufferDepth ->
+  -- | Management unit processing element configuration
+  PeConfig (NmuExternalBusses userCoreBusses + NmuInternalBusses) ->
   UserCoreCircuit userCoreBusses (NmuRemBusWidth userCoreBusses) ->
   (Clock Basic125, Reset Basic125) ->
   (Clock Bittide, Reset Bittide, Enable Bittide) ->
@@ -250,7 +272,7 @@ core ::
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: BitboneMm Bittide (NmuRemBusWidth userCoreBusses)
     )
-core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
+core bufferDepth peConfig mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
   $ circuit
   $ \(memoryMaps, jtag, mask, linksSuitableForCc, Fwd rxs0) -> do
     [muMm, ccMm] <- idC -< memoryMaps
@@ -262,8 +284,8 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
       localCounter = register bitClk bitRst bitEna 0 (localCounter + 1)
 
     -- Start management unit
-    (muUartBytesBittide, muWbAll) <-
-      withBittideClockResetEnable managementUnit localCounter maybeDna -< (muMm, muJtag)
+    (muUartBytesBittide, Fwd appReset, muWbAll) <-
+      withBittideClockResetEnable managementUnit peConfig localCounter maybeDna -< (muMm, muJtag)
     (ebWbs, muWbs1) <- Vec.split -< muWbAll
     (rxBufferBusses, muWbs2) <- Vec.split -< muWbs1
     (txBufferBusses, muWbs3) <- Vec.split -< muWbs2
@@ -329,7 +351,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
 
     -- Start user core: post-handshake stage drives the GTH-TX wire.
     Fwd txsOut <-
-      mkUserCore bitClk bitRst bitEna localCounter maybeDna
+      mkUserCore bitClk bitRst bitEna localCounter maybeDna appReset
         -< ( extraMuBusses
            , Fwd (bundle rxs2Raw)
            , Fwd (bundle handshakesOut.toNeighbors)

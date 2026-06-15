@@ -18,13 +18,16 @@ import qualified Tests.CaptureUgn
 import qualified Tests.Clash.Protocols.Wishbone.Extra -- Should be moved to bittide-extra, but depends on wbStorage
 import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
+import qualified Tests.ClockControl.Ugn.Grooming
 import qualified Tests.DelayWishbone
 import qualified Tests.Df
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
+import qualified Tests.Graph.Weighted
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
+import qualified Tests.TimedReset
 import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
@@ -45,13 +48,16 @@ tests =
     , Tests.Clash.Protocols.Wishbone.Extra.tests
     , Tests.ClockControl.Freeze.tests
     , Tests.ClockControl.Si539xSpi.tests
+    , Tests.ClockControl.Ugn.Grooming.tests
     , Tests.DelayWishbone.tests
     , Tests.Df.tests
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests
+    , Tests.Graph.Weighted.tests
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
+    , Tests.TimedReset.tests
     , Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.tests
     , Tests.Transceiver.WordAlign.tests
