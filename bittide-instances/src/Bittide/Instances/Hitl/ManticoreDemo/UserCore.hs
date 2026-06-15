@@ -41,7 +41,6 @@ import Bittide.Instances.Hitl.ManticoreDemo.Chip (
   manticoreBittideChip,
  )
 
-import Clash.Class.BitPackC (ByteOrder)
 import Clash.Prelude (HiddenClockResetEnable)
 import Data.Maybe (isJust)
 import Protocols.MemoryMap (Access (ReadOnly, ReadWrite))
