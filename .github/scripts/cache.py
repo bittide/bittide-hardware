@@ -52,7 +52,7 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
-GLOBAL_CACHE_BUST = 26
+GLOBAL_CACHE_BUST = 27
 
 CARGO_CACHE_BUST = 4
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
@@ -89,6 +89,10 @@ BUILD_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/firmware-support/bittide-hal/src/types/",
     f"{PWD}/firmware-support/bittide-hal/src/hals/",
     f"{PWD}/firmware-support/bittide-hal-c/generated/",
+)
+# Include patterns that are tolerated if they don't match any files.
+BUILD_CACHE_OPTIONAL_INCLUDE_PATTERNS = (
+    f"{PWD}/cabal.project.local",
 )
 BUILD_CACHE_EXCLUDE_PATTERNS = (
     f"{PWD}/dist-newstyle/src",
@@ -319,11 +323,12 @@ class Mc:
                 raise ValueError(f"{name.title()} pattern '{pattern}' did not match any files")
             yield from found
 
-    def push(self, include_patterns, exclude_patterns, empty_pattern_ok=False, replace=False) -> bool:
+    def push(self, include_patterns, exclude_patterns, optional_include_patterns=(), empty_pattern_ok=False, replace=False) -> bool:
         """
         Upload files in `patterns`. Will error if none of the patterns yielded
         any files. Will also error if _any_ pattern came up empty, unless
-        `empty_pattern_ok` is set.
+        `empty_pattern_ok` is set. Patterns in `optional_include_patterns` are
+        always tolerated if they don't match any files.
 
         Will not overwrite existing caches, unless `replace` is set. Returns
         'True' if the cache already existed or if a cache was written.
@@ -332,6 +337,7 @@ class Mc:
             return False
 
         includes = list(self._get_from_patterns("include", include_patterns, empty_pattern_ok))
+        includes += list(self._get_from_patterns("include", optional_include_patterns, empty_pattern_ok=True))
         if not includes:
             raise ValueError("No include patterns matched: unable to create cache")
 
@@ -409,6 +415,8 @@ def write_cache_result(result : bool):
 
 def main(opts):
 
+    optional_include_patterns = ()
+
     if opts["cabal"]:
         key = get_cabal_key()
         include_patterns = CABAL_CACHE_INCLUDE_PATTERNS
@@ -424,6 +432,7 @@ def main(opts):
     elif opts["build"]:
         key = get_build_key()
         include_patterns = BUILD_CACHE_INCLUDE_PATTERNS
+        optional_include_patterns = BUILD_CACHE_OPTIONAL_INCLUDE_PATTERNS
         exclude_patterns = BUILD_CACHE_EXCLUDE_PATTERNS
     elif opts["clash"]:
         key = get_clash_key()
@@ -463,6 +472,7 @@ def main(opts):
         cache_result = mc.push(
             include_patterns,
             exclude_patterns,
+            optional_include_patterns,
             opts["--empty-pattern-ok"],
             opts["--overwrite-ok"]
         )
