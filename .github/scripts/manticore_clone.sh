@@ -29,6 +29,10 @@ MANTICORE_HW_REPO="${MANTICORE_HW_REPO:-https://github.com/lmbollen/manticore-hw
 MANTICORE_HW_REF="${MANTICORE_HW_REF:-kcu105-port}"
 MANTICORE_COMPILER_REPO="${MANTICORE_COMPILER_REPO:-https://github.com/lmbollen/manticore-compiler.git}"
 MANTICORE_COMPILER_REF="${MANTICORE_COMPILER_REF:-kcu105-frontend-fix}"
+# The frontend submodule pins a commit (dc0086913) that lives on the lmbollen
+# fork, not upstream ManticoreRTL — override the submodule URL to the fork so the
+# pinned commit is fetchable.
+MANTICORE_FRONTEND_REPO="${MANTICORE_FRONTEND_REPO:-https://github.com/lmbollen/manticore-frontend.git}"
 
 # $1 = repo (url or path), $2 = ref, $3 = destination directory
 clone_or_update() {
