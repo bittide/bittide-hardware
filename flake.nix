@@ -32,6 +32,16 @@
           inherit pkgs;
         };
 
+        # Manticore (manticore-hw / manticore-compiler) is Scala 2.13.8 and must
+        # build on JDK 11 (JDK 21 breaks 2.13.8; nixpkgs' default sbt JDK is too
+        # new). Expose a dedicated JDK 11 + a jdk11-pinned sbt for the
+        # .github/scripts/manticore_*.sh flow, without changing the JDK the rest
+        # of the shell sees.
+        # Prebuilt Temurin JDK 11 (the nixpkgs source-built openjdk-11 SIGSEGVs in
+        # ObjectSynchronizer::inflate on glibc 2.42).
+        manticoreJdk = pkgs.temurin-bin-11;
+        manticoreSbt = pkgs.sbt.override { jre = manticoreJdk; };
+
         hls-overlay = final: prev: {
           haskell-language-server =
             (prev.haskell-language-server.override { supportedGhcVersions = [ "910" ]; })
@@ -82,6 +92,17 @@
             pkgs.sbt
             pkgs.scala
             pkgs.jre8
+
+            # Manticore compiler frontend (v2masmyosys, a Yosys fork) build deps.
+            # ABC is supplied externally (ABCEXTERNAL) so the build never has to
+            # git-clone/compile it (see .github/scripts/manticore_compile_program.sh).
+            pkgs.gnumake
+            pkgs.bison
+            pkgs.flex
+            pkgs.readline
+            pkgs.tcl
+            pkgs.libffi
+            pkgs.abc-verifier
             pkgs.verilator
             pkgs.which
             pkgs.jq
@@ -149,6 +170,15 @@
             export LC_ALL="C.UTF-8";
             export VERILOG_ETHERNET_SRC="${verilog-ethernet}"
             export OPENOCD_DIST="${openocd-riscv}"
+
+            # Manticore build (Scala 2.13.8 on JDK 11). Used by
+            # .github/scripts/manticore_*.sh; does not affect the shell's java.
+            export MANTICORE_JDK="${manticoreJdk}"
+            export MANTICORE_SBT="${manticoreSbt}/bin/sbt"
+            # The compiler's placement uses OR-Tools, whose JNI lib
+            # (libjniortools.so) dlopens libstdc++.so.6 / libgcc_s at runtime.
+            # Expose the C++ runtime so the masm java process can find them.
+            export MANTICORE_CXX_LIB="${pkgs.stdenv.cc.cc.lib}/lib"
 
             # We use unstable features (floating point), we don't want to hear about it
             # every time we build.
