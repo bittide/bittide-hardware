@@ -205,6 +205,38 @@ jobs:
       - run: cache push cargo
       - run: cache push build
 
+  manticore:
+    name: Build Manticore + compile program
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0}
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
+      options: --memory=15g
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Clones the Manticore repos (lmbollen forks), builds the bittide chip RTL
+      # (-> _build/manticore/hdl, used by manticoreDemoTest's externalHdl), and
+      # compiles a program (-> _build/manticore/program). See
+      # .github/scripts/manticore_*.sh.
+      - name: Clone Manticore, build the bittide HDL, compile a program
+        run: .github/scripts/manticore_prepare.sh
+
+      - name: Upload Manticore artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: manticore-build
+          path: |
+            _build/manticore/hdl/*.v
+            _build/manticore/program/manifest.json
+            _build/manticore/program/**/exec.bin
+          if-no-files-found: error
+
   generate-control-reports:
     name: Generate control reports
     runs-on: [self-hosted, compute]
@@ -894,6 +926,7 @@ jobs:
         firmware-support-tests,
         generate-control-reports,
         haskell-tests,
+        manticore,
         rust-tests,
         lint,
         mdbook,
