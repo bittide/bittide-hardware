@@ -44,7 +44,7 @@ import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (Value (Array, Number, Object, String))
-import Data.Bits (shiftL, shiftR, (.|.))
+import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Default (def)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -263,10 +263,28 @@ runManticore gdb bins excMap = do
       BS.writeFile path bytes
       Gdb.runCommand gdb ("restore " <> path <> " binary 0x" <> showHex addr "")
 
-    -- Read one 16-bit gmem half-word at half-word offset @hwOff@.
-    gmemRead16 :: Int -> IO Int
-    gmemRead16 hwOff =
-      fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral (hwOff * 2)) :: IO Word16)
+    showHex32 :: Int -> String
+    showHex32 x = "0x" <> showHex x ""
+
+    -- Read a 32-bit gmem word at byte offset @byteOff@ in the region.
+    gmemRead32 :: Int -> IO Int
+    gmemRead32 byteOff =
+      fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
+
+    -- Decode the whole trace record (mirrors run_manifest.py read_trace): the
+    -- design writes the latest $display at gmem words 0..3 (trace_base = 0).
+    --   w0 = pc, w1 = instr, w2 = (rg | val_lo<<16), w3 = (val_hi | ...).
+    -- Returns (pc, instr, rg, val) for instrumentation.
+    readTraceRecord :: IO (Int, Int, Int, Int)
+    readTraceRecord = do
+      w0 <- gmemRead32 0
+      w1 <- gmemRead32 4
+      w2 <- gmemRead32 8
+      w3 <- gmemRead32 12
+      let
+        rg = w2 .&. 0xffff
+        val = ((w2 `shiftR` 16) .&. 0xffff) .|. ((w3 .&. 0xffff) `shiftL` 16)
+      pure (w0, w1, rg, val)
 
     classify eid
       | eid > (0xFFFF :: Int) = "TIMEOUT"
@@ -302,17 +320,25 @@ runManticore gdb bins excMap = do
 
   traceRef <- newIORef []
   let
-    -- One $display record: the written value is gmem 16-bit half-words 5 and 6
-    -- (run_manifest.py's 32-bit words 2..3 RF-write decode, in 16-bit terms).
-    readTraceVal = do
-      lo <- gmemRead16 5
-      hi <- gmemRead16 6
-      pure (lo .|. (hi `shiftL` 16) :: Int)
     loop kind guard
       | kind == "FLUSH" && guard < (100000 :: Int) = do
           poke64 aSched flushCmd >> poke64 aStart 1 >> waitDone
-          v <- readTraceVal
-          modifyIORef' traceRef (<> [v])
+          (pc, instr, rg, val) <- readTraceRecord
+          -- Instrumentation: dump the full record so spurious records (pc = 0
+          -- startup garbage vs repeated pc vs distinct instructions) are
+          -- distinguishable, alongside which register each $display targets.
+          putStrLn $
+            "  TRACE["
+              <> show guard
+              <> "] pc="
+              <> showHex32 pc
+              <> " instr="
+              <> showHex32 instr
+              <> " RF["
+              <> show rg
+              <> "] <= "
+              <> show val
+          modifyIORef' traceRef (<> [val])
           poke64 aSched (resumeCmd mainTimeout) >> poke64 aStart 1 >> waitDone
           eid <- peek32 aEid
           loop (classify eid) (guard + 1)
