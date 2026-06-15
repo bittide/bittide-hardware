@@ -52,7 +52,7 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
-GLOBAL_CACHE_BUST = 26
+GLOBAL_CACHE_BUST = 27
 
 CARGO_CACHE_BUST = 4
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
@@ -89,6 +89,7 @@ BUILD_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/firmware-support/bittide-hal/src/types/",
     f"{PWD}/firmware-support/bittide-hal/src/hals/",
     f"{PWD}/firmware-support/bittide-hal-c/generated/",
+    f"{PWD}/cabal.project.local",
 )
 BUILD_CACHE_EXCLUDE_PATTERNS = (
     f"{PWD}/dist-newstyle/src",

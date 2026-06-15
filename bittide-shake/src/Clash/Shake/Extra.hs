@@ -54,6 +54,7 @@ clashCmd ::
 clashCmd buildDir hdl topName extraArgs =
   ( "cabal"
   , [ "run"
+    , "--offline"
     , pkgName <> ":clash"
     , "--"
     , modName
