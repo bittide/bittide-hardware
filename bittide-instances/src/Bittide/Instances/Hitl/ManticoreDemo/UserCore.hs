@@ -84,6 +84,37 @@ ringBufferDepth = SNat
 boolToBv32 :: Bool -> BitVector 32
 boolToBv32 b = if b then 1 else 0
 
+{- | Phase of the command-complete handshake (see 'cmdComplete' in the user
+core). @PhDone@ means the last-issued command has genuinely completed.
+-}
+data CmdPhase = PhDone | PhWaitBusy | PhWaitDone
+  deriving (Generic, NFDataX, Eq)
+
+{- | Transition for the command-complete FSM, driven by
+@(startPulse, chipStopped)@ where @chipStopped = done || idle@:
+
+  * @PhDone@      — idle/complete; a @start@ pulse arms the FSM.
+  * @PhWaitBusy@  — wait for the chip to actually go busy (@chipStopped@ low),
+                    so the stale completion of the previous command is ignored.
+  * @PhWaitDone@  — wait for the chip to report stopped again (this command's
+                    completion), then return to @PhDone@.
+
+The output @(== PhDone)@ therefore only reads True once the command issued by
+the latest @start@ has run to completion.
+-}
+cmdPhaseStep :: CmdPhase -> (Bool, Bool) -> CmdPhase
+cmdPhaseStep ph (startPulse, chipStopped) = case ph of
+  PhDone
+    | startPulse -> PhWaitBusy
+    | otherwise -> PhDone
+  PhWaitBusy
+    | startPulse -> PhWaitBusy
+    | not chipStopped -> PhWaitDone
+    | otherwise -> PhWaitBusy
+  PhWaitDone
+    | chipStopped -> PhDone
+    | otherwise -> PhWaitDone
+
 mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
 mkUserCore bitClk bitRst bitEna _localCounter _maybeDna _appReset =
   manticoreUserCoreC bitClk bitRst bitEna
@@ -164,6 +195,20 @@ manticoreUserCoreC bitClk bitRst bitEna =
 
       devRegs = chipOut.deviceRegs
 
+      -- Clean command-complete handshake. The chip's raw @done@/@idle@ are
+      -- level signals that stay asserted from the PREVIOUS command, and the
+      -- host polls over GDB at ~ms granularity — far slower than the chip's
+      -- busy window (the program runs between @$display@s in tens of µs). So a
+      -- host polling raw @done@/@idle@ right after poking @start@ samples the
+      -- stale completion and "advances" without the command running (observed
+      -- as the first trace record captured many times). Track the lifecycle in
+      -- hardware instead: 'cmdPhaseStep' arms on the start pulse, waits for the
+      -- chip to go busy (@done@/@idle@ both deassert), and only then reports
+      -- complete — so a True read always reflects THIS command.
+      chipStopped = (||) <$> chipOut.done <*> chipOut.idle
+      cmdComplete =
+        withCRE (CP.moore cmdPhaseStep (== PhDone) PhDone) (bundle (startPulse, chipStopped))
+
     -- ---- device registers read back by the MU (read-only) ----
     withCRE (registerWbI_ (ro "virtual_cycles") (0 :: BitVector 64))
       -< (wbVc, Fwd (Just . (.virtualCycles) <$> devRegs))
@@ -180,7 +225,7 @@ manticoreUserCoreC bitClk bitRst bitEna =
     withCRE (registerWbI_ (ro "clock_stalls") (0 :: BitVector 64))
       -< (wbCs, Fwd (Just . (.clockStalls) <$> devRegs))
     withCRE (registerWbI_ (ro "done") (0 :: BitVector 32))
-      -< (wbDone, Fwd (Just . boolToBv32 <$> chipOut.done))
+      -< (wbDone, Fwd (Just . boolToBv32 <$> cmdComplete))
     withCRE (registerWbI_ (ro "idle") (0 :: BitVector 32))
       -< (wbIdle, Fwd (Just . boolToBv32 <$> chipOut.idle))
     withCRE (registerWbI_ (ro "clock_active") (0 :: BitVector 32))

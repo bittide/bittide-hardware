@@ -46,7 +46,6 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (Value (Array, Number, Object, String))
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Default (def)
-import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Word (Word16, Word32, Word64)
 import Numeric (showHex)
@@ -150,8 +149,19 @@ mainTimeout, initTimeout :: Word64
 mainTimeout = 50_000_000
 initTimeout = 1_000_000
 
-goldenTrace :: [Int]
-goldenTrace = [0, 0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
+{- | Golden from the manticore-hw @Mips32SimTester@ (interpreter-verified, the
+same MIPS32 sum program): it halts via @$finish@ (eid 3) at 53 virtual cycles
+after 32 flushes = 31 RF-write displays, and the RF[2] (running-sum) write
+values are 'goldenRf2'. We verify the same structure + RF[2] values here.
+-}
+goldenRf2 :: [Int]
+goldenRf2 = [0, 0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
+
+goldenFlushes, goldenDisplays, goldenVcycles, finishEid :: Int
+goldenFlushes = 32
+goldenDisplays = 31
+goldenVcycles = 53
+finishEid = 3 -- the MIPS halt $finish (manifest eid 3)
 
 -- ---------------------------------------------------------------------------
 -- Driver
@@ -236,7 +246,6 @@ runManticore gdb bins excMap = do
     aEid = regAddr "ManticoreControl" "exception_id"
     aVc = regAddr "ManticoreControl" "virtual_cycles"
     aDone = regAddr "ManticoreControl" "done"
-    aIdle = regAddr "ManticoreControl" "idle"
     -- Base byte address of the memory-mapped gmem region on the MU bus. The
     -- region is 32-bit-word addressable with byte write-enables; gmem 16-bit
     -- half-word @h@ lives at byte offset @h * 2@ (little-endian within each
@@ -290,14 +299,17 @@ runManticore gdb bins excMap = do
       | eid > (0xFFFF :: Int) = "TIMEOUT"
       | otherwise = fromMaybe "unknown" (lookup eid excMap)
 
+    -- Poll the clean command-complete flag (the user core's cmdComplete FSM),
+    -- which is True only once the command issued by the latest `start` has
+    -- actually run to completion — so it is safe against sampling the previous
+    -- command's stale done/idle.
     waitDone = go (0 :: Int)
      where
       go n
-        | n > 200000 = fail "Manticore: timeout waiting for done/idle"
+        | n > 200000 = fail "Manticore: timeout waiting for command completion"
         | otherwise = do
             d <- peek32 aDone
-            i <- peek32 aIdle
-            when (d == 0 && i == 0) (go (n + 1))
+            when (d == 0) (go (n + 1))
 
     runCmd name base cmd = do
       poke64 aSched cmd
@@ -316,39 +328,79 @@ runManticore gdb bins excMap = do
   poke64 aTrace 0
 
   forM_ (filter binIsInit bins) $ \b -> runCmd (binName b) (binBase b) (startCmd initTimeout)
-  (_, k0) <- runCmd "main" (binBase (last bins)) (startCmd mainTimeout)
+  let baseM = binBase (last bins)
+  (eidMain, _) <- runCmd "main" baseM (startCmd mainTimeout)
 
-  traceRef <- newIORef []
+  -- FLUSH/resume loop, mirroring Mips32SimTester.run: on each FLUSH stop issue
+  -- a cache-flush (pushes the $display record to gmem), then — only for an
+  -- RF-write display (eid 1), not the eid-2 "Got halt!" — read and record the
+  -- trace; resume; repeat until the program halts (eid 3, FINISH).
   let
-    loop kind guard
-      | kind == "FLUSH" && guard < (100000 :: Int) = do
-          poke64 aSched flushCmd >> poke64 aStart 1 >> waitDone
-          (pc, instr, rg, val) <- readTraceRecord
-          -- Instrumentation: dump the full record so spurious records (pc = 0
-          -- startup garbage vs repeated pc vs distinct instructions) are
-          -- distinguishable, alongside which register each $display targets.
-          putStrLn $
-            "  TRACE["
-              <> show guard
-              <> "] pc="
-              <> showHex32 pc
-              <> " instr="
-              <> showHex32 instr
-              <> " RF["
-              <> show rg
-              <> "] <= "
-              <> show val
-          modifyIORef' traceRef (<> [val])
-          poke64 aSched (resumeCmd mainTimeout) >> poke64 aStart 1 >> waitDone
-          eid <- peek32 aEid
-          loop (classify eid) (guard + 1)
-      | otherwise = pure kind
-  finalKind <- loop k0 0
-  trace <- readIORef traceRef
+    runRaw cmd = do
+      poke64 aSched cmd
+      poke64 aGmem (fromIntegral baseM)
+      poke64 aStart 1
+      waitDone
+      peek32 aEid
+    loop eid flushes recs
+      | classify eid == "FLUSH" && flushes < (400 :: Int) = do
+          let flushEid = eid
+          _ <- runRaw flushCmd
+          recs' <-
+            if flushEid == 1
+              then do
+                rec@(pc, instr, rg, val) <- readTraceRecord
+                putStrLn $
+                  "  flush#"
+                    <> show flushes
+                    <> " "
+                    <> showHex32 pc
+                    <> " "
+                    <> showHex32 instr
+                    <> ": RF["
+                    <> show rg
+                    <> "] <= "
+                    <> show val
+                pure (recs <> [rec])
+              else do
+                putStrLn $ "  flush#" <> show flushes <> " (eid=" <> show flushEid <> ": 'Got halt!')"
+                pure recs
+          eid' <- runRaw (resumeCmd mainTimeout)
+          loop eid' (flushes + 1) recs'
+      | otherwise = pure (eid, flushes, recs)
+  (finalEid, flushes, recs) <- loop eidMain (0 :: Int) []
+  vcFinal <- peek64 aVc
 
-  putStrLn $ "=== Manticore RESULT: " <> finalKind <> ", " <> show (length trace) <> " records ==="
-  putStrLn $ "  trace:  " <> show trace
-  putStrLn $ "  golden: " <> show goldenTrace
-  if finalKind `elem` ["FINISH", "STOP"]
-    then putStrLn "PASS: Manticore terminated normally" >> pure ExitSuccess
-    else putStrLn ("FAIL: Manticore ended as " <> finalKind) >> pure (ExitFailure 1)
+  let
+    rf2 = [v | (_, _, rg, v) <- recs, rg == 2]
+    nDisplays = length recs
+    structOk = finalEid == finishEid && flushes == goldenFlushes && nDisplays == goldenDisplays
+    valOk = rf2 == goldenRf2
+  putStrLn $
+    "=== Manticore RESULT: eid="
+      <> show finalEid
+      <> " ("
+      <> classify finalEid
+      <> "), "
+      <> show flushes
+      <> " flushes, "
+      <> show nDisplays
+      <> " RF-write displays, "
+      <> show vcFinal
+      <> " vcycles ==="
+  putStrLn $ "  RF[2] values: " <> show rf2
+  putStrLn $ "  golden RF[2]: " <> show goldenRf2
+  putStrLn $
+    "  structural golden: eid="
+      <> show finishEid
+      <> " flushes="
+      <> show goldenFlushes
+      <> " displays="
+      <> show goldenDisplays
+      <> " vcycles="
+      <> show goldenVcycles
+      <> (if vcFinal == goldenVcycles then " (vcycles match)" else " (vcycles DIFFER)")
+  if structOk && valOk
+    then
+      putStrLn "PASS: exact match to interpreter golden (structure + RF[2] values)" >> pure ExitSuccess
+    else putStrLn "FAIL: trace does not match golden" >> pure (ExitFailure 1)
