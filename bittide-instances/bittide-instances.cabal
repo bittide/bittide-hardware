@@ -186,6 +186,7 @@ library
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.ManticoreDemo.Chip
     Bittide.Instances.Hitl.ManticoreDemo.Driver
+    Bittide.Instances.Hitl.ManticoreDemo.MemoryMaps
     Bittide.Instances.Hitl.ManticoreDemo.TopEntity
     Bittide.Instances.Hitl.ManticoreDemo.UserCore
     Bittide.Instances.Hitl.Post.BoardTestExtended
@@ -295,6 +296,7 @@ library
     tasty-hunit,
     template-haskell,
     temporary,
+    text,
     time,
     unix,
     vector,
