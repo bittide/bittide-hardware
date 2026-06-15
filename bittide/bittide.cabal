@@ -206,12 +206,15 @@ library
     Bittide.ClockControl.Si539xSpi
     Bittide.ClockControl.Topology
     Bittide.ClockControl.Topology.LinkMasks
+    Bittide.ClockControl.Ugn.Corrections
+    Bittide.ClockControl.Ugn.Grooming
     Bittide.Counter
     Bittide.Df
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
     Bittide.ElasticBuffer.AutoCenter
     Bittide.Ethernet.Mac
+    Bittide.Graph.Weighted
     Bittide.Handshake
     Bittide.Jtag
     Bittide.PacketStream
@@ -224,6 +227,7 @@ library
     Bittide.SharedTypes
     Bittide.Shutter
     Bittide.Sync
+    Bittide.TimedReset
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma
@@ -293,15 +297,18 @@ test-suite unittests
     Tests.Clash.Protocols.Wishbone.Extra
     Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
+    Tests.ClockControl.Ugn.Grooming
     Tests.Counter
     Tests.DelayWishbone
     Tests.Df
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
+    Tests.Graph.Weighted
     Tests.Handshake
     Tests.ProcessingElement.ReadElf
     Tests.ProgrammableMux
     Tests.Shared
+    Tests.TimedReset
     Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign

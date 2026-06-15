@@ -203,6 +203,7 @@ library
     Bittide.Instances.Hitl.Utils.Program
     Bittide.Instances.Hitl.Utils.Serial
     Bittide.Instances.Hitl.Utils.Ugn
+    Bittide.Instances.Hitl.Utils.UgnGrooming
     Bittide.Instances.Hitl.Utils.Usb
     Bittide.Instances.Hitl.Utils.Utils
     Bittide.Instances.Hitl.Utils.Vivado
@@ -325,6 +326,7 @@ test-suite unittests
     Tests.Bittide.Instances.Hitl.Utils.MemoryMap
     Tests.Bittide.Instances.Hitl.Utils.OpenOcd
     Tests.Bittide.Instances.Hitl.Utils.Serial
+    Tests.Bittide.Instances.Hitl.Utils.UgnGrooming
     Tests.ClockControlWb
     Wishbone.AddressableBytesWb
     Wishbone.Axi
@@ -349,6 +351,7 @@ test-suite unittests
     clash-prelude-hedgehog,
     clash-protocols-memmap,
     clash-vexriscv,
+    containers,
     directory,
     extra,
     filepath,

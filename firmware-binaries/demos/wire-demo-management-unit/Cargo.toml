@@ -10,6 +10,7 @@ license = "Apache-2.0"
 authors = ["Google LLC"]
 
 [dependencies]
+clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "745be2eff82fd8d712b0e50d825837d2f39fb920" }
 riscv-rt = "0.11.0"
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 ufmt = "0.2.0"

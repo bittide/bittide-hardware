@@ -16,5 +16,6 @@ SPDX-License-Identifier: Apache-2.0
 - [Demos]()
   - [Soft UGN Demo](sections/demos/soft-ugn-demo.md)
   - [Wire Demo](sections/demos/wire-demo.md)
+- [Restoring a known state (UGN grooming)](sections/ugn-grooming.md)
 - [Ring Buffer alignment](sections/ringbuffer-alignment.md)
 - [Asynchronous communication](sections/asynchronous-communication.md)
