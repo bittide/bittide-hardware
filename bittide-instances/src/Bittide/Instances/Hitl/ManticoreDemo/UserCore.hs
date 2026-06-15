@@ -41,9 +41,13 @@ import Bittide.Instances.Hitl.ManticoreDemo.Chip (
   manticoreBittideChip,
  )
 
+import Bittide.Instances.Hitl.Setup (LinkCount)
+import Bittide.SharedTypes (Bitbone)
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Prelude (HiddenClockResetEnable)
 import Data.Maybe (isJust)
-import Protocols.MemoryMap (Access (ReadOnly, ReadWrite))
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (Access (ReadOnly, ReadWrite), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
   busActivityWrite,
@@ -70,6 +74,24 @@ boolToBv32 b = if b then 1 else 0
 
 mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
 mkUserCore bitClk bitRst bitEna _localCounter _maybeDna _appReset =
+  manticoreUserCoreC bitClk bitRst bitEna
+
+{- | The user-core circuit. Carries 'HasCallStack' so the Wishbone register
+helpers ('registerWbI') can record source locations for the memory map (they
+error without a call-stack frame); 'mkUserCore' calls it, supplying that frame.
+-}
+manticoreUserCoreC ::
+  (HasCallStack, ?byteOrder :: ByteOrder) =>
+  Clock Bittide ->
+  Reset Bittide ->
+  Enable Bittide ->
+  Circuit
+    ( Vec UserCoreBusses (ToConstBwd Mm, Bitbone Bittide (NmuRemBusWidth UserCoreBusses))
+    , "RXS2_RAW" ::: CSignal Bittide (Vec LinkCount (BitVector 64))
+    , "HANDSHAKE_OUT" ::: CSignal Bittide (Vec LinkCount (BitVector 64))
+    )
+    ("GTH_TX" ::: CSignal Bittide (Vec LinkCount (BitVector 64)))
+manticoreUserCoreC bitClk bitRst bitEna =
   circuit $ \(userCoreBusses, _rxs2Raw, handshakeOut) -> do
     [controlBus, dmiBus] <- idC -< userCoreBusses
 

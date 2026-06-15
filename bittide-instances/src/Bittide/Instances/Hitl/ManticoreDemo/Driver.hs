@@ -185,29 +185,43 @@ driver testName targets = do
     bootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
     openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs bootInitArgs
 
+  -- Boot CPU: configure the Si539x clocks (the demo boot firmware), then idle.
   brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let bootTapInfos = Ocd.parseBootTapInfo <$> initOcdsData
     Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "wire-demo-boot") bootGdbs bootTapInfos targets
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "manticore-demo-boot") bootGdbs bootTapInfos targets
       liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
       liftIO $ mapConcurrently_ Gdb.continue bootGdbs
-      -- The boot CPU brings up the clocks then idles; give it a moment.
       liftIO $ threadDelay 3_000_000
 
+  -- Clock-control + management-unit CPUs: run the generic bring-up firmware
+  -- (clock control + link startup) on every node to bring the Bittide domain
+  -- up — without it the chip's Wishbone host registers do not respond. The MU
+  -- firmware idles after bring-up; halt it, then poke the chip over GDB.
   let openOcdStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs (L.repeat def)
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
-    let muTapInfos = pick 1 (Ocd.parseTapInfo expectedJtagIds <$> initOcdsData)
-    Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+    let
+      allTapInfos = Ocd.parseTapInfo expectedJtagIds <$> initOcdsData
+      muTapInfos = pick 1 allTapInfos
+      ccTapInfos = pick 2 allTapInfos
+    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $
-        zipWithConcurrently3_ (initGdb hitlDir "wire-demo-management-unit") muGdbs muTapInfos targets
-      -- Load (but never `continue`) a firmware ELF: this leaves each MU CPU
-      -- HALTED at its entry point — the state in which GDB memory writes are
-      -- serviced by the debug module over the CPU's bus, so the driver can poke
-      -- the chip's Wishbone registers. (The firmware's own logic never runs.)
-      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
-      case zip muGdbs targets of
-        [] -> pure ExitSuccess
-        ((gdb, _) : _) -> liftIO $ runManticore gdb bins (exceptions manifest)
+        zipWithConcurrently3_ (initGdb hitlDir "manticore-demo-clock-control") ccGdbs ccTapInfos targets
+      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) ccGdbs
+      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+        liftIO $
+          zipWithConcurrently3_ (initGdb hitlDir "manticore-demo-management-unit") muGdbs muTapInfos targets
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
+        -- Run the bring-up: clock control (keeps running) + link startup.
+        liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+        liftIO $ mapConcurrently_ Gdb.continue muGdbs
+        -- Give the MU firmware time to finish link startup + stability.
+        liftIO $ threadDelay 20_000_000
+        -- Halt the (now idling) MUs so we can poke the chip registers.
+        liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
+        case zip muGdbs targets of
+          [] -> pure ExitSuccess
+          ((gdb, _) : _) -> liftIO $ runManticore gdb bins (exceptions manifest)
  where
   pick i xss = [xs !! i | xs <- xss, length xs > i]
 
