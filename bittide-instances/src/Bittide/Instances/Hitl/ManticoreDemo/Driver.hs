@@ -200,6 +200,11 @@ driver testName targets = do
     Gdb.withGdbs (L.length targets) $ \muGdbs -> do
       liftIO $
         zipWithConcurrently3_ (initGdb hitlDir "wire-demo-management-unit") muGdbs muTapInfos targets
+      -- Load (but never `continue`) a firmware ELF: this leaves each MU CPU
+      -- HALTED at its entry point — the state in which GDB memory writes are
+      -- serviced by the debug module over the CPU's bus, so the driver can poke
+      -- the chip's Wishbone registers. (The firmware's own logic never runs.)
+      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
       case zip muGdbs targets of
         [] -> pure ExitSuccess
         ((gdb, _) : _) -> liftIO $ runManticore gdb bins (exceptions manifest)
