@@ -21,6 +21,7 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.ManticoreDemo.MemoryMaps as ManticoreDemo
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as WireDemo
@@ -67,6 +68,9 @@ $( do
            , ("WireDemoBoot", WireDemo.boot)
            , ("WireDemoManagementUnit", WireDemo.managementUnit)
            , ("WireDemoClockControl", WireDemo.clockControl)
+           , ("ManticoreDemoBoot", ManticoreDemo.boot)
+           , ("ManticoreDemoManagementUnit", ManticoreDemo.managementUnit)
+           , ("ManticoreDemoClockControl", ManticoreDemo.clockControl)
            , ("VexRiscv", vexRiscvTestMM)
            ]
 

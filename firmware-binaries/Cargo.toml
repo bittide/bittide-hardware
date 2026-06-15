@@ -47,6 +47,9 @@ members = [
   "demos/wire-demo-clock-control",
   "demos/wire-demo-boot",
   "demos/wire-demo-management-unit",
+  "demos/manticore-demo-clock-control",
+  "demos/manticore-demo-boot",
+  "demos/manticore-demo-management-unit",
 ]
 resolver = "2"
 

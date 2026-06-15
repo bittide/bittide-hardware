@@ -49,6 +49,18 @@ impl DomainDiffCountersInterface
     }
 }
 
+impl DomainDiffCountersInterface
+    for bittide_hal::hals::manticore_demo_clock_control::devices::DomainDiffCounters
+{
+    const ENABLE_LEN: usize = Self::ENABLE_LEN;
+    fn enable(&self, idx: usize) -> Option<bool> {
+        Self::enable(self, idx)
+    }
+    fn set_enable(&self, idx: usize, val: bool) -> Option<()> {
+        Self::set_enable(self, idx, val)
+    }
+}
+
 pub fn run<DDC: DomainDiffCountersInterface>(
     cc: ClockControl,
     timer: Timer,
