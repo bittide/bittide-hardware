@@ -717,6 +717,16 @@ jobs:
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Manticore targets carry foreign Verilog (the ManticoreBittideChip blackbox)
+      # pulled in via the test group's externalHdl ($env(MANTICORE_HDL_SRC)/*.v).
+      # Build it here and point MANTICORE_HDL_SRC at it before synthesis.
+      - name: Build Manticore HDL (externalHdl for manticoreDemoTest)
+        if: ${{ contains(matrix.target.top, 'manticore') && steps.check_synthesis_status.outputs.should_run == 'true' }}
+        run: |
+          .github/scripts/manticore_clone.sh
+          .github/scripts/manticore_build_hdl.sh
+          echo "MANTICORE_HDL_SRC=$(git rev-parse --show-toplevel)/_build/manticore/hdl" >> "$GITHUB_ENV"
+
       - name: Synthesis
         if: ${{ steps.check_synthesis_status.outputs.should_run == 'true'  }}
         run: |
@@ -839,6 +849,14 @@ jobs:
       - run: cache pull build
       - name: cache pull build-post-synth
         run: cache pull build-post-synth --prefix="${{ matrix.target.top }}"
+
+      # The Manticore driver loads a compiled program (manifest.json + exec.bins)
+      # from _build/manticore/program; compile it here before the test runs.
+      - name: Compile Manticore program (for the driver)
+        if: ${{ contains(matrix.target.top, 'manticore') }}
+        run: |
+          .github/scripts/manticore_clone.sh
+          .github/scripts/manticore_compile_program.sh
 
       - name: Run tests on hardware
         run: |
