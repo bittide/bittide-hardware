@@ -63,17 +63,21 @@ mkdir -p "${SRCDIR}"
 clone_or_update "${MANTICORE_HW_REPO}"       "${MANTICORE_HW_REF}"       "${SRCDIR}/manticore-hw"
 clone_or_update "${MANTICORE_COMPILER_REPO}" "${MANTICORE_COMPILER_REF}" "${SRCDIR}/manticore-compiler"
 
-# The program compiler's Verilog frontend (v2masmyosys) is a git submodule. Only
-# it is needed (the `hardware`/`runtime` submodules are test-only); init just it.
-# MANTICORE_FRONTEND_REPO overrides the submodule URL (e.g. a local checkout).
+# Two of the compiler's submodules are needed: 'frontend' (the v2masmyosys
+# Verilog frontend) and 'hardware' (publishes the manticore-machine artifact the
+# compiler's build resolves). The 'runtime' submodule is not needed.
+# MANTICORE_FRONTEND_REPO overrides the frontend URL (the pinned commit lives on
+# the lmbollen fork, not upstream); 'hardware' is fetched from its .gitmodules
+# URL (its pinned commit is upstream).
 COMPILER_DIR="${SRCDIR}/manticore-compiler"
 if [ -n "${MANTICORE_FRONTEND_REPO:-}" ]; then
   git -C "${COMPILER_DIR}" config submodule.frontend.url "${MANTICORE_FRONTEND_REPO}"
 fi
-echo "Initializing the 'frontend' submodule of manticore-compiler"
+echo "Initializing the 'frontend' and 'hardware' submodules of manticore-compiler"
 # -c protocol.file.allow=always: permits a local-path submodule URL (git blocks
 # the 'file' transport by default since CVE-2022-39253). No effect on https URLs.
-git -C "${COMPILER_DIR}" -c protocol.file.allow=always submodule update --init -- frontend
+git -C "${COMPILER_DIR}" -c protocol.file.allow=always submodule update --init -- frontend hardware
 echo "  frontend -> $(git -C "${COMPILER_DIR}/frontend" rev-parse HEAD)"
+echo "  hardware -> $(git -C "${COMPILER_DIR}/hardware" rev-parse HEAD)"
 
 echo "Manticore sources ready under ${SRCDIR}"

@@ -78,8 +78,19 @@ if [ -n "${MANTICORE_HOP_LATENCIES:-}" ]; then
   latency_args+=(--hop-latencies "${MANTICORE_HOP_LATENCIES}")
 fi
 
-echo "Building masm (manticore-compiler assembly)"
 echo "  java: $(java -version 2>&1 | head -1)"
+
+# Publish the 'hardware' submodule (manticore-machine) to the local ivy repo:
+# the compiler's build resolves it (a Test-scope dependency that sbt's `update`
+# resolves regardless of the assembly task). Mirrors the compiler README.
+echo "Publishing manticore-machine (hardware submodule)"
+# Skip the scaladoc artifact: only the jar + pom are needed for dependency
+# resolution, and doc generation is fragile on the (older) hardware sources.
+( cd "${COMPILERDIR}/hardware" \
+  && SBT_OPTS="-Xmx8g -Xss32M -Dsbt.watch.mode=polling -Dsbt.server.autostart=false" \
+     "${SBT}" -batch "set Compile / packageDoc / publishArtifact := false" publishLocal )
+
+echo "Building masm (manticore-compiler assembly)"
 ( cd "${COMPILERDIR}" \
   && SBT_OPTS="-Xmx8g -Xss32M -Dsbt.watch.mode=polling -Dsbt.server.autostart=false" \
      "${SBT}" -batch assembly )
