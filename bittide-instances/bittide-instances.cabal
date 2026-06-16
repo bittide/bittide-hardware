@@ -230,6 +230,7 @@ library
     Bittide.Instances.Pnr.WireDemoProcessingElement
     Bittide.Instances.Pnr.Wishbone
     Bittide.Instances.Tests.AddressableBytesWb
+    Bittide.Instances.Tests.Axi
     Bittide.Instances.Tests.CaptureUgn
     Bittide.Instances.Tests.ClockControlWb
     Bittide.Instances.Tests.DnaPortE2

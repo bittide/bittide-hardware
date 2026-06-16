@@ -25,6 +25,7 @@ import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfigurati
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as WireDemo
 import qualified Bittide.Instances.Tests.AddressableBytesWb as AddressableBytesWb
+import qualified Bittide.Instances.Tests.Axi as Axi
 import qualified Bittide.Instances.Tests.CaptureUgn as CaptureUgn
 import qualified Bittide.Instances.Tests.ClockControlWb as ClockControlWb
 import qualified Bittide.Instances.Tests.DnaPortE2 as DnaPortE2
@@ -46,6 +47,7 @@ $( do
      -------------------------------
      let memoryMaps =
            [ ("AddressableBytesWb", AddressableBytesWb.memoryMap)
+           , ("AxiStreamSelfTest", Axi.memoryMap)
            , ("ClockControlWb", ClockControlWb.dutMm)
            , ("CaptureUgnTest", CaptureUgn.memoryMap)
            , ("DnaPortE2Test", DnaPortE2.dutMm)
