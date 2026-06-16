@@ -21,6 +21,15 @@ ufmt = "0.2.0"
 clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
 clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
 
+[dependencies.heapless]
+version = "0.8"
+features = ["ufmt"]
+
+[dependencies.rand]
+version = "0.8.3"
+features = ["small_rng"]
+default-features = false
+
 [dependencies.smoltcp]
 git = "https://github.com/smoltcp-rs/smoltcp.git"
 rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03"
@@ -36,3 +45,6 @@ memorymap-compiler = { git = "https://github.com/QBayLogic/clash-protocols-memma
 memorymap-compiler-rust = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
 quote = "1.0"
 proc-macro2 = "1.0"
+
+[dev-dependencies]
+rand = "0.8"
