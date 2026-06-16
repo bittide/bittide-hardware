@@ -4,6 +4,7 @@
 
 pub mod addressable_buffer;
 pub mod aligned;
+pub mod axi;
 pub mod dna;
 pub mod elastic_buffer;
 pub mod ring_buffer;
