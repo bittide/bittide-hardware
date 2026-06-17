@@ -42,9 +42,31 @@ TOPDIR="$(git rev-parse --show-toplevel)"
 COMPILERDIR="${TOPDIR}/_build/manticore/src/manticore-compiler"
 OUTDIR="${TOPDIR}/_build/manticore/program"
 
-MANTICORE_DIMX="${MANTICORE_DIMX:-2}"
-MANTICORE_DIMY="${MANTICORE_DIMY:-2}"
-MANTICORE_PROGRAM="${MANTICORE_PROGRAM:-benchmarks/MIPS32/main.sv benchmarks/MIPS32/mips32.sv}"
+MANTICORE_DIMX="${MANTICORE_DIMX:-4}"
+MANTICORE_DIMY="${MANTICORE_DIMY:-4}"
+# 8x16 2D-torus demo: the program is compiled for the GLOBAL torus
+# (TORUS_DIMX x TORUS_DIMY) and split into one image per 4x4 chip
+# (--chip-dim-x/y = DIMX/DIMY), with the distributed stall wave. TORUS = 0 keeps
+# the legacy single-chip build (global == chip dims, no split, no stall wave).
+MANTICORE_TORUS_DIMX="${MANTICORE_TORUS_DIMX:-8}"
+MANTICORE_TORUS_DIMY="${MANTICORE_TORUS_DIMY:-16}"
+MANTICORE_STALL_WAVE="${MANTICORE_STALL_WAVE:-true}"
+MANTICORE_STALL_MARGIN="${MANTICORE_STALL_MARGIN:-4}"
+MANTICORE_PROGRAM="${MANTICORE_PROGRAM:-benchmarks/picorv32/picorv32.v benchmarks/picorv32/loop_multi.v}"
+
+# global torus dims for masm -x/-y (= chip dims for the single-chip build)
+if [ "${MANTICORE_TORUS_DIMX}" -gt 0 ] 2>/dev/null; then
+  MASM_X="${MANTICORE_TORUS_DIMX}"
+  MASM_Y="${MANTICORE_TORUS_DIMY}"
+  torus_args=(--chip-dim-x "${MANTICORE_DIMX}" --chip-dim-y "${MANTICORE_DIMY}")
+  if [ "${MANTICORE_STALL_WAVE}" = "true" ]; then
+    torus_args+=(--stall-wave --stall-margin "${MANTICORE_STALL_MARGIN}")
+  fi
+else
+  MASM_X="${MANTICORE_DIMX}"
+  MASM_Y="${MANTICORE_DIMY}"
+  torus_args=()
+fi
 
 if [ ! -d "${COMPILERDIR}" ]; then
   echo "ERROR: ${COMPILERDIR} not found; run manticore_clone.sh first" >&2
@@ -160,9 +182,11 @@ fi
 # resources (mirror the ./masm wrapper). --dump-* mirror the manticore-runtime
 # test flow (create_test.cmake).
 MASM_ROOT="${COMPILERDIR}" java -cp "${JAR}" manticore.compiler.Main \
-  -x "${MANTICORE_DIMX}" -y "${MANTICORE_DIMY}" \
+  -x "${MASM_X}" -y "${MASM_Y}" \
   -o "${OUTDIR}" \
   --dump-ascii --dump-register-file --dump-scratch-pad \
+  "${torus_args[@]}" \
+  "${latency_args[@]}" \
   "${cf_args[@]}" \
   "${PROGRAM_FILES[@]}"
 

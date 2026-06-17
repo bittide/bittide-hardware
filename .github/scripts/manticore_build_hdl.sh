@@ -26,8 +26,15 @@ TOPDIR="$(git rev-parse --show-toplevel)"
 HWDIR="${TOPDIR}/_build/manticore/src/manticore-hw"
 OUTDIR="${TOPDIR}/_build/manticore/hdl"
 
-MANTICORE_DIMX="${MANTICORE_DIMX:-2}"
-MANTICORE_DIMY="${MANTICORE_DIMY:-2}"
+# The ManticoreDemo is the 8x16 2D-torus build: each FPGA hosts one 4x4 chip
+# (DIMX x DIMY) that is a sub-array of the global TORUS_DIMX x TORUS_DIMY torus,
+# runs the distributed stall wave, and exposes one TDM seam per edge. Set
+# MANTICORE_TORUS_DIMX/Y = 0 for the legacy single-chip build (no seam pins).
+MANTICORE_DIMX="${MANTICORE_DIMX:-4}"
+MANTICORE_DIMY="${MANTICORE_DIMY:-4}"
+MANTICORE_TORUS_DIMX="${MANTICORE_TORUS_DIMX:-8}"
+MANTICORE_TORUS_DIMY="${MANTICORE_TORUS_DIMY:-16}"
+MANTICORE_STALL_WAVE="${MANTICORE_STALL_WAVE:-true}"
 MANTICORE_ENABLE_CFU="${MANTICORE_ENABLE_CFU:-true}"
 MANTICORE_NHOP="${MANTICORE_NHOP:-1}"
 
@@ -52,7 +59,7 @@ mkdir -p "${OUTDIR}"
 ( cd "${HWDIR}" \
   && SBT_OPTS="-Xmx12g -Xss64M -Dmanticore.no_uram=true -Dsbt.watch.mode=polling -Dsbt.server.autostart=false" \
      "${SBT}" -batch \
-       "runMain manticore.machine.Main -t bittide -x ${MANTICORE_DIMX} -y ${MANTICORE_DIMY} --enable_custom_alu ${MANTICORE_ENABLE_CFU} --n_hop ${MANTICORE_NHOP} -o ${OUTDIR}" )
+       "runMain manticore.machine.Main -t bittide -x ${MANTICORE_DIMX} -y ${MANTICORE_DIMY} --torus_dimx ${MANTICORE_TORUS_DIMX} --torus_dimy ${MANTICORE_TORUS_DIMY} --stall_wave ${MANTICORE_STALL_WAVE} --enable_custom_alu ${MANTICORE_ENABLE_CFU} --n_hop ${MANTICORE_NHOP} -o ${OUTDIR}" )
 
 if [ ! -f "${OUTDIR}/ManticoreBittideChip.v" ]; then
   echo "ERROR: ManticoreBittideChip.v not emitted in ${OUTDIR}" >&2

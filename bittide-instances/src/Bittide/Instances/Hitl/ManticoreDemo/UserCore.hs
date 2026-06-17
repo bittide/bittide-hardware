@@ -48,6 +48,7 @@ import Bittide.Instances.Hitl.ManticoreDemo.Chip (
   ManticoreChipOut (..),
   ManticoreDeviceRegisters (..),
   ManticoreHostRegisters (..),
+  SeamIn (..),
   manticoreBittideChip,
  )
 
@@ -180,6 +181,16 @@ manticoreUserCoreC bitClk bitRst bitEna =
       hostRegs = ManticoreHostRegisters <$> schedV <*> gmemV <*> traceV
       startPulse = isJust . busActivityWrite <$> startAct
 
+      -- TODO(8-FPGA torus): wire each chip seam edge to a Bittide link per the
+      -- per-node placement. The chip exposes seam_<edge>_{extend,tx,rx,overflow};
+      -- the real demo (a) reads a per-node seam config (which link carries each
+      -- edge + the extend bit, set by the Driver as WireDemo sets read/write_link),
+      -- (b) drives GTH_TX[link] := zeroExtend chipOut.seamOut<edge>.tx for each
+      -- enabled edge, and (c) feeds truncateB rxs2Raw[link] back into seamIn<edge>.rx.
+      -- For now the seams are tied off (extend = False) so this builds and each FPGA
+      -- runs its chip standalone; the link wiring is the next increment.
+      tiedSeam = SeamIn{extend = pure False, rx = pure 0}
+
       chipOut =
         manticoreBittideChip
           bitClk
@@ -191,6 +202,10 @@ manticoreUserCoreC bitClk bitRst bitEna =
             , gmemWe = gmemWeS
             , gmemAddr = gmemAddrS
             , gmemDin = gmemDinS
+            , seamInE = tiedSeam
+            , seamInW = tiedSeam
+            , seamInN = tiedSeam
+            , seamInS = tiedSeam
             }
 
       devRegs = chipOut.deviceRegs
