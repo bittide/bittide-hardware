@@ -36,22 +36,22 @@ dnaOverSerialDriver ::
   VivadoM ExitCode
 dnaOverSerialDriver _name targets = do
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
-  liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation
+  liftIO $ forM_ deviceInfos $ \d -> resetUsbDeviceByLocation d.usbAdapterLocation
 
   results <- brackets (liftIO <$> initSerials) (liftIO . snd) $ \initSerialsData -> do
     let targetSerials = fst <$> initSerialsData
 
     liftIO $ putStrLn "Starting all targets to read DNA values"
     -- start all targets
-    forM_ targets $ \(hwT, _) -> do
+    forM_ hwTargets $ \hwT -> do
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_test_start", "1")]
 
     liftIO $ putStrLn "Expecting specific DNAs for all serial ports"
     liftIO $ putStrLn "Serial ports:"
-    mapM_ (liftIO . putStrLn) [d.serial | (_, d) <- targets]
+    mapM_ (liftIO . putStrLn) [d.serial | d <- deviceInfos]
 
-    forM (L.zip targets targetSerials) $ \((_, d), serialHandle) -> do
+    forM (L.zip deviceInfos targetSerials) $ \(d, serialHandle) -> do
       liftIO $ putStrLn $ "Waiting for output on port: " <> d.serial
       res <- liftIO $ checkDna d serialHandle
       pure res
@@ -65,9 +65,9 @@ dnaOverSerialDriver _name targets = do
  where
   -- Must match the gateware's UART baud rate (`dnaOverSerial` uses @SNat \@9600@).
   baud = 9600
-
+  (hwTargets, deviceInfos) = L.unzip targets
   initSerials :: [IO (Serial.SerialHandle, IO ())]
-  initSerials = flip L.map targets $ \(_hwT, dI) -> do
+  initSerials = flip L.map deviceInfos $ \dI -> do
     (serialHandle, serialClean) <- Serial.start dI.serial baud
 
     hSetBuffering serialHandle.handle LineBuffering

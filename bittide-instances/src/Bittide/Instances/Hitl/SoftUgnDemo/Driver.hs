@@ -43,10 +43,11 @@ driver ::
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
 driver testName targets = do
+  let (_hwTargets, deviceInfos) = L.unzip targets
   liftIO
     . putStrLn
     $ "Running driver function for targets "
-    <> show ((\(_, info) -> info.deviceId) <$> targets)
+    <> show ((.deviceId) <$> deviceInfos)
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build/hitl" </> testName
@@ -54,14 +55,14 @@ driver testName targets = do
   forM_ targets (assertProbe "probe_test_start")
 
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
-  liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation
+  liftIO $ forM_ deviceInfos $ \d -> resetUsbDeviceByLocation d.usbAdapterLocation
 
   let
     -- BOOT / MU / CC IDs
     expectedJtagIds = [0x0514C001, 0x1514C001, 0x2514C001]
-    toInitArgs (_, deviceInfo) targetIndex =
+    toInitArgs deviceInfo targetIndex =
       Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
-    initArgs = L.zipWith toInitArgs targets [0 ..]
+    initArgs = L.zipWith toInitArgs deviceInfos [0 ..]
     optionalBootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
     openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs optionalBootInitArgs
 
