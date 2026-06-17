@@ -186,6 +186,7 @@ library
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.ManticoreDemo.Chip
     Bittide.Instances.Hitl.ManticoreDemo.Driver
+    Bittide.Instances.Hitl.ManticoreDemo.Latencies
     Bittide.Instances.Hitl.ManticoreDemo.MemoryMaps
     Bittide.Instances.Hitl.ManticoreDemo.TopEntity
     Bittide.Instances.Hitl.ManticoreDemo.UserCore
@@ -384,6 +385,18 @@ executable clash
     bittide-instances,
     clash-ghc,
     vivado-hs,
+
+executable manticore-latencies
+  import: ghc2024, extra, sane-records
+  main-is: manticore_latencies.hs
+  hs-source-dirs: bin
+  build-depends:
+    base,
+    bittide-instances,
+
+  ghc-options:
+    -Wall
+    -threaded
 
 executable vexriscv-sim
   import: ghc2024, extra, sane-records
