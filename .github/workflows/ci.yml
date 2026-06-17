@@ -240,12 +240,12 @@ jobs:
           set +f
 
           # Note these aren't necessary to generate the reports, but are useful for debugging
-          cabal run bittide-instances:samples-to csv ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.bin
-          cabal run bittide-instances:samples-to ppm-csv ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.bin
+          cabal run --offline bittide-instances:samples-to csv ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.bin
+          cabal run --offline bittide-instances:samples-to ppm-csv ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl/*/*.bin
 
       - name: Generate clock control reports
         run: |
-          cabal run bittide-instances:samples-to multi-report ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl
+          cabal run --offline bittide-instances:samples-to multi-report ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl
 
       - name: Upload report
         uses: actions/upload-artifact@v7
@@ -364,7 +364,7 @@ jobs:
       - name: Run ${{ matrix.test_suite }}
         if: ${{ ! matrix.with_vivado }}
         run: |
-          cabal run ${{ matrix.package }}:${{ matrix.test_suite }}
+          cabal run --offline ${{ matrix.package }}:${{ matrix.test_suite }}
 
 
   rust-lints:
