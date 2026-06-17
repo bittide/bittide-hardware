@@ -63,6 +63,12 @@
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
+            # 'pre-commit' itself is normally added to PATH by
+            # 'preCommitHook.shellHook'. We skip that hook on CI (see below), but
+            # the 'format' script still needs the 'pre-commit' binary, so we add
+            # it explicitly here.
+            pkgs.pre-commit
+
             pkgs.cabal-install
             pkgs.haskellPackages.cabal-gild
             pkgs.haskellPackages.fourmolu
@@ -153,7 +159,21 @@
 
             # Allow writing 'shake ...' instead of 'cabal run shake -- ...'
             export PATH="$(git rev-parse --show-toplevel)/nix/bin:$PATH";
-            ${preCommitHook.shellHook}
+
+            # Path to the generated pre-commit config. The 'format' script uses
+            # this with 'pre-commit run --config' so it works regardless of
+            # whether the hook-installing shellHook below runs (see CI note).
+            export PRE_COMMIT_CONFIG="${preCommitHook.config.configFile}"
+
+            # Installing git hooks (and creating the .pre-commit-config.yaml
+            # symlink) is only useful for local development. On CI it is noisy
+            # and even partially fails ('nix-store: command not found') because
+            # every step re-enters the dev shell. GITHUB_SHA is set by GitHub
+            # Actions and is kept across all 'git-nix-shell' invocations, so we
+            # use it to detect a CI environment.
+            if [ -z "''${GITHUB_SHA:-}" ]; then
+              ${preCommitHook.shellHook}
+            fi
           '';
         };
       }

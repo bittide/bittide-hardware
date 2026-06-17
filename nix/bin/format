@@ -5,4 +5,11 @@
 ROOT=$(git rev-parse --show-toplevel)
 cd "${ROOT}" || exit 1
 
-pre-commit run --all-files
+# Use PRE_COMMIT_CONFIG (exported by the dev shell) when set, so this works even
+# when the .pre-commit-config.yaml symlink hasn't been created (e.g. on CI, where
+# we skip the hook-installing shellHook). Fall back to the default config lookup.
+if [ -n "${PRE_COMMIT_CONFIG:-}" ]; then
+  pre-commit run --all-files --config "${PRE_COMMIT_CONFIG}"
+else
+  pre-commit run --all-files
+fi
