@@ -22,9 +22,6 @@ package bittide-experiments
 package ghc-typelits-extra-proofs
   ghc-options: -Werror
 
-package clash-protocols-memmap
-  ghc-options: -Werror
-
 package vivado-hs
   ghc-options: -Werror
 
