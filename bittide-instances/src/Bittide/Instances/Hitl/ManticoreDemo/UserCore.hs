@@ -48,7 +48,9 @@ import Bittide.Instances.Hitl.ManticoreDemo.Chip (
   ManticoreChipOut (..),
   ManticoreDeviceRegisters (..),
   ManticoreHostRegisters (..),
+  SeamFrameBits,
   SeamIn (..),
+  SeamOut (..),
   manticoreBittideChip,
  )
 
@@ -71,8 +73,10 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.ReqResp (ReqResp)
 
--- | Two MU busses: control + device registers, and the gmem memory region.
-type UserCoreBusses = 2
+-- | Three MU busses: control + device registers, the gmem memory region, and the
+-- per-node UserConfig peripheral (seam edge -> Bittide link map + enable, written by
+-- the driver per device from the chip->FPGA placement).
+type UserCoreBusses = 3
 
 {- | Ring-buffer depth of the (unused, milestone-1) link handshake path. Matches
 the soft-UGN demo's value; the Manticore chip itself does not use it yet.
@@ -136,8 +140,8 @@ manticoreUserCoreC ::
     )
     ("GTH_TX" ::: CSignal Bittide (Vec LinkCount (BitVector 64)))
 manticoreUserCoreC bitClk bitRst bitEna =
-  circuit $ \(userCoreBusses, _rxs2Raw, handshakeOut) -> do
-    [controlBus, gmemBus] <- idC -< userCoreBusses
+  circuit $ \(userCoreBusses, Fwd rxs2Raw, Fwd handshakeOut) -> do
+    [controlBus, gmemBus, userConfigBus] <- idC -< userCoreBusses
 
     -- ---- control + device registers ----
     [ wbSched
@@ -176,20 +180,46 @@ manticoreUserCoreC bitClk bitRst bitEna =
     reqResp <- withCRE (addressableBytesWb @GmemHostWords (rw "data")) -< wbGmemWin
     Fwd gmemDrive <- withCRE (gmemReqRespBridge (chipOut.gmemDout)) -< reqResp
 
+    -- ---- per-node UserConfig peripheral (seam edge -> Bittide link) ----
+    -- Written by the driver per device from the chip->FPGA placement:
+    --   seam_<edge>_extend : this edge is wired to a neighbour chip (else U-turn);
+    --   seam_<edge>_link   : which of the FPGA's Bittide links carries its TdmFrame;
+    --   seam_enable        : switch the seam links from handshake to seam TX (the
+    --                        driver raises it after link bring-up / UGN grooming,
+    --                        before CMD_START — same role as WireDemo's firstBCycle).
+    [ wbSeExt
+      , wbSeLink
+      , wbSwExt
+      , wbSwLink
+      , wbSnExt
+      , wbSnLink
+      , wbSsExt
+      , wbSsLink
+      , wbSeamEn
+      ] <-
+      withCRE (deviceWbI (deviceConfig "UserConfig")) -< userConfigBus
+    (Fwd (extE, _)) <- withCRE (registerWbI (rw "seam_east_extend") (0 :: BitVector 32)) -< (wbSeExt, Fwd (pure Nothing))
+    (Fwd (linkE, _)) <- withCRE (registerWbI (rw "seam_east_link") (0 :: Index LinkCount)) -< (wbSeLink, Fwd (pure Nothing))
+    (Fwd (extW, _)) <- withCRE (registerWbI (rw "seam_west_extend") (0 :: BitVector 32)) -< (wbSwExt, Fwd (pure Nothing))
+    (Fwd (linkW, _)) <- withCRE (registerWbI (rw "seam_west_link") (0 :: Index LinkCount)) -< (wbSwLink, Fwd (pure Nothing))
+    (Fwd (extN, _)) <- withCRE (registerWbI (rw "seam_north_extend") (0 :: BitVector 32)) -< (wbSnExt, Fwd (pure Nothing))
+    (Fwd (linkN, _)) <- withCRE (registerWbI (rw "seam_north_link") (0 :: Index LinkCount)) -< (wbSnLink, Fwd (pure Nothing))
+    (Fwd (extS, _)) <- withCRE (registerWbI (rw "seam_south_extend") (0 :: BitVector 32)) -< (wbSsExt, Fwd (pure Nothing))
+    (Fwd (linkS, _)) <- withCRE (registerWbI (rw "seam_south_link") (0 :: Index LinkCount)) -< (wbSsLink, Fwd (pure Nothing))
+    (Fwd (seamEn, _)) <- withCRE (registerWbI (rw "seam_enable") (0 :: BitVector 32)) -< (wbSeamEn, Fwd (pure Nothing))
+
     let
       (gmemEnS, gmemWeS, gmemAddrS, gmemDinS) = unbundle gmemDrive
       hostRegs = ManticoreHostRegisters <$> schedV <*> gmemV <*> traceV
       startPulse = isJust . busActivityWrite <$> startAct
 
-      -- TODO(8-FPGA torus): wire each chip seam edge to a Bittide link per the
-      -- per-node placement. The chip exposes seam_<edge>_{extend,tx,rx,overflow};
-      -- the real demo (a) reads a per-node seam config (which link carries each
-      -- edge + the extend bit, set by the Driver as WireDemo sets read/write_link),
-      -- (b) drives GTH_TX[link] := zeroExtend chipOut.seamOut<edge>.tx for each
-      -- enabled edge, and (c) feeds truncateB rxs2Raw[link] back into seamIn<edge>.rx.
-      -- For now the seams are tied off (extend = False) so this builds and each FPGA
-      -- runs its chip standalone; the link wiring is the next increment.
-      tiedSeam = SeamIn{extend = pure False, rx = pure 0}
+      -- per-edge seam input: extend from config; rx taps the configured Bittide
+      -- link (low SeamFrameBits of the 64-bit word) when the edge is connected.
+      mkSeamIn extBv lix =
+        SeamIn
+          { extend = (/= 0) <$> extBv
+          , rx = mux ((/= 0) <$> extBv) (resize <$> ((!!) <$> rxs2Raw <*> lix)) (pure 0)
+          }
 
       chipOut =
         manticoreBittideChip
@@ -202,13 +232,33 @@ manticoreUserCoreC bitClk bitRst bitEna =
             , gmemWe = gmemWeS
             , gmemAddr = gmemAddrS
             , gmemDin = gmemDinS
-            , seamInE = tiedSeam
-            , seamInW = tiedSeam
-            , seamInN = tiedSeam
-            , seamInS = tiedSeam
+            , seamInE = mkSeamIn extE linkE
+            , seamInW = mkSeamIn extW linkW
+            , seamInN = mkSeamIn extN linkN
+            , seamInS = mkSeamIn extS linkS
             }
 
       devRegs = chipOut.deviceRegs
+
+      -- GTH_TX: pass the handshake TX through until 'seam_enable' is raised, then
+      -- drive each connected seam edge's TdmFrame onto its configured link (the rest
+      -- keep the handshake). Mirrors WireDemo's handshake->app switch.
+      gthTx =
+        gthTxOf
+          <$> handshakeOut
+          <*> ((/= 0) <$> seamEn)
+          <*> ((/= 0) <$> extE)
+          <*> linkE
+          <*> chipOut.seamOutE.tx
+          <*> ((/= 0) <$> extW)
+          <*> linkW
+          <*> chipOut.seamOutW.tx
+          <*> ((/= 0) <$> extN)
+          <*> linkN
+          <*> chipOut.seamOutN.tx
+          <*> ((/= 0) <$> extS)
+          <*> linkS
+          <*> chipOut.seamOutS.tx
 
       -- Clean command-complete handshake. The chip's raw @done@/@idle@ are
       -- level signals that stay asserted from the PREVIOUS command, and the
@@ -246,10 +296,24 @@ manticoreUserCoreC bitClk bitRst bitEna =
     withCRE (registerWbI_ (ro "clock_active") (0 :: BitVector 32))
       -< (wbCa, Fwd (Just . boolToBv32 <$> chipOut.clockActive))
 
-    -- Milestone 1: forward the handshake TX verbatim; the chip does not drive
-    -- the links yet.
-    idC -< handshakeOut
+    idC -< Fwd gthTx
  where
+  -- Override the handshake TX on each connected seam edge's link with the chip's
+  -- TdmFrame (zero-extended into the 64-bit link word), once 'seam_enable' is set.
+  gthTxOf ::
+    Vec LinkCount (BitVector 64) ->
+    Bool ->
+    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
+    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
+    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
+    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
+    Vec LinkCount (BitVector 64)
+  gthTxOf hs en eE lE tE eW lW tW eN lN tN eS lS tS
+    | en = foldl upd hs ((eE, lE, tE) :> (eW, lW, tW) :> (eN, lN, tN) :> (eS, lS, tS) :> Nil)
+    | otherwise = hs
+   where
+    upd v (ext, lix, tx) = if ext then replace lix (resize tx) v else v
+
   withCRE :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   withCRE = withClockResetEnable bitClk bitRst bitEna
 
