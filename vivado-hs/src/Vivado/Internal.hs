@@ -9,7 +9,7 @@ module Vivado.Internal where
 import Prelude
 
 import Control.Exception (Exception, finally, throwIO)
-import Control.Monad (forM_, unless, void, when)
+import Control.Monad (forM_, unless, void)
 import Data.Foldable (toList)
 import Data.List (intercalate)
 import Data.List.Extra (isPrefixOf, splitOn, trim)
@@ -103,20 +103,31 @@ expectLine ::
   Bool ->
   (String -> IO Filter) ->
   IO (Seq String, Maybe ErrorCode)
-expectLine v echo f = go mempty
+expectLine v echo f = go Nothing mempty
  where
-  go :: Seq String -> IO (Seq String, Maybe ErrorCode)
-  go acc = do
+  -- We echo each line to host stdout one line behind ('pending'), so that we can recognize
+  -- and drop the empty line that 'exec' always emits ('puts {}') directly before its magic
+  -- sentinel. We do this to filter out commands that don't print anything at all -- otherwise
+  -- we'd keep printing empty lines.
+  go :: Maybe String -> Seq String -> IO (Seq String, Maybe ErrorCode)
+  go pending acc = do
     line <- IO.hGetLine v.stdout
+    let isMagic = magic `isPrefixOf` line
 
     IO.hPutStrLn v.logHandle line
-    unless (magic `isPrefixOf` line) $ do
-      IO.hPutStrLn v.prettyLogHandle line
-      when echo $ IO.putStrLn line
+    unless isMagic $ IO.hPutStrLn v.prettyLogHandle line
+
+    pending1 <-
+      if not echo
+        then pure Nothing
+        else do
+          let dropFraming = isMagic && maybe False null pending
+          unless dropFraming $ forM_ pending IO.putStrLn
+          pure (if isMagic then Nothing else Just line)
 
     let lines' = acc :|> line
     f line >>= \case
-      Continue -> go lines'
+      Continue -> go pending1 lines'
       Stop -> return (lines', Nothing)
       StopWithError code -> return (lines', Just code)
 
