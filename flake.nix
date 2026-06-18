@@ -123,6 +123,9 @@
             openocd-riscv
             pkgs.gdb
 
+            # FPGA bitstream programming
+            pkgs.openfpgaloader
+
             # mdbook dependencies
             pkgs.mdbook
             pkgs.drawio-headless
