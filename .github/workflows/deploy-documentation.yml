@@ -29,10 +29,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set CI flags
-        run: |
-          .github/scripts/set_ci_flags.sh
-
       - name: Build mdBook
         run: |
           cd docs
