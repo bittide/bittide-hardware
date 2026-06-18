@@ -23,7 +23,12 @@ import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
-import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
+import Control.Concurrent.Async.Extra (
+  zipWithConcurrently,
+  zipWithConcurrently3_,
+  zipWithConcurrently4,
+ )
+import Control.Concurrent.Extra (Lock, newLock, withLock)
 import Control.Monad (forM_, unless)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
@@ -173,44 +178,45 @@ writePeConfig ::
   (HwTarget, DeviceInfo) ->
   Gdb ->
   NodeConfig linkCount ->
-  VivadoM ()
+  IO ()
 writePeConfig (_, d) gdb nodeConfig = do
   let getPeConfigRegister reg = expectRight $ getPathAddress MemoryMaps.managementUnit ["0", "WireDemoPeConfig", reg]
-  liftIO $ do
-    putStrLn $ "Writing PE config for target " <> d.deviceId
-    addresses <- mapM getPeConfigRegister ["read_link", "write_link"]
-    let values = [nodeConfig.readLink, nodeConfig.writeLink]
-    _ <- sequence $ L.zipWith (Gdb.writeLe gdb) addresses values
-    pure ()
+  putStrLn $ "Writing PE config for target " <> d.deviceId
+  addresses <- mapM getPeConfigRegister ["read_link", "write_link"]
+  let values = [nodeConfig.readLink, nodeConfig.writeLink]
+  _ <- sequence $ L.zipWith (Gdb.writeLe gdb) addresses values
+  pure ()
 
 writeProgrammableMuxConfig ::
   (HasCallStack, KnownNat linkCount) =>
   (HwTarget, DeviceInfo) ->
   Gdb ->
   NodeConfig linkCount ->
-  VivadoM ()
+  IO ()
 writeProgrammableMuxConfig (_, d) gdb nodeConfig = do
   let getMuxRegister reg = expectRight $ getPathAddress MemoryMaps.managementUnit ["0", "ProgrammableMux", reg]
-  liftIO $ do
-    putStrLn $ "Writing programmable mux config for target " <> d.deviceId
-    firstBCycleAddress <- getMuxRegister "first_b_cycle"
-    armAddress <- getMuxRegister "arm"
-    Gdb.writeLe gdb firstBCycleAddress nodeConfig.firstBCycle
-    Gdb.writeLe gdb armAddress True
-    pure ()
+  putStrLn $ "Writing programmable mux config for target " <> d.deviceId
+  firstBCycleAddress <- getMuxRegister "first_b_cycle"
+  armAddress <- getMuxRegister "arm"
+  Gdb.writeLe gdb firstBCycleAddress nodeConfig.firstBCycle
+  Gdb.writeLe gdb armAddress True
+  pure ()
 
 {- | Check that a node has the expected DNA and that the PE has written the expected data
 to the next node.
 -}
 verifyWrittenData ::
   (HasCallStack) =>
+  {- | Lock guarding 'stdout' so the multi-line diagnostics below are printed
+  atomically when multiple targets are verified concurrently.
+  -}
+  Lock ->
   (HwTarget, DeviceInfo) ->
   Gdb ->
   BitVector 96 ->
   BitVector 64 ->
   IO Bool
-verifyWrittenData (_, d) gdb expectedDna expectedData = do
-  putStrLn $ "Reading PE written data for target " <> d.deviceId
+verifyWrittenData printLock (_, d) gdb expectedDna expectedData = do
   dnaBaseAddr <-
     expectRight $ getPathAddress @Integer MemoryMaps.managementUnit ["0", "Dna", "maybe_dna"]
   peConfigAddress <-
@@ -219,10 +225,12 @@ verifyWrittenData (_, d) gdb expectedDna expectedData = do
   writtenData <- Gdb.readLe gdb peConfigAddress
 
   let dna = fromJust maybeDna
-  putStrLn $ "  Expected device DNA:      " <> showHex expectedDna ""
-  putStrLn $ "  Actual device DNA:        " <> showHex dna ""
-  putStrLn $ "  Expected PE written data: " <> showHex expectedData ""
-  putStrLn $ "  Actual PE written data:   " <> showHex writtenData ""
+  withLock printLock $ do
+    putStrLn $ "Reading PE written data for target " <> d.deviceId
+    putStrLn $ "  Expected device DNA:      " <> showHex expectedDna ""
+    putStrLn $ "  Actual device DNA:        " <> showHex dna ""
+    putStrLn $ "  Expected PE written data: " <> showHex expectedData ""
+    putStrLn $ "  Actual PE written data:   " <> showHex writtenData ""
 
   pure $ dna == expectedDna && writtenData == expectedData
 
@@ -347,8 +355,10 @@ driver testName targets = do
             putStrLn "Generated schedule:"
             mapM_ print schedule
           liftIO $ putStrLn [i|Starting clock cycle: #{startOffset}|]
-          _ <- sequenceA $ L.zipWith3 writePeConfig targets managementUnitGdbs (toList schedule)
-          _ <- sequenceA $ L.zipWith3 writeProgrammableMuxConfig targets managementUnitGdbs (toList schedule)
+          liftIO
+            $ zipWithConcurrently3_ writePeConfig targets managementUnitGdbs (toList schedule)
+          liftIO
+            $ zipWithConcurrently3_ writeProgrammableMuxConfig targets managementUnitGdbs (toList schedule)
 
           -- Wait for test completion
           liftIO $ do
@@ -363,10 +373,14 @@ driver testName targets = do
           let
             dnas = L.map (.dna) demoRigInfo
             expectedWrittenDatas = L.tail $ L.scanl xor 0 $ L.map resize dnas
-          checks <-
-            liftIO
-              $ sequenceA
-              $ L.zipWith4 verifyWrittenData targets managementUnitGdbs dnas expectedWrittenDatas
+          checks <- liftIO $ do
+            printLock <- newLock
+            zipWithConcurrently4
+              (verifyWrittenData printLock)
+              targets
+              managementUnitGdbs
+              dnas
+              expectedWrittenDatas
 
           liftIO goDumpCcSamples
 
