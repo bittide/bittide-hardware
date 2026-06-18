@@ -27,6 +27,7 @@ module Clash.Shake.Vivado (
   runBitstreamGen,
   runProbesFileGen,
   pollTestDone,
+  deviceInfoFromHwTRef,
   programBitstream,
   runHitlTest,
   meetsTiming,
@@ -45,6 +46,7 @@ import Clash.Driver.Manifest
 import Clash.Prelude (BitPack (BitSize), Natural, natToNatural, pack)
 import Clash.Shake.Extra (hexDigestFile)
 import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (mapConcurrently)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Exception (Exception (displayException), SomeException, catch, try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
@@ -63,6 +65,7 @@ import System.Clock (Clock (Monotonic), TimeSpec, diffTimeSpec, getTime, toNanoS
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
 import System.FilePath (dropFileName, (</>))
+import System.Process (readProcessWithExitCode)
 import Text.Read (readMaybe)
 import Vivado (TclException (..), VivadoHandle, execPrint_, with)
 import Vivado.Tcl
@@ -418,47 +421,79 @@ resolveHwTRefs v requestedHwTRefs = do
           <> "\n\tFound but unexpected: "
           <> show (foundFpgaIds \\ knownFpgaIds)
 
+{- | Programs the bitstream onto the given hardware targets using @openFPGALoader@.
+
+Unlike a Vivado-based flow, each target is programmed by its own @openFPGALoader@
+process talking to a single FTDI JTAG adapter. As every adapter is an independent
+USB device, the uploads are run concurrently, which is a significant speedup over
+programming the boards one at a time.
+
+This only loads the bitstream into the FPGA's SRAM; it does not touch the VIO/ILA
+debug probes (the @.ltx@ file). Those are still set up by Vivado in the HITL test
+lifecycle ('runHitlTest'), which connects to the already-configured design.
+-}
 programBitstream ::
+  (HasCallStack) =>
   -- | Directory where the bitstream files are located
   FilePath ->
-  -- | References to the hardware targets to program
-  [HwTargetRef] ->
-  -- | Hardware server URL
-  String ->
-  {- | Flag indicating if the target has a probes file. If true, the probes file
-  is programmed alongside the bitstream.
-  -}
-  Bool ->
+  -- | The hardware targets to program
+  [DeviceInfo] ->
   IO ()
-programBitstream outputDir hwTRefs url hasProbesFile = with $ \v -> do
+programBitstream outputDir deviceInfos0 = do
   putStrLn "Starting programming of given hardware targets..."
-  if null hwTRefs
-    then putStrLn "[WARNING] Not programming as no hardware target references were given."
+  if null deviceInfos0
+    then putStrLn "[WARNING] Not programming as no hardware targets were given."
     else do
-      execCmd_ v "set_msg_config" ["-severity {CRITICAL WARNING}", "-new_severity ERROR"]
-      execCmd_ v "open_hw_manager" []
-      execCmd_ v "connect_hw_server" ["-url " <> url]
-      refToHwTMap <- resolveHwTRefs v hwTRefs
-      let hwTs = nubOrd $ Map.elems refToHwTMap
-      forM_ hwTs $ \hwT -> do
-        openHwTarget v hwT
-        execCmd_
-          v
-          "set_property"
-          [ "PROGRAM.FILE"
-          , embrace (outputDir </> "bitstream.bit")
-          , "[current_hw_device]"
-          ]
-        execCmd_
-          v
-          "set_property"
-          [ "PROBES.FILE"
-          , if hasProbesFile then embrace (outputDir </> "probes.ltx") else "{}"
-          , "[current_hw_device]"
-          ]
-        -- Program the device and close properly
-        _ <- program_hw_devices v ["[current_hw_device]"]
-        refresh_hw_device v ["[current_hw_device]"]
+      let
+        bitstreamPath = outputDir </> "bitstream.bit"
+        deviceInfos = nubOrd deviceInfos0
+      results <- mapConcurrently (programDeviceWith bitstreamPath) deviceInfos
+      let failures = [(d, err) | (d, Left err) <- zip deviceInfos results]
+      unless (null failures) $
+        error $
+          "Failed to program "
+            <> show (length failures)
+            <> " out of "
+            <> show (length deviceInfos)
+            <> " hardware target(s) with openFPGALoader:\n"
+            <> unlines ['\t' : d.deviceId <> ": " <> err | (d, err) <- failures]
+
+{- | Program a single device with @openFPGALoader@. Returns 'Left' with a
+human-readable error on failure, 'Right' on success.
+
+The board's Digilent FT232H JTAG adapter is selected by its FTDI serial number, which
+equals the 'deviceId'. Note this is a /different/ adapter from the FTDI FT2232C used by
+OpenOCD for VexRiscv debugging (whose location is in 'usbAdapterLocation'); selecting
+by serial avoids accidentally talking to the VexRiscv TAP.
+
+The @digilent_hs2@ cable profile is required for these adapters, and @--index-chain 0@
+selects the FPGA, which is the first of two devices on the JTAG chain.
+-}
+programDeviceWith :: FilePath -> DeviceInfo -> IO (Either String ())
+programDeviceWith bitstreamPath deviceInfo = do
+  putStrLn $ "Programming " <> deviceInfo.deviceId <> " with openFPGALoader..."
+  let
+    args =
+      [ "--cable"
+      , "digilent_hs2"
+      , "--ftdi-serial"
+      , deviceInfo.deviceId
+      , "--index-chain"
+      , "0"
+      , "--write-sram"
+      , bitstreamPath
+      ]
+  (exitCode, out, err) <- readProcessWithExitCode "openFPGALoader" args ""
+  pure $ case exitCode of
+    ExitSuccess -> Right ()
+    ExitFailure code ->
+      Left $
+        "openFPGALoader exited with code "
+          <> show code
+          <> "\nstdout:\n"
+          <> out
+          <> "\nstderr:\n"
+          <> err
 
 data VioProbeInfo = VioProbeInfo
   { probeName :: String

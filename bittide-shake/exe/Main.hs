@@ -524,31 +524,27 @@ main = do
 
             -- Write bitstream to hardware target(s)
             phony (entityName t.targetName <> ":program") $ do
-              -- The Shake target ':program' does not depend on a respective bitstream and
-              -- probes file being build. The programming itself does, so error if either
-              -- doesn't exist.
+              -- The Shake target ':program' does not depend on a respective bitstream
+              -- being built. The programming itself does, so error if it doesn't
+              -- exist. openFPGALoader only loads the bitstream into SRAM; the probes
+              -- file is set up later by Vivado during ':test'.
               liftIO $
                 unlessM
                   (Directory.doesFileExist bitstreamPath)
                   (error $ "Could not program device, missing bitstream file: " <> bitstreamPath)
-              when t.targetHasVio $
-                liftIO $
-                  unlessM
-                    ((Directory.doesFileExist probesFilePath))
-                    (error $ "Could not program device, missing probes file: " <> probesFilePath)
-              let hwTRefs =
-                    Hitl.hwTargetRefsFromHitlTestGroup $
-                      fromMaybe
-                        ( error $
-                            "Asked to program target "
-                              ++ show t.targetName
-                              ++ " while the "
-                                <> "hardware targets to program could not be found as this target does not "
-                                <> "have a HITL test associated with it."
-                        )
-                        t.targetTest
-              url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
-              liftIO $ programBitstream synthesisDir hwTRefs url t.targetHasVio
+              let deviceInfos =
+                    map deviceInfoFromHwTRef $
+                      Hitl.hwTargetRefsFromHitlTestGroup $
+                        fromMaybe
+                          ( error $
+                              "Asked to program target "
+                                ++ show t.targetName
+                                ++ " while the "
+                                  <> "hardware targets to program could not be found as this target does not "
+                                  <> "have a HITL test associated with it."
+                          )
+                          t.targetTest
+              liftIO $ programBitstream synthesisDir deviceInfos
 
             when (isJust t.targetTest) $ do
               phony (entityName t.targetName <> ":test") $ do
