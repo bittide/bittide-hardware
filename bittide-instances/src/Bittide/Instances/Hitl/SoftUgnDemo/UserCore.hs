@@ -26,7 +26,7 @@ ringBufferDepth :: SNat RingBufferDepth
 ringBufferDepth = SNat
 
 mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
-mkUserCore _bitClk _bitRst _bitEna _localCounter _maybeDna =
+mkUserCore _bitClk _bitRst _bitEna _localCounter _maybeDna _appReset =
   circuit $ \(emptyUserCoreBusses, _rxs2Raw, handshakeOut) -> do
     [] <- idC -< emptyUserCoreBusses
     idC -< handshakeOut

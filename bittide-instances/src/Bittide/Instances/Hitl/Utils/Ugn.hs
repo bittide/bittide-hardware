@@ -211,6 +211,31 @@ timingOracleToUgnEdge oracle =
     , ugn = bitCoerce oracle.dstCounter - bitCoerce oracle.srcCounter
     }
 
+{- | Turn a per-node, per-link table of UGN values (@λ@) into 'UgnEdge's keyed by DNA
+node id. The outer vector is FPGA-indexed (the capturing / destination node); each
+inner vector is link-indexed (matching 'knownLinkConfigs').
+-}
+ugnEdges :: CP.Vec FpgaCount (CP.Vec LinkCount (Signed 64)) -> [UgnEdge]
+ugnEdges lams =
+  L.concat (CP.toList (CP.imap nodeEdges lams))
+ where
+  nodeEdges dstIndex links = CP.toList (CP.imap (edge dstIndex) links)
+  edge dstIndex port lam =
+    UgnEdge
+      { srcNode = indexToNodeId ((knownLinkConfigs CP.!! dstIndex) CP.!! port)
+      , srcPort = port
+      , dstNode = indexToNodeId dstIndex
+      , dstPort = port
+      , ugn = lam
+      }
+
+{- | As 'ugnEdges', but from raw @(localCounter, remoteCounter)@ captures: the UGN is
+their signed difference @local - remote@.
+-}
+hardwareUgnEdges ::
+  CP.Vec FpgaCount (CP.Vec LinkCount (Unsigned 64, Unsigned 64)) -> [UgnEdge]
+hardwareUgnEdges = ugnEdges . CP.map (CP.map (\(l, r) -> bitCoerce l - bitCoerce r))
+
 {- | Compare hardware and software UGN edges with detailed difference reporting.
 
 Performs edge-by-edge comparison and reports:

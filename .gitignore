@@ -96,3 +96,4 @@ docs/mdbook-drawio
 
 # Scala
 .metals
+.scala-build

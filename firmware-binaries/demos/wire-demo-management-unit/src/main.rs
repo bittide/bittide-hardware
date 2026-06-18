@@ -8,6 +8,7 @@
 use bittide_hal::hals::wire_demo_management_unit::DeviceInstances;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::stability_detector::Stability;
+use clash_bindings::signed::Signed;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
@@ -82,6 +83,37 @@ fn main() -> ! {
         .unwrap();
     }
     uwriteln!(uart, "Printed all hardware UGNs").unwrap();
+
+    // === UGN grooming: poll for host-computed corrections and apply them ===
+    // The host reads the UGNs, computes the corrections, halts this CPU over GDB,
+    // writes the corrections vector + sets `valid`, and resumes us. We then apply
+    // each correction to its link's elastic buffer in one atomic adjustment per
+    // link. Using a single adjustment (rather than a per-frame loop) avoids the
+    // race where Callisto's concurrent adjustments partially undo the correction.
+    let corrections = INSTANCES.ugn_corrections;
+    uwriteln!(uart, "Waiting for corrections...").unwrap();
+    while !corrections.valid() {
+        core::hint::spin_loop();
+    }
+    uwriteln!(uart, "Corrections valid, applying...").unwrap();
+
+    for (i, eb) in elastic_buffers.iter().enumerate() {
+        let target = corrections.corrections(i).unwrap().into_inner();
+        let before = eb.data_count().into_inner() as i64;
+        eb.set_adjustment(Signed::<32, i32>::new(target as i32).unwrap());
+        let after = eb.data_count().into_inner() as i64;
+        uwriteln!(
+            uart,
+            "Correction link {}: target = {}, data_count {} -> {}",
+            i,
+            target,
+            before,
+            after
+        )
+        .unwrap();
+    }
+
+    uwriteln!(uart, "Corrections applied successfully").unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {}
