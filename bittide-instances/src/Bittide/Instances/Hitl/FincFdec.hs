@@ -93,7 +93,7 @@ goFincFdecTests clk rst clkControlled testSelect spiS2M =
     withClockResetEnable clk rst enableGen
       $ si539xSpi
         commonSpiConfig
-        (SNat @(Microseconds 1))
+        (SNat @(Microseconds 10))
         (pure Nothing)
         spiS2M
 
