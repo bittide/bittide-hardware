@@ -74,7 +74,7 @@ jobs:
         shell: git-nix-shell {0}
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
     steps:
     - uses: actions/checkout@v6
 
@@ -101,7 +101,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
 
     steps:
       - name: Checkout
@@ -163,7 +163,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
 
     steps:
       - name: Checkout
@@ -216,7 +216,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
 
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -275,7 +275,7 @@ jobs:
         shell: git-nix-shell {0}
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
     outputs:
       run_tests: ${{ steps.check.outputs.run_tests }}
     steps:
@@ -307,7 +307,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
       volumes:
         - /opt/tools:/opt/tools
 
@@ -375,7 +375,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
     needs: [build]
 
     steps:
@@ -401,7 +401,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
     needs: [build]
 
     steps:
@@ -429,7 +429,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
     needs: [build]
 
     steps:
@@ -458,7 +458,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
     needs: [build]
 
     steps:
@@ -546,7 +546,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
 
     steps:
       - name: Checkout
@@ -619,7 +619,7 @@ jobs:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
       volumes:
         - /opt/tools:/opt/tools
-      options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=15g
+      options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=30g
 
     steps:
       - name: Checkout
@@ -709,7 +709,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
 
     strategy:
       matrix:
@@ -763,7 +763,7 @@ jobs:
       #      files as 'root' and the runner software will be unable to run
       #      cleaning jobs.
       options: >-
-        --memory=15g
+        --memory=30g
         --userns host
         --privileged
         --user 1001:1001
@@ -810,7 +810,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
-      options: --memory=15g
+      options: --memory=30g
     steps:
       - name: Checkout
         uses: actions/checkout@v6
