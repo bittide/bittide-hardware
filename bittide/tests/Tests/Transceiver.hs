@@ -121,6 +121,8 @@ gthCoreMock
       , rxctrl1Out = 0
       , rxctrl2Out = 0
       , rxctrl3Out = 0
+      , drpDoOut = error "drpdo_out unused in test"
+      , drpRdyOut = error "drprdy_out unused in test"
       }
    where
     rxWord =
@@ -228,6 +230,10 @@ dut
           , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
           , rxN = error "A: rxN not used in simulation"
           , rxP = error "A: rxP not used in simulation"
+          , drpAddr = error "A: drpAddr not used in simulation"
+          , drpDi = error "A: drpDi not used in simulation"
+          , drpEn = error "A: drpEn not used in simulation"
+          , drpWe = error "A: drpWe not used in simulation"
           , channelReset = inputA.channelReset
           , txData = inputA.dat
           }
@@ -251,6 +257,10 @@ dut
           , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
           , rxN = error "B: rxN not used in simulation"
           , rxP = error "B: rxP not used in simulation"
+          , drpAddr = error "B: drpAddr not used in simulation"
+          , drpDi = error "B: drpDi not used in simulation"
+          , drpEn = error "B: drpEn not used in simulation"
+          , drpWe = error "B: drpWe not used in simulation"
           , channelReset = inputB.channelReset
           , txData = inputB.dat
           }
