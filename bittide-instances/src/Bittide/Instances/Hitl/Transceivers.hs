@@ -167,6 +167,8 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
         , rxPs
         , channelResets = repeat noReset
         , txDatas = txCounters
+        , -- This test does not use the DRP; tie the per-channel inputs off.
+          drps = repeat (pure 0, pure 0, pure 0, pure 0)
         }
 
 -- | Top entity for this test. See module documentation for more information.

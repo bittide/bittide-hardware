@@ -111,9 +111,19 @@ data CoreInput txUser txUser2 rxUser rxUser2 refclk0 freerun rxS = CoreInput
   -- ^ @rxusrclk2_in@
   , gtwizUserclkRxActiveIn :: Signal rxUser2 (BitVector 1)
   -- ^ @gtwiz_userclk_rx_active_in@
+  , drpAddrIn :: Signal freerun (BitVector 9)
+  {- ^ @drpaddr_in@. DRP address (UltraScale GTHE3: 9-bit). In the @drpclk@ /
+  @freerun@ domain.
+  -}
+  , drpDiIn :: Signal freerun (BitVector 16)
+  -- ^ @drpdi_in@. DRP write data.
+  , drpEnIn :: Signal freerun (BitVector 1)
+  -- ^ @drpen_in@. Pulse high for one @drpclk@ cycle to start a read or write.
+  , drpWeIn :: Signal freerun (BitVector 1)
+  -- ^ @drpwe_in@. DRP write enable; assert together with 'drpEnIn' for a write.
   }
 
-data CoreOutput txUser txUser2 rxUser rxUser2 txS = CoreOutput
+data CoreOutput txUser txUser2 rxUser rxUser2 freerun txS = CoreOutput
   { gthtxOut :: SimWire txUser2
   -- ^ @gthtx_out@
   , gthtxnOut :: Wire txS
@@ -142,6 +152,10 @@ data CoreOutput txUser txUser2 rxUser rxUser2 txS = CoreOutput
   -- ^ @rxctrl2_out@
   , rxctrl3Out :: Signal rxUser2 (BitVector 8)
   -- ^ @rxctrl3_out@
+  , drpDoOut :: Signal freerun (BitVector 16)
+  -- ^ @drpdo_out@. DRP read data, valid the cycle 'drpRdyOut' is asserted.
+  , drpRdyOut :: Signal freerun (BitVector 1)
+  -- ^ @drprdy_out@. Asserted for one @drpclk@ cycle when a read/write completes.
   }
 
 type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS =
@@ -155,7 +169,7 @@ type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS =
   , KnownDomain rxS
   ) =>
   CoreInput txUser txUser2 rxUser rxUser2 refclk0 freerun rxS ->
-  CoreOutput txUser txUser2 rxUser rxUser2 txS
+  CoreOutput txUser txUser2 rxUser rxUser2 freerun txS
 
 gthCore ::
   forall txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS.
@@ -180,6 +194,8 @@ gthCore input
       , rxctrl1Out = pure 0
       , rxctrl2Out = pure 0
       , rxctrl3Out = pure 0
+      , drpDoOut = pure 0
+      , drpRdyOut = pure 0
       }
 
   synthCore =
@@ -198,6 +214,8 @@ gthCore input
       , rxctrl1Out
       , rxctrl2Out
       , rxctrl3Out
+      , drpDoOut
+      , drpRdyOut = pack <$> drpRdyOut
       }
    where
     ( unPort @(Port "gthtxn_out" txS (BitVector 1)) -> gthtxnOut
@@ -213,6 +231,8 @@ gthCore input
       , unPort @(Port "rxctrl1_out" rxUser2 (BitVector 16)) -> rxctrl1Out
       , unPort @(Port "rxctrl2_out" rxUser2 (BitVector 8)) -> rxctrl2Out
       , unPort @(Port "rxctrl3_out" rxUser2 (BitVector 8)) -> rxctrl3Out
+      , unPort @(Port "drpdo_out" freerun (BitVector 16)) -> drpDoOut
+      , unPort @(Port "drprdy_out" freerun Bit) -> drpRdyOut
       ) = go
 
     go =
@@ -233,6 +253,16 @@ gthCore input
                 :> ("CONFIG.LOCATE_TX_BUFFER_BYPASS_CONTROLLER", StrOpt "CORE")
                 :> ("CONFIG.LOCATE_TX_USER_CLOCKING", StrOpt "EXAMPLE_DESIGN")
                 :> ("CONFIG.LOCATE_USER_DATA_WIDTH_SIZING", StrOpt "CORE")
+                -- Expose the per-channel DRP (Dynamic Reconfiguration Port) so the
+                -- fabric (and ultimately the management-unit CPU) can read/write GTH
+                -- channel attributes at runtime (e.g. eye scan / RX margin analysis).
+                -- NOTE: The exact token spelling for 'ENABLE_OPTIONAL_PORTS' must match
+                -- the gtwizard_ultrascale v1.7 IP. Verify against a Vivado IP
+                -- customization (Optional Ports tab -> generated .xci) before relying on
+                -- this; a wrong/missing token fails at Vivado elaboration, not Clash.
+                :> ( "CONFIG.ENABLE_OPTIONAL_PORTS"
+                   , StrOpt "drpaddr_in drpclk_in drpdi_in drpen_in drpwe_in drpdo_out drprdy_out"
+                   )
                 :> ("CONFIG.FREERUN_FREQUENCY", StrOpt "125.0")
                 :> ("CONFIG.RX_REFCLK_FREQUENCY", StrOpt "200")
                 :> ("CONFIG.RX_REFCLK_SOURCE", StrOpt input.refClkSpec)
@@ -282,6 +312,10 @@ gthCore input
         (ClockPort @"rxusrclk2_in" input.rxusrclk2In)
         (Port @"gtwiz_userclk_rx_active_in" input.gtwizUserclkRxActiveIn)
         (ClockPort @"drpclk_in" input.gtwizResetClkFreerunIn)
+        (Port @"drpaddr_in" input.drpAddrIn)
+        (Port @"drpdi_in" input.drpDiIn)
+        (Port @"drpen_in" input.drpEnIn)
+        (Port @"drpwe_in" input.drpWeIn)
         -- Tied to constants
         (Port @"txctrl0_in" (pure 0 :: Signal txUser2 (BitVector 16)))
         (Port @"txctrl1_in" (pure 0 :: Signal txUser2 (BitVector 16)))

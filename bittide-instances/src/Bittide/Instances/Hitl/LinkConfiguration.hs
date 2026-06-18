@@ -177,6 +177,8 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
         , rxPs
         , channelResets = repeat noReset
         , txDatas = repeat myIndexTx
+        , -- This test does not use the DRP; tie the per-channel inputs off.
+          drps = repeat (pure 0, pure 0, pure 0, pure 0)
         }
 
   -- synchronizes the FPGA's stable index to the individual TX clock

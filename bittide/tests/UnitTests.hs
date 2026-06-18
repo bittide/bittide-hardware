@@ -26,6 +26,7 @@ import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
 import qualified Tests.Transceiver
+import qualified Tests.Transceiver.Drp
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
 import qualified Tests.WireDemoProcessingElement
@@ -52,6 +53,7 @@ tests =
     , Tests.Handshake.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
+    , Tests.Transceiver.Drp.tests
     , Tests.Transceiver.Prbs.tests
     , Tests.Transceiver.tests
     , Tests.Transceiver.WordAlign.tests

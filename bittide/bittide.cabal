@@ -227,6 +227,7 @@ library
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma
+    Bittide.Transceiver.Drp
     Bittide.Transceiver.Prbs
     Bittide.Transceiver.ResetManager
     Bittide.Transceiver.Wishbone
@@ -303,6 +304,7 @@ test-suite unittests
     Tests.ProgrammableMux
     Tests.Shared
     Tests.Transceiver
+    Tests.Transceiver.Drp
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign
     Tests.WireDemoProcessingElement

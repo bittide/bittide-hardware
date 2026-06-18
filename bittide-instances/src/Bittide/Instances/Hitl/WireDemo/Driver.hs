@@ -333,6 +333,13 @@ driver testName targets = do
             $ \serial ->
               waitForLine serial "[MU] Printed all hardware UGNs"
 
+          -- Give the MU firmware a moment to finish dumping its DRP readout over
+          -- UART (printed right after "Printed all hardware UGNs") before we
+          -- interrupt the CPUs below. The serial logger captures it meanwhile.
+          liftIO $ do
+            putStrLn "Waiting 1s for MU DRP readout over UART..."
+            threadDelay 1_000_000
+
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt managementUnitGdbs
           ugnPairsTable <-

@@ -65,9 +65,13 @@ clashCmd buildDir hdl topName extraArgs =
     , hdlToFlag hdl
     , "-fclash-clear"
     , "-fclash-spec-limit=100"
-    -- XXX: Slows down Clash massively (8m -> 16m for some of our demos)
-    -- , "-fclash-debug"
-    -- , "DebugSilent"
+    , -- The GTH wrapper passes large records of signals/clocks ('CoreInput' /
+      -- 'CoreOutput') that Clash must fully inline; with the DRP ports added these
+      -- exceed the default non-representable inline limit (20). Raise it.
+      "-fclash-inline-limit=100"
+      -- XXX: Slows down Clash massively (8m -> 16m for some of our demos)
+      -- , "-fclash-debug"
+      -- , "DebugSilent"
     ]
       <> extraArgs
   )
