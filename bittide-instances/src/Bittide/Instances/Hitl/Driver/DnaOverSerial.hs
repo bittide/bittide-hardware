@@ -10,6 +10,7 @@ import Clash.Prelude
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
+import Bittide.Instances.Hitl.Utils.Vivado (resolveHwTargets)
 import Control.Monad.Extra
 import Control.Monad.IO.Class
 import Data.ByteString.Internal (w2c)
@@ -30,21 +31,24 @@ import qualified Data.List as L
 {- | Test that all FPGAs that are programmed with `dnaOverSerial` transmit the
 DNA that we expect based on the DeviceInfo.
 -}
-dnaOverSerialDriver ::
-  String ->
-  [(HwTarget, DeviceInfo)] ->
-  VivadoM ExitCode
-dnaOverSerialDriver _name targets = do
+dnaOverSerialDriver :: HitlDriver
+dnaOverSerialDriver HitlDriverEnv{withVivado, targets = synthTargets, probesFilePath} = withVivado $ do
+  -- Resolve the synthetic targets against the actual hardware server targets
+  -- before opening any of them through Vivado.
+  v <- askVivado
+  targets <- liftIO $ resolveHwTargets v synthTargets
+
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
   liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation
 
-  results <- brackets (liftIO <$> initSerials) (liftIO . snd) $ \initSerialsData -> do
+  results <- brackets (liftIO <$> initSerials targets) (liftIO . snd) $ \initSerialsData -> do
     let targetSerials = fst <$> initSerialsData
 
     liftIO $ putStrLn "Starting all targets to read DNA values"
     -- start all targets
     forM_ targets $ \(hwT, _) -> do
       openHardwareTarget hwT
+      setProbesFile probesFilePath
       updateVio "vioHitlt" [("probe_test_start", "1")]
 
     liftIO $ putStrLn "Expecting specific DNAs for all serial ports"
@@ -66,8 +70,10 @@ dnaOverSerialDriver _name targets = do
   -- Must match the gateware's UART baud rate (`dnaOverSerial` uses @SNat \@9600@).
   baud = 9600
 
-  initSerials :: [IO (Serial.SerialHandle, IO ())]
-  initSerials = flip L.map targets $ \(_hwT, dI) -> do
+  -- The serial handles must line up with the (rig-ordered) resolved targets,
+  -- since DNAs are matched against serials by position below.
+  initSerials :: [(HwTarget, DeviceInfo)] -> [IO (Serial.SerialHandle, IO ())]
+  initSerials targets = flip L.map targets $ \(_hwT, dI) -> do
     (serialHandle, serialClean) <- Serial.start dI.serial baud
 
     hSetBuffering serialHandle.handle LineBuffering

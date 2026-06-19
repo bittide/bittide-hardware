@@ -153,20 +153,14 @@ testTarget :: Hitl.HitlTestGroup -> Target
 testTarget test@Hitl.HitlTestGroup{} =
   Target
     { targetName = test.topEntity
-    , targetHasVio = True
+    , targetHasVio = test.hasVio
     , targetTest = Just test
     , targetXdcs = test.targetXdcs
     , targetExternalHdl = test.externalHdl
     }
 
 enforceValidTarget :: Target -> Target
-enforceValidTarget target@Target{}
-  | isJust target.targetTest && not target.targetHasVio =
-      error $
-        show target.targetName
-          <> " should have set 'targetHasVio', because"
-          <> " the target has a test ('targetTest')."
-  | otherwise = target
+enforceValidTarget = id
 
 -- | All synthesizable targets
 targets :: [Target]

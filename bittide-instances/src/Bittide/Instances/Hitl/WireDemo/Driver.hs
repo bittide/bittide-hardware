@@ -12,8 +12,7 @@ import Clash.Prelude
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Domains (GthTx)
-import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, demoRigInfo, fpgaSetup)
-import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, demoRigInfo, fpgaSetup, knownFpgaIds)
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
@@ -44,7 +43,6 @@ import Protocols.MemoryMap (MemoryMap)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
-import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import qualified Bittide.Calculator as Calc
@@ -162,12 +160,17 @@ readHardwareUgns mm (_, d) gdb = do
       addSigned :: Unsigned 64 -> Signed 32 -> Unsigned 64
       addSigned u s = checkedFromIntegral (toInteger u + toInteger s)
 
-  liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
   localCounters <- Gdb.readLe @(Vec LinkCount (Unsigned 64)) gdb =<< getUgnRegister "local_counter"
   remoteCounters <- Gdb.readLe @(Vec LinkCount (Unsigned 64)) gdb =<< getUgnRegister "remote_counter"
   deltas <- Gdb.readLe @(Vec LinkCount (Signed 32)) gdb =<< getUgnRegister "elastic_buffer_delta"
   let ugnTriples = toList $ zip3 localCounters remoteCounters deltas
-  liftIO $ forM_ ugnTriples $ \triple -> putStrLn $ "Raw UGN triple: " <> show triple
+  -- Collect all diagnostics for this device into a single 'putStr' so that the
+  -- lines stay together when multiple devices are read concurrently.
+  liftIO
+    $ putStr
+    $ unlines
+    $ ("Getting UGNs for device " <> d.deviceId)
+    : [d.deviceId <> " raw UGN triple: " <> show triple | triple <- ugnTriples]
   pure $ adjustLocalCounter <$> ugnTriples
 
 writePeConfig ::
@@ -234,12 +237,22 @@ verifyWrittenData printLock (_, d) gdb expectedDna expectedData = do
 
   pure $ dna == expectedDna && writtenData == expectedData
 
-driver ::
-  (HasCallStack) =>
-  String ->
-  [(HwTarget, DeviceInfo)] ->
-  VivadoM ExitCode
-driver testName targets = do
+{- | Reorder the resolved targets to match the rig order of 'fpgaSetup' (i.e.
+'knownFpgaIds'). The targets handed to a 'HitlDriver' come out of a 'Map'
+keyed on 'HwTargetRef', so their order is the 'Ord' order of the FPGA ids, not
+the rig order. The schedule generation and IGN calculation below index the UGN
+table positionally against 'fpgaSetup', so the targets must be put back into
+that order first or the per-FPGA measurements get associated with the wrong node.
+-}
+orderByRig :: (HasCallStack) => [(HwTarget, DeviceInfo)] -> [(HwTarget, DeviceInfo)]
+orderByRig = L.sortOn (rigIndex . (.deviceId) . snd)
+ where
+  rigIndex devId =
+    fromJust $ L.elemIndex devId knownFpgaIds
+
+driver :: (HasCallStack) => HitlDriver
+driver HitlDriverEnv{testName, targets = unorderedTargets} = do
+  let targets = orderByRig unorderedTargets
   liftIO
     . putStrLn
     $ "Running driver function for targets "
@@ -248,7 +261,9 @@ driver testName targets = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build/hitl" </> testName
 
-  forM_ targets (assertProbe "probe_test_start")
+  -- The CPUs boot with an empty binary and only do anything once programmed over
+  -- GDB/JTAG, so this test does not need the HITL VIO start handshake and never
+  -- launches Vivado.
 
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
   liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation

@@ -173,6 +173,7 @@ library
     Bittide.Instances.Hitl.Driver.ClockControl.Plot.Ppm
     Bittide.Instances.Hitl.Driver.ClockControl.Plot.Report
     Bittide.Instances.Hitl.Driver.ClockControl.Samples
+    Bittide.Instances.Hitl.Driver.Default
     Bittide.Instances.Hitl.Driver.DnaOverSerial
     Bittide.Instances.Hitl.Driver.Si539xConfiguration
     Bittide.Instances.Hitl.Driver.VexRiscv

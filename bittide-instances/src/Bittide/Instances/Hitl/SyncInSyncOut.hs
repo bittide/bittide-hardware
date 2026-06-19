@@ -66,6 +66,7 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Bittide.Arithmetic.Time
 import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Driver.Default (defaultVivadoDriver)
 import Bittide.Instances.Hitl.Setup (allHwTargets)
 
 import Clash.Annotations.TH
@@ -171,6 +172,7 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , driverProc = defaultVivadoDriver
+    , hasVio = True
     , mPostProc = Nothing
     }

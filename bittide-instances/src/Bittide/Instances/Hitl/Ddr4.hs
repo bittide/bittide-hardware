@@ -11,6 +11,7 @@ the memory.
 -}
 module Bittide.Instances.Hitl.Ddr4 where
 
+import Bittide.Instances.Hitl.Driver.Default (defaultVivadoDriver)
 import Clash.Explicit.Prelude
 
 import Data.Data (Proxy (..))
@@ -551,6 +552,7 @@ tests =
     , targetXdcs = ["ddr4.xdc"]
     , externalHdl = []
     , testCases = testCasesFromEnum @TestChunk [HwTargetByIndex 0] ()
-    , mDriverProc = Nothing
+    , driverProc = defaultVivadoDriver
+    , hasVio = True
     , mPostProc = Nothing
     }

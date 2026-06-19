@@ -12,12 +12,12 @@ import Clash.Prelude
 import Project.FilePath
 import Project.Handle
 
-import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
+import Bittide.Instances.Hitl.Utils.Vivado (resolveHwTargets)
 
 import Control.Concurrent (threadDelay)
 import Control.Monad (forM)
@@ -33,14 +33,13 @@ import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
 
-driverFunc ::
-  String ->
-  [ ( HwTarget
-    , DeviceInfo
-    )
-  ] ->
-  VivadoM ExitCode
-driverFunc _name targets = do
+driverFunc :: HitlDriver
+driverFunc HitlDriverEnv{withVivado, targets = synthTargets, probesFilePath} = withVivado $ do
+  -- Resolve the synthetic targets against the actual hardware server targets
+  -- before opening any of them through Vivado.
+  v <- askVivado
+  targets <- liftIO $ resolveHwTargets v synthTargets
+
   liftIO
     $ putStrLn
     $ "Running Driver function for targets "
@@ -71,6 +70,7 @@ driverFunc _name targets = do
       gdbPort = 3333 + targetIndex
 
     openHardwareTarget hwT
+    setProbesFile probesFilePath
 
     -- even though this is just pre-process step, the CPU is reset until
     -- the test_start signal is asserted and cannot be accessed via GDB otherwise

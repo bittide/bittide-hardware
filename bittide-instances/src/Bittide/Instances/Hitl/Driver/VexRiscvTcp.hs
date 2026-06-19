@@ -9,6 +9,8 @@ import Prelude
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
+import Bittide.Instances.Hitl.Utils.Vivado (resolveHwTargets)
+import Vivado.VivadoM (askVivado, openHardwareTarget, setProbesFile)
 
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -24,9 +26,6 @@ import System.Exit
 import System.FilePath
 import System.IO
 import Test.Tasty.HUnit
-
-import Vivado.Tcl
-import Vivado.VivadoM
 
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
@@ -64,11 +63,22 @@ waitForClients numberOfClients serverSock = do
     )
     [1 .. numberOfClients]
 
-driverFunc ::
-  String ->
-  [(HwTarget, DeviceInfo)] ->
-  VivadoM ExitCode
-driverFunc _name [d@(_, dI)] = do
+driverFunc :: HitlDriver
+driverFunc HitlDriverEnv{withVivado, targets = synthTargets@[_], probesFilePath} = withVivado $ do
+  -- Resolve the synthetic targets against the actual hardware server targets
+  -- before opening any of them through Vivado.
+  v <- askVivado
+  d@(hwT, dI) <- liftIO $ do
+    resolved <- resolveHwTargets v synthTargets
+    case resolved of
+      [target] -> pure target
+      _ -> error "VexRiscvTcp driver func should only run with one hardware target"
+
+  -- Associate the probes file with the device so the VIO probes can be found.
+  -- This persists across the re-opens of the same device done by 'assertProbe'.
+  openHardwareTarget hwT
+  setProbesFile probesFilePath
+
   projectDir <- liftIO $ findParentContaining "cabal.project"
 
   let
@@ -150,7 +160,7 @@ driverFunc _name [d@(_, dI)] = do
           loggingSequence
 
           return ExitSuccess
-driverFunc _name _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
+driverFunc _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
 
 runTcpTest :: (NS.Socket, NS.SockAddr) -> Assertion
 runTcpTest (sock, sockAddr) = do

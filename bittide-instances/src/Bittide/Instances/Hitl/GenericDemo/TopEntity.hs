@@ -12,10 +12,9 @@ import Protocols
 
 import Bittide.Hitl (
   ClashTargetName,
-  DeviceInfo,
+  HitlDriver,
   HitlTestCase (..),
   HitlTestGroup (..),
-  hitlVioBool,
   paramForHwTargets,
  )
 import Bittide.Instances.Domains (
@@ -36,11 +35,8 @@ import Bittide.Instances.Hitl.GenericDemo.Core (NmuExternalBusses, NmuInternalBu
 import Bittide.Instances.Hitl.Setup (LinkCount, allHwTargets, channelNames, clockPaths)
 import Bittide.ProcessingElement (PrefixWidth)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import System.Exit (ExitCode)
 import System.FilePath ((</>))
 import VexRiscv (JtagIn (..), JtagOut (..))
-import Vivado.Tcl (HwTarget)
-import Vivado.VivadoM (VivadoM)
 
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
@@ -99,11 +95,11 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
   refRst :: Reset Basic125
   (refClk, refRst) = clockWizardDifferential refClkDiff noReset
 
-  testStart :: Signal Basic125 Bool
-  testStart = hitlVioBool refClk testStart (pure True)
-
+  -- This demo has no HITL VIO: the CPUs boot with an empty binary and only do
+  -- anything once programmed over GDB/JTAG, so the test does not need a VIO-driven
+  -- start handshake. The driver runs entirely over GDB/OpenOCD/serial without Vivado.
   testReset :: Reset Basic125
-  testReset = unsafeFromActiveLow testStart `orReset` refRst
+  testReset = refRst
 
   ( (_memoryMaps, jtagOut, (txs, txns, txps))
     , ( spiM2S
@@ -123,7 +119,7 @@ TH name of its own top entity and its own driver.
 -}
 mkTests ::
   ClashTargetName ->
-  (String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode) ->
+  HitlDriver ->
   HitlTestGroup
 mkTests topEntityName driver =
   HitlTestGroup
@@ -144,6 +140,7 @@ mkTests topEntityName driver =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just driver
+    , driverProc = driver
+    , hasVio = False
     , mPostProc = Nothing
     }

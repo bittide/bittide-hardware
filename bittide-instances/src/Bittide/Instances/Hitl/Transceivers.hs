@@ -26,6 +26,7 @@ import Bittide.ClockControl.Si539xSpi
 import Bittide.ElasticBuffer (stickyE)
 import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Driver.Default (defaultVivadoDriver)
 import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
@@ -230,7 +231,8 @@ tests =
         , "si539x" </> "spi.xdc"
         ]
     , testCases = iters
-    , mDriverProc = Nothing
+    , driverProc = defaultVivadoDriver
+    , hasVio = True
     , mPostProc = Nothing
     }
  where

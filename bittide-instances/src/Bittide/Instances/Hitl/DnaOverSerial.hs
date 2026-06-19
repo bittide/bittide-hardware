@@ -113,6 +113,7 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just dnaOverSerialDriver
+    , driverProc = dnaOverSerialDriver
+    , hasVio = True
     , mPostProc = Nothing
     }

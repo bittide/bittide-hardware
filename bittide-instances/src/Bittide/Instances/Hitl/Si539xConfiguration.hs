@@ -180,6 +180,7 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just D.driverFunc
+    , driverProc = D.driverFunc
+    , hasVio = True
     , mPostProc = Nothing
     }

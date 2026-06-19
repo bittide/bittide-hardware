@@ -9,8 +9,7 @@ import Clash.Prelude
 
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup (FpgaCount)
-import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Setup (FpgaCount, knownFpgaIds)
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Serial (initSerial)
@@ -21,6 +20,7 @@ import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurren
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class
+import Data.Maybe (fromJust)
 import Data.Vector.Internal.Check (HasCallStack)
 import Project.Chan
 import Project.FilePath
@@ -28,7 +28,6 @@ import Project.Handle (assertEither)
 import System.Exit
 import System.FilePath
 import Vivado.Tcl (HwTarget)
-import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as MemoryMaps
@@ -37,12 +36,20 @@ import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
 
-driver ::
-  (HasCallStack) =>
-  String ->
-  [(HwTarget, DeviceInfo)] ->
-  VivadoM ExitCode
-driver testName targets = do
+{- | Reorder the resolved targets to match the rig order of 'fpgaSetup' (i.e.
+'knownFpgaIds'). The targets handed to a 'HitlDriver' come out of a 'Map' keyed
+on 'HwTargetRef', so their order is the 'Ord' order of the FPGA ids, not the rig
+order. Node indices are assigned positionally below, so the targets must be put
+back into rig order first or measurements get associated with the wrong node.
+-}
+orderByRig :: (HasCallStack) => [(HwTarget, DeviceInfo)] -> [(HwTarget, DeviceInfo)]
+orderByRig = L.sortOn (rigIndex . (.deviceId) . snd)
+ where
+  rigIndex devId = fromJust $ L.elemIndex devId knownFpgaIds
+
+driver :: (HasCallStack) => HitlDriver
+driver HitlDriverEnv{testName, targets = unorderedTargets} = do
+  let targets = orderByRig unorderedTargets
   liftIO
     . putStrLn
     $ "Running driver function for targets "
@@ -51,7 +58,9 @@ driver testName targets = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build/hitl" </> testName
 
-  forM_ targets (assertProbe "probe_test_start")
+  -- The CPUs boot with an empty binary and only do anything once programmed over
+  -- GDB/JTAG, so this test does not need the HITL VIO start handshake and never
+  -- launches Vivado.
 
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
   liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation

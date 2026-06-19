@@ -98,6 +98,7 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just driverFunc
+    , driverProc = driverFunc
+    , hasVio = True
     , mPostProc = Nothing
     }

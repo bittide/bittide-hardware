@@ -12,9 +12,6 @@ import Project.Chan
 import Project.FilePath
 import Project.Handle (assertEither)
 
-import Vivado.Tcl (HwTarget)
-import Vivado.VivadoM
-
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseTapInfo)
@@ -33,11 +30,8 @@ import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
 
-driverFunc ::
-  String ->
-  [(HwTarget, DeviceInfo)] ->
-  VivadoM ExitCode
-driverFunc _name targets = do
+driverFunc :: HitlDriver
+driverFunc HitlDriverEnv{targets} = do
   liftIO
     $ putStrLn
     $ "Running driver function for targets "

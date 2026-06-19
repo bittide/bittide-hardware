@@ -42,6 +42,9 @@ module Bittide.Hitl (
   -- * Test definition
   HitlTestGroup (..),
   HitlTestCase (..),
+  HitlDriver,
+  HitlDriverEnv (..),
+  WithVivado,
   TestStepResult (..),
   MayHavePostProcData (..),
   Done,
@@ -198,6 +201,57 @@ and requires a (hypothetical) 8-bit number indicating the
 
 This must be accompanied by a @hitlVio \@NumberOfStages@ in the design.
 -}
+
+{- | Run a 'VivadoM' action against a freshly-started Vivado session that is
+connected to the hardware server. The session is opened when this function is
+called and closed when the action returns.
+
+Vivado is *very* slow to start, so a 'HitlDriver' that needs Vivado must call
+'WithVivado' __at most once__, wrapping its entire Vivado-touching region in that
+single call. A driver that never needs Vivado (e.g. one driving the test purely
+over GDB/OpenOCD/serial) simply never calls it, and no Vivado process is spawned.
+-}
+type WithVivado = forall a. VivadoM a -> IO a
+
+{- | Environment handed to a 'HitlDriver'. Bundles the Vivado escape hatch with
+the bits of test context a driver may need (test name, resolved targets, and the
+build paths used by the VIO/ILA handshake).
+-}
+data HitlDriverEnv = HitlDriverEnv
+  { withVivado :: WithVivado
+  -- ^ See 'WithVivado'. Call at most once.
+  , testName :: String
+  -- ^ Name of the test case being driven.
+  , targets :: [(HwTarget, DeviceInfo)]
+  -- ^ Resolved hardware targets for this test case.
+  , parameterData :: [(HwTarget, Natural, Natural)]
+  {- ^ For each target, the test parameter as @(value, bitSize)@, ready to be
+  written to the @probe_test_data@ HITL VIO probe. @bitSize == 0@ means the
+  design has no @probe_test_data@ probe. Only the standard VIO driver
+  ('defaultVivadoDriver') uses this; custom drivers can ignore it.
+  -}
+  , probesFilePath :: FilePath
+  {- ^ Path to the generated probes file (@probes.ltx@). Only meaningful for
+  designs that instantiate the HITL VIO / ILAs.
+  -}
+  , ilaDataDir :: FilePath
+  -- ^ Directory into which captured ILA data should be written.
+  }
+
+{- | A function driving a HITL test. It is responsible for:
+
+- Any pre-processing necessary to begin the test
+- Asserting the start probe(s) (if the design uses the HITL VIO; via 'WithVivado')
+- Waiting for results on the test done and success probes, or otherwise
+  determining the test result
+
+Drivers run in plain 'IO'. If a driver needs Vivado (to drive the HITL VIO or to
+arm/read out ILAs) it uses the 'WithVivado' escape hatch in its 'HitlDriverEnv'.
+See 'defaultVivadoDriver' (in @Bittide.Instances.Hitl.Driver.Default@) for the
+standard VIO+ILA handshake implementation.
+-}
+type HitlDriver = HitlDriverEnv -> IO ExitCode
+
 data HitlTestGroup where
   HitlTestGroup ::
     (Typeable a, Typeable b) =>
@@ -206,19 +260,13 @@ data HitlTestGroup where
     , targetXdcs :: [String]
     , testCases :: [HitlTestCase HwTargetRef a b]
     -- ^ List of test cases
-    , mDriverProc ::
-        Maybe (String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode)
-    {- ^ Optional function driving the test. If provided, this function must:
-    - Handle any pre-processing necessary to begin the test
-    - Assert the start probe(s)
-    - Wait for results on the test done and success probes
-
-    The HITL testing infrastructure deasserts the start probe(s) after running this function
-    and collecting ILA data, so unless there is a good reason to this function should not also
-    deassert it. Because the deassertions are not done simultaneously, unpredictable behaviour
-    caused by the shutdown of only parts of a multi-FPGA system may end up recorded in the test
-    data ILAs. Thus it's more desirable to allow the HITL testing infrastructure to handle this
-    process after it has collected the ILA data.
+    , driverProc :: HitlDriver
+    -- ^ Function driving the test. See 'HitlDriver'.
+    , hasVio :: Bool
+    {- ^ Whether the design instantiates the HITL VIO (or other Vivado debug
+    cores, like ILAs). Controls whether a probes file (@.ltx@) is generated for
+    the design. Tests driven purely over GDB/OpenOCD/serial that do not
+    instantiate any debug cores should set this to 'False'.
     -}
     , mPostProc :: Maybe (FilePath -> ExitCode -> IO (TestStepResult ()))
     {- ^ Optional post processing step. If provided, this function is run after the test case

@@ -7,7 +7,9 @@
 module Vivado.VivadoM (
   VivadoM,
   ObjectRef,
+  askVivado,
   openHardwareTarget,
+  setProbesFile,
   refreshHwDevice,
   commitVios,
   setProp,
@@ -28,10 +30,23 @@ type ObjectRef = String
 
 type VivadoM a = ReaderT VivadoHandle IO a
 
+-- | Obtain the 'VivadoHandle' of the current 'VivadoM' session.
+askVivado :: VivadoM VivadoHandle
+askVivado = ask
+
 openHardwareTarget :: HwTarget -> VivadoM ()
 openHardwareTarget hwT = do
   v <- ask
   liftIO $ openHwTarget v hwT
+  refreshHwDevice
+
+{- | Associate a debug probes file (@.ltx@) with the current hardware device and
+refresh it. Required before reading/writing any VIO or ILA probes on a freshly
+opened device.
+-}
+setProbesFile :: FilePath -> VivadoM ()
+setProbesFile probesFilePath = do
+  setProp "[current_hw_device]" "PROBES.FILE" (embrace probesFilePath)
   refreshHwDevice
 
 refreshHwDevice :: VivadoM ()

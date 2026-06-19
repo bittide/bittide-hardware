@@ -26,7 +26,6 @@ module Clash.Shake.Vivado (
   runPlaceAndRoute,
   runBitstreamGen,
   runProbesFileGen,
-  pollTestDone,
   deviceInfoFromHwTRef,
   programBitstream,
   runHitlTest,
@@ -40,33 +39,25 @@ import Development.Shake (Action)
 import Development.Shake.Extra (decodeFile)
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup (demoRigInfo, knownFpgaIds)
 import Bittide.Instances.Hitl.Utils.Vivado
 import Clash.Driver.Manifest
 import Clash.Prelude (BitPack (BitSize), Natural, natToNatural, pack)
 import Clash.Shake.Extra (hexDigestFile)
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (mapConcurrently)
-import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
-import Control.Exception (Exception (displayException), SomeException, catch, try)
+import Control.Exception (Exception (displayException), SomeException, catch, throwIO, try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
 import Control.Monad.Reader (runReaderT)
 import Data.Containers.ListUtils (nubOrd)
-import Data.Either (lefts, rights)
-import Data.List (isInfixOf, isSuffixOf, sort, sortOn, (\\))
-import Data.List.Extra (anySame, split, (!?))
-import Data.Map.Strict (fromList, keys, mapKeys, toAscList)
-import Data.Maybe (fromJust, fromMaybe)
-import Data.Set (Set)
-import Data.String.Interpolate (i, __i)
+import Data.List (isInfixOf, (\\))
+import Data.List.Extra (anySame)
+import Data.Maybe (fromJust)
+import Data.String.Interpolate (__i)
 import Data.Text (unpack)
 import GHC.Stack (HasCallStack)
-import System.Clock (Clock (Monotonic), TimeSpec, diffTimeSpec, getTime, toNanoSecs)
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
 import System.FilePath (dropFileName, (</>))
 import System.Process (readProcessWithExitCode)
-import Text.Read (readMaybe)
 import Vivado (TclException (..), VivadoHandle, execPrint_, with)
 import Vivado.Tcl
 import Vivado.VivadoM
@@ -74,7 +65,6 @@ import Vivado.VivadoM
 import qualified Clash.Sized.Internal.BitVector as BitVector
 import qualified Data.Aeson as Aeson
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 
 -- | Satisfied if all actions result in 'False'
 noneM :: (Monad m) => [m Bool] -> m Bool
@@ -344,83 +334,6 @@ runProbesFileGen outputDir = with $ \v -> do
   -- Generate probes file
   execPrint_ v ("write_debug_probes -force {" <> outputDir </> "probes.ltx" <> "}")
 
-{- | Attempts to find and return the ID of a hardware target referenced by a given
-`HwTargetRef`. This is what Vivado seems to call the UID minus the vendor string.
--}
-idFromHwTRef :: HwTargetRef -> FpgaId
-idFromHwTRef (HwTargetByIndex ix) =
-  fromMaybe
-    ("The given index " <> show ix <> " is out of range for the list of known FPGA IDs")
-    (knownFpgaIds !? fromIntegral ix)
-idFromHwTRef (HwTargetById targetId _) = targetId
-
-deviceInfoFromHwTRef :: HwTargetRef -> DeviceInfo
-deviceInfoFromHwTRef (HwTargetByIndex ix) =
-  fromMaybe
-    (error $ "The given index " <> show ix <> " is out of range for the list of known FPGA IDs")
-    (demoRigInfo !? fromIntegral ix)
-deviceInfoFromHwTRef (HwTargetById _ d) = d
-
-{- | Tries to find the hardware target with a specific FPGA ID in a given list of hardware targets.
-Returns the FPGA ID wrapped in a `Left` on failure to find such a target.
--}
-findHwTWithId :: FpgaId -> [HwTarget] -> Either FpgaId HwTarget
-findHwTWithId fpgaId hwTs = do
-  case filter ((== fpgaId) . idFromHwT) hwTs of
-    [] -> Left fpgaId
-    [hwT] -> Right hwT
-    hwTs' -> error $ "Found multiple hardware targets with the same ID: " <> show hwTs'
-
-{- | Attempts to resolve a given list of hardware target references and return a
-`Map HwTargetRef HwTarget`. The available hardware targets on the connected
-hardware servers are queried for a limited number of times and errors if the
-requested targets cannot be found.
--}
-resolveHwTRefs ::
-  -- | Handle to a Vivado object that is to execute the Tcl.
-  VivadoHandle ->
-  [HwTargetRef] ->
-  IO (Map.Map HwTargetRef HwTarget)
-resolveHwTRefs v requestedHwTRefs = do
-  let requestedIds = idFromHwTRef <$> requestedHwTRefs
-  let
-    go :: Int -> IO (Map.Map HwTargetRef HwTarget)
-    go numTries = do
-      foundTargets <- get_hw_targets v []
-      printInfo foundTargets
-      let matchingTargets = (`findHwTWithId` foundTargets) <$> requestedIds
-      if null (lefts matchingTargets)
-        then do
-          pure $ fromList $ zip requestedHwTRefs (rights matchingTargets)
-        else do
-          putStrLn $
-            "[WARNING] The connected hardware servers did not host the requested "
-              <> "hardware targets with IDs "
-              <> show (lefts matchingTargets)
-          if numTries < 0
-            then error "Giving up."
-            else do
-              putStrLn "Retrying..."
-              threadDelay 500000 -- In μs
-              refresh_hw_server v []
-              go (numTries - 1)
-  go 10
- where
-  printInfo foundTargets = do
-    putStrLn $
-      "The connected hardware servers host "
-        <> show (length foundTargets)
-        <> " hardware targets:"
-    mapM_ (putStrLn . ('\t' :) . show) foundTargets
-    let foundFpgaIds = idFromHwT <$> foundTargets
-    when (sort foundFpgaIds /= sort knownFpgaIds) $
-      putStrLn $
-        "[WARNING] The IDs of the hosted hardware targets do not match the known ones."
-          <> "\n\tNot found but expected: "
-          <> show (knownFpgaIds \\ foundFpgaIds)
-          <> "\n\tFound but unexpected: "
-          <> show (foundFpgaIds \\ knownFpgaIds)
-
 {- | Programs the bitstream onto the given hardware targets using @openFPGALoader@.
 
 Unlike a Vivado-based flow, each target is programmed by its own @openFPGALoader@
@@ -495,273 +408,6 @@ programDeviceWith bitstreamPath deviceInfo = do
           <> "\nstderr:\n"
           <> err
 
-data VioProbeInfo = VioProbeInfo
-  { probeName :: String
-  , probeType :: String
-  , probeWidth :: String
-  }
-
-{- | Verifies whether the bitstream programmed on the current hardware target
-includes a VIO IP core that is configured as required by this HITL framework.
-See `Bittide.Hitl` for details.
-
-Make sure that the `PROBES.FILE` property is set for the `current_hw_device`
-and that `refresh_hw_device` has been run afterwards.
--}
-verifyHitlVio :: VivadoHandle -> Natural -> IO ()
-verifyHitlVio v paramBitSize = do
-  vioProbes <- get_hw_probes v ["-of_objects [get_hw_vios]", "*vioHitlt/*"]
-  let unexpectedProbes =
-        [ show probe
-        | probe <- vioProbes
-        , not (any (`isSuffixOf` show probe) requiredProbeSimpleNames)
-        ]
-       where
-        requiredProbeSimpleNames = map (last . split (== '/') . probeName) requiredProbes
-  unless (null unexpectedProbes) $ do
-    putStrLn "[WARNING] Encountered unexpected HITL VIO probes, they will be ignored:"
-    mapM_ (putStrLn . ('\t' :)) unexpectedProbes
-  mapM_ (`verifyHitlProbe` vioProbes) requiredProbes
- where
-  requiredProbes =
-    [ VioProbeInfo "*vioHitlt/probe_test_start" "vio_output" "1"
-    , VioProbeInfo "*vioHitlt/probe_test_done" "vio_input" "1"
-    , VioProbeInfo "*vioHitlt/probe_test_success" "vio_input" "1"
-    ]
-      <> [ VioProbeInfo "*vioHitlt/probe_test_data" "vio_output" (show paramBitSize)
-         | paramBitSize /= 0
-         ]
-  verifyHitlProbe :: VioProbeInfo -> [HwProbe] -> IO ()
-  verifyHitlProbe vpi@VioProbeInfo{} vioProbes = do
-    let simpleName = last (split (== '/') vpi.probeName)
-    let probe = case filter (('/' : simpleName) `isSuffixOf`) (show <$> vioProbes) of
-          [p] -> p
-          ps ->
-            error $
-              "Exactly one probe named '"
-                <> vpi.probeName
-                <> "' "
-                <> "must be present but "
-                <> show (length ps)
-                <> " were found."
-    execCmd_
-      v
-      "set"
-      [ simpleName
-      , "[get_hw_probes -of_objects [get_hw_vios] " <> vpi.probeName <> "]"
-      ]
-    typeProp <- execCmd v "get_property" ["type", "$" <> simpleName]
-    unless (typeProp == vpi.probeType) $
-      error $
-        "Probe '"
-          <> probe
-          <> "' must have type "
-          <> vpi.probeType
-          <> " but has '"
-          <> typeProp
-          <> "'."
-    widthProp <- execCmd v "get_property" ["width", "$" <> simpleName]
-    unless (widthProp == vpi.probeWidth) $
-      error $
-        "Probe '" <> probe <> "' must have width " <> vpi.probeWidth <> " but it is " <> widthProp
-
-{- | Observed instances of property CELL_NAME of an hw_ila object include:
-- "Bittide_Instances_Hitl_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla_callistoResult/ilaPlot/ilaPlot"
-- "instructionBus/dataBus"
-
-This short name should return "ilaPlot" and "instructionBus" for
-those examples respectively. Could be improved, see
-https://github.com/bittide/bittide-hardware/issues/530
--}
-getCurrentIlaShortName :: VivadoHandle -> IO String
-getCurrentIlaShortName v = do
-  ilaCellName <- execCmd v "get_property" ["CELL_NAME", "[current_hw_ila]"]
-  pure $
-    fromMaybe
-      (error $ "Determining short name failed for ILA with CELL_NAME " <> ilaCellName)
-      (reverse (split (== '/') ilaCellName) !? 1)
-
-{- | Verify hardware ILAs. Verification should be performed before the `HwIla`
-objects are used for the first time.
--}
-verifyHwIlas :: VivadoHandle -> IO ()
-verifyHwIlas v = do
-  -- TODO either use or remove the Tcl dictionary
-  execPrint_
-    v
-    [__i|
-    \# Create a list of dictionaries where each dictionary corresponds to one ILA.
-    \# Each dictionary has the following keys:
-    \#   name          : short name of the ILA
-    \#   cell_name     : name of the cell the ILA is in
-    \#   trigger_probe : name of the trigger probe
-    \#   capture_probe : name of the capture probe
-    \#   data_probes   : list of names of all other probes
-    proc get_ila_dicts {} {
-        set ila_dicts {}
-
-        set hw_ilas [get_hw_ilas -quiet]
-        set ila_count [llength $hw_ilas]
-        if {$ila_count == 0} {
-            puts "\nNo ILAs in design"
-            return {}
-        }
-
-        puts "\nFound $ila_count ILAs:"
-        foreach hw_ila $hw_ilas {
-            set ila_dict {}
-
-            \# The short name is the name of the module the ILA is in. For example a
-            \# cell named `fullMeshSwCcTest/ilaPlot/ila_inst` will give the short
-            \# name `ilaPlot`.
-            set cell_name [get_property CELL_NAME $hw_ila]
-            set before_last [expr [string last / $cell_name] - 1]
-            set module_name [string range $cell_name 0 $before_last]
-            set after_second_to_last [expr [string last / $module_name] + 1]
-            set short_name [string range $cell_name $after_second_to_last $before_last]
-            dict set ila_dict name $short_name
-            dict set ila_dict cell_name $cell_name
-
-            \# Get trigger probe and verify it conforms with ILA framework
-            set trigger_probe [get_hw_probes -of_objects $hw_ila */trigger*]
-            set trigger_probe_count [llength $trigger_probe]
-            if {$trigger_probe_count != 1} {
-                set err_msg "Exactly one probe named 'trigger*' must be present, "
-                append err_msg "but $trigger_probe_count were found" \n [all_probe_names_msg]
-                error $err_msg
-            } elseif {[get_property is_trigger $trigger_probe] != 1} {
-                set probe_name_short [get_property name.short $trigger_probe]
-                set err_msg "Probe '$probe_name_short' should have probeType "
-                append err_msg {Trigger or DataAndTrigger} \n [all_probe_names_msg]
-                error $err_msg
-            } elseif {[get_property width $trigger_probe] != 1} {
-                set probe_name_short [get_property name.short $trigger_probe]
-                set err_msg "Probe '$probe_name_short' must have a width of 1 bit\n"
-                append err_msg [all_probe_names_msg]
-                error $err_msg
-            } else {
-                dict set ila_dict trigger_probe [get_property name $trigger_probe]
-            }
-
-            \# Get capture probe and verify it conforms with ILA framework
-            set capture_probe [get_hw_probes -of_objects $hw_ila */capture*]
-            set capture_probe_count [llength $capture_probe]
-            if {$capture_probe_count != 1} {
-                set err_msg {Exactly one probe named 'capture*' must be present, }
-                append err_msg "but $capture_probe_count were found" \n [all_probe_names_msg]
-                error $err_msg
-            } elseif {[get_property is_trigger $capture_probe] != 1} {
-                set probe_name_short [get_property name.short $capture_probe]
-                set err_msg "Probe '$probe_name_short' should have probeType "
-                append err_msg {Trigger or DataAndTrigger} \n [all_probe_names_msg]
-                error $err_msg
-            } elseif {[get_property width $capture_probe] != 1} {
-                set probe_name_short [get_property name.short $capture_probe]
-                set err_msg "Probe '$probe_name_short' must have a width of 1 bit\n"
-                append err_msg [all_probe_names_msg]
-                error $err_msg
-            } else {
-                dict set ila_dict capture_probe [get_property name $capture_probe]
-            }
-
-            \# Get all data probes and verify each conforms with ILA framework
-            set all_probes [get_hw_probes -of_objects $hw_ila]
-            if {[llength $all_probes] < 3} {
-                set err_msg "ILA '$short_name' has no data probes, at least 1 "
-                append err_msg {data probe is required} \n [all_probe_names_msg]
-                error $err_msg
-            }
-            dict set ila_dict data_probes [list]
-            foreach probe $all_probes {
-                if {$probe eq $trigger_probe || $probe eq $capture_probe} {
-                    continue
-                } elseif {[get_property is_data $probe] != 1} {
-                    set probe_name_short [get_property name.short $probe]
-                    set err_msg "Probe '$probe_name_short' should have probeType "
-                    append err_msg {Data or DataAndTrigger} \n [all_probe_names_msg]
-                    error $err_msg
-                } else {
-                    dict update ila_dict data_probes probe_list {
-                        lappend probe_list [get_property name $probe]
-                    }
-                }
-            }
-            lappend ila_dicts $ila_dict
-
-            \# Print all ILA probes
-            puts "ILA $short_name with probes:"
-            set probe_name_short [get_property name.short $trigger_probe]
-            puts "\t$probe_name_short"
-            set probe_name_short [get_property name.short $capture_probe]
-            puts "\t$probe_name_short"
-            foreach probe_name [dict get $ila_dict data_probes] {
-                set idx_start [expr {[string first / $probe_name] + 1}]
-                set probe_name_short [string range $probe_name $idx_start end]
-                puts "\t$probe_name_short"
-            }
-        }
-        return $ila_dicts
-    }
-  |]
-  execCmd_ v "set" ["ila_dicts", "[get_ila_dicts]"]
-
-{- | Waits (with a timeout) until a HITL test case is finished by probing
-the probe_test_done probe. Returns whether the test case was successful.
--}
-waitTestCaseEnd ::
-  VivadoHandle -> HitlTestCase (HwTarget, DeviceInfo) a b -> FilePath -> IO ExitCode
-waitTestCaseEnd v htc@HitlTestCase{} probesFilePath = do
-  startTime <- getTime Monotonic
-  let calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
-  exitCodes <- forM (keys htc.parameters) $ \(hwT, _) -> do
-    openHwTarget v hwT
-    execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
-    pollTestDone startTime testTimeoutMs v hwT
-
-  -- Print summary of test case
-  timeSpentMs <- calcTimeSpentMs
-  putStrLn $
-    "HITL test case'"
-      <> htc.name
-      <> "' passed on "
-      <> show (length (filter (== ExitSuccess) exitCodes))
-      <> " out of "
-      <> show (length exitCodes)
-      <> " hardware targets in "
-      <> show timeSpentMs
-      <> "ms."
-  pure (maximum exitCodes)
- where
-  -- \| Timeout specifying how long we should wait for a test to finish before
-  -- considering it a failed test.
-  -- TODO: Allow the user to specify the timeout for a test.
-  testTimeoutMs = 60000 :: Integer
-
-pollTestDone :: TimeSpec -> Integer -> VivadoHandle -> HwTarget -> IO ExitCode
-pollTestDone startTime testTimeoutMs v hwT = do
-  refresh_hw_device v ["-quiet"]
-  timeSpentMs <- calcTimeSpentMs
-  done <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestDoneTcl]
-  success <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestSuccessTcl]
-  case (done, success, timeSpentMs >= testTimeoutMs) of
-    ("1", "1", _) -> do
-      pure ExitSuccess
-    ("1", _, _) -> do
-      putStrLn $ "HITL test case failure for hardware target " <> prettyShow hwT
-      pure (ExitFailure 2)
-    (_, _, True) -> do
-      putStrLn $
-        "HITL test case timeout (≥"
-          <> show testTimeoutMs
-          <> "ms) for hardware target "
-          <> prettyShow hwT
-      pure (ExitFailure 3)
-    _ -> do
-      threadDelay 1000 -- In μs
-      pollTestDone startTime testTimeoutMs v hwT
- where
-  calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
-
 runHitlTest ::
   -- | The HITL test group to execute
   HitlTestGroup ->
@@ -772,235 +418,98 @@ runHitlTest ::
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTest test@HitlTestGroup{topEntity, testCases, mDriverProc} url probesFilePath ilaDataDir = do
+runHitlTest HitlTestGroup{topEntity, testCases, driverProc} url probesFilePath ilaDataDir = do
   putStrLn $
     "Starting HITL test for FPGA design '"
       <> show topEntity
       <> "' with "
       <> show (length testCases)
       <> " test cases..."
-  result <- try @TclException $ with $ \v -> do
-    let testCaseNames = (.name) <$> testCases
-    when (anySame testCaseNames) $
-      error $
-        "HITL test case names must be unique within their test. Offenders: "
-          <> show (testCaseNames \\ nubOrd testCaseNames)
-    execCmd_ v "set_msg_config" ["-severity {CRITICAL WARNING}", "-new_severity ERROR"]
-    execCmd_ v "open_hw_manager" []
-    execCmd_ v "connect_hw_server" ["-url " <> url]
-    refToHwTMap <- resolveHwTRefs v (hwTargetRefsFromHitlTestGroup test)
 
-    testResults <- forM (zip [1 :: Int ..] testCases) $ \(nr, htc@HitlTestCase{}) -> do
+  let testCaseNames = (.name) <$> testCases
+  when (anySame testCaseNames) $
+    error $
+      "HITL test case names must be unique within their test. Offenders: "
+        <> show (testCaseNames \\ nubOrd testCaseNames)
+
+  testResults <- forM (zip [1 :: Int ..] testCases) $ \(nr, htc@HitlTestCase{}) -> do
+    putStrLn $
+      "Starting HITL test case "
+        <> show nr
+        <> " out of "
+        <> show (length testCases)
+        <> " named '"
+        <> htc.name
+        <> "'..."
+    let requestedIds = map idFromHwTRef (Map.keys htc.parameters)
+    when (anySame requestedIds) $
+      error $
+        "Multiple references to the same hardware target: "
+          <> show (requestedIds \\ nubOrd requestedIds)
+
+    -- Resolve the hardware targets statically; this no longer requires a live
+    -- Vivado connection. Drivers that need Vivado (for the HITL VIO or ILAs) open
+    -- a session themselves through the 'withVivado' escape hatch.
+    let
+      refs = Map.keys htc.parameters
+      synthHwT ref = HwTarget (url <> "/xilinx_tcf/_/" <> idFromHwTRef ref)
+      targets = [(synthHwT ref, deviceInfoFromHwTRef ref) | ref <- refs]
+      parameterData =
+        [ (synthHwT ref, BitVector.unsafeToNatural (pack param), bitSizeOf param)
+        | (ref, param) <- Map.toList htc.parameters
+        ]
+
+      env =
+        HitlDriverEnv
+          { withVivado = withVivado
+          , testName = htc.name
+          , targets = targets
+          , parameterData = parameterData
+          , probesFilePath = probesFilePath
+          , ilaDataDir = ilaDataDir
+          }
+
+    let
+      catchException :: SomeException -> IO ExitCode
+      catchException e = do
+        putStrLn $ "Caught exception while running driver function: " <> displayException e
+        return $ ExitFailure 3
+
+    exitCode <- catch (driverProc env) catchException
+    pure (htc.name, exitCode)
+
+  let failedTestCaseNames = fst <$> filter ((/= ExitSuccess) . snd) testResults
+  if null failedTestCaseNames
+    then do
+      putStrLn $ "All " <> show (length testCases) <> " HITL test cases passed."
+    else do
       putStrLn $
-        "Starting HITL test case "
-          <> show nr
+        show (length failedTestCaseNames)
           <> " out of "
           <> show (length testCases)
-          <> " named '"
-          <> htc.name
-          <> "'..."
-      let requestedIds = map idFromHwTRef (Map.keys htc.parameters)
-      when (anySame requestedIds) $
-        error $
-          "Multiple references to the same hardware target: "
-            <> show (requestedIds \\ nubOrd requestedIds)
-      -- Resolve the test case definition by replacing the references to
-      -- hardware targets with the actual hardware targets and device info.
-      let
-        resolvedTestCase =
-          HitlTestCase
-            { parameters = mapKeys (\k -> (lookupHwT k, lookupDeviceInfo k)) htc.parameters
-            , name = htc.name
-            , postProcData = htc.postProcData
-            }
-        lookupHwT key = fromJust $ Map.lookup key refToHwTMap
-        lookupDeviceInfo key = deviceInfoFromHwTRef key
+          <> " HITL test cases failed or timed out, namely:"
+      mapM_ (putStrLn . ('\t' :)) failedTestCaseNames
+  pure $ maximum $ map snd testResults
+ where
+  -- \| Open a single Vivado session connected to the hardware server, run the
+  -- given action in it, then close it. Drivers that need Vivado call this at most
+  -- once, wrapping their entire Vivado-touching region. Vivado is slow to start,
+  -- so calling it more than once per driver should be avoided.
+  withVivado :: forall a. VivadoM a -> IO a
+  withVivado action = do
+    result <- try @TclException $ with $ \v -> do
+      execCmd_ v "set_msg_config" ["-severity {CRITICAL WARNING}", "-new_severity ERROR"]
+      execCmd_ v "open_hw_manager" []
+      execCmd_ v "connect_hw_server" ["-url " <> url]
+      runReaderT action v
+    case result of
+      Left e@TclException{} -> do
+        print e
+        throwIO e
+      Right a -> pure a
 
-      exitCode <-
-        runHitlTestCase v resolvedTestCase mDriverProc probesFilePath ilaDataDir
-      pure (htc.name, exitCode)
-
-    let failedTestCaseNames = fst <$> filter ((/= ExitSuccess) . snd) testResults
-    if null failedTestCaseNames
-      then do
-        putStrLn $ "All " <> show (length testCases) <> " HITL test cases passed."
-      else do
-        putStrLn $
-          show (length failedTestCaseNames)
-            <> " out of "
-            <> show (length testCases)
-            <> " HITL test cases failed or timed out, namely:"
-        mapM_ (putStrLn . ('\t' :)) failedTestCaseNames
-    pure $ maximum $ map snd testResults
-
-  case result of
-    Left e@TclException{retCode} -> do
-      print e
-      pure $ ExitFailure (fromMaybe 1 (readMaybe @Int retCode))
-    Right exitCode -> pure exitCode
-
--- | Runs one test case of a HITL test group
-runHitlTestCase ::
-  forall a b.
-  -- | Handle to a Vivado object that is to execute the Tcl
-  VivadoHandle ->
-  -- | The HITL test case to run
-  HitlTestCase (HwTarget, DeviceInfo) a b ->
-  -- | Driver function
-  Maybe (String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode) ->
-  -- | Path to the generated probes file
-  FilePath ->
-  -- | Filepath the the ILA data dump directory
-  FilePath ->
-  IO ExitCode
-runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFilePath ilaDataDir = do
-  if null parameters
-    then do
-      putStrLn
-        "[WARNING] The HITL test case does not reference any hardware targets. Exiting."
-      pure ExitSuccess
-    else do
-      openHwTarget v $ fst $ case keys parameters of
-        [] -> error "Internal error: empty map of parameters."
-        (p : _) -> p
-      verifyHwIlas v
-      -- XXX: We should not rely on start probe assertion order.
-      --      See https://github.com/bittide/bittide-hardware/issues/638.
-      testData <- forM (sortOn (prettyShow . fst . fst) (toAscList parameters)) $ \((hwT, deviceInfo), param) -> do
-        openHwTarget v hwT
-        execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
-        refresh_hw_device v []
-        let paramBitSize = natToNatural @(BitSize a)
-        verifyHitlVio v paramBitSize
-
-        execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
-        commit_hw_vio v ["[get_hw_vios]"]
-        refresh_hw_vio v ["[get_hw_vios]"]
-        done <- execCmd v "get_property" ["INPUT_VALUE", "$probe_test_done"]
-        when (done /= "0") $
-          error $
-            "Hardware target '"
-              <> prettyShow hwT
-              <> "' asserted its HITL VIO probe done before the test was started."
-        unless (paramBitSize == 0) $ do
-          hexWidth <- execCmd v "expr" [embrace ("(3 + " <> show paramBitSize <> ")/4")]
-          vioValue <-
-            execCmd
-              v
-              "format"
-              ["%0" <> hexWidth <> "llX " <> show (BitVector.unsafeToNatural (pack param))]
-          putStrLn $ "Setting probe_test_data to " <> vioValue <> "..."
-          execCmd_ v "set_property" ["OUTPUT_VALUE", vioValue, getProbeTestDataTcl]
-
-        -- Activate the trigger for each ILA.
-        putStrLn "Verifying ILAs..."
-        ilas <- get_hw_ilas v []
-        unless (null ilas) $
-          putStrLn "Configuring and arming ILAs..."
-
-        forM_ ilas $ \ila -> do
-          _ <- current_hw_ila v [show ila]
-
-          -- Set trigger probe (active high boolean)
-          -- TODO get probe from Tcl dictionary?
-          let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
-          execCmd_ v "set_property" ["trigger_compare_value", "eq1'b1", triggerProbe]
-
-          -- Enable capture control and set capture probe (active high boolean)
-          execCmd_ v "set_property" ["control.capture_mode", "BASIC", "[current_hw_ila]"]
-          let captureProbe = "[get_hw_probes -of_objects [current_hw_ila] */capture*]"
-          execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
-
-          -- Set the trigger position
-          execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
-
-          run_hw_ila v ["[current_hw_ila]"]
-
-        -- Deassert HitlVio start probe
-        -- XXX: We should not rely on start probe values to be asserted after a
-        --      test ends. See https://github.com/bittide/bittide-hardware/issues/639.
-        execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
-        commit_hw_vio v ["[get_hw_vios]"]
-
-        return (hwT, deviceInfo)
-
-      -- Assert HitlVio start probe
-      -- execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-      -- commit_hw_vio v ["[get_hw_vios]"]
-      -- putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
-
-      -- pure testRunData
-
-      testCaseExitCode <- case driverFunc of
-        Just fn -> do
-          putStrLn $ "Running custom driver function for test " <> name
-          let
-            catchException :: SomeException -> IO ExitCode
-            catchException e = do
-              putStrLn $ "Caught exception while running driver function: " <> displayException e
-              putStrLn "Carrying on to save ILA data."
-              return $ ExitFailure 3
-          catch (runReaderT (fn name testData) v) catchException
-        Nothing -> do
-          putStrLn $ "Running default driver function for test " <> name
-
-          forM_ testData $ \(hwT, _deviceInfo) -> do
-            -- Assert HitlVio start probe
-            openHwTarget v hwT
-            execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
-            refresh_hw_device v []
-
-            execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-            commit_hw_vio v ["[get_hw_vios]"]
-            putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
-
-          putStrLn $ "Waiting for test case '" <> name <> "' to end..."
-          waitTestCaseEnd v testCase probesFilePath
-
-      putStrLn "Saving captured ILA data (if relevant)..."
-      forM_ (keys parameters) $ \(hwT, _) -> do
-        openHwTarget v hwT
-        execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
-        refresh_hw_device v ["-quiet"]
-        ilas <- get_hw_ilas v []
-        let dir = ilaDataDir </> name </> prettyShow hwT
-        unless (null ilas) $ do
-          putStrLn $
-            "Saving captured ILA data to: " <> dir
-          createDirectoryIfMissing True dir
-        usedShortNamesVar <- newMVar mempty
-        forM_ ilas $ \ila -> do
-          _ <- current_hw_ila v [show ila]
-          ilaShortName0 <- getCurrentIlaShortName v
-          ilaShortName <- mkUniqShortName usedShortNamesVar ilaShortName0 (fromHwIla ila)
-          execCmd_ v "current_hw_ila_data" ["[upload_hw_ila_data [current_hw_ila]]"]
-          -- Legacy CSV excludes radix information
-          execCmd_
-            v
-            "write_hw_ila_data"
-            ["-force", "-legacy_csv_file " <> embrace (dir </> ilaShortName)]
-          execCmd_ v "write_hw_ila_data" ["-force", "-vcd_file " <> embrace (dir </> ilaShortName)]
-
-      -- deassert all START signals
-      forM_ (sortOn (prettyShow . fst . fst) (toAscList parameters)) $ \((hwT, _), _param) -> do
-        openHwTarget v hwT
-        execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
-        refresh_hw_device v []
-
-        execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
-        commit_hw_vio v ["[get_hw_vios]"]
-
-      pure testCaseExitCode
-
-mkUniqShortName :: MVar (Set String) -> String -> String -> IO String
-mkUniqShortName refUsedNames shortName name =
-  modifyMVar refUsedNames $ \usedNames -> do
-    let
-      nm0 = shortName
-      nm1 = nm0 <> "_" <> name
-      nm
-        | Set.notMember nm0 usedNames = nm0
-        | Set.notMember nm1 usedNames = nm1
-        | otherwise =
-            error [i|Failed to create unique shortname for #{name}, original shortname #{shortName}|]
-    return (Set.insert nm usedNames, nm)
+{- | The 'BitSize' of a value as a 'Natural'. Lets us read the bit size of an
+existentially-quantified ('BitPack') test parameter.
+-}
+bitSizeOf :: forall a. (BitPack a) => a -> Natural
+bitSizeOf _ = natToNatural @(BitSize a)

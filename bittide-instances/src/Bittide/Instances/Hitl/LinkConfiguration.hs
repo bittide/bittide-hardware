@@ -26,6 +26,7 @@ import Bittide.Transceiver
 
 import Bittide.Hitl
 
+import Bittide.Instances.Hitl.Driver.Default (defaultVivadoDriver)
 import Bittide.Instances.Hitl.Setup
 
 import Clash.Annotations.TH (makeTopEntity)
@@ -283,6 +284,7 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , driverProc = defaultVivadoDriver
+    , hasVio = True
     , mPostProc = Nothing
     }

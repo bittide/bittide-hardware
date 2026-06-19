@@ -18,6 +18,7 @@ import System.Exit (ExitCode)
 import System.FilePath ((</>))
 import System.FilePath.Glob (glob)
 
+import Bittide.Instances.Hitl.Driver.Default (defaultVivadoDriver)
 import Bittide.Instances.Hitl.Post.BoardTestExtended
 import Bittide.Instances.Hitl.Post.PostProcess
 
@@ -189,7 +190,8 @@ testSimple =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , driverProc = defaultVivadoDriver
+    , hasVio = True
     , mPostProc = Nothing
     }
 
@@ -200,7 +202,8 @@ testExtended =
     , targetXdcs = ["vexRiscvTest.xdc"]
     , externalHdl = []
     , testCases = testCasesFromEnum @Test allHwTargets ()
-    , mDriverProc = Nothing
+    , driverProc = defaultVivadoDriver
+    , hasVio = True
     , mPostProc = Just postBoardTestExtendedFunc
     }
 

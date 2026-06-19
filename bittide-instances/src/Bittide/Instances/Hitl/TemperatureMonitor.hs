@@ -22,6 +22,7 @@ import Bittide.Hitl (
   hitlVioBool,
   paramForHwTargets,
  )
+import Bittide.Instances.Hitl.Driver.Default (defaultVivadoDriver)
 import Bittide.Instances.Hitl.Setup (allHwTargets)
 
 import Bittide.Instances.Domains
@@ -112,6 +113,7 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , driverProc = defaultVivadoDriver
+    , hasVio = True
     , mPostProc = Nothing
     }
