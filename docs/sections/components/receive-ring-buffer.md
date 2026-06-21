@@ -16,7 +16,7 @@ The Receive Ring Buffer consists of:
 -   **Memory Buffer**: A single memory buffer written by hardware and read by the CPU.
 -   **Free-Running Write Counter**: A hardware counter that increments each cycle, wrapping around the buffer. When the ring buffer is enabled, incoming frames are written at the address indicated by this counter.
 -   **Enable Register**: When enabled, incoming frames from the network are written to the buffer. When disabled, incoming frames are ignored, but the counter continues to increment to maintain alignment.
--   **Clear-at-Count Register**: Resets the write counter to zero when it reaches the configured value. This is used during the [Ring Buffer Alignment](../ringbuffer-alignment.md) procedure to synchronize the TX and RX counters.
+-   **Clear-at-Count Register**: Resets the write counter to zero when it reaches the configured value. This is used during the [Ring Buffer Alignment](../ring-buffer-alignment.md) procedure to synchronize the TX and RX counters.
 -   **Wishbone Interface**: Allows the CPU to read received data.
 
 ### Operation
@@ -27,4 +27,4 @@ The Receive Ring Buffer consists of:
 
 2.  **CPU Access**:
     -   The CPU reads data from the buffer using the Wishbone interface.
-    -   Because the hardware continuously overwrites the buffer, the CPU must read data before it is overwritten. See [Ring Buffer Alignment](../ringbuffer-alignment.md) and [Asynchronous Communication](../asynchronous-communication.md) for protocols that handle this.
+    -   Because the hardware continuously overwrites the buffer, the CPU must read data before it is overwritten. See [Ring Buffer Alignment](../ring-buffer-alignment.md) and [Asynchronous Communication](../asynchronous-communication.md) for protocols that handle this.

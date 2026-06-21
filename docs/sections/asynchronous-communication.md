@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 # Asynchronous Communication Protocol
 
 ## Context
-In a bittide system, we need asynchronous communication between nodes, particularly during the boot phase. The [Ring Buffer Alignment Protocol](ringbuffer-alignment.md) provides an `AlignedRing Buffer` abstraction that allows for packet exchange.
+In a bittide system, we need asynchronous communication between nodes, particularly during the boot phase. The [Ring Buffer Alignment Protocol](ring-buffer-alignment.md) provides an `AlignedRing Buffer` abstraction that allows for packet exchange.
 
 However, as described in that protocol's documentation, the raw `AlignedRing Buffer` link is unreliable, subject to packet corruption and loss due to hardware/software speed mismatches.
 
@@ -41,4 +41,4 @@ Develop a proof-of-concept application that:
 
 ## Assumptions
 *   An **Aligned Ring Buffer** abstraction exists that provides a read/write interface for single aligned packets.
-*   The ringbuffer size is sufficient to hold at least one MTU-sized packet plus overhead.
+*   The ring buffer size is sufficient to hold at least one MTU-sized packet plus overhead.
