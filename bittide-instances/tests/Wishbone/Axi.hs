@@ -5,38 +5,19 @@
 module Wishbone.Axi where
 
 -- Preludes
-import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
-
--- Local
-import Bittide.Axi4
-import Bittide.ProcessingElement
-import Bittide.Wishbone
-import Project.FilePath
+import Clash.Explicit.Prelude hiding (writeFile)
 
 -- Other
-import Bittide.Instances.Common (PeConfigElfSource (NameOnly), peConfigFromElf)
-import Bittide.SharedTypes (withLittleEndian)
+import Bittide.Instances.Tests.Axi (dut, peConfigSim)
 import Control.Monad (forM_)
 import Data.Char
 import Data.Maybe
-import Data.Proxy
-import Protocols
-import Protocols.Experimental.Axi4.Stream
 import Protocols.Experimental.Simulate (sampleC)
-import Protocols.Experimental.Wishbone
-import Protocols.Idle
-import Protocols.MemoryMap
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
-import VexRiscv (DumpVcd (NoDumpVcd))
-
--- Qualified
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
-import qualified Protocols.DfConv as DfConv
 
 -- {-# ANN module "HLint: Missing NOINLINE pragma" #-}
 
@@ -66,61 +47,7 @@ case_axi_stream_rust_self_test = do
     assertFailure ("Test " <> name <> " failed with error \"" <> errMsg <> "\"")
   assertResult (TestResult _ Nothing) = return ()
 
-{- | A simple instance containing just VexRisc and UART as peripheral.
-Runs the `hello` binary from `firmware-binaries`.
--}
-dut :: PeConfig 5 -> Circuit () (Df System (BitVector 8))
-dut peConfig =
-  withLittleEndian
-    $ withClockResetEnable clockGen (resetGenN d2) enableGen
-    $ circuit
-    $ \_unit -> do
-      (uartTx, jtag) <- idleSource
-      [ uartBus
-        , (mmAxiTx, axiTxBus)
-        , (mmAxiRx, axiRxBus)
-        ] <-
-        processingElement NoDumpVcd peConfig -< (mm, jtag)
-      mm <- ignoreMM
-
-      (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartTx)
-
-      _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< ((mmAxiRx, axiRxBus), axiStream)
-
-      axiStream <-
-        axiUserMapC (const False)
-          <| DfConv.fifo axiProxy axiProxy (SNat @1024)
-          <| axiPacking
-          <| wbToAxi4StreamTx
-          -< (mmAxiTx, axiTxBus)
-      idC -< uartRx
- where
-  axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
-{-# OPAQUE dut #-}
-
-type IMemWords = DivRU (8 * 1024) 4
-type DMemWords = DivRU (8 * 1024) 4
-
-peConfigSim :: IO (PeConfig 5)
-peConfigSim =
-  peConfigFromElf
-    (SNat @IMemWords)
-    (SNat @DMemWords)
-    (NameOnly "axi_stream_self_test")
-    Release
-    d0
-    d0
-    False
-    Riscv32imc.vexRiscv0
-
 data TestResult = TestResult String (Maybe String) deriving (Show, Eq)
-
-wbAlwaysAck ::
-  (KnownNat nBytes) =>
-  Circuit
-    (Wishbone dom 'Standard addrW nBytes)
-    ()
-wbAlwaysAck = Circuit (const (pure $ emptyWishboneS2M{acknowledge = True}, ()))
 
 testResultParser :: Parser TestResult
 testResultParser = do

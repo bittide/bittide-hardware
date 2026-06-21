@@ -1,29 +1,29 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::axi::{AxiRx, AxiTx};
+use bittide_hal::manual_additions::axi::{AxiRx, AxiTx};
 use log::{debug, trace};
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
 /// Abstraction over `Axirx` and `AxiTx` to provide a `Device` implementation for smoltcp.
 ///
-pub struct AxiEthernet<const MTU: usize> {
-    axi_rx: AxiRx<MTU>,
+pub struct AxiEthernet<Rx: AxiRx, Tx: AxiTx, const MTU: usize> {
+    axi_rx: Rx,
     rx_token_exists: bool,
-    axi_tx: AxiTx,
+    axi_tx: Tx,
     max_burst: Option<usize>,
     medium: Medium,
 }
 
 #[allow(clippy::new_without_default)]
-impl<const MTU: usize> AxiEthernet<MTU> {
+impl<Rx: AxiRx, Tx: AxiTx, const MTU: usize> AxiEthernet<Rx, Tx, MTU> {
     pub fn new(
         medium: Medium,
-        axi_rx: AxiRx<MTU>,
-        axi_tx: AxiTx,
+        axi_rx: Rx,
+        axi_tx: Tx,
         max_burst: Option<usize>,
-    ) -> AxiEthernet<MTU> {
+    ) -> AxiEthernet<Rx, Tx, MTU> {
         AxiEthernet {
             axi_rx,
             rx_token_exists: false,
@@ -34,9 +34,17 @@ impl<const MTU: usize> AxiEthernet<MTU> {
     }
 }
 
-impl<const MTU: usize> Device for AxiEthernet<MTU> {
-    type RxToken<'a> = RxToken<'a, MTU>;
-    type TxToken<'a> = TxToken<'a, MTU>;
+impl<Rx: AxiRx, Tx: AxiTx, const MTU: usize> Device for AxiEthernet<Rx, Tx, MTU> {
+    type RxToken<'a>
+        = RxToken<'a, Rx>
+    where
+        Rx: 'a,
+        Tx: 'a;
+    type TxToken<'a>
+        = TxToken<'a, Tx, MTU>
+    where
+        Rx: 'a,
+        Tx: 'a;
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();
         cap.max_transmission_unit = MTU;
@@ -83,12 +91,12 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
     }
 }
 
-pub struct RxToken<'a, const BUFFER_SIZE: usize> {
-    axi_rx: &'a mut AxiRx<{ BUFFER_SIZE }>,
+pub struct RxToken<'a, Rx: AxiRx> {
+    axi_rx: &'a mut Rx,
     rx_token_exists: &'a mut bool,
 }
 
-impl<const BUFFER_SIZE: usize> phy::RxToken for RxToken<'_, BUFFER_SIZE> {
+impl<Rx: AxiRx> phy::RxToken for RxToken<'_, Rx> {
     fn consume<R, F>(self, f: F) -> R
     where
         F: FnOnce(&[u8]) -> R,
@@ -109,24 +117,24 @@ impl<const BUFFER_SIZE: usize> phy::RxToken for RxToken<'_, BUFFER_SIZE> {
     }
 }
 
-pub struct TxToken<'a, const BUFFER_SIZE: usize> {
-    axi_tx: &'a mut AxiTx,
+pub struct TxToken<'a, Tx: AxiTx, const MTU: usize> {
+    axi_tx: &'a mut Tx,
 }
 
-impl<'a, const BUFFER_SIZE: usize> TxToken<'a, BUFFER_SIZE> {
-    pub fn new(axi_tx: &'a mut AxiTx) -> TxToken<'a, BUFFER_SIZE> {
+impl<'a, Tx: AxiTx, const MTU: usize> TxToken<'a, Tx, MTU> {
+    pub fn new(axi_tx: &'a mut Tx) -> TxToken<'a, Tx, MTU> {
         TxToken { axi_tx }
     }
 }
 
-impl<'a, const BUFFER_SIZE: usize> phy::TxToken for TxToken<'a, BUFFER_SIZE> {
+impl<'a, Tx: AxiTx, const MTU: usize> phy::TxToken for TxToken<'a, Tx, MTU> {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,
     {
         // The HAL of our peripheral manually sends the packet word by word and byte by byte.
         // For this reason we need to ensure that all bytes
-        let mut buffer = [0; BUFFER_SIZE];
+        let mut buffer = [0; MTU];
         let packet = &mut buffer[0..len];
         let result: R = f(packet);
         self.axi_tx.send(packet);

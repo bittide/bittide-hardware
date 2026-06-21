@@ -7,30 +7,42 @@
 
 use ufmt::uwriteln;
 
-use bittide_hal::shared_devices::uart::Uart;
-use bittide_sys::axi::self_test::self_test;
-use bittide_sys::axi::{AxiRx, AxiTx};
+use bittide_hal::{
+    hals::axi_stream_self_test::DeviceInstances, manual_additions::axi::self_test::self_test,
+};
+
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *mut u8 = (2 << 29) as *mut u8;
+const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let uart = unsafe { Uart::new(UART_ADDR) };
-    let tx = unsafe { AxiTx::new((3 << 29) as *const ()) };
-    let rx: AxiRx<128> = unsafe { AxiRx::new((5 << 29) as *const ()) };
-    self_test(uart, tx, rx);
+    let uart = INSTANCES.uart;
+    let tx = INSTANCES.axi_stream_tx;
+    let rx = INSTANCES.axi_rx_buffer;
+    self_test(uart, &tx, &rx);
     loop {
         continue;
     }
 }
 
 #[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-    uwriteln!(uart, "Woops, I panicked!").unwrap();
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    use ufmt::uWrite;
+
+    let mut uart = INSTANCES.uart;
+    ufmt::uwrite!(uart, "Woops, I panicked!\nmsg: ").unwrap();
+    uart.write_str(info.message().as_str().unwrap_or("no message"))
+        .unwrap();
+    ufmt::uwrite!(uart, "\nloc: ").unwrap();
+    if let Some(loc) = info.location() {
+        let file = loc.file();
+        uart.write_str(file).unwrap();
+        ufmt::uwrite!(uart, ":{}:{}", loc.line(), loc.column()).unwrap();
+    }
+    uwriteln!(uart, "").unwrap();
     loop {
         continue;
     }

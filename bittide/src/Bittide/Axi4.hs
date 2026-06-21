@@ -601,6 +601,7 @@ wbToAxi4StreamTx ::
   ( HasCallStack
   , HiddenClockResetEnable dom
   , KnownNat addrW
+  , ?byteOrder :: ByteOrder
   ) =>
   Circuit
     (BitboneMm dom addrW)
@@ -609,8 +610,10 @@ wbToAxi4StreamTx = circuit $ \mmWb -> do
   [dataSlot, sendSlot] <-
     deviceWbI (deviceConfig "AxiStreamTx"){registered = False} -< mmWb
   dataReqs <- addressableBytesWb @1 dataRegConfig -< dataSlot
-  sendReqs <- addressableBytesWb @1 sendRegConfig -< sendSlot
-  wbToAxiStreamTxBridge -< (dataReqs, sendReqs)
+  (_sendBusWb, sendBusActivity) <-
+    registerWbI @_ @_ @4 sendRegConfig () -< (sendSlot, Fwd (pure Nothing))
+  sendReq <- applyC (fmap isJust) id -< sendBusActivity
+  wbToAxiStreamTxBridge -< (dataReqs, sendReq)
  where
   dataRegConfig =
     (registerConfig "data" "Write data to the AXI4 stream")
@@ -619,27 +622,25 @@ wbToAxi4StreamTx = circuit $ \mmWb -> do
   sendRegConfig =
     (registerConfig "send" "Write to send a transfer with _tlast set")
       { access = WriteOnly
+      , tags = ["zero-width"]
       }
 
 wbToAxiStreamTxBridge ::
   Circuit
     ( ReqResp dom (Either (Index 1) (Index 1, BitVector 4, Bytes 4)) (Bytes 4)
-    , ReqResp dom (Either (Index 1) (Index 1, BitVector 4, Bytes 4)) (Bytes 4)
+    , CSignal dom Bool
     )
     (Axi4Stream dom (AxiStreamBytesOnly 4) ())
 wbToAxiStreamTxBridge = Circuit $ \((dataFwd, sendFwd), axiS2M) ->
-  let (dataResp, sendResp, axiM2S) =
+  let (dataResp, axiM2S) =
         unbundle $ go <$> dataFwd <*> sendFwd <*> axiS2M
-   in ((dataResp, sendResp), axiM2S)
+   in ((dataResp, ()), axiM2S)
  where
-  go dataReq sendReq (Axi4StreamS2M _tready) = (dataResp, sendResp, axiM2S)
+  go dataReq isSendWrite (Axi4StreamS2M _tready) = (dataResp, axiM2S)
    where
     dataWrite = case dataReq of
       Just (Right (_, mask, dat)) -> Just (mask, dat)
       _ -> Nothing
-    isSendWrite = case sendReq of
-      Just (Right _) -> True
-      _ -> False
     axiM2S = case dataWrite of
       Just (mask, dat) ->
         Just
@@ -667,7 +668,6 @@ wbToAxiStreamTxBridge = Circuit $ \((dataFwd, sendFwd), axiS2M) ->
         | otherwise -> Nothing
     resp = if _tready && isJust axiM2S then Just 0 else Nothing
     dataResp = if isJust dataWrite then resp else Nothing
-    sendResp = if isNothing dataWrite && isSendWrite then resp else Nothing
 
 data AxiPacketFifoState maxPackets = AxiPacketFifoState
   { packetCount :: Index (maxPackets + 1)

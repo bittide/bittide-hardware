@@ -6,30 +6,33 @@
 #![no_main]
 #![feature(sync_unsafe_cell)]
 
-use bittide_hal::hals::ethernet as hal;
-use bittide_hal::manual_additions::timer::{Duration, Instant};
-use bittide_sys::axi::{AxiRx, AxiTx};
-use bittide_sys::mac::MacStatus;
-use bittide_sys::smoltcp::axi::AxiEthernet;
-use bittide_sys::smoltcp::{set_local, set_unicast};
-use bittide_sys::uart::log::LOGGER;
+use bittide_hal::{
+    hals::ethernet as hal,
+    manual_additions::timer::{Duration, Instant},
+};
+use bittide_sys::{
+    mac::MacStatus,
+    smoltcp::{axi::AxiEthernet, set_local, set_unicast},
+    uart::log::LOGGER,
+};
 use log::{debug, info, LevelFilter};
+use riscv::register::{mcause, mepc, mtval};
+use smoltcp::{
+    iface::{Config, Interface, SocketSet, SocketStorage},
+    phy::Medium,
+    socket::{
+        dhcpv4,
+        tcp::{Socket, SocketBuffer},
+    },
+    wire::{EthernetAddress, IpAddress, IpCidr},
+};
+use ufmt::uwriteln;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-use riscv::register::{mcause, mepc, mtval};
-use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
-use smoltcp::phy::Medium;
-use smoltcp::socket::dhcpv4;
-use smoltcp::socket::tcp::{Socket, SocketBuffer};
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
-use ufmt::uwriteln;
-
 const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 const MAC_ADDR: *const MacStatus = (INSTANCES.mac_status.0) as *const MacStatus;
-const RX_AXI_ADDR: *const () = (0x40000000) as *const ();
-const TX_AXI_ADDR: *const () = (0x50000000) as *const ();
 
 const RX_BUFFER_SIZE: usize = 2048;
 const ETH_MTU: usize = RX_BUFFER_SIZE;
@@ -73,8 +76,8 @@ fn main() -> ! {
     // TODO: Use EthMacStatus instead of MacStatus
     let _mac = INSTANCES.mac_status;
 
-    let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
-    let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
+    let axi_tx = INSTANCES.axi_stream_tx;
+    let axi_rx = INSTANCES.axi_rx_buffer;
 
     let dna: [u8; 12] = INSTANCES.dna.dna();
 
@@ -93,7 +96,8 @@ fn main() -> ! {
     set_unicast(&mut eth_addr);
     set_local(&mut eth_addr);
     let config = Config::new(eth_addr.into());
-    let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, None);
+    let mut eth: AxiEthernet<_, _, ETH_MTU> =
+        AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, None);
     let now = to_smoltcp_instant(timer.now());
     let mut iface = Interface::new(config, &mut eth, now);
 

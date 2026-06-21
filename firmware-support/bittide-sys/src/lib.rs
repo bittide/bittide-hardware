@@ -5,7 +5,6 @@
 #![no_std]
 #![feature(sync_unsafe_cell)]
 
-pub mod axi;
 pub mod callisto;
 pub mod link_startup;
 pub mod mac;
