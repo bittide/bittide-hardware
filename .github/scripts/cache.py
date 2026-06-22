@@ -408,6 +408,34 @@ class Mc:
 
         return True
 
+# A fixed timestamp in the past. The exact value is unimportant, as long as it
+# is older than any build artifact restored from a cache.
+SOURCE_BACKDATE = datetime.datetime.fromisoformat("2000-01-01T00:00:00").timestamp()
+
+# Cargo inputs that are *not* git-tracked but are restored from the 'build'
+# cache: the generated firmware HAL sources and the memory maps that the
+# `bittide-hal` build script watches via `cargo::rerun-if-changed`. These are
+# directories; we backdate both the directories and everything inside them.
+BACKDATE_GENERATED_INPUTS = (
+    f"{PWD}/firmware-support/bittide-hal/src/shared_devices",
+    f"{PWD}/firmware-support/bittide-hal/src/types",
+    f"{PWD}/firmware-support/bittide-hal/src/hals",
+    f"{PWD}/firmware-support/bittide-hal-c/generated",
+    f"{PWD}/_build/memory_maps",
+)
+
+def backdate_cargo_inputs():
+    """
+    Reset all tracked and generated files to `SOURCE_BACKDATE` to prevent Cargo recompiles
+    """
+    tracked = get_all_git_files()
+    generated = itertools.chain.from_iterable(
+        glob.glob(os.path.join(g, "**"), recursive=True) for g in BACKDATE_GENERATED_INPUTS
+    )
+
+    for path in itertools.chain(tracked, generated):
+        os.utime(path, (SOURCE_BACKDATE, SOURCE_BACKDATE))
+
 def write_cache_result(result : bool):
     with open("cache_found", "w") as fp:
         fp.write("1" if result else "0")
@@ -463,7 +491,11 @@ def main(opts):
         if not cache_result:
             print(f"Cache not found: {mc._get_filename()}")
         else:
-            print(f"Cache found and extracted: {mc._get_filename()}")
+            if opts["build"]:
+                backdate_cargo_inputs()
+                print(f"Cache found and extracted and backdated: {mc._get_filename()}")
+            else:
+                print(f"Cache found and extracted: {mc._get_filename()}")
 
         if opts["--write-cache-found"]:
             write_cache_result(cache_result)
