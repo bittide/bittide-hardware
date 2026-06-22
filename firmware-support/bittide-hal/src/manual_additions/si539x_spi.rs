@@ -84,6 +84,34 @@ impl Si539xSpi {
         Ok(())
     }
 
+    /// Write a clock board configuration using SPI, will retry upon failure.
+    ///
+    /// Writing a configuration can sometimes fail, usually because a written register was not
+    /// the same when not read back. This happens roughly once in 200 runs.
+    pub fn write_configuration_with_retry<
+        const PRE_LEN: usize,
+        const CFG_LEN: usize,
+        const PST_LEN: usize,
+    >(
+        &self,
+        timer: &Timer,
+        config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
+        max_retries: usize,
+    ) -> Result<(), WriteError> {
+        let mut retries = 0;
+        loop {
+            match self.write_configuration(timer, config) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    retries += 1;
+                    if retries >= max_retries {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    }
+
     /// Verfiy that the config part of the configuration is as expected.
     pub fn verify_configuration<
         const PRE_LEN: usize,
