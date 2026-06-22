@@ -429,11 +429,11 @@ def backdate_cargo_inputs():
     Reset all tracked and generated files to `SOURCE_BACKDATE` to prevent Cargo recompiles
     """
     tracked = get_all_git_files()
-    generated = itertools.chain.from_iterable(
-        glob.glob(os.path.join(g, "**"), recursive=True) for g in BACKDATE_GENERATED_INPUTS
-    )
+    # generated = itertools.chain.from_iterable(
+    #     glob.glob(os.path.join(g, "**"), recursive=True) for g in BACKDATE_GENERATED_INPUTS
+    # )
 
-    for path in itertools.chain(tracked, generated):
+    for path in tracked: # itertools.chain(tracked, generated):
         os.utime(path, (SOURCE_BACKDATE, SOURCE_BACKDATE))
 
 def write_cache_result(result : bool):
