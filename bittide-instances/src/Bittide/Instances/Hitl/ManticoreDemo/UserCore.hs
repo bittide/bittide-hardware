@@ -73,9 +73,10 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
  )
 import Protocols.ReqResp (ReqResp)
 
--- | Three MU busses: control + device registers, the gmem memory region, and the
--- per-node UserConfig peripheral (seam edge -> Bittide link map + enable, written by
--- the driver per device from the chip->FPGA placement).
+{- | Three MU busses: control + device registers, the gmem memory region, and the
+per-node UserConfig peripheral (seam edge -> Bittide link map + enable, written by
+the driver per device from the chip->FPGA placement).
+-}
 type UserCoreBusses = 3
 
 {- | Ring-buffer depth of the (unused, milestone-1) link handshake path. Matches
@@ -121,8 +122,15 @@ cmdPhaseStep ph (startPulse, chipStopped) = case ph of
     | otherwise -> PhWaitDone
 
 mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
-mkUserCore bitClk bitRst bitEna _localCounter _maybeDna _appReset =
-  manticoreUserCoreC bitClk bitRst bitEna
+mkUserCore bitClk bitRst bitEna _localCounter _maybeDna appReset =
+  -- Reset the Manticore chip on bitRst OR the management unit's timed appReset. The MU
+  -- releases appReset at a per-node local-counter cycle chosen by the UGN-grooming relabel
+  -- (the host writes TimedReset.release_cycle, see the driver), so every chip's free-running
+  -- totalCycleCount gets a common, boot-skew-absorbed time origin across all FPGAs. Without
+  -- this the per-chip CMD_START_AT cannot land the chips in lockstep (their counters share no
+  -- zero-point). The driver must write release_cycle, else appReset stays asserted (the
+  -- register defaults to maxBound) and the chip would be held in reset forever.
+  manticoreUserCoreC bitClk (orReset bitRst appReset) bitEna
 
 {- | The user-core circuit. Carries 'HasCallStack' so the Wishbone register
 helpers ('registerWbI') can record source locations for the memory map (they
@@ -198,15 +206,26 @@ manticoreUserCoreC bitClk bitRst bitEna =
       , wbSeamEn
       ] <-
       withCRE (deviceWbI (deviceConfig "UserConfig")) -< userConfigBus
-    (Fwd (extE, _)) <- withCRE (registerWbI (rw "seam_east_extend") (0 :: BitVector 32)) -< (wbSeExt, Fwd (pure Nothing))
-    (Fwd (linkE, _)) <- withCRE (registerWbI (rw "seam_east_link") (0 :: Index LinkCount)) -< (wbSeLink, Fwd (pure Nothing))
-    (Fwd (extW, _)) <- withCRE (registerWbI (rw "seam_west_extend") (0 :: BitVector 32)) -< (wbSwExt, Fwd (pure Nothing))
-    (Fwd (linkW, _)) <- withCRE (registerWbI (rw "seam_west_link") (0 :: Index LinkCount)) -< (wbSwLink, Fwd (pure Nothing))
-    (Fwd (extN, _)) <- withCRE (registerWbI (rw "seam_north_extend") (0 :: BitVector 32)) -< (wbSnExt, Fwd (pure Nothing))
-    (Fwd (linkN, _)) <- withCRE (registerWbI (rw "seam_north_link") (0 :: Index LinkCount)) -< (wbSnLink, Fwd (pure Nothing))
-    (Fwd (extS, _)) <- withCRE (registerWbI (rw "seam_south_extend") (0 :: BitVector 32)) -< (wbSsExt, Fwd (pure Nothing))
-    (Fwd (linkS, _)) <- withCRE (registerWbI (rw "seam_south_link") (0 :: Index LinkCount)) -< (wbSsLink, Fwd (pure Nothing))
-    (Fwd (seamEn, _)) <- withCRE (registerWbI (rw "seam_enable") (0 :: BitVector 32)) -< (wbSeamEn, Fwd (pure Nothing))
+    (Fwd (extE, _)) <-
+      withCRE (registerWbI (rw "seam_east_extend") (0 :: BitVector 32)) -< (wbSeExt, Fwd (pure Nothing))
+    (Fwd (linkE, _)) <-
+      withCRE (registerWbI (rw "seam_east_link") (0 :: Index LinkCount)) -< (wbSeLink, Fwd (pure Nothing))
+    (Fwd (extW, _)) <-
+      withCRE (registerWbI (rw "seam_west_extend") (0 :: BitVector 32)) -< (wbSwExt, Fwd (pure Nothing))
+    (Fwd (linkW, _)) <-
+      withCRE (registerWbI (rw "seam_west_link") (0 :: Index LinkCount)) -< (wbSwLink, Fwd (pure Nothing))
+    (Fwd (extN, _)) <-
+      withCRE (registerWbI (rw "seam_north_extend") (0 :: BitVector 32)) -< (wbSnExt, Fwd (pure Nothing))
+    (Fwd (linkN, _)) <-
+      withCRE (registerWbI (rw "seam_north_link") (0 :: Index LinkCount))
+        -< (wbSnLink, Fwd (pure Nothing))
+    (Fwd (extS, _)) <-
+      withCRE (registerWbI (rw "seam_south_extend") (0 :: BitVector 32)) -< (wbSsExt, Fwd (pure Nothing))
+    (Fwd (linkS, _)) <-
+      withCRE (registerWbI (rw "seam_south_link") (0 :: Index LinkCount))
+        -< (wbSsLink, Fwd (pure Nothing))
+    (Fwd (seamEn, _)) <-
+      withCRE (registerWbI (rw "seam_enable") (0 :: BitVector 32)) -< (wbSeamEn, Fwd (pure Nothing))
 
     let
       (gmemEnS, gmemWeS, gmemAddrS, gmemDinS) = unbundle gmemDrive
@@ -303,10 +322,18 @@ manticoreUserCoreC bitClk bitRst bitEna =
   gthTxOf ::
     Vec LinkCount (BitVector 64) ->
     Bool ->
-    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
-    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
-    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
-    Bool -> Index LinkCount -> BitVector SeamFrameBits ->
+    Bool ->
+    Index LinkCount ->
+    BitVector SeamFrameBits ->
+    Bool ->
+    Index LinkCount ->
+    BitVector SeamFrameBits ->
+    Bool ->
+    Index LinkCount ->
+    BitVector SeamFrameBits ->
+    Bool ->
+    Index LinkCount ->
+    BitVector SeamFrameBits ->
     Vec LinkCount (BitVector 64)
   gthTxOf hs en eE lE tE eW lW tW eN lN tN eS lS tS
     | en = foldl upd hs ((eE, lE, tE) :> (eW, lW, tW) :> (eN, lN, tN) :> (eS, lS, tS) :> Nil)

@@ -32,7 +32,10 @@ module Bittide.Instances.Hitl.ManticoreDemo.Latencies (
   chipOfX,
   chipOfY,
   icAt,
+  chipCols,
+  chipRows,
   seamRows,
+  seamConfig,
   latenciesCsv,
   writeLatenciesCsv,
 ) where
@@ -40,9 +43,10 @@ module Bittide.Instances.Hitl.ManticoreDemo.Latencies (
 import Prelude
 
 import qualified Clash.Prelude as C
-import Data.List (find, intercalate)
+import Data.List (elemIndex, find, intercalate)
+import Data.Maybe (fromJust)
 
-import Bittide.Instances.Hitl.Setup (FpgaCount)
+import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..), indexToNodeId)
 import Bittide.Instances.Hitl.WireDemo.Driver (goldenUgns, internalDelay, marginFrames)
 
@@ -145,6 +149,35 @@ icAt cx cy = cy * chipCols + cx
 -- | The IC a global core (x, y) lives on.
 icOfCore :: Int -> Int -> Int
 icOfCore x y = icAt (chipOfX x) (chipOfY y)
+
+{- | Per-FPGA-node inter-chip seam configuration: for each torus edge, whether it is
+wired to a grid neighbour (the @seam_<edge>_extend@ bit) and, if so, which Bittide link
+on this FPGA carries that edge's TDM frame (the @seam_<edge>_link@ index).
+
+The chip grid is a plain NON-WRAPPING mesh: the global-torus wraps are U-turned inside
+the END chips by the fold (see 'foldChip'), so an edge extends iff a grid neighbour
+exists in that direction (corner chips extend 2 edges, edge chips 3, interior 4). The
+authoritative wiring is the @MultiChipTdmSimKernel@: @east(cx,cy)<->west(cx+1,cy)@,
+@north(cx,cy)<->south(cx,cy+1)@, @extend := neighbour-exists@. The link index is this
+FPGA's link to the neighbour IC (== FPGA node id), found in 'fpgaSetup' exactly like the
+WireDemo's @chainTopology@ (@fromJust . elemIndex target links@).
+-}
+seamConfig :: Int -> [(TorusDir, Bool, Maybe Int)]
+seamConfig node =
+  [ (d, ext, if ext then Just (linkTo nb) else Nothing)
+  | d <- [North, South, East, West]
+  , let (ext, nb) = edge d
+  ]
+ where
+  cx = node `mod` chipCols
+  cy = node `div` chipCols
+  edge North = (cy < chipRows - 1, icAt cx (cy + 1))
+  edge South = (cy > 0, icAt cx (cy - 1))
+  edge East = (cx < chipCols - 1, icAt (cx + 1) cy)
+  edge West = (cx > 0, icAt (cx - 1) cy)
+  -- This FPGA's link vector as plain node ids (link slot -> neighbour node id).
+  links = map fromIntegral (C.toList (snd (C.toList fpgaSetup !! node))) :: [Int]
+  linkTo nb = fromJust (elemIndex nb links)
 
 -- | The global ring neighbour of (x, y) in a direction (wrap-around).
 ringNeighbour :: Int -> Int -> TorusDir -> (Int, Int)

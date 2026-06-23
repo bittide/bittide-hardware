@@ -34,21 +34,37 @@ module Bittide.Instances.Hitl.ManticoreDemo.Driver where
 
 import Prelude
 
-import Bittide.Hitl (DeviceInfo)
+import Bittide.ClockControl.Config (defCcConf)
+import Bittide.Hitl (DeviceInfo (..))
+import Bittide.Instances.Domains (GthTx)
+import Bittide.Instances.Hitl.ManticoreDemo.Latencies (dirName, icAt, seamConfig)
+import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver (assertProbe)
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.MemoryMap (getPathAddress)
+import Bittide.Instances.Hitl.Utils.Picocom (initPicocom)
+import Bittide.Instances.Hitl.Utils.Relabel (
+  RelabelPlan (..),
+  computeRelabel,
+  hardwareUgnEdges,
+  readCurrentTime,
+  writeCorrections,
+  writeReleaseCycle,
+ )
+import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
+import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async (mapConcurrently_)
-import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
-import Control.Monad (forM_, when)
+import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
+import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (Value (Array, Number, Object, String))
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Default (def)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Word (Word16, Word32, Word64)
 import Numeric (showHex)
+import Project.Chan (waitForLine)
 import Project.FilePath (findParentContaining)
 import Project.Handle (assertEither)
 import System.Exit (ExitCode (..))
@@ -57,26 +73,48 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
+import qualified Bittide.Calculator as Calc
 import qualified Bittide.Instances.Hitl.ManticoreDemo.MemoryMaps as MemoryMaps
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
+import qualified Bittide.Instances.Hitl.WireDemo.Driver as WD
+import qualified Clash.Prelude as C
+import qualified Clash.Sized.Vector as V
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
 import qualified Data.List as L
 import qualified Data.Text as Text
 import qualified Gdb
+import qualified System.Timeout.Extra as T
 
 -- ---------------------------------------------------------------------------
 -- Manifest (subset of the manticore-runtime manifest.json)
 -- ---------------------------------------------------------------------------
 
+{- | One chip's program image + metadata. A single-chip manifest is represented as a
+single chip at @(cx,cy)=(0,0)@; a multi-chip (@--chip-dim-x/y@) manifest carries one
+'ChipManifest' per @chips[]@ entry, each placed at its grid cell @(cx,cy)@ — which is
+also its FPGA node id (@icAt cx cy@).
+-}
+data ChipManifest = ChipManifest
+  { cmCx :: Int
+  , cmCy :: Int
+  , cmInitializers :: [FilePath]
+  , cmProgram :: FilePath
+  , cmExceptions :: [(Int, String)]
+  -- ^ this chip's own privileged exceptions, (eid, type)
+  , cmMemories :: [(Int, Int)]
+  {- ^ this chip's reserved global-memory regions, (base, size) words — the image is laid
+  out ABOVE them (mirrors run_manifest.py), since user @DefGlobalMemory@ is allocated
+  at @userBase + size@ and would otherwise overlap the loaded code.
+  -}
+  }
+
 data Manifest = Manifest
   { userBase :: Int
   -- ^ reserved global-memory words (the @base@ field, default 0x4000)
-  , initializers :: [FilePath]
-  , program :: FilePath
-  , exceptions :: [(Int, String)]
-  -- ^ (exception id, type), e.g. (1, "FINISH")
+  , chips :: [ChipManifest]
+  -- ^ one entry (single-chip) or one per @chips[]@ grid cell (multi-chip)
   }
 
 parseManifest :: FilePath -> IO Manifest
@@ -86,25 +124,42 @@ parseManifest path = do
     Right (Object o) -> pure o
     Right _ -> fail (path <> ": not a JSON object")
     Left e -> fail (path <> ": " <> e)
-  let
-    asString (String s) = Just (Text.unpack s)
-    asString _ = Nothing
-    asInt (Number n) = Just (round n)
-    asInt _ = Nothing
-    items k = case KM.lookup k obj of Just (Array v) -> foldr (:) [] v; _ -> []
-  program <- case KM.lookup "program" obj >>= asString of
-    Just p -> pure p
-    Nothing -> fail (path <> ": missing 'program'")
-  let
-    initializers = mapMaybe asString (items "initializers")
-    userBase = fromMaybe 0x4000 (KM.lookup "base" obj >>= asInt)
-    exceptions =
-      [ (eid, ty)
-      | Object e <- items "exceptions"
-      , Just eid <- [KM.lookup "eid" e >>= asInt]
-      , Just ty <- [KM.lookup "type" e >>= asString]
-      ]
-  pure Manifest{userBase, initializers, program, exceptions}
+  let userBase = fromMaybe 0x4000 (KM.lookup "base" obj >>= asInt)
+  cs <- case KM.lookup "chips" obj of
+    Just (Array v) -> mapM parseChipVal (foldr (:) [] v)
+    _ -> (: []) <$> parseChipObj obj -- single-chip: top-level program/initializers/exceptions
+  pure Manifest{userBase, chips = cs}
+ where
+  asString (String s) = Just (Text.unpack s)
+  asString _ = Nothing
+  asInt (Number n) = Just (round n)
+  asInt _ = Nothing
+  itemsOf o k = case KM.lookup k o of Just (Array v) -> foldr (:) [] v; _ -> []
+  parseChipVal (Object o) = parseChipObj o
+  parseChipVal _ = fail (path <> ": a 'chips' entry is not a JSON object")
+  parseChipObj o = do
+    prog <- case KM.lookup "program" o >>= asString of
+      Just p -> pure p
+      Nothing -> fail (path <> ": chip missing 'program'")
+    pure
+      ChipManifest
+        { cmCx = fromMaybe 0 (KM.lookup "cx" o >>= asInt)
+        , cmCy = fromMaybe 0 (KM.lookup "cy" o >>= asInt)
+        , cmInitializers = mapMaybe asString (itemsOf o "initializers")
+        , cmProgram = prog
+        , cmExceptions =
+            [ (eid, ty)
+            | Object e <- itemsOf o "exceptions"
+            , Just eid <- [KM.lookup "eid" e >>= asInt]
+            , Just ty <- [KM.lookup "type" e >>= asString]
+            ]
+        , cmMemories =
+            [ (base, size)
+            | Object m <- itemsOf o "memories"
+            , Just base <- [KM.lookup "base" m >>= asInt]
+            , Just size <- [KM.lookup "size" m >>= asInt]
+            ]
+        }
 
 -- ---------------------------------------------------------------------------
 -- gmem image layout (mirror of manticore-runtime / run_manifest.py)
@@ -119,13 +174,17 @@ readBinWords p = packLe . BS.unpack <$> BS.readFile p
   packLe (lo : hi : rest) = (fromIntegral lo .|. (fromIntegral hi `shiftL` 8)) : packLe rest
   packLe _ = []
 
--- | Lay out the initializers then the main program above the reserved region.
-layout :: FilePath -> Manifest -> IO [Binary]
-layout mdir m = do
-  (initBins, next) <- go ([], userBase m) (zip [(0 :: Int) ..] (initializers m))
-  mw <- readBinWords (resolve (program m))
+{- | Lay out one chip's initializers then its main program above the reserved region.
+The base is @max(userBase, max over memories of base+size)@ so the loaded code never
+overlaps a reserved global-memory region (mirrors run_manifest.py's layout).
+-}
+layoutChip :: FilePath -> Int -> ChipManifest -> IO [Binary]
+layoutChip mdir ubase cm = do
+  (initBins, next) <- go ([], startBase) (zip [(0 :: Int) ..] (cmInitializers cm))
+  mw <- readBinWords (resolve (cmProgram cm))
   pure (initBins <> [Binary "main" next mw False])
  where
+  startBase = maximum (ubase : [b + s | (b, s) <- cmMemories cm])
   resolve p = if take 1 p == "/" then p else mdir </> p
   go acc [] = pure acc
   go (acc, base) ((i, p) : rest) = do
@@ -145,9 +204,37 @@ resumeCmd timeout = (1 `shiftL` 63) .|. (1 `shiftL` 56) .|. timeout
 flushCmd :: Word64
 flushCmd = 2 `shiftL` 56
 
+{- | CMD_START_AT: boot, then hold the (independently gated) compute clock until the
+reset-aligned @totalCycleCount@ reaches @s@, then run. No @timeout_enabled@ bit.
+This is the coordinated simultaneous-start primitive: issue the same @s@ to every
+chip and they all ungate together (RTL ungates on @totalCycleCount >= s@).
+-}
+startAtCmd :: Word64 -> Word64
+startAtCmd s = (3 `shiftL` 56) .|. s
+
+{- | Armed CMD_START_AT: + STALL_ARM (bit 55) so the chip gates ONLY on the coordinated
+STALL wave (eid 0x7FFF); @$display@/FLUSH is captured but NON-stalling. Used for main.
+-}
+armedStartAtCmd :: Word64 -> Word64
+armedStartAtCmd s = startAtCmd s .|. (1 `shiftL` 55)
+
 mainTimeout, initTimeout :: Word64
 mainTimeout = 50_000_000
 initTimeout = 1_000_000
+
+{- | @totalCycleCount@ headroom for CMD_START_AT arming. The host arms 8 chips over slow
+sequential GDB writes (vs the sim's instant pokes, margin 2000), so @s@ must clear the
+full arming + boot spread; otherwise a late-armed chip ungates immediately (RTL @>=@)
+and runs out of lockstep. Generous first cut; tune from the rig.
+-}
+startMargin :: Word64
+startMargin = 50_000_000
+
+{- | Seconds of headroom between reading node 0's local counter and the timed reset-release
+(mirrors the wire demo). Must exceed the host's per-node TimedReset.release_cycle bookkeeping
+so no chip's local counter has already passed its release cycle when it is written.
+-}
+type StartDelay = 30
 
 {- | Golden from the manticore-hw @Mips32SimTester@ (interpreter-verified, the
 same MIPS32 sum program): it halts via @$finish@ (eid 3) at 53 virtual cycles
@@ -180,6 +267,9 @@ driver testName targets = do
   liftIO . putStrLn $ "Manticore demo driver: " <> show (length targets) <> " target(s)"
   forM_ targets (assertProbe "probe_test_start")
 
+  -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb".
+  liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation
+
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let
     hitlDir = projectDir </> "_build/hitl" </> testName
@@ -188,27 +278,37 @@ driver testName targets = do
     toInitArgs (_, deviceInfo) targetIndex =
       Ocd.InitOpenOcdArgs{deviceInfo, expectedJtagIds, hitlDir, targetIndex}
     initArgs = L.zipWith toInitArgs targets [0 ..]
+    picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
 
   manifest <- liftIO $ parseManifest (programDir </> "manifest.json")
-  bins <- liftIO $ layout programDir manifest
+  liftIO . putStrLn $
+    "Manticore image: "
+      <> show (length (chips manifest))
+      <> " chip(s), userBase "
+      <> show (userBase manifest)
 
   let
     bootInitArgs = L.repeat def{Ocd.logPrefix = "boot-", Ocd.initTcl = "vexriscv_boot_init.tcl"}
     openOcdBootStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs bootInitArgs
 
-  -- Boot CPU: configure the Si539x clocks (the demo boot firmware), then idle.
-  brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
-    let bootTapInfos = Ocd.parseBootTapInfo <$> initOcdsData
-    Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "manticore-demo-boot") bootGdbs bootTapInfos targets
-      liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
-      liftIO $ mapConcurrently_ Gdb.continue bootGdbs
-      liftIO $ threadDelay 3_000_000
+  -- Boot CPUs: configure the Si539x clocks (the demo boot firmware), then idle.
+  brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) ->
+    brackets openOcdBootStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+      let bootTapInfos = Ocd.parseBootTapInfo <$> initOcdsData
+      Gdb.withGdbs (L.length targets) $ \bootGdbs -> do
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "manticore-demo-boot") bootGdbs bootTapInfos targets
+        liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) bootGdbs
+        liftIO $ mapConcurrently_ Gdb.continue bootGdbs
+        liftIO $
+          T.tryWithTimeout T.PrintActionTime "Waiting for boot done" 60_000_000 $
+            forConcurrently_ picocoms $
+              \pico -> waitForLine pico "[BT] Going into infinite loop.."
 
-  -- Clock-control + management-unit CPUs: run the generic bring-up firmware
-  -- (clock control + link startup) on every node to bring the Bittide domain
-  -- up — without it the chip's Wishbone host registers do not respond. The MU
-  -- firmware idles after bring-up; halt it, then poke the chip over GDB.
+  -- Clock-control + management-unit CPUs: run the generic bring-up firmware on
+  -- every node (clock control + link startup + UGN capture + grooming) — the
+  -- SAME flow as the wire demo, exercising all the relevant Bittide code. This
+  -- brings the Bittide domain up to the stored golden latencies. The MU idles
+  -- after grooming; halt it, then poke the chip over GDB.
   let openOcdStarts = liftIO <$> L.zipWith Ocd.initOpenOcd initArgs (L.repeat def)
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
@@ -223,16 +323,137 @@ driver testName targets = do
         liftIO $
           zipWithConcurrently3_ (initGdb hitlDir "manticore-demo-management-unit") muGdbs muTapInfos targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) muGdbs
-        -- Run the bring-up: clock control (keeps running) + link startup.
-        liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-        liftIO $ mapConcurrently_ Gdb.continue muGdbs
-        -- Give the MU firmware time to finish link startup + stability.
-        liftIO $ threadDelay 20_000_000
-        -- Halt the (now idling) MUs so we can poke the chip registers.
-        liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
-        case zip muGdbs targets of
-          [] -> pure ExitSuccess
-          ((gdb, _) : _) -> liftIO $ runManticore gdb bins (exceptions manifest)
+
+        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+          let
+            goDumpCcSamples =
+              dumpCcSamples MemoryMaps.clockControl hitlDir (defCcConf (L.length targets)) ccGdbs
+
+          -- Run the bring-up: clock control (keeps running) + link startup + UGN capture.
+          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue muGdbs
+
+          -- Wait for every MU to capture + print its UGNs.
+          liftIO
+            $ T.tryWithTimeoutOn
+              T.PrintActionTime
+              "Waiting for captured UGNs"
+              60_000_000
+              goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico -> waitForLine pico "[MU] Printed all hardware UGNs"
+
+          -- Read the captured UGNs from EVERY target over GDB (the chip's CaptureUgn
+          -- MMIO, halted). This is the milestone: all rig links brought up and all
+          -- UGNs collected.
+          liftIO $ putStrLn "Getting UGNs for all targets"
+          liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
+          ugnPairsTable <-
+            liftIO $ zipWithConcurrently (WD.readHardwareUgns MemoryMaps.managementUnit) targets muGdbs
+          let
+            ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
+          liftIO $ do
+            putStrLn "Calculating IGNs for all targets"
+            Calc.printAllIgns ugnPairsTableV fpgaSetup
+            putStrLn "UGN pairs table:"
+            mapM_ print ugnPairsTableV
+
+          -- Groom this boot onto the stored golden latencies (proves the rig can be
+          -- relabeled, mirroring the wire demo): Bellman-Ford relabel + per-link
+          -- elastic-buffer corrections.
+          let measuredEdges = hardwareUgnEdges ugnPairsTableV
+          RelabelPlan{resetOffsets, corrections = correctionsPerNode} <-
+            case computeRelabel measuredEdges WD.lambdaSafe of
+              Left ns ->
+                fail $
+                  "UGN grooming infeasible (UGNs changed too much); negative cycle through nodes: "
+                    <> show ns
+              Right plan -> pure plan
+          liftIO $ do
+            putStrLn $
+              "Grooming onto stored lambda^safe ("
+                <> show (L.length WD.lambdaSafe)
+                <> " edges, margin "
+                <> show WD.marginFrames
+                <> ")"
+            putStrLn "Per-node frame corrections (per link):"
+            mapM_ print (V.toList correctionsPerNode)
+
+          -- Apply the elastic-buffer corrections on every node.
+          liftIO $ do
+            putStrLn "\n=== Applying elastic-buffer corrections ==="
+            mapConcurrently_
+              (\(gdb, corr) -> writeCorrections MemoryMaps.managementUnit gdb corr)
+              (L.zip muGdbs (V.toList correctionsPerNode))
+            mapConcurrently_ Gdb.continue muGdbs
+            T.tryWithTimeoutOn
+              T.PrintActionTime
+              "Waiting for corrections to be applied"
+              60_000_000
+              goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico -> waitForLine pico "[MU] Corrections applied successfully"
+            mapConcurrently_ Gdb.interrupt muGdbs
+
+          liftIO goDumpCcSamples
+          liftIO $ putStrLn "=== UGNs collected + groomed on all targets ==="
+
+          -- Reset-aligned start. appReset (wired into the Manticore chip's reset in UserCore.hs)
+          -- defaults HELD (TimedReset.release_cycle = maxBound), so we MUST release it here or
+          -- the chip never leaves reset -- this is required even single-chip. Releasing each
+          -- node at sharedBase + its relabel offset gives every chip's free-running
+          -- totalCycleCount a common, boot-skew-absorbed time origin across FPGAs: resetOffsets
+          -- is the Bellman-Ford potential gauged to node 0, and the staggered release makes the
+          -- per-chip starts consistent with the groomed seam latencies (mirrors the wire demo).
+          -- The per-chip CMD_START_AT in runManticoreMulti then lands the chips in lockstep.
+          currentTime <-
+            liftIO $ readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head muGdbs)
+          let
+            sharedBase = currentTime + C.natToNum @(C.PeriodToCycles GthTx (C.Seconds StartDelay))
+            tResets :: C.Vec FpgaCount (C.Unsigned 64)
+            tResets =
+              C.map (\off -> C.checkedFromIntegral (toInteger sharedBase + toInteger off)) resetOffsets
+          liftIO $ do
+            putStrLn $
+              "=== Reset-aligned release: sharedBase="
+                <> show sharedBase
+                <> " (node0 now + "
+                <> show (C.natToNum @StartDelay :: Integer)
+                <> "s) ==="
+            putStrLn "Per-node tReset (= sharedBase + relabel offset):"
+            mapM_ print (V.toList tResets)
+            forM_ (L.zip muGdbs (V.toList tResets)) $ \(gdb, tReset) ->
+              writeReleaseCycle MemoryMaps.managementUnit gdb tReset
+          -- Confirm no node's local counter has already passed its tReset (host bookkeeping fit
+          -- inside the StartDelay headroom), else that node would release before it is set up.
+          releaseInTime <-
+            liftIO $ forM (L.zip3 targets muGdbs (V.toList tResets)) $ \(tgt, gdb, tReset) -> do
+              now <- readCurrentTime MemoryMaps.managementUnit tgt gdb
+              pure (now < tReset)
+          liftIO $
+            unless (L.and releaseInTime) $
+              fail "Reset-release window missed: setup took longer than the StartDelay margin"
+          -- Wait for appReset to release on every node (local counter passes tReset). Now each
+          -- chip's totalCycleCount counts from the shared aligned origin and the chip is live
+          -- for image load + CMD_START_AT.
+          liftIO $ do
+            let startDelaySec = C.natToNum @StartDelay :: Int
+                delayMicros = (startDelaySec + 1) * 1_000_000
+            putStrLn $ "Waiting ~" <> show (startDelaySec + 1) <> "s for the reset-aligned release..."
+            threadDelay delayMicros
+
+          -- Run the Manticore program. Single-chip: the board-verified runManticore on the
+          -- head target. Multi-chip (--chip-dim-x/y): load each chip's split image into its
+          -- OWN FPGA, configure the per-FPGA seams (grid mesh), and run them as one folded torus
+          -- over the seams with a reset-aligned, armed CMD_START_AT start (now that the timed
+          -- reset above gave every chip a common totalCycleCount origin) + run-to-FINISH.
+          case chips manifest of
+            [single] -> liftIO $ do
+              bins <- layoutChip programDir (userBase manifest) single
+              case zip muGdbs targets of
+                [] -> pure ExitSuccess
+                ((gdb, _) : _) -> runManticore gdb bins (cmExceptions single)
+            cs -> liftIO $ runManticoreMulti programDir (userBase manifest) cs (L.zip [0 ..] muGdbs)
  where
   pick i xss = [xs !! i | xs <- xss, length xs > i]
 
@@ -404,3 +625,205 @@ runManticore gdb bins excMap = do
     then
       putStrLn "PASS: exact match to interpreter golden (structure + RF[2] values)" >> pure ExitSuccess
     else putStrLn "FAIL: trace does not match golden" >> pure (ExitFailure 1)
+
+-- ---------------------------------------------------------------------------
+-- Multi-chip distributed run
+-- ---------------------------------------------------------------------------
+
+{- | Golden for the @loop_multi@ 8x16 torus, from the interpreter / 'MultiChipTdmSimTester'
+(structurally verified in RTL sim): the reporter chip @(0,0)@ reaches FINISH around 1025
+virtual cycles (plus the stall-wave tail of diameter+margin extra vcycles). Reported, not
+asserted on the exact value (the armed run stops on the coordinated wave, not per-$display).
+-}
+goldenMultiVcycles :: Int
+goldenMultiVcycles = 1025
+
+{- | Write FPGA node @node@'s inter-chip seam configuration over its (halted) MU gdb: per
+torus edge, the @seam_<edge>_extend@ bit and (when extended) the @seam_<edge>_link@
+Bittide-link index, then raise @seam_enable@ to switch those links from forwarding the
+handshake to driving the chip's TDM seam frames. See 'Latencies.seamConfig' (the grid
+mesh: an edge extends iff a grid neighbour exists; the link reaches that neighbour FPGA).
+-}
+configureSeams :: Gdb.Gdb -> Int -> IO ()
+configureSeams gdb node = do
+  putStrLn $
+    "  node "
+      <> show node
+      <> " seams: "
+      <> show [(dirName d, ext, ml) | (d, ext, ml) <- seamConfig node]
+  forM_ (seamConfig node) $ \(d, ext, ml) -> do
+    let edge = dirName d
+    Gdb.writeLe
+      gdb
+      (regAddr "UserConfig" ("seam_" <> edge <> "_extend"))
+      (if ext then 1 else 0 :: C.BitVector 32)
+    forM_ ml $ \lk ->
+      Gdb.writeLe
+        gdb
+        (regAddr "UserConfig" ("seam_" <> edge <> "_link"))
+        (fromIntegral lk :: C.Index LinkCount)
+  -- raise seam_enable last so the extend/link config is in place before the switch
+  Gdb.writeLe gdb (regAddr "UserConfig" "seam_enable") (1 :: C.BitVector 32)
+
+{- | Distributed multi-chip run. Each chip's split image is loaded into ITS OWN FPGA's
+gmem (after the caller's timed-reset release gave every chip's totalCycleCount a common
+origin), the per-FPGA seams are configured (grid mesh), and the chips run the one
+folded-torus program, communicating over the seams.
+
+Each initializer phase and the main are started with a coordinated @CMD_START_AT@ (per
+phase: read every chip's @execution_cycles@, pick a common future S = max + margin, and
+issue @CMD_START_AT S@ to all chips so they ungate together). Main is ARMED (STALL_ARM):
+the chips gate ONLY on the coordinated stall wave (eid 0x7FFF), so @$display@/FLUSH is
+captured but NON-stalling, and all chips run in lockstep until the app's @$finish@ trips
+the stall wave and halts them together. The reporter chip @(0,0)@ surfaces FINISH, which
+the host polls. Per-@$display@ value capture is postponed (it would require stalling).
+-}
+runManticoreMulti :: FilePath -> Int -> [ChipManifest] -> [(Int, Gdb.Gdb)] -> IO ExitCode
+runManticoreMulti programDir ubase cms nodeGdbs = do
+  putStrLn $ "=== Multi-chip run: " <> show (length cms) <> " chips over the folded torus ==="
+  runs <- forM cms $ \cm -> do
+    let node = icAt (cmCx cm) (cmCy cm)
+    gdb <- case lookup node nodeGdbs of
+      Just g -> pure g
+      Nothing ->
+        fail $
+          "multi-chip run: no MU gdb for chip ("
+            <> show (cmCx cm)
+            <> ","
+            <> show (cmCy cm)
+            <> ") = node "
+            <> show node
+    bins <- layoutChip programDir ubase cm
+    pure (node, gdb, bins, cmExceptions cm)
+
+  let
+    aSched = regAddr "ManticoreControl" "schedule_config"
+    aGmem = regAddr "ManticoreControl" "gmem_base"
+    aTrace = regAddr "ManticoreControl" "trace_base"
+    aStart = regAddr "ManticoreControl" "start"
+    aEid = regAddr "ManticoreControl" "exception_id"
+    aVc = regAddr "ManticoreControl" "virtual_cycles"
+    aDone = regAddr "ManticoreControl" "done"
+    aGmemRegion = regAddr "ManticoreGmem" "data"
+
+    poke64 g a v = Gdb.writeLe g a (v :: Word64)
+    peek32 g a = fromIntegral <$> (Gdb.readLe g a :: IO Word32) :: IO Int
+    peek64 g a = fromIntegral <$> (Gdb.readLe g a :: IO Word64) :: IO Int
+
+    -- Bulk-load a chip's gmem run (per-node temp file so concurrent chips don't clobber).
+    restoreWords g node hwBase ws
+      | null ws = pure ()
+      | otherwise = do
+          let
+            bytes = BS.pack (concatMap (\w -> [fromIntegral w, fromIntegral (w `shiftR` 8)]) ws)
+            addr = aGmemRegion + fromIntegral (hwBase * 2)
+            path = "/tmp/manticore_gmem_" <> show node <> "_" <> show hwBase <> ".bin"
+          BS.writeFile path bytes
+          Gdb.runCommand g ("restore " <> path <> " binary 0x" <> showHex addr "")
+
+    classifyWith exc eid
+      | eid > (0xFFFF :: Int) = "TIMEOUT"
+      | otherwise = fromMaybe "unknown" (lookup eid exc)
+
+    waitDone g = go (0 :: Int)
+     where
+      go n
+        | n > 200000 = fail "Manticore multi: timeout waiting for command completion"
+        | otherwise = do
+            d <- peek32 g aDone
+            when (d == 0) (go (n + 1))
+
+    -- Pick a common future start cycle S for CMD_START_AT. Every chip's free-running
+    -- totalCycleCount (the execution_cycles register) is reset-aligned, so S = max + margin
+    -- lets them all ungate together (the RTL ungates on totalCycleCount >= S; a chip armed
+    -- after S has already passed runs immediately, hence the generous margin).
+    aExec = regAddr "ManticoreControl" "execution_cycles"
+    computeStartAt margin = do
+      execs <- forM runs $ \(_, gdb, _, _) -> peek64 gdb aExec
+      pure (fromIntegral (maximum execs) + margin :: Word64)
+
+  (rNode, rGdb, _, rExc) <- case [r | r@(n, _, _, _) <- runs, n == 0] of
+    (r : _) -> pure r
+    [] -> fail "multi-chip run: no reporter chip (0,0) in the manifest"
+
+  -- 1. Per-FPGA seam config. 2. Load each chip's split image (concurrently).
+  putStrLn "Configuring per-FPGA seams (grid mesh)..."
+  forM_ runs $ \(node, gdb, _, _) -> configureSeams gdb node
+  putStrLn "Loading per-chip split images into each FPGA's gmem..."
+  forConcurrently_ runs $ \(node, gdb, bins, _) -> do
+    forM_ bins $ \b -> restoreWords gdb node (binBase b) (binWords b)
+    poke64 gdb aTrace 0
+
+  -- 3. Run each chip's initializers, COORDINATED per phase (CMD_START_AT aligned start) so
+  -- any cross-chip init traffic stays in lockstep and each seam empties on a shared vcycle
+  -- boundary (mirrors the verified MultiChipPerMgmtSimTester startAtPhase). All chips share
+  -- one program, so they have the same init phase count.
+  let nInit = case runs of
+        ((_, _, bs, _) : _) -> length (filter binIsInit bs)
+        [] -> 0
+  putStrLn $ "Running " <> show nInit <> " coordinated initializer phase(s) (CMD_START_AT)..."
+  forM_ [0 .. nInit - 1] $ \ph -> do
+    s <- computeStartAt startMargin
+    putStrLn $ "  init phase " <> show ph <> ": CMD_START_AT S=" <> show s
+    forM_ runs $ \(_, gdb, bins, _) -> do
+      let b = filter binIsInit bins !! ph
+      poke64 gdb aSched (startAtCmd s)
+      poke64 gdb aGmem (fromIntegral (binBase b))
+      poke64 gdb aStart 1
+    forM_ runs $ \(node, gdb, _, _) -> do
+      waitDone gdb
+      eid <- peek32 gdb aEid
+      when (eid > 0xFFFF) $
+        fail $
+          "node " <> show node <> " init phase " <> show ph <> " timed out (eid=" <> show eid <> ")"
+
+  -- 4. Armed coordinated start of main (CMD_START_AT + STALL_ARM): every chip gates ONLY on
+  -- the coordinated STALL wave (eid 0x7FFF), so $display/FLUSH is captured but NON-stalling.
+  -- All chips run in lockstep from the aligned S until the app's $finish trips the stall wave
+  -- and halts them together. (Per-$display value capture is postponed.)
+  putStrLn "Starting main on all chips (armed CMD_START_AT)..."
+  sMain <- computeStartAt startMargin
+  putStrLn $ "  main (ARMED): CMD_START_AT S=" <> show sMain
+  forM_ runs $ \(_, gdb, bins, _) -> do
+    poke64 gdb aSched (armedStartAtCmd sMain)
+    poke64 gdb aGmem (fromIntegral (binBase (last bins)))
+    poke64 gdb aStart 1
+
+  -- 5. Armed run: poll the reporter's exception id until the app FINISH. The application eid
+  -- is captured separately from the STALL gate, so the reporter surfaces FINISH here once the
+  -- coordinated wave has halted everyone.
+  let pollFinish n
+        | n > (200000 :: Int) = peek32 rGdb aEid
+        | otherwise = do
+            e <- peek32 rGdb aEid
+            if classifyWith rExc e == "FINISH" || e > 0xFFFF then pure e else pollFinish (n + 1)
+  finalEid <- pollFinish (0 :: Int)
+  vcFinal <- peek64 rGdb aVc
+
+  -- 6. Report + golden. Also report each chip's terminal eid.
+  terminals <- forM runs $ \(node, gdb, _, exc) -> do
+    e <- peek32 gdb aEid
+    pure (node, e, classifyWith exc e)
+  let
+    isFinish = classifyWith rExc finalEid == "FINISH"
+    structOk = isFinish
+  putStrLn $
+    "=== Manticore MULTI RESULT (reporter node "
+      <> show rNode
+      <> "): eid="
+      <> show finalEid
+      <> " ("
+      <> classifyWith rExc finalEid
+      <> "), "
+      <> show vcFinal
+      <> " vcycles (SIG capture postponed) ==="
+  putStrLn $
+    "  golden: FINISH at ~"
+      <> show goldenMultiVcycles
+      <> " vcycles (+ stall-wave tail); got "
+      <> show vcFinal
+  putStrLn "  per-chip terminal eids:"
+  forM_ terminals $ \(node, e, k) -> putStrLn $ "    node " <> show node <> ": eid=" <> show e <> " -> " <> k
+  if structOk
+    then putStrLn "PASS: reporter reached FINISH via the coordinated stall wave" >> pure ExitSuccess
+    else putStrLn "FAIL: multi-chip run did not reach FINISH" >> pure (ExitFailure 1)

@@ -7,16 +7,21 @@
 
 // Management-unit CPU for the Manticore demo.
 //
-// It performs ONLY the generic bittide bring-up — link startup, wait for
-// stability, stop elastic-buffer auto-centering — which is what makes the
-// Bittide domain (and hence the chip's Wishbone host registers) usable. It
-// then idles in an infinite loop, so the host driver can halt it over GDB and
-// poke the Manticore chip registers (program load / run / trace readback).
+// It performs the SAME generic bittide bring-up as the wire demo — link
+// startup, wait for stability, stop elastic-buffer auto-centering, capture and
+// print the per-link UGNs, then groom: poll for the host-computed corrections
+// and apply them to the elastic buffers. This is what brings the Bittide domain
+// up to the stored golden latencies (so the inter-chip seams will run at a
+// constant, known latency) and lets the host verify the rig end-to-end.
 //
-// Unlike the wire-demo MU, it does NO UGN grooming / application logic: the
-// Manticore chip is driven entirely from the host over the chip's DMI window.
+// After grooming it idles in an infinite loop, so the host driver can halt it
+// over GDB and poke the Manticore chip's host registers (program load / run /
+// trace readback). Unlike the wire-demo MU there is no application logic of its
+// own: the Manticore chip is driven entirely from the host over its DMI window.
 
 use bittide_hal::hals::manticore_demo_management_unit::DeviceInstances;
+use bittide_hal::manual_additions::signed::Signed;
+use bittide_hal::shared_devices::elastic_buffer::ElasticBuffer;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
@@ -26,6 +31,20 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg(not(test))]
 use riscv_rt::entry;
+
+/// Apply a UGN grooming correction to one link's elastic buffer.
+///
+/// `delta` is the number of frames to insert (positive) or remove (negative).
+/// The correction is submitted as a single atomic wishbone write with hardware
+/// ack, rather than one frame at a time. The per-frame approach is vulnerable
+/// to concurrent Callisto adjustments between iterations, causing the net
+/// data_count change to be smaller than intended. A single write limits the
+/// Callisto race window to at most one adjustment, keeping the error to ±1 frame.
+fn apply_correction(eb: &ElasticBuffer, delta: i64) -> i64 {
+    let step = Signed::<32, i32>::new(delta as i32).unwrap();
+    eb.set_adjustment(step);
+    delta
+}
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
@@ -44,6 +63,16 @@ fn main() -> ! {
         &INSTANCES.elastic_buffer_6,
     ];
 
+    let capture_ugns = [
+        INSTANCES.capture_ugn_0,
+        INSTANCES.capture_ugn_1,
+        INSTANCES.capture_ugn_2,
+        INSTANCES.capture_ugn_3,
+        INSTANCES.capture_ugn_4,
+        INSTANCES.capture_ugn_5,
+        INSTANCES.capture_ugn_6,
+    ];
+
     // Bring up all links.
     let mut link_startups = [LinkStartup::new(); 7];
     while !link_startups.iter().all(|ls| ls.is_done()) {
@@ -54,6 +83,9 @@ fn main() -> ! {
 
     uwriteln!(uart, "Waiting for stability...").unwrap();
     loop {
+        // We don't update the stability here, but leave that to callisto. Although
+        // we also have access to the 'links_settled' register, we don't want to
+        // flood the CC bus.
         let stability = Stability {
             stable: cc.links_stable()[0],
             settled: 0,
@@ -70,9 +102,59 @@ fn main() -> ! {
     elastic_buffers
         .iter()
         .for_each(|eb| eb.wait_auto_center_idle());
+    let eb_deltas = elastic_buffers
+        .iter()
+        .map(|eb| eb.auto_center_total_adjustments());
 
-    // Bring-up done; the Bittide domain is stable. Idle so the host driver can
-    // halt us and poke the Manticore chip's host registers.
+    uwriteln!(uart, "Start printing hardware UGNs").unwrap();
+    for (i, (capture_ugn, eb_delta)) in capture_ugns.iter().zip(eb_deltas).enumerate() {
+        capture_ugn.set_elastic_buffer_delta(eb_delta);
+        uwriteln!(
+            uart,
+            "Capture UGN {}: local = {}, remote = {}, eb_delta = {}",
+            i,
+            capture_ugn.local_counter(),
+            capture_ugn.remote_counter(),
+            eb_delta
+        )
+        .unwrap();
+    }
+    uwriteln!(uart, "Printed all hardware UGNs").unwrap();
+
+    // === UGN grooming: poll for host-computed corrections and apply them ===
+    // The host reads the UGNs, computes the corrections, halts this CPU over GDB,
+    // writes the corrections vector + sets `valid`, and resumes us. We then apply
+    // each correction to its link's elastic buffer in one atomic adjustment per
+    // link. Using a single adjustment (rather than a per-frame loop) avoids the
+    // race where Callisto's concurrent adjustments partially undo the correction.
+    let corrections = INSTANCES.ugn_corrections;
+    uwriteln!(uart, "Waiting for corrections...").unwrap();
+    while !corrections.valid() {
+        core::hint::spin_loop();
+    }
+    uwriteln!(uart, "Corrections valid, applying...").unwrap();
+
+    for (i, eb) in elastic_buffers.iter().enumerate() {
+        let target = corrections.corrections(i).unwrap().into_inner();
+        let before = eb.data_count().into_inner() as i64;
+        apply_correction(eb, target);
+        let after = eb.data_count().into_inner() as i64;
+        uwriteln!(
+            uart,
+            "Correction link {}: target = {}, data_count {} -> {}",
+            i,
+            target,
+            before,
+            after
+        )
+        .unwrap();
+    }
+
+    uwriteln!(uart, "Corrections applied successfully").unwrap();
+
+    // Bring-up + grooming done; the Bittide domain is stable at the golden
+    // latencies. Idle so the host driver can halt us and poke the Manticore
+    // chip's host registers (program load / run / trace readback).
     uwriteln!(uart, "Manticore MU: bring-up done, idling.").unwrap();
     loop {
         core::hint::spin_loop();
