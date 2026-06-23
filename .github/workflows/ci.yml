@@ -207,6 +207,7 @@ jobs:
 
   manticore:
     name: Build Manticore + compile program
+    needs: [build]
     runs-on: [self-hosted, compute]
     defaults:
       run:
@@ -219,6 +220,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      # manticore_prepare.sh's latencies step builds the manticore-latencies
+      # Haskell exe via `cabal run`, so this job needs the cabal package index +
+      # the (cached) built deps, exactly like the Haskell build job — otherwise
+      # `cabal run` fails dependency resolution (unknown package string-interpolate).
+      # `needs: [build]` makes that job's fresh dist-newstyle cache available here.
+      - name: Set CI flags
+        run: .github/scripts/set_ci_flags.sh
+
+      - run: cache pull cabal --missing-ok --write-cache-found
+      - run: cache pull dist-newstyle --missing-ok
+
+      - name: Update Cabal index info
+        run: |
+          if [[ $(cat cache_found) == 0 ]]; then
+            cabal update
+          else
+            echo "Restored cache, no need to update cabal package list"
+          fi
 
       # Clones the Manticore repos (lmbollen forks), builds the bittide chip RTL
       # (-> _build/manticore/hdl, used by manticoreDemoTest's externalHdl), and
