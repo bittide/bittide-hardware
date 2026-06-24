@@ -54,3 +54,7 @@ resolver = "2"
 format_push_string = "forbid"
 print_literal = "forbid"
 uninlined_format_args = "forbid"
+
+[workspace.dependencies]
+clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
+clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }

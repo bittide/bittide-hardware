@@ -12,8 +12,8 @@ edition = "2021"
 workspace = true
 
 [dependencies]
-clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
-clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
+clash-bindings.workspace = true
+clash-macros.workspace = true
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
