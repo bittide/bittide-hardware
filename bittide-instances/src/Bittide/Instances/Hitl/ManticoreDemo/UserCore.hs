@@ -237,7 +237,7 @@ manticoreUserCoreC bitClk bitRst bitEna =
       mkSeamIn extBv lix =
         SeamIn
           { extend = (/= 0) <$> extBv
-          , rx = mux ((/= 0) <$> extBv) (resize <$> ((!!) <$> rxs2Raw <*> lix)) (pure 0)
+          , rx = mux ((/= 0) <$> extBv) (resize <$> ((!!) <$> dflipflop bitClk rxs2Raw <*> lix)) (pure 0)
           }
 
       chipOut =
@@ -315,7 +315,7 @@ manticoreUserCoreC bitClk bitRst bitEna =
     withCRE (registerWbI_ (ro "clock_active") (0 :: BitVector 32))
       -< (wbCa, Fwd (Just . boolToBv32 <$> chipOut.clockActive))
 
-    idC -< Fwd gthTx
+    idC -< Fwd (dflipflop bitClk gthTx)
  where
   -- Override the handshake TX on each connected seam edge's link with the chip's
   -- TdmFrame (zero-extended into the 64-bit link word), once 'seam_enable' is set.
