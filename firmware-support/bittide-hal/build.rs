@@ -11,13 +11,15 @@ use memorymap_compiler::input_language as mm_inp;
 
 use memorymap_compiler::ir::deduplicate::{deduplicate, deduplicate_type_names};
 use memorymap_compiler::ir::input_to_ir::IrInputMapping;
+use memorymap_compiler::ir::instance_names::{calculate_instance_names, InstanceNames};
 use memorymap_compiler::ir::monomorph::passes::OnlyNats;
 use memorymap_compiler::ir::monomorph::{MonomorphVariants, Monomorpher};
 use memorymap_compiler::ir::types::IrCtx;
 
 use memorymap_compiler_rust::{
-    self as backend_rust, generate_device_instances, generate_type_desc, ident, IdentType,
-    TypeReferences,
+    self as backend_rust, device_desc::generate_device_desc,
+    device_instances::generate_device_instances, ident, types::generate_type_desc,
+    types::TypeReferences, IdentType,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -69,6 +71,9 @@ fn main() {
     };
 
     deduplicate_type_names(&mut ctx, &shared);
+
+    let mut instance_names = InstanceNames::default();
+    calculate_instance_names(&mut instance_names, &ctx, &deduped_hals);
 
     // monomorph
 
@@ -180,7 +185,7 @@ fn main() {
                 continue;
             }
 
-            let (dev_name, code, refs) = backend_rust::generate_device_desc(&ctx, &varis, *dev);
+            let (dev_name, code, refs) = generate_device_desc(&ctx, &varis, *dev);
             let file_name = ident(IdentType::Module, dev_name);
             let file_path = shared_devices_path.join(format!("{file_name}.rs"));
             let mut file = File::create(&file_path).unwrap();
@@ -233,7 +238,7 @@ fn main() {
             {
                 continue;
             }
-            let (dev_name, code, refs) = backend_rust::generate_device_desc(&ctx, &varis, *dev);
+            let (dev_name, code, refs) = generate_device_desc(&ctx, &varis, *dev);
             let file_name = ident(IdentType::Module, dev_name);
             let file_path = hal_path.join("devices").join(format!("{file_name}.rs"));
 
@@ -252,6 +257,7 @@ fn main() {
             let code = generate_device_instances(
                 &ctx,
                 &shared,
+                &instance_names,
                 hal_name,
                 deduped.tree_elem_range.handles(),
             );

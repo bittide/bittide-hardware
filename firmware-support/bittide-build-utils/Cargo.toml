@@ -8,7 +8,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-memorymap-compiler = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
+memorymap-compiler.workspace = true
 
 [lints]
 workspace = true
