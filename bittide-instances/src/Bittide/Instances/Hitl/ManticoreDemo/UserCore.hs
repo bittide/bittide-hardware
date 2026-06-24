@@ -36,6 +36,7 @@ module Bittide.Instances.Hitl.ManticoreDemo.UserCore (
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
+import Clash.Xilinx.ClockGen
 import Protocols
 
 import qualified Clash.Prelude as CP
@@ -122,7 +123,7 @@ cmdPhaseStep ph (startPulse, chipStopped) = case ph of
     | otherwise -> PhWaitDone
 
 mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
-mkUserCore bitClk bitRst bitEna _localCounter _maybeDna appReset =
+mkUserCore bitClk0 bitRst bitEna _localCounter _maybeDna appReset =
   -- Reset the Manticore chip on bitRst OR the management unit's timed appReset. The MU
   -- releases appReset at a per-node local-counter cycle chosen by the UGN-grooming relabel
   -- (the host writes TimedReset.release_cycle, see the driver), so every chip's free-running
@@ -130,7 +131,9 @@ mkUserCore bitClk bitRst bitEna _localCounter _maybeDna appReset =
   -- this the per-chip CMD_START_AT cannot land the chips in lockstep (their counters share no
   -- zero-point). The driver must write release_cycle, else appReset stays asserted (the
   -- register defaults to maxBound) and the chip would be held in reset forever.
-  manticoreUserCoreC bitClk (registerSyncReset bitClk appReset enableGen True) bitEna
+  manticoreUserCoreC bitClk1 (registerSyncReset bitClk1 appReset enableGen True) bitEna
+ where
+  (bitClk1, _ :: Signal Bittide Bool) = unsafeClockWizard bitClk0 bitRst
 
 {- | The user-core circuit. Carries 'HasCallStack' so the Wishbone register
 helpers ('registerWbI') can record source locations for the memory map (they
