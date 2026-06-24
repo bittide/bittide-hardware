@@ -130,7 +130,7 @@ mkUserCore bitClk bitRst bitEna _localCounter _maybeDna appReset =
   -- this the per-chip CMD_START_AT cannot land the chips in lockstep (their counters share no
   -- zero-point). The driver must write release_cycle, else appReset stays asserted (the
   -- register defaults to maxBound) and the chip would be held in reset forever.
-  manticoreUserCoreC bitClk (orReset bitRst appReset) bitEna
+  manticoreUserCoreC bitClk appReset bitEna
 
 {- | The user-core circuit. Carries 'HasCallStack' so the Wishbone register
 helpers ('registerWbI') can record source locations for the memory map (they
