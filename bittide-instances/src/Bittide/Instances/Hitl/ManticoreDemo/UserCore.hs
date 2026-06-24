@@ -37,10 +37,11 @@ module Bittide.Instances.Hitl.ManticoreDemo.UserCore (
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
   ClockPort (..),
   Port (..),
-  inst,
+  ResetPort (..),
+  XilinxWizard (..),
+  XilinxWizardOption (..),
   instConfig,
-  library,
-  libraryImport,
+  instWithXilinxWizard,
   unPort,
  )
 import Clash.Explicit.Prelude
@@ -131,7 +132,7 @@ cmdPhaseStep ph (startPulse, chipStopped) = case ph of
     | otherwise -> PhWaitDone
 
 mkUserCore :: UserCoreCircuit UserCoreBusses (NmuRemBusWidth UserCoreBusses)
-mkUserCore bitClk0 _bitRst bitEna _localCounter _maybeDna appReset =
+mkUserCore bitClk0 bitRst bitEna _localCounter _maybeDna appReset =
   -- Reset the Manticore chip on bitRst OR the management unit's timed appReset. The MU
   -- releases appReset at a per-node local-counter cycle chosen by the UGN-grooming relabel
   -- (the host writes TimedReset.release_cycle, see the driver), so every chip's free-running
@@ -141,27 +142,40 @@ mkUserCore bitClk0 _bitRst bitEna _localCounter _maybeDna appReset =
   -- register defaults to maxBound) and the chip would be held in reset forever.
   manticoreUserCoreC bitClk1 (registerSyncReset bitClk1 appReset enableGen True) bitEna
  where
-  bitClk1 = ibufgClock bitClk0 enableGen
+  (bitClk1, _mmcmLocked) = deskewClock bitClk0 bitRst
 
-{- | A differential input buffer for DiffClock. Although the @ibufds@ primitive
-can be used for any differential signal, 'ibufdsClock' is specialized for Clock.
+{- | MMCM-based clock deskew for the Bittide (125 MHz) clock. Wraps the Clocking
+Wizard IP (@clk_wiz@ v6.0) with a 1:1 frequency ratio; the MMCM eliminates clock
+insertion delay via its internal feedback compensation. Returns the deskewed clock
+and the MMCM @locked@ signal; callers may ignore @locked@ when a longer-lived reset
+(e.g. @appReset@) already covers the MMCM settling time.
 -}
-ibufgClock :: forall dom. (KnownDomain dom) => Clock dom -> Enable dom -> Clock dom
-ibufgClock clk ena
-  | clashSimulation = clk
-  | otherwise = synth
+deskewClock :: Clock Bittide -> Reset Bittide -> (Clock Bittide, Signal Bittide Bit)
+deskewClock clkIn rst
+  | clashSimulation = (clkIn, pure 1)
+  | otherwise = (unPort clkOut, unPort locked)
  where
-  synth = unPort go
-   where
-    go :: ClockPort "O" dom
-    go =
-      inst
-        (instConfig "BUFGCE")
-          { library = Just "UNISIM"
-          , libraryImport = Just "UNISIM.vcomponents.all"
-          }
-        (ClockPort @"I" clk)
-        (Port @"CE" (fromEnable ena))
+  go :: (ClockPort "clk_out1" Bittide, Port "locked" Bittide Bit)
+  go =
+    instWithXilinxWizard
+      (instConfig "clk_wiz_deskew")
+      XilinxWizard
+        { wiz_name = "clk_wiz"
+        , wiz_vendor = "xilinx.com"
+        , wiz_library = "ip"
+        , wiz_version = "6.0"
+        , wiz_options =
+            ("CONFIG.PRIM_SOURCE", StrOpt "Global_buffer")
+              :> ("CONFIG.PRIM_IN_FREQ", StrOpt "125.0")
+              :> ("CONFIG.CLKOUT1_REQUESTED_OUT_FREQ", StrOpt "125.0")
+              :> ("CONFIG.CLKOUT1_DRIVES", StrOpt "BUFG")
+              :> ("CONFIG.RESET_TYPE", StrOpt "ACTIVE_HIGH")
+              :> ("CONFIG.NUM_OUT_CLKS", StrOpt "1")
+              :> Nil
+        }
+      (ClockPort @"clk_in1" clkIn)
+      (ResetPort @"reset" @ActiveHigh rst)
+  (clkOut, locked) = go
 
 {- | The user-core circuit. Carries 'HasCallStack' so the Wishbone register
 helpers ('registerWbI') can record source locations for the memory map (they
