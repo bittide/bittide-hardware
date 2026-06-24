@@ -56,5 +56,5 @@ print_literal = "forbid"
 uninlined_format_args = "forbid"
 
 [workspace.dependencies]
-clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
-clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "8624bfb4b0617ffe951a4c9c9c1c40c55f2ece11" }
+clash-bindings = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "20bacc70c1ef1802cfa02228bfddbc7e8cd86f03" }
+clash-macros = { git = "https://github.com/QBayLogic/clash-protocols-memmap", rev = "20bacc70c1ef1802cfa02228bfddbc7e8cd86f03" }

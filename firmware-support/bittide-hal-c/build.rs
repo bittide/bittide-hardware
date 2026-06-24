@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use memorymap_compiler::input_language as mm_inp;
 use memorymap_compiler::ir::deduplicate::{deduplicate, deduplicate_type_names};
 use memorymap_compiler::ir::input_to_ir::IrInputMapping;
+use memorymap_compiler::ir::instance_names::{calculate_instance_names, InstanceNames};
 use memorymap_compiler::ir::monomorph::passes::All;
 use memorymap_compiler::ir::monomorph::{MonomorphVariants, Monomorpher};
 use memorymap_compiler::ir::types::IrCtx;
@@ -45,6 +46,9 @@ fn main() {
     };
 
     deduplicate_type_names(&mut ctx, &shared);
+
+    let mut instance_names = InstanceNames::default();
+    calculate_instance_names(&mut instance_names, &ctx, &deduped_hals);
 
     // monomorph
 
@@ -243,6 +247,7 @@ fn main() {
                     let code = backend_c::device_instances::generate_device_instances(
                         &ctx,
                         &shared,
+                        &instance_names,
                         hal_name,
                         deduped.tree_elem_range.handles(),
                     );
