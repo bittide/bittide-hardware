@@ -216,12 +216,14 @@ goldenUgnOf edges a b =
 {- | Per-crossing seam latency (the @--hop-latencies@ value) for a directed seam from
 IC @s@ to IC @t@ in direction @d@: the groomed link latency (golden UGN + safety
 margin, backtracked to PE-to-PE by @internalDelay@) plus the chip's TDM seam
-serialization (@period + 2@). Matches the chip's @seamLatency = wire + period + 2@
+serialization (@period + 3@). Matches the chip's @seamLatency = wire + period + 3@
 ('TdmTorusBoundaryBridge'); @period = 2 * nLinks * cyclesPerSlot@ over the edge's
-@nLinks@ boundary links (chipDimY for E/W, chipDimX for N/S).
+@nLinks@ boundary links (chipDimY for E/W, chipDimX for N/S). The @+ 3@ (was @+ 2@)
+includes the demux io.out pipeline register that breaks the seam->boundary-switch
+timing path; only seam crossings carry this extra cycle, not intra-chip hops.
 -}
 linkLatency :: [UgnEdge] -> Int -> Int -> TorusDir -> Integer
-linkLatency edges s t d = wire + period + 2
+linkLatency edges s t d = wire + period + 3
  where
   wire = goldenUgnOf edges s t + fromIntegral marginFrames + fromIntegral internalDelay
   nLinks = case d of East -> chipDimY; West -> chipDimY; North -> chipDimX; South -> chipDimX
