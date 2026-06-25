@@ -153,7 +153,6 @@ si539xSpiWb ::
   forall aw minTargetPeriodPs dom.
   ( HiddenClockResetEnable dom
   , KnownNat aw
-  , 4 <= aw
   , HasCallStack
   , ?byteOrder :: ByteOrder
   ) =>
