@@ -84,6 +84,34 @@ impl Si539xSpi {
         Ok(())
     }
 
+    /// Write a clock board configuration using SPI, will retry upon failure.
+    ///
+    /// Writing a configuration can sometimes fail, usually because a written register was not
+    /// the same when not read back. This happens roughly once in 200 runs.
+    pub fn write_configuration_with_retry<
+        const PRE_LEN: usize,
+        const CFG_LEN: usize,
+        const PST_LEN: usize,
+    >(
+        &self,
+        timer: &Timer,
+        config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
+        max_retries: usize,
+    ) -> Result<(), WriteError> {
+        let mut retries = 0;
+        loop {
+            match self.write_configuration(timer, config) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    retries += 1;
+                    if retries >= max_retries {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    }
+
     /// Verfiy that the config part of the configuration is as expected.
     pub fn verify_configuration<
         const PRE_LEN: usize,
@@ -212,6 +240,36 @@ impl Si539xSpi {
                 data: design_id[i],
             };
             self.write(write_op);
+        }
+    }
+
+    /// Do a frequency increment 'n' times.
+    ///
+    /// Waits for 1 us between SPI transactions to adhere to the maximum update rate of
+    /// 1 us of the Si5395.
+    pub fn finc(&self, timer: &Timer, n: u8) {
+        for _ in 0..n {
+            self.write(ConfigEntry {
+                page: 0x00,
+                address: 0x1D,
+                data: 0b1 << 0,
+            });
+            timer.wait(Duration::from_micros(1));
+        }
+    }
+
+    /// Do a frequency decrement 'n' times.
+    ///
+    /// Waits for 1 us between SPI transactions to adhere to the maximum update rate of
+    /// 1 us of the Si5395.
+    pub fn fdec(&self, timer: &Timer, n: u8) {
+        for _ in 0..n {
+            self.write(ConfigEntry {
+                page: 0x00,
+                address: 0x1D,
+                data: 0b1 << 1,
+            });
+            timer.wait(Duration::from_micros(1));
         }
     }
 }

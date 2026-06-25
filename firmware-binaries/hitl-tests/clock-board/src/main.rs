@@ -145,7 +145,7 @@ fn main() -> ! {
     {
         uwriteln!(uart, "Test 2: Write clock configuration").unwrap();
         if let Err(WriteError::NotConfirmed { entry, read_data }) =
-            si539x_spi.write_configuration(&timer, &CONFIG_200)
+            si539x_spi.write_configuration_with_retry(&timer, &CONFIG_200, 10)
         {
             all_passed = false;
             uwriteln!(
