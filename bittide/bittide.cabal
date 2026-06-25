@@ -223,6 +223,7 @@ library
     Bittide.RingBuffer
     Bittide.SharedTypes
     Bittide.Shutter
+    Bittide.SomePe
     Bittide.Sync
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
