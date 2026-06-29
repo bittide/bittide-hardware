@@ -638,6 +638,17 @@ asserted on the exact value (the armed run stops on the coordinated wave, not pe
 goldenMultiVcycles :: Int
 goldenMultiVcycles = 1025
 
+{- | Final seam-crossed @sig2@ (the third @$display@ argument) after the last SIG of the
+@loop_multi@ run. It is the fully-folded signature whose value only comes out right when the
+inter-chip NoC delivered every fold across the chip-to-chip seams — so asserting it makes the
+multi-chip pass DATA-DEPENDENT rather than mere liveness (the reporter's @$finish@ fires on a
+fixed cycle count regardless of received data). @sig0@/@sig1@ read @(1,0)@ on RTL — a known
+RTL-vs-interpreter anomaly present even single-chip (see @Pico84SingleChipTester@) — so they
+are reported, not asserted. Matches the RTL golden (20/96/193/225); the last is 225.
+-}
+goldenFinalSig2 :: Int
+goldenFinalSig2 = 225
+
 {- | Write FPGA node @node@'s inter-chip seam configuration over its (halted) MU gdb: per
 torus edge, the @seam_<edge>_extend@ bit and (when extended) the @seam_<edge>_link@
 Bittide-link index, then raise @seam_enable@ to switch those links from forwarding the
@@ -742,7 +753,7 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
       execs <- forM runs $ \(_, gdb, _, _) -> peek64 gdb aExec
       pure (fromIntegral (maximum execs) + margin :: Word64)
 
-  (rNode, rGdb, _, rExc) <- case [r | r@(n, _, _, _) <- runs, n == 0] of
+  (rNode, rGdb, rBins, rExc) <- case [r | r@(n, _, _, _) <- runs, n == 0] of
     (r : _) -> pure r
     [] -> fail "multi-chip run: no reporter chip (0,0) in the manifest"
 
@@ -800,13 +811,32 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   finalEid <- pollFinish (0 :: Int)
   vcFinal <- peek64 rGdb aVc
 
+  -- 5b. Recover the reporter's FINAL $display (SIG) record so the pass is DATA-DEPENDENT, not just
+  -- liveness. In armed mode the $display GSTs land in the (write-back) cache but are never flushed
+  -- during the run; the reporter is now halted with its last SIG line still dirty in cache. Issue
+  -- ONE cache-flush (cmd 2) to drain it to the gmem trace region, then read words 0..5 = the three
+  -- 32-bit little-endian signatures sig0/sig1/sig2 (trace_base = 0). Mirrors the verified
+  -- MultiChipPerMgmtSimTester flush-after-halt. The flush must precede any re-boot of the reporter
+  -- (the cache is not reset between halt and flush) — it is the last thing we do to that chip.
+  poke64 rGdb aSched flushCmd
+  poke64 rGdb aGmem (fromIntegral (binBase (last rBins)))
+  poke64 rGdb aStart 1
+  waitDone rGdb
+  let gmemRead32 :: Int -> IO Int
+      gmemRead32 byteOff =
+        fromIntegral <$> (Gdb.readLe rGdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
+  sig0 <- gmemRead32 0
+  sig1 <- gmemRead32 4
+  sig2 <- gmemRead32 8
+
   -- 6. Report + golden. Also report each chip's terminal eid.
   terminals <- forM runs $ \(node, gdb, _, exc) -> do
     e <- peek32 gdb aEid
     pure (node, e, classifyWith exc e)
   let
     isFinish = classifyWith rExc finalEid == "FINISH"
-    structOk = isFinish
+    sigOk = sig2 == goldenFinalSig2
+    structOk = isFinish && sigOk
   putStrLn $
     "=== Manticore MULTI RESULT (reporter node "
       <> show rNode
@@ -816,14 +846,36 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
       <> classifyWith rExc finalEid
       <> "), "
       <> show vcFinal
-      <> " vcycles (SIG capture postponed) ==="
+      <> " vcycles ==="
   putStrLn $
     "  golden: FINISH at ~"
       <> show goldenMultiVcycles
       <> " vcycles (+ stall-wave tail); got "
       <> show vcFinal
+  putStrLn $
+    "  reporter final SIG: ("
+      <> show sig0
+      <> ", "
+      <> show sig1
+      <> ", "
+      <> show sig2
+      <> ")  [sig2 seam-crossed golden "
+      <> show goldenFinalSig2
+      <> (if sigOk then " — MATCH" else " — MISMATCH")
+      <> "; sig0/sig1 known RTL anomaly, reported only]"
   putStrLn "  per-chip terminal eids:"
   forM_ terminals $ \(node, e, k) -> putStrLn $ "    node " <> show node <> ": eid=" <> show e <> " -> " <> k
   if structOk
-    then putStrLn "PASS: reporter reached FINISH via the coordinated stall wave" >> pure ExitSuccess
-    else putStrLn "FAIL: multi-chip run did not reach FINISH" >> pure (ExitFailure 1)
+    then
+      putStrLn
+        "PASS: reporter reached FINISH via the coordinated stall wave AND final seam-crossed sig2 matches golden"
+        >> pure ExitSuccess
+    else
+      putStrLn
+        ( "FAIL: "
+            <> ( if not isFinish
+                   then "reporter did not reach FINISH"
+                   else "final seam-crossed sig2=" <> show sig2 <> " != golden " <> show goldenFinalSig2
+               )
+        )
+        >> pure (ExitFailure 1)

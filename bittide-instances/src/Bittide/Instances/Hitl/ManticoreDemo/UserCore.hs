@@ -34,6 +34,7 @@ module Bittide.Instances.Hitl.ManticoreDemo.UserCore (
   mkUserCore,
 ) where
 
+import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (depth), ila, ilaConfig)
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
   ClockPort (..),
   Port (..),
@@ -285,6 +286,9 @@ manticoreUserCoreC bitClk bitRst bitEna =
           , rx = mux ((/= 0) <$> extBv) (resize <$> ((!!) <$> dflipflop bitClk rxs2Raw <*> lix)) (pure 0)
           }
 
+      -- North seam input (node 0 -> node 2): shared by the chip and the seam ILA below.
+      seamInNorth = mkSeamIn extN linkN
+
       chipOut =
         manticoreBittideChip
           bitClk
@@ -298,7 +302,7 @@ manticoreUserCoreC bitClk bitRst bitEna =
             , gmemDin = gmemDinS
             , seamInE = mkSeamIn extE linkE
             , seamInW = mkSeamIn extW linkW
-            , seamInN = mkSeamIn extN linkN
+            , seamInN = seamInNorth
             , seamInS = mkSeamIn extS linkS
             }
 
@@ -323,6 +327,39 @@ manticoreUserCoreC bitClk bitRst bitEna =
           <*> ((/= 0) <$> extS)
           <*> linkS
           <*> chipOut.seamOutS.tx
+
+      -- ILA on node 0's NORTH seam (-> node 2, the Y-axis seam flagged as the
+      -- problematic reservation): observe the 45-bit outgoing/incoming TdmFrames,
+      -- capturing ONLY cycles that carry a message (frame valid = MSB / bit 44) and
+      -- only once 'seam_enable' is raised. One ILA on one link (memory-constrained);
+      -- the captured frames (valid+tag+packet) correlate against the compiler NoC
+      -- trace (the noc-viz tooling) to compare the real seam to simulation.
+      seamNorthTx = chipOut.seamOutN.tx
+      seamNorthRx = seamInNorth.rx
+      seamMsg =
+        (\en t r -> en && (bitToBool (msb t) || bitToBool (msb r)))
+          <$> ((/= 0) <$> seamEn)
+          <*> seamNorthTx
+          <*> seamNorthRx
+      seamIla :: Signal Bittide ()
+      seamIla =
+        setName @"manticoreSeamIla"
+          $ ila
+            ( ( ilaConfig
+                  $ "trigger_seam_north"
+                  :> "capture_seam_msg"
+                  :> "seam_north_tx"
+                  :> "seam_north_rx"
+                  :> Nil
+              )
+                { depth = D1024
+                }
+            )
+            bitClk
+            seamMsg -- trigger: arm on the first seam message
+            seamMsg -- capture control: store ONLY message-carrying cycles
+            seamNorthTx
+            seamNorthRx
 
       -- Clean command-complete handshake. The chip's raw @done@/@idle@ are
       -- level signals that stay asserted from the PREVIOUS command, and the
@@ -360,7 +397,8 @@ manticoreUserCoreC bitClk bitRst bitEna =
     withCRE (registerWbI_ (ro "clock_active") (0 :: BitVector 32))
       -< (wbCa, Fwd (Just . boolToBv32 <$> chipOut.clockActive))
 
-    idC -< Fwd (dflipflop bitClk gthTx)
+    -- Force the seam ILA into the design (hwSeqX) so it is not optimized away.
+    idC -< Fwd (hwSeqX seamIla (dflipflop bitClk gthTx))
  where
   -- Override the handshake TX on each connected seam edge's link with the chip's
   -- TdmFrame (zero-extended into the 64-bit link word), once 'seam_enable' is set.
