@@ -5,6 +5,7 @@ module Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra where
 
 import Clash.Explicit.Prelude
 
+import Clash.Class.Cdc.Handshake (handshakeMaybe, maybeLossy)
 import Clash.Cores.Xilinx (Xilinx, withXilinx)
 
 import qualified Clash.Class.Cdc as Cdc
@@ -25,7 +26,7 @@ xpmCdcMaybeLossy ::
   Signal src (Maybe a) ->
   -- | Data in the destination domain
   Signal dst (Maybe a)
-xpmCdcMaybeLossy = withXilinx Cdc.maybeLossy
+xpmCdcMaybeLossy = withXilinx maybeLossy
 
 -- | Xilinx-specialized version of 'handshake
 xpmCdcHandshakeMaybe ::
@@ -48,4 +49,4 @@ xpmCdcHandshakeMaybe ::
   2. Data in the destination domain.
   -}
   (Signal src Bool, Signal dst (Maybe a))
-xpmCdcHandshakeMaybe = withXilinx Cdc.handshakeMaybe
+xpmCdcHandshakeMaybe = withXilinx handshakeMaybe
