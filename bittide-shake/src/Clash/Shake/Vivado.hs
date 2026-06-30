@@ -860,12 +860,13 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
         -- Activate the trigger for each ILA.
         putStrLn "Verifying ILAs..."
         ilas <- get_hw_ilas v []
-        unless (null ilas) $
+        unless (null ilas) $ do
+          putStrLn [i|Found ilas: #{ilas}|]
           putStrLn "Configuring and arming ILAs..."
 
         forM_ ilas $ \ila -> do
           _ <- current_hw_ila v [show ila]
-
+          putStrLn [i|Current ILA: #{ila}|]
           -- Set trigger probe (active high boolean)
           -- TODO get probe from Tcl dictionary?
           let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
