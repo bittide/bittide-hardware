@@ -16,33 +16,45 @@ import Bittide.ElasticBuffer
 import Bittide.ElasticBuffer.AutoCenter (autoCenter)
 import Bittide.Instances.Domains (Basic400)
 import Bittide.Instances.Hacks (reducePins)
-import Bittide.SharedTypes (withLittleEndian)
+import Bittide.SharedTypes (BitboneMm, withLittleEndian)
+import Clash.Cores.Xilinx (withXilinx)
+import Clash.Cores.Xilinx.ElasticBuffer (xilinxElasticBuffer)
 
 import qualified Clash.Explicit.Prelude as E
 
 createDomain vXilinxSystem{vPeriod = hzToPeriod 201e6, vName = "Fast"}
 createDomain vXilinxSystem{vPeriod = hzToPeriod 199e6, vName = "Slow"}
 
+type FifoSize = 5
+
 elasticBufferWb ::
   "clkRead" ::: Clock Fast ->
-  "resetRead" ::: Reset Fast ->
+  "rstRead" ::: Reset Fast ->
   "clkWrite" ::: Clock Slow ->
+  "rstWrite" ::: Reset Slow ->
   "wbIn" ::: Signal Fast (WishboneM2S 30 4) ->
   "writeData" ::: Signal Slow (Unsigned 64) ->
   ( "wbOut" ::: Signal Fast (WishboneS2M 4)
-  , "dataCount" ::: Signal Fast (RelDataCount 5)
+  , "dataCount" ::: Signal Fast (RelDataCount FifoSize)
   , "underflow" ::: Signal Fast Underflow
-  , "overflow" ::: Signal Fast Overflow
+  , "overflow" ::: Signal Slow Overflow
   , "readData" ::: Signal Fast (ElasticBufferData (Unsigned 64))
   )
-elasticBufferWb clkRead rstRead clkWrite wbIn wdata = (wbOut, dataCount, underflow, overflow, readData)
+elasticBufferWb clkRead rstRead clkWrite rstWrite wbIn wdata =
+  (wbOut, dataCount, fifoOut.underflow, fifoOut.overflow, fifoOut.fifoOut)
  where
   localCounter = E.register clkRead rstRead enableGen 0 (localCounter + 1)
-  ((SimOnly _mm, wbOut), (dataCount, underflow, overflow, readData)) =
-    withLittleEndian
-      $ toSignals
-        (xilinxElasticBufferWb clkRead rstRead d5 localCounter clkWrite wdata)
-        (((), wbIn), ((), (), (), ()))
+  ebCircuit ::
+    Circuit
+      (BitboneMm Fast 30)
+      (DcFifoOutput FifoSize Fast Slow (Unsigned 64), CSignal Fast (RelDataCount FifoSize))
+  ebCircuit =
+    withXilinx
+      $ withLittleEndian
+      $ joinEbAndControl
+        (elasticBufferControl clkRead rstRead localCounter clkWrite rstWrite wdata)
+        (xilinxElasticBuffer clkRead clkWrite)
+  ((SimOnly _mm, wbOut), (fifoOut, dataCount)) = toSignals ebCircuit $ (((), wbIn), ((), ()))
 
 makeTopEntity 'elasticBufferWb
 

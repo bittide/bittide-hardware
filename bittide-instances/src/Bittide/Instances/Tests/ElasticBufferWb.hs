@@ -17,6 +17,8 @@ import Bittide.Instances.Common (
 import Bittide.ProcessingElement
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
+import Clash.Cores.Xilinx (withXilinx)
+import Clash.Cores.Xilinx.ElasticBuffer (xilinxElasticBuffer)
 import GHC.Stack (HasCallStack)
 import Project.FilePath
 import Protocols
@@ -51,6 +53,8 @@ dutMM =
     $ dut NoDumpVcd
     $ emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False vexRiscv0
 
+type FifoSize = 5
+
 {- | A simulation-only instance containing VexRisc with UART and an elastic buffer
 controlled via Wishbone. The processor runs the `elastic_buffer_wb_test` program
 performing a series of tests on the elastic buffer via Wishbone and prints the
@@ -64,7 +68,8 @@ dut ::
     (ToConstBwd Mm)
     (Df XilinxSystem (BitVector 8)) -- UART output
 dut dumpVcd peConfig =
-  withLittleEndian
+  withXilinx
+    $ withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \mm -> do
@@ -79,16 +84,20 @@ dut dumpVcd peConfig =
       -- Elastic buffer with Wishbone control and monitoring
       -- We use the same clock for both read and write domains for simplicity in testing
       _readData <-
-        xilinxElasticBufferWb
-          clockGen
-          (resetGenN d2)
-          d5
-          localCounter
-          clockGen
-          (pure () :: Signal XilinxSystem ())
+        joinEbAndControl
+          (elasticBufferControl @FifoSize clk rst localCounter clk rst unitSig)
+          (xilinxElasticBuffer clockGen clockGen)
           -< ebWbBus
 
       idC -< uartTx
+ where
+  clk :: forall dom. (KnownDomain dom) => Clock dom
+  clk = clockGen
+
+  rst :: forall dom. (KnownDomain dom) => Reset dom
+  rst = resetGenN d2
+
+  unitSig = pure () :: Signal XilinxSystem ()
 
 type IMemWords = DivRU (16 * 1024) 4
 type DMemWords = DivRU (16 * 1024) 4
