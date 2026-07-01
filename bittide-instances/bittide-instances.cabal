@@ -288,6 +288,7 @@ library
     lifted-base,
     matplotlib,
     monad-control,
+    mtl,
     network-simple,
     parsec,
     pretty-show,

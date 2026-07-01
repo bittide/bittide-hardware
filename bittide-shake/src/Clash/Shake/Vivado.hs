@@ -858,29 +858,29 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
           execCmd_ v "set_property" ["OUTPUT_VALUE", vioValue, getProbeTestDataTcl]
 
         -- Activate the trigger for each ILA.
-        putStrLn "Verifying ILAs..."
-        ilas <- get_hw_ilas v []
-        unless (null ilas) $ do
-          putStrLn [i|Found ilas: #{ilas}|]
-          putStrLn "Configuring and arming ILAs..."
+        -- putStrLn "Verifying ILAs..."
+        -- ilas <- get_hw_ilas v []
+        -- unless (null ilas) $ do
+        --   putStrLn [i|Found ilas: #{ilas}|]
+        --   putStrLn "Configuring and arming ILAs..."
 
-        forM_ ilas $ \ila -> do
-          _ <- current_hw_ila v [show ila]
-          putStrLn [i|Current ILA: #{ila}|]
-          -- Set trigger probe (active high boolean)
-          -- TODO get probe from Tcl dictionary?
-          let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
-          execCmd_ v "set_property" ["trigger_compare_value", "eq1'b1", triggerProbe]
+        -- forM_ ilas $ \ila -> do
+        --   _ <- current_hw_ila v [show ila]
+        --   putStrLn [i|Current ILA: #{ila}|]
+        --   -- Set trigger probe (active high boolean)
+        --   -- TODO get probe from Tcl dictionary?
+        --   let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
+        --   execCmd_ v "set_property" ["trigger_compare_value", "eq1'b1", triggerProbe]
 
-          -- Enable capture control and set capture probe (active high boolean)
-          execCmd_ v "set_property" ["control.capture_mode", "BASIC", "[current_hw_ila]"]
-          let captureProbe = "[get_hw_probes -of_objects [current_hw_ila] */capture*]"
-          execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
+        --   -- Enable capture control and set capture probe (active high boolean)
+        --   execCmd_ v "set_property" ["control.capture_mode", "BASIC", "[current_hw_ila]"]
+        --   let captureProbe = "[get_hw_probes -of_objects [current_hw_ila] */capture*]"
+        --   execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
 
-          -- Set the trigger position
-          execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
+        --   -- Set the trigger position
+        --   execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
 
-          run_hw_ila v ["[current_hw_ila]"]
+        --   run_hw_ila v ["[current_hw_ila]"]
 
         -- Deassert HitlVio start probe
         -- XXX: We should not rely on start probe values to be asserted after a

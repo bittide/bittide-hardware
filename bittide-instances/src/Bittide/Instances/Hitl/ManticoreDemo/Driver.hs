@@ -58,10 +58,12 @@ import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader
 import Data.Aeson (Value (Array, Number, Object, String))
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Default (def)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.String.Interpolate (i, __i)
 import Data.Word (Word16, Word32, Word64)
 import Numeric (showHex)
 import Project.Chan (waitForLine)
@@ -69,7 +71,7 @@ import Project.FilePath (findParentContaining)
 import Project.Handle (assertEither)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
-import Vivado.Tcl (HwTarget)
+import Vivado.Tcl (HwTarget, current_hw_ila, execCmd_, get_hw_ilas, run_hw_ila)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
@@ -264,6 +266,7 @@ driver ::
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
 driver testName targets = do
+  v <- ask
   liftIO . putStrLn $ "Manticore demo driver: " <> show (length targets) <> " target(s)"
   forM_ targets (assertProbe "probe_test_start")
 
@@ -441,7 +444,29 @@ driver testName targets = do
                 delayMicros = (startDelaySec + 1) * 1_000_000
             putStrLn $ "Waiting ~" <> show (startDelaySec + 1) <> "s for the reset-aligned release..."
             threadDelay delayMicros
+          liftIO $ do
+            putStrLn "Verifying ILAs..."
+            ilas <- get_hw_ilas v []
+            unless (null ilas) $ do
+              putStrLn [i|Found ilas: #{ilas}|]
+              putStrLn "Configuring and arming ILAs..."
+            forM_ ilas $ \ila -> do
+              _ <- current_hw_ila v [show ila]
+              putStrLn [i|Current ILA: #{ila}|]
+              -- Set trigger probe (active high boolean)
+              -- TODO get probe from Tcl dictionary?
+              let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
+              execCmd_ v "set_property" ["trigger_compare_value", "eq1'b1", triggerProbe]
 
+              -- Enable capture control and set capture probe (active high boolean)
+              execCmd_ v "set_property" ["control.capture_mode", "BASIC", "[current_hw_ila]"]
+              let captureProbe = "[get_hw_probes -of_objects [current_hw_ila] */capture*]"
+              execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
+
+              -- Set the trigger position
+              execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
+
+              run_hw_ila v ["[current_hw_ila]"]
           -- Run the Manticore program. Single-chip: the board-verified runManticore on the
           -- head target. Multi-chip (--chip-dim-x/y): load each chip's split image into its
           -- OWN FPGA, configure the per-FPGA seams (grid mesh), and run them as one folded torus
