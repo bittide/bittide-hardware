@@ -71,7 +71,15 @@ import Project.FilePath (findParentContaining)
 import Project.Handle (assertEither)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
-import Vivado.Tcl (HwTarget, current_hw_ila, execCmd_, get_hw_ilas, run_hw_ila)
+import Vivado.Tcl (
+  HwTarget,
+  current_hw_ila,
+  execCmd_,
+  get_hw_ilas,
+  openHwTarget,
+  refresh_hw_device,
+  run_hw_ila,
+ )
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
@@ -445,28 +453,28 @@ driver testName targets = do
             putStrLn $ "Waiting ~" <> show (startDelaySec + 1) <> "s for the reset-aligned release..."
             threadDelay delayMicros
           liftIO $ do
-            putStrLn "Verifying ILAs..."
-            ilas <- get_hw_ilas v []
-            unless (null ilas) $ do
-              putStrLn [i|Found ilas: #{ilas}|]
-              putStrLn "Configuring and arming ILAs..."
-            forM_ ilas $ \ila -> do
-              _ <- current_hw_ila v [show ila]
-              putStrLn [i|Current ILA: #{ila}|]
-              -- Set trigger probe (active high boolean)
-              -- TODO get probe from Tcl dictionary?
-              let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
-              execCmd_ v "set_property" ["trigger_compare_value", "eq1'b1", triggerProbe]
-
-              -- Enable capture control and set capture probe (active high boolean)
-              execCmd_ v "set_property" ["control.capture_mode", "BASIC", "[current_hw_ila]"]
-              let captureProbe = "[get_hw_probes -of_objects [current_hw_ila] */capture*]"
-              execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
-
-              -- Set the trigger position
-              execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
-
-              run_hw_ila v ["[current_hw_ila]"]
+            -- Arm the seam ILA on EVERY FPGA. Each FPGA is a separate Vivado hw target, and
+            -- 'get_hw_ilas' only sees the currently-open target's core -- so we must
+            -- 'openHwTarget' each one before arming, exactly as the ILA-readback loop does.
+            -- (Previously we armed only the last-opened target, leaving 7 of 8 ILAs unarmed,
+            -- so the readback found every core empty -> zero samples.)
+            putStrLn "Verifying + arming seam ILAs on all targets..."
+            forM_ targets $ \(hwT, _) -> do
+              openHwTarget v hwT
+              refresh_hw_device v ["-quiet"]
+              ilas <- get_hw_ilas v []
+              unless (null ilas) $ putStrLn [i|  arming ilas #{ilas}|]
+              forM_ ilas $ \ila -> do
+                _ <- current_hw_ila v [show ila]
+                -- Trigger probe (active-high): arm on the first seam frame.
+                let triggerProbe = "[get_hw_probes -of_objects [current_hw_ila] */trigger*]"
+                execCmd_ v "set_property" ["trigger_compare_value", "eq1'b1", triggerProbe]
+                -- Capture control: store only cycles where the capture probe is high.
+                execCmd_ v "set_property" ["control.capture_mode", "BASIC", "[current_hw_ila]"]
+                let captureProbe = "[get_hw_probes -of_objects [current_hw_ila] */capture*]"
+                execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
+                execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
+                run_hw_ila v ["[current_hw_ila]"]
           -- Run the Manticore program. Single-chip: the board-verified runManticore on the
           -- head target. Multi-chip (--chip-dim-x/y): load each chip's split image into its
           -- OWN FPGA, configure the per-FPGA seams (grid mesh), and run them as one folded torus
