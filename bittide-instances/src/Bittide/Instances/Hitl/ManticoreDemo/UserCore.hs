@@ -59,10 +59,12 @@ import Bittide.Instances.Hitl.ManticoreDemo.Chip (
   ManticoreChipOut (..),
   ManticoreDeviceRegisters (..),
   ManticoreHostRegisters (..),
+  SeamFrame (..),
   SeamFrameBits,
   SeamIn (..),
   SeamOut (..),
   manticoreBittideChip,
+  toSeamFrame,
  )
 
 import Bittide.Instances.Hitl.Setup (LinkCount)
@@ -288,6 +290,8 @@ manticoreUserCoreC bitClk bitRst bitEna =
 
       -- North seam input (node 0 -> node 2): shared by the chip and the seam ILA below.
       seamInNorth = mkSeamIn extN linkN
+      -- East seam input (node 0 -> node 1): also observed by the seam ILA.
+      seamInEast = mkSeamIn extE linkE
 
       chipOut =
         manticoreBittideChip
@@ -300,7 +304,7 @@ manticoreUserCoreC bitClk bitRst bitEna =
             , gmemWe = gmemWeS
             , gmemAddr = gmemAddrS
             , gmemDin = gmemDinS
-            , seamInE = mkSeamIn extE linkE
+            , seamInE = seamInEast
             , seamInW = mkSeamIn extW linkW
             , seamInN = seamInNorth
             , seamInS = mkSeamIn extS linkS
@@ -328,38 +332,61 @@ manticoreUserCoreC bitClk bitRst bitEna =
           <*> linkS
           <*> chipOut.seamOutS.tx
 
-      -- ILA on node 0's NORTH seam (-> node 2, the Y-axis seam flagged as the
-      -- problematic reservation): observe the 45-bit outgoing/incoming TdmFrames,
-      -- capturing ONLY cycles that carry a message (frame valid = MSB / bit 44) and
-      -- only once 'seam_enable' is raised. One ILA on one link (memory-constrained);
-      -- the captured frames (valid+tag+packet) correlate against the compiler NoC
-      -- trace (the noc-viz tooling) to compare the real seam to simulation.
+      -- ILA on the reporter chip's two CONNECTED edges (node 0: North -> node 2,
+      -- East -> node 1). The same ILA is instantiated on every FPGA, so across the rig
+      -- it observes every seam cable in both directions (each cable is some chip's North
+      -- or East). Frames are decoded to typed 'SeamFrame's, so the capture keys on the
+      -- real frame-valid ('sfValid', bit 44) instead of a hand-picked bit index; we
+      -- capture ONLY frame-carrying cycles, and only once 'seam_enable' is raised. The
+      -- dumped frames (valid+tag+packet) correlate against the compiler NoC trace
+      -- (noc-viz) to compare the real seam to simulation.
       seamNorthTx = chipOut.seamOutN.tx
       seamNorthRx = seamInNorth.rx
+      seamEastTx = chipOut.seamOutE.tx
+      seamEastRx = seamInEast.rx
+      frameValid w = bitToBool (toSeamFrame w).sfValid
+      nTxV = frameValid <$> seamNorthTx
+      nRxV = frameValid <$> seamNorthRx
+      eTxV = frameValid <$> seamEastTx
+      eRxV = frameValid <$> seamEastRx
       seamMsg =
-        (\en t r -> en && (bitToBool (msb t) || bitToBool (msb r)))
+        (\en a b c d -> en && (a || b || c || d))
           <$> ((/= 0) <$> seamEn)
-          <*> seamNorthTx
-          <*> seamNorthRx
+          <*> nTxV
+          <*> nRxV
+          <*> eTxV
+          <*> eRxV
       seamIla :: Signal Bittide ()
       seamIla =
         setName @"manticoreSeamIla"
           $ ila
             ( ( ilaConfig
-                  $ "trigger_seam_north"
+                  $ "trigger_seam_msg"
                   :> "capture_seam_msg"
                   :> "seam_north_tx"
                   :> "seam_north_rx"
+                  :> "seam_east_tx"
+                  :> "seam_east_rx"
+                  :> "north_tx_valid"
+                  :> "north_rx_valid"
+                  :> "east_tx_valid"
+                  :> "east_rx_valid"
                   :> Nil
               )
                 { depth = D1024
                 }
             )
             bitClk
-            seamMsg -- trigger: arm on the first seam message
-            seamMsg -- capture control: store ONLY message-carrying cycles
+            seamMsg -- trigger: arm on the first seam frame (any edge/direction)
+            seamMsg -- capture control: store ONLY frame-carrying cycles
             seamNorthTx
             seamNorthRx
+            seamEastTx
+            seamEastRx
+            nTxV
+            nRxV
+            eTxV
+            eRxV
 
       -- Clean command-complete handshake. The chip's raw @done@/@idle@ are
       -- level signals that stay asserted from the PREVIOUS command, and the

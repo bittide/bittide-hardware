@@ -28,6 +28,9 @@ module Bittide.Instances.Hitl.ManticoreDemo.Chip (
   SeamIn (..),
   SeamOut (..),
   SeamFrameBits,
+  SeamFrame (..),
+  NoCPacket (..),
+  toSeamFrame,
   GmemHostAddrBits,
   GmemHostWords,
   manticoreBittideChip,
@@ -58,6 +61,50 @@ age + NoCBundle@. For a 4x4 chip in an 8x16 torus (nLinks = 4, NoCBundle =
 -}
 type SeamFrameBits = 45
 
+{- | The NoC packet carried inside a seam frame — a Clash mirror of the Chisel
+@NoCBundle@ for the GLOBAL @8x16@ torus (DimX=8 ⇒ 4 @xHops@ bits, DimY=16 ⇒ 5
+@yHops@ bits). Fields are in Chisel declaration order (first field = most
+significant), so the derived 'BitPack' packs bit-for-bit like the Verilog seam
+port: @data[36:21], address[20:10], valid[9], xHops[8:5], yHops[4:0]@.
+-}
+data NoCPacket = NoCPacket
+  { npData :: BitVector 16
+  , npAddress :: BitVector 11
+  , npValid :: Bit
+  -- ^ bit 9 of the frame — the real "a NoC message is present" flag
+  , npXHops :: BitVector 4
+  , npYHops :: BitVector 5
+  }
+  deriving (Generic, NFDataX, BitPack)
+
+{- | One TDM seam frame — a Clash mirror of the Chisel @TdmFrame@ (@nBanks =
+2*nLinks = 8@ ⇒ 3 @tag@ bits, 4 @age@ bits). The derived 'BitPack' produces the
+45-bit 'SeamFrameBits' word that rides one Bittide link, with @sfValid@ at the MSB
+(bit 44). Prefer this over slicing raw bit indices out of a 'BitVector': the field
+names document the layout and 'toSeamFrame' stays in sync by construction.
+-}
+data SeamFrame = SeamFrame
+  { sfValid :: Bit
+  {- ^ bit 44: this TDM slot is transmitting an occupied bank (frame present).
+  Only asserted while the edge is @extend@ed (connected) — see 'TdmLink'.
+  -}
+  , sfTag :: BitVector 3
+  -- ^ bits 43..41: which logical link (bank) this frame carries
+  , sfAge :: BitVector 4
+  -- ^ bits 40..37: cycles the packet waited in its input bank
+  , sfPacket :: NoCPacket
+  -- ^ bits 36..0: the NoC packet
+  }
+  deriving (Generic, NFDataX, BitPack)
+
+{- | Decode a raw 45-bit seam word into a typed 'SeamFrame'. This is just 'unpack',
+but the type ascription makes it a compile-time check that @'BitSize' 'SeamFrame' ==
+'SeamFrameBits'@ — if the record layout ever drifts from the 45-bit port it will not
+compile.
+-}
+toSeamFrame :: BitVector SeamFrameBits -> SeamFrame
+toSeamFrame = unpack
+
 {- | One chip edge's seam inputs. @extend@ is high iff this edge is wired to a
 neighbour chip (set by the chip's grid position); a low edge U-turns inside the
 chip and its @tx@ is idle. @rx@ is the 'TdmFrame' arriving from the neighbour's
@@ -68,8 +115,9 @@ data SeamIn = SeamIn
   , rx :: Signal Bittide (BitVector SeamFrameBits)
   }
 
--- | One chip edge's seam outputs: the 'TdmFrame' to transmit on this edge's
--- Bittide link, and a demux-overflow (data-loss) diagnostic.
+{- | One chip edge's seam outputs: the 'TdmFrame' to transmit on this edge's
+Bittide link, and a demux-overflow (data-loss) diagnostic.
+-}
 data SeamOut = SeamOut
   { tx :: Signal Bittide (BitVector SeamFrameBits)
   , overflow :: Signal Bittide Bool
