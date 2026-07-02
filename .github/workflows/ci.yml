@@ -875,10 +875,17 @@ jobs:
 
       # The Manticore driver loads a compiled program (manifest.json + exec.bins)
       # from _build/manticore/program; compile it here before the test runs.
+      # The multi-chip torus schedule needs the per-directed-seam latencies
+      # (derived from the rig's golden UGNs by manticore-latencies) — without
+      # them masm schedules seam crossings as 1-cycle hops and the NoC schedule
+      # is invalid on the rig. Mirrors manticore_prepare.sh's latencies step.
       - name: Compile Manticore program (for the driver)
         if: ${{ contains(matrix.target.top, 'manticore') }}
         run: |
           .github/scripts/manticore_clone.sh
+          LATENCIES_CSV="$(git rev-parse --show-toplevel)/_build/manticore/latencies.csv"
+          cabal run -v0 manticore-latencies -- "${LATENCIES_CSV}"
+          export MANTICORE_HOP_LATENCIES="${LATENCIES_CSV}"
           .github/scripts/manticore_compile_program.sh
 
       - name: Run tests on hardware
