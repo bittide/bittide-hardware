@@ -82,6 +82,7 @@ import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterface
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx (withXilinx)
 import Clash.Cores.Xilinx.BlockRam (tdpbram)
+import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (depth, stages), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Clash.Functor.Extra ((<<$>>), (<<*>>))
 import Protocols.Df.Extra (tdpbramRamOp)
@@ -289,7 +290,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
     -- Stop management unit
 
     -- Start internal links
-    (_relDatCount, _underflow, _overflow, Fwd rxs1) <-
+    (Fwd relDatCounts, Fwd underflows, Fwd overflows, Fwd rxs1) <-
       unzip4Vec
         <| ( Vec.vecCircuits
                $ xilinxElasticBufferWb
@@ -353,6 +354,51 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
            )
     -- Stop user core
 
+    -- Seam elastic-buffer debug ILA (rig RX-frozen debug, transceiver-clock side).
+    -- The user-core ILA proved the post-mux TX link word toggles with real seam
+    -- frames while the RAW rx word is frozen on every chip — so the freeze lives
+    -- between the transceiver TX input and the elastic buffer output. Probe link 1
+    -- (a seam link on ALL 8 demo nodes: north for the bottom row, south elsewhere):
+    -- the EB's data count / underflow / overflow (otherwise discarded), the raw EB
+    -- output word, and this domain's view of our own TX word (which doubles as a
+    -- check of the user core's deskew-MMCM clock crossing). Triggered on the first
+    -- outgoing frame with bit 44 set after the timed reset released (appReset masks
+    -- the handshake-era magic words, whose bit 44 is also set); captures every
+    -- cycle onward.
+    let
+      txWord1 = (!! (1 :: Index LinkCount)) <$> txsOut
+      ebRxRaw1 = rxs2Raw !! (1 :: Index LinkCount)
+      appRun = fmap not (unsafeToActiveHigh appReset)
+      ebTrig = (\run w -> run && testBit w 44) <$> appRun <*> txWord1
+      ebSeen = register bitClk bitRst enableGen False (liftA2 (||) ebSeen ebTrig)
+      ebCapture = liftA2 (||) ebSeen ebTrig
+      seamEbIla :: Signal Bittide ()
+      seamEbIla =
+        setName @"seamEbIla"
+          $ ila
+            ( ( ilaConfig
+                  $ "trigger_tx_frame1"
+                  :> "capture_from_trig"
+                  :> "eb_rx_raw_1"
+                  :> "eb_datacount_1"
+                  :> "eb_underflow_1"
+                  :> "eb_overflow_1"
+                  :> "tx_word_1"
+                  :> Nil
+              )
+                { depth = D1024
+                , stages = 3
+                }
+            )
+            bitClk
+            ebTrig
+            ebCapture
+            ebRxRaw1
+            (relDatCounts !! (1 :: Index LinkCount))
+            (underflows !! (1 :: Index LinkCount))
+            (overflows !! (1 :: Index LinkCount))
+            txWord1
+
     -- Start clock control
     ( sync
       , Fwd swCcOut0
@@ -399,7 +445,8 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
     -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
       -< ( Fwd swCcOut1
-         , Fwd (unbundle txsOut)
+         , -- hwSeqX: keep the seam EB debug ILA from being optimized away.
+           Fwd (unbundle (hwSeqX seamEbIla txsOut))
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
