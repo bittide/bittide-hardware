@@ -34,7 +34,7 @@ module Bittide.Instances.Hitl.ManticoreDemo.UserCore (
   mkUserCore,
 ) where
 
-import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (depth), ila, ilaConfig)
+import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (depth, stages), ila, ilaConfig)
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
   ClockPort (..),
   Port (..),
@@ -385,6 +385,12 @@ manticoreUserCoreC bitClk bitRst bitEna =
                   :> Nil
               )
                 { depth = D1024
+                , -- Register the probes: ~220 probe bits otherwise route combinationally
+                  -- into the debug hub and cost the fabric its (already marginal) slack —
+                  -- the previous spin failed P&R at WNS -0.263ns on a high-fanout net.
+                  -- All probes (incl. trigger/capture) shift uniformly, so the captured
+                  -- window is just 3 cycles late; the analysis is unaffected.
+                  stages = 3
                 }
             )
             bitClk
