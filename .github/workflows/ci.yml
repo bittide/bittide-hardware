@@ -712,6 +712,19 @@ jobs:
       - run: cache pull cargo
       - run: cache pull build
 
+      # Manticore targets carry foreign Verilog (the ManticoreBittideChip blackbox)
+      # pulled in via the test group's externalHdl ($env(MANTICORE_HDL_SRC)/*.v).
+      # Build it BEFORE the synthesis-cache check: the generated .v files are part
+      # of the synth cache key (SYNTH_KEY_PATTERNS_UNTRACKED), so a manticore-hw
+      # RTL change invalidates the cached bitstream — previously the key only saw
+      # the clash output and external RTL changes silently reused a stale bitstream.
+      - name: Build Manticore HDL (externalHdl for manticoreDemoTest)
+        if: ${{ contains(matrix.target.top, 'manticore') }}
+        run: |
+          .github/scripts/manticore_clone.sh
+          .github/scripts/manticore_build_hdl.sh
+          echo "MANTICORE_HDL_SRC=$(git rev-parse --show-toplevel)/_build/manticore/hdl" >> "$GITHUB_ENV"
+
       - name: Determine whether synthesis should run
         id: check_synthesis_status
         run: |
@@ -736,16 +749,6 @@ jobs:
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           fi
-
-      # Manticore targets carry foreign Verilog (the ManticoreBittideChip blackbox)
-      # pulled in via the test group's externalHdl ($env(MANTICORE_HDL_SRC)/*.v).
-      # Build it here and point MANTICORE_HDL_SRC at it before synthesis.
-      - name: Build Manticore HDL (externalHdl for manticoreDemoTest)
-        if: ${{ contains(matrix.target.top, 'manticore') && steps.check_synthesis_status.outputs.should_run == 'true' }}
-        run: |
-          .github/scripts/manticore_clone.sh
-          .github/scripts/manticore_build_hdl.sh
-          echo "MANTICORE_HDL_SRC=$(git rev-parse --show-toplevel)/_build/manticore/hdl" >> "$GITHUB_ENV"
 
       - name: Synthesis
         if: ${{ steps.check_synthesis_status.outputs.should_run == 'true'  }}

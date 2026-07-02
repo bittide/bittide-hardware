@@ -118,6 +118,10 @@ SYNTH_KEY_PATTERNS_UNTRACKED = (
     f"**/_build/clash/*/*.sdc",
     f"**/_build/clash/*/*.tcl",
     f"**/_build/clash/*/*.v",
+    # external Verilog injected at synthesis time (the ManticoreBittideChip
+    # blackbox); built before the cache check so RTL changes in the external
+    # manticore-hw repo invalidate the cached bitstream
+    f"**/_build/manticore/hdl/*.v",
 )
 SYNTH_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/_build/vivado",
