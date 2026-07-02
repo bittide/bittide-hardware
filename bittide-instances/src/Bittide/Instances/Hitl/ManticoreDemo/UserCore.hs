@@ -340,53 +340,62 @@ manticoreUserCoreC bitClk bitRst bitEna =
       -- capture ONLY frame-carrying cycles, and only once 'seam_enable' is raised. The
       -- dumped frames (valid+tag+packet) correlate against the compiler NoC trace
       -- (noc-viz) to compare the real seam to simulation.
+      -- LAYER-SPLITTING probe set (rig RX-frozen debug). The 8-IC sim proves the
+      -- chip-internal seam is bidirectionally healthy, so the rig's frozen backward
+      -- (south/west-sourced) wires must come from a rig-only layer. One window of
+      -- CONSECUTIVE cycles (capture = every cycle after the first frame, not just
+      -- frame-carrying ones) makes the free-running TDM slot rotation visible, so each
+      -- tap point cleanly reads as "toggling" or "stuck":
+      --   * seam_south_tx — the chip's S pin (sim says it must rotate/emit);
+      --   * gth_tx_link_north — the POST-mux link word (does the replace output toggle?);
+      --   * rx_raw_link_north — the RAW 64-bit rx word incl. bits 63:45 (is the frozen
+      --     word really a zero-extended seam frame, and does bit 44 ever rise?).
       seamNorthTx = chipOut.seamOutN.tx
-      seamNorthRx = seamInNorth.rx
-      seamEastTx = chipOut.seamOutE.tx
-      seamEastRx = seamInEast.rx
+      seamSouthTx = chipOut.seamOutS.tx
       frameValid w = bitToBool (toSeamFrame w).sfValid
       nTxV = frameValid <$> seamNorthTx
-      nRxV = frameValid <$> seamNorthRx
-      eTxV = frameValid <$> seamEastTx
-      eRxV = frameValid <$> seamEastRx
-      seamMsg =
-        (\en a b c d -> en && (a || b || c || d))
+      sTxV = frameValid <$> seamSouthTx
+      gthTxR = dflipflop bitClk gthTx
+      gthTxLinkN = (!!) <$> gthTxR <*> linkN
+      rxRawLinkN = (!!) <$> dflipflop bitClk rxs2Raw <*> linkN
+      rawRxNV = frameValid . resize <$> rxRawLinkN
+      seamTrig =
+        (\en a b c -> en && (a || b || c))
           <$> ((/= 0) <$> seamEn)
           <*> nTxV
-          <*> nRxV
-          <*> eTxV
-          <*> eRxV
+          <*> sTxV
+          <*> rawRxNV
+      -- Sticky: once the first frame is seen, store EVERY subsequent cycle (one
+      -- contiguous window) so slot rotation and idle frames are observable.
+      seamSeen = withCRE (CP.register False (liftA2 (||) seamSeen seamTrig))
+      seamCapture = liftA2 (||) seamSeen seamTrig
       seamIla :: Signal Bittide ()
       seamIla =
         setName @"manticoreSeamIla"
           $ ila
             ( ( ilaConfig
-                  $ "trigger_seam_msg"
-                  :> "capture_seam_msg"
+                  $ "trigger_seam"
+                  :> "capture_after_trig"
                   :> "seam_north_tx"
-                  :> "seam_north_rx"
-                  :> "seam_east_tx"
-                  :> "seam_east_rx"
+                  :> "seam_south_tx"
+                  :> "gth_tx_link_north"
+                  :> "rx_raw_link_north"
                   :> "north_tx_valid"
-                  :> "north_rx_valid"
-                  :> "east_tx_valid"
-                  :> "east_rx_valid"
+                  :> "south_tx_valid"
                   :> Nil
               )
                 { depth = D1024
                 }
             )
             bitClk
-            seamMsg -- trigger: arm on the first seam frame (any edge/direction)
-            seamMsg -- capture control: store ONLY frame-carrying cycles
+            seamTrig -- trigger: the first seam frame (chip N/S tx, or raw-rx bit 44)
+            seamCapture -- capture control: every cycle from the trigger onward
             seamNorthTx
-            seamNorthRx
-            seamEastTx
-            seamEastRx
+            seamSouthTx
+            gthTxLinkN
+            rxRawLinkN
             nTxV
-            nRxV
-            eTxV
-            eRxV
+            sTxV
 
       -- Clean command-complete handshake. The chip's raw @done@/@idle@ are
       -- level signals that stay asserted from the PREVIOUS command, and the
@@ -425,7 +434,7 @@ manticoreUserCoreC bitClk bitRst bitEna =
       -< (wbCa, Fwd (Just . boolToBv32 <$> chipOut.clockActive))
 
     -- Force the seam ILA into the design (hwSeqX) so it is not optimized away.
-    idC -< Fwd (hwSeqX seamIla (dflipflop bitClk gthTx))
+    idC -< Fwd (hwSeqX seamIla gthTxR)
  where
   -- Override the handshake TX on each connected seam edge's link with the chip's
   -- TdmFrame (zero-extended into the 64-bit link word), once 'seam_enable' is set.
