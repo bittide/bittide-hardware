@@ -56,6 +56,7 @@ import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
+import Control.Exception (finally)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
@@ -269,6 +270,17 @@ regAddr dev reg =
   either (error . (("manticore reg " <> dev <> "." <> reg <> ": ") <>)) id $
     getPathAddress MemoryMaps.managementUnit ["0", dev, reg]
 
+{- | Run a GDB action with the MU briefly halted, resuming it afterwards. The MU
+firmware keeps running between accesses (it monitors the elastic buffers over
+UART during the application phase); RISC-V debug memory access on this rig
+requires a halted hart (progbuf; sysbus is disabled), so every host poke/peek
+must wrap itself in a halt/resume pair rather than leaving the MU halted.
+-}
+withHalted :: Gdb.Gdb -> IO a -> IO a
+withHalted gdb act = do
+  Gdb.interrupt gdb
+  act `finally` Gdb.continue gdb
+
 driver ::
   String ->
   [(HwTarget, DeviceInfo)] ->
@@ -404,9 +416,17 @@ driver testName targets = do
               goDumpCcSamples
               $ forConcurrently_ picocoms
               $ \pico -> waitForLine pico "[MU] Corrections applied successfully"
-            mapConcurrently_ Gdb.interrupt muGdbs
 
-          liftIO goDumpCcSamples
+          -- NB: no CC-sample dump and no MU halt here. 'dumpCcSamples' HALTS the
+          -- clock-control CPUs (GDB memory access needs a halted hart) and nothing
+          -- resumes them -- dumping mid-flow would leave Callisto DEAD for the whole
+          -- application phase, letting the clocks free-run and the (no longer
+          -- auto-centered) elastic buffers rail within seconds: every seam link then
+          -- freezes on a stale word. Exactly this took the multi-chip seams down.
+          -- The MU likewise keeps running from here (its firmware now monitors the
+          -- elastic buffers over UART); every subsequent MU-GDB access below halts
+          -- it briefly via 'withHalted' and resumes it. Samples are dumped once at
+          -- the very end, like the wire demo.
           liftIO $ putStrLn "=== UGNs collected + groomed on all targets ==="
 
           -- Reset-aligned start. appReset (wired into the Manticore chip's reset in UserCore.hs)
@@ -418,7 +438,9 @@ driver testName targets = do
           -- per-chip starts consistent with the groomed seam latencies (mirrors the wire demo).
           -- The per-chip CMD_START_AT in runManticoreMulti then lands the chips in lockstep.
           currentTime <-
-            liftIO $ readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head muGdbs)
+            liftIO $
+              withHalted (L.head muGdbs) $
+                readCurrentTime MemoryMaps.managementUnit (L.head targets) (L.head muGdbs)
           let
             sharedBase = currentTime + C.natToNum @(C.PeriodToCycles GthTx (C.Seconds StartDelay))
             tResets :: C.Vec FpgaCount (C.Unsigned 64)
@@ -434,12 +456,12 @@ driver testName targets = do
             putStrLn "Per-node tReset (= sharedBase + relabel offset):"
             mapM_ print (V.toList tResets)
             forM_ (L.zip muGdbs (V.toList tResets)) $ \(gdb, tReset) ->
-              writeReleaseCycle MemoryMaps.managementUnit gdb tReset
+              withHalted gdb $ writeReleaseCycle MemoryMaps.managementUnit gdb tReset
           -- Confirm no node's local counter has already passed its tReset (host bookkeeping fit
           -- inside the StartDelay headroom), else that node would release before it is set up.
           releaseInTime <-
             liftIO $ forM (L.zip3 targets muGdbs (V.toList tResets)) $ \(tgt, gdb, tReset) -> do
-              now <- readCurrentTime MemoryMaps.managementUnit tgt gdb
+              now <- withHalted gdb $ readCurrentTime MemoryMaps.managementUnit tgt gdb
               pure (now < tReset)
           liftIO $
             unless (L.and releaseInTime) $
@@ -480,13 +502,17 @@ driver testName targets = do
           -- OWN FPGA, configure the per-FPGA seams (grid mesh), and run them as one folded torus
           -- over the seams with a reset-aligned, armed CMD_START_AT start (now that the timed
           -- reset above gave every chip a common totalCycleCount origin) + run-to-FINISH.
-          case chips manifest of
+          exitCode <- case chips manifest of
             [single] -> liftIO $ do
               bins <- layoutChip programDir (userBase manifest) single
               case zip muGdbs targets of
                 [] -> pure ExitSuccess
                 ((gdb, _) : _) -> runManticore gdb bins (cmExceptions single)
             cs -> liftIO $ runManticoreMulti programDir (userBase manifest) cs (L.zip [0 ..] muGdbs)
+          -- Dump the clock-control samples LAST (mirrors the wire demo): this halts
+          -- the CC CPUs, which is only safe once the application run is over.
+          liftIO goDumpCcSamples
+          pure exitCode
  where
   pick i xss = [xs !! i | xs <- xss, length xs > i]
 
@@ -507,11 +533,11 @@ runManticore gdb bins excMap = do
     aGmemRegion = regAddr "ManticoreGmem" "data"
 
     poke64 :: Integer -> Word64 -> IO ()
-    poke64 a v = Gdb.writeLe gdb a v
+    poke64 a v = withHalted gdb $ Gdb.writeLe gdb a v
     peek32 :: Integer -> IO Int
-    peek32 a = fromIntegral <$> (Gdb.readLe gdb a :: IO Word32)
+    peek32 a = withHalted gdb $ fromIntegral <$> (Gdb.readLe gdb a :: IO Word32)
     peek64 :: Integer -> IO Int
-    peek64 a = fromIntegral <$> (Gdb.readLe gdb a :: IO Word64)
+    peek64 a = withHalted gdb $ fromIntegral <$> (Gdb.readLe gdb a :: IO Word64)
 
     -- Bulk-load a contiguous run of 16-bit gmem words starting at half-word
     -- offset @hwBase@, in a single GDB `restore` (one round-trip, not one per
@@ -524,7 +550,7 @@ runManticore gdb bins excMap = do
         addr = aGmemRegion + fromIntegral (hwBase * 2)
         path = "/tmp/manticore_gmem_" <> show hwBase <> ".bin"
       BS.writeFile path bytes
-      Gdb.runCommand gdb ("restore " <> path <> " binary 0x" <> showHex addr "")
+      withHalted gdb $ Gdb.runCommand gdb ("restore " <> path <> " binary 0x" <> showHex addr "")
 
     showHex32 :: Int -> String
     showHex32 x = "0x" <> showHex x ""
@@ -532,7 +558,7 @@ runManticore gdb bins excMap = do
     -- Read a 32-bit gmem word at byte offset @byteOff@ in the region.
     gmemRead32 :: Int -> IO Int
     gmemRead32 byteOff =
-      fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
+      withHalted gdb $ fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
 
     -- Decode the whole trace record (mirrors run_manifest.py read_trace): the
     -- design writes the latest $display at gmem words 0..3 (trace_base = 0).
@@ -557,13 +583,15 @@ runManticore gdb bins excMap = do
     -- which is True only once the command issued by the latest `start` has
     -- actually run to completion — so it is safe against sampling the previous
     -- command's stale done/idle.
+    -- Each poll now halts/resumes the MU (~10ms), so pace the loop and bound it
+    -- by iteration count accordingly (~1 minute worst case).
     waitDone = go (0 :: Int)
      where
       go n
-        | n > 200000 = fail "Manticore: timeout waiting for command completion"
+        | n > 5000 = fail "Manticore: timeout waiting for command completion"
         | otherwise = do
             d <- peek32 aDone
-            when (d == 0) (go (n + 1))
+            when (d == 0) (threadDelay 2_000 >> go (n + 1))
 
     runCmd name base cmd = do
       poke64 aSched cmd
@@ -750,9 +778,11 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
     aDone = regAddr "ManticoreControl" "done"
     aGmemRegion = regAddr "ManticoreGmem" "data"
 
-    poke64 g a v = Gdb.writeLe g a (v :: Word64)
-    peek32 g a = fromIntegral <$> (Gdb.readLe g a :: IO Word32) :: IO Int
-    peek64 g a = fromIntegral <$> (Gdb.readLe g a :: IO Word64) :: IO Int
+    -- All MU accesses halt/resume around the operation ('withHalted'): the MU keeps
+    -- running its elastic-buffer monitor between host pokes.
+    poke64 g a v = withHalted g $ Gdb.writeLe g a (v :: Word64)
+    peek32 g a = withHalted g (fromIntegral <$> (Gdb.readLe g a :: IO Word32)) :: IO Int
+    peek64 g a = withHalted g (fromIntegral <$> (Gdb.readLe g a :: IO Word64)) :: IO Int
 
     -- Bulk-load a chip's gmem run (per-node temp file so concurrent chips don't clobber).
     restoreWords g node hwBase ws
@@ -763,19 +793,21 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
             addr = aGmemRegion + fromIntegral (hwBase * 2)
             path = "/tmp/manticore_gmem_" <> show node <> "_" <> show hwBase <> ".bin"
           BS.writeFile path bytes
-          Gdb.runCommand g ("restore " <> path <> " binary 0x" <> showHex addr "")
+          withHalted g $ Gdb.runCommand g ("restore " <> path <> " binary 0x" <> showHex addr "")
 
     classifyWith exc eid
       | eid > (0xFFFF :: Int) = "TIMEOUT"
       | otherwise = fromMaybe "unknown" (lookup eid exc)
 
+    -- Each poll halts/resumes the MU (~10ms); pace the loop and bound the count
+    -- accordingly (~1 minute worst case).
     waitDone g = go (0 :: Int)
      where
       go n
-        | n > 200000 = fail "Manticore multi: timeout waiting for command completion"
+        | n > 5000 = fail "Manticore multi: timeout waiting for command completion"
         | otherwise = do
             d <- peek32 g aDone
-            when (d == 0) (go (n + 1))
+            when (d == 0) (threadDelay 2_000 >> go (n + 1))
 
     -- Pick a common future start cycle S for CMD_START_AT. Every chip's free-running
     -- totalCycleCount (the execution_cycles register) is reset-aligned, so S = max + margin
@@ -792,7 +824,7 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
 
   -- 1. Per-FPGA seam config. 2. Load each chip's split image (concurrently).
   putStrLn "Configuring per-FPGA seams (grid mesh)..."
-  forM_ runs $ \(node, gdb, _, _) -> configureSeams gdb node
+  forM_ runs $ \(node, gdb, _, _) -> withHalted gdb $ configureSeams gdb node
   putStrLn "Loading per-chip split images into each FPGA's gmem..."
   forConcurrently_ runs $ \(node, gdb, bins, _) -> do
     forM_ bins $ \b -> restoreWords gdb node (binBase b) (binWords b)
@@ -836,11 +868,14 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   -- 5. Armed run: poll the reporter's exception id until the app FINISH. The application eid
   -- is captured separately from the STALL gate, so the reporter surfaces FINISH here once the
   -- coordinated wave has halted everyone.
+  -- Each poll halts/resumes the reporter's MU (~10ms); paced + bounded (~6 min max).
   let pollFinish n
-        | n > (200000 :: Int) = peek32 rGdb aEid
+        | n > (30000 :: Int) = peek32 rGdb aEid
         | otherwise = do
             e <- peek32 rGdb aEid
-            if classifyWith rExc e == "FINISH" || e > 0xFFFF then pure e else pollFinish (n + 1)
+            if classifyWith rExc e == "FINISH" || e > 0xFFFF
+              then pure e
+              else threadDelay 2_000 >> pollFinish (n + 1)
   finalEid <- pollFinish (0 :: Int)
   vcFinal <- peek64 rGdb aVc
 
@@ -857,7 +892,8 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   waitDone rGdb
   let gmemRead32 :: Int -> IO Int
       gmemRead32 byteOff =
-        fromIntegral <$> (Gdb.readLe rGdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
+        withHalted rGdb $
+          fromIntegral <$> (Gdb.readLe rGdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
   sig0 <- gmemRead32 0
   sig1 <- gmemRead32 4
   sig2 <- gmemRead32 8

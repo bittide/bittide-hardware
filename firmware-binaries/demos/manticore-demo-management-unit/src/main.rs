@@ -14,10 +14,12 @@
 // up to the stored golden latencies (so the inter-chip seams will run at a
 // constant, known latency) and lets the host verify the rig end-to-end.
 //
-// After grooming it idles in an infinite loop, so the host driver can halt it
-// over GDB and poke the Manticore chip's host registers (program load / run /
-// trace readback). Unlike the wire-demo MU there is no application logic of its
-// own: the Manticore chip is driven entirely from the host over its DMI window.
+// After grooming it MONITORS the elastic buffers (periodic occupancy +
+// under/overflow prints over UART) while the host driver drives the Manticore
+// chip's host registers over GDB, halting this CPU briefly around each access
+// (program load / run / trace readback). Unlike the wire-demo MU there is no
+// application logic of its own; the monitor exists so the UART log shows
+// whether the links stay within elastic-buffer bounds during the app run.
 
 use bittide_hal::hals::manticore_demo_management_unit::DeviceInstances;
 use bittide_hal::manual_additions::signed::Signed;
@@ -25,7 +27,7 @@ use bittide_hal::shared_devices::elastic_buffer::ElasticBuffer;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
-use ufmt::uwriteln;
+use ufmt::{uwrite, uwriteln};
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
@@ -153,11 +155,47 @@ fn main() -> ! {
     uwriteln!(uart, "Corrections applied successfully").unwrap();
 
     // Bring-up + grooming done; the Bittide domain is stable at the golden
-    // latencies. Idle so the host driver can halt us and poke the Manticore
-    // chip's host registers (program load / run / trace readback).
-    uwriteln!(uart, "Manticore MU: bring-up done, idling.").unwrap();
+    // latencies. From here the host drives the Manticore chip over GDB (halting
+    // this CPU briefly around each access); between accesses we MONITOR the
+    // elastic buffers, so the UART log records whether every link stays within
+    // bounds during the application run. With clock control live this must
+    // hold; a railed buffer (permanent under/overflow) means syntony was lost
+    // and the inter-chip seams silently stop delivering frames.
+    uwriteln!(
+        uart,
+        "Manticore MU: bring-up done, monitoring elastic buffers."
+    )
+    .unwrap();
+    // Clear the sticky status records (min/max data count, under/overflow) so
+    // the monitor reports the application era only -- bring-up legitimately
+    // rails the buffers before auto-centering.
+    for eb in elastic_buffers.iter() {
+        eb.set_clear_status_registers(true);
+        eb.set_clear_status_registers(false);
+    }
+    let mut round: u32 = 0;
     loop {
-        core::hint::spin_loop();
+        // Coarse pacing (uncalibrated spin, roughly a second); the exact period
+        // is uncritical -- the log correlates rounds with the driver's phases.
+        for _ in 0..30_000_000u32 {
+            core::hint::spin_loop();
+        }
+        uwrite!(uart, "[EBMON] {}", round).unwrap();
+        for (i, eb) in elastic_buffers.iter().enumerate() {
+            uwrite!(
+                uart,
+                " |{} dc={} min={} max={}{}{}",
+                i,
+                eb.data_count().into_inner(),
+                eb.min_data_count_seen().into_inner(),
+                eb.max_data_count_seen().into_inner(),
+                if eb.underflow() { " UF" } else { "" },
+                if eb.overflow() { " OF" } else { "" }
+            )
+            .unwrap();
+        }
+        uwriteln!(uart, "").unwrap();
+        round += 1;
     }
 }
 
