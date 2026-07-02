@@ -56,7 +56,7 @@ import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
-import Control.Exception (finally)
+import Control.Exception (SomeException, finally, throwIO, try)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
@@ -278,8 +278,37 @@ must wrap itself in a halt/resume pair rather than leaving the MU halted.
 -}
 withHalted :: Gdb.Gdb -> IO a -> IO a
 withHalted gdb act = do
+  haltSynced gdb
+  act `finally` resumeSettled gdb
+
+{- | Halt the target (SIGINT to gdb) and RESYNCHRONIZE the gdb session before
+returning: the raw 'Gdb.continue' leaves gdb in foreground execution (no
+prompt), and the SIGINT stop banner is printed asynchronously — issuing a
+command in that window desyncs gdb-hs's marker framing (observed as "Wait for
+magic (start)" timeouts). Settle, then run a synchronized no-op 'echo' (with
+one retry) so the stop banner is consumed and the prompt is proven live.
+-}
+haltSynced :: Gdb.Gdb -> IO ()
+haltSynced gdb = do
   Gdb.interrupt gdb
-  act `finally` Gdb.continue gdb
+  threadDelay 100_000
+  resync (1 :: Int)
+ where
+  resync retriesLeft = do
+    r <- try @SomeException (Gdb.runCommand gdb "echo mu-halt-sync")
+    case r of
+      Right () -> pure ()
+      Left e
+        | retriesLeft > 0 -> threadDelay 500_000 >> resync (retriesLeft - 1)
+        | otherwise -> throwIO e
+
+{- | Resume the target (raw foreground @continue@; the prompt goes away until
+the next halt) and give gdb a moment to process it before the caller moves on.
+-}
+resumeSettled :: Gdb.Gdb -> IO ()
+resumeSettled gdb = do
+  Gdb.continue gdb
+  threadDelay 20_000
 
 driver ::
   String ->
@@ -516,8 +545,11 @@ driver testName targets = do
  where
   pick i xss = [xs !! i | xs <- xss, length xs > i]
 
+{- | Single-chip run. The MU is halted for the whole run (one halt/resume pair);
+its elastic-buffer monitor only matters for the multi-chip seams anyway.
+-}
 runManticore :: Gdb.Gdb -> [Binary] -> [(Int, String)] -> IO ExitCode
-runManticore gdb bins excMap = do
+runManticore gdb bins excMap = withHalted gdb $ do
   let
     aSched = regAddr "ManticoreControl" "schedule_config"
     aGmem = regAddr "ManticoreControl" "gmem_base"
@@ -533,11 +565,11 @@ runManticore gdb bins excMap = do
     aGmemRegion = regAddr "ManticoreGmem" "data"
 
     poke64 :: Integer -> Word64 -> IO ()
-    poke64 a v = withHalted gdb $ Gdb.writeLe gdb a v
+    poke64 a v = Gdb.writeLe gdb a v
     peek32 :: Integer -> IO Int
-    peek32 a = withHalted gdb $ fromIntegral <$> (Gdb.readLe gdb a :: IO Word32)
+    peek32 a = fromIntegral <$> (Gdb.readLe gdb a :: IO Word32)
     peek64 :: Integer -> IO Int
-    peek64 a = withHalted gdb $ fromIntegral <$> (Gdb.readLe gdb a :: IO Word64)
+    peek64 a = fromIntegral <$> (Gdb.readLe gdb a :: IO Word64)
 
     -- Bulk-load a contiguous run of 16-bit gmem words starting at half-word
     -- offset @hwBase@, in a single GDB `restore` (one round-trip, not one per
@@ -550,7 +582,7 @@ runManticore gdb bins excMap = do
         addr = aGmemRegion + fromIntegral (hwBase * 2)
         path = "/tmp/manticore_gmem_" <> show hwBase <> ".bin"
       BS.writeFile path bytes
-      withHalted gdb $ Gdb.runCommand gdb ("restore " <> path <> " binary 0x" <> showHex addr "")
+      Gdb.runCommand gdb ("restore " <> path <> " binary 0x" <> showHex addr "")
 
     showHex32 :: Int -> String
     showHex32 x = "0x" <> showHex x ""
@@ -558,7 +590,7 @@ runManticore gdb bins excMap = do
     -- Read a 32-bit gmem word at byte offset @byteOff@ in the region.
     gmemRead32 :: Int -> IO Int
     gmemRead32 byteOff =
-      withHalted gdb $ fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
+      fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
 
     -- Decode the whole trace record (mirrors run_manifest.py read_trace): the
     -- design writes the latest $display at gmem words 0..3 (trace_base = 0).
@@ -583,8 +615,6 @@ runManticore gdb bins excMap = do
     -- which is True only once the command issued by the latest `start` has
     -- actually run to completion — so it is safe against sampling the previous
     -- command's stale done/idle.
-    -- Each poll now halts/resumes the MU (~10ms), so pace the loop and bound it
-    -- by iteration count accordingly (~1 minute worst case).
     waitDone = go (0 :: Int)
      where
       go n
@@ -778,11 +808,20 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
     aDone = regAddr "ManticoreControl" "done"
     aGmemRegion = regAddr "ManticoreGmem" "data"
 
-    -- All MU accesses halt/resume around the operation ('withHalted'): the MU keeps
-    -- running its elastic-buffer monitor between host pokes.
-    poke64 g a v = withHalted g $ Gdb.writeLe g a (v :: Word64)
-    peek32 g a = withHalted g (fromIntegral <$> (Gdb.readLe g a :: IO Word32)) :: IO Int
-    peek64 g a = withHalted g (fromIntegral <$> (Gdb.readLe g a :: IO Word64)) :: IO Int
+    -- The MU firmware monitors the elastic buffers whenever its CPU runs; the host
+    -- batches its GDB work into a few COARSE halted regions (seam config + image
+    -- load + init phases; the post-FINISH readback), so the monitor is live during
+    -- the long windows that matter — above all the armed MAIN run. gdb-hs's
+    -- continue/interrupt are raw (no prompt synchronization), so per-operation
+    -- halt/resume ping-pong desyncs the session; coarse regions + 'haltSynced'
+    -- avoid that.
+    muGdbsAll = [g | (_, g, _, _) <- runs]
+    haltAll = forM_ muGdbsAll haltSynced
+    resumeAll = forM_ muGdbsAll resumeSettled
+
+    poke64 g a v = Gdb.writeLe g a (v :: Word64)
+    peek32 g a = fromIntegral <$> (Gdb.readLe g a :: IO Word32) :: IO Int
+    peek64 g a = fromIntegral <$> (Gdb.readLe g a :: IO Word64) :: IO Int
 
     -- Bulk-load a chip's gmem run (per-node temp file so concurrent chips don't clobber).
     restoreWords g node hwBase ws
@@ -793,14 +832,12 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
             addr = aGmemRegion + fromIntegral (hwBase * 2)
             path = "/tmp/manticore_gmem_" <> show node <> "_" <> show hwBase <> ".bin"
           BS.writeFile path bytes
-          withHalted g $ Gdb.runCommand g ("restore " <> path <> " binary 0x" <> showHex addr "")
+          Gdb.runCommand g ("restore " <> path <> " binary 0x" <> showHex addr "")
 
     classifyWith exc eid
       | eid > (0xFFFF :: Int) = "TIMEOUT"
       | otherwise = fromMaybe "unknown" (lookup eid exc)
 
-    -- Each poll halts/resumes the MU (~10ms); pace the loop and bound the count
-    -- accordingly (~1 minute worst case).
     waitDone g = go (0 :: Int)
      where
       go n
@@ -822,9 +859,13 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
     (r : _) -> pure r
     [] -> fail "multi-chip run: no reporter chip (0,0) in the manifest"
 
+  -- Coarse halted region: seam config, image load, and the (short) init phases.
+  -- The MUs' elastic-buffer monitors pause here and run again for the main phase.
+  haltAll
+
   -- 1. Per-FPGA seam config. 2. Load each chip's split image (concurrently).
   putStrLn "Configuring per-FPGA seams (grid mesh)..."
-  forM_ runs $ \(node, gdb, _, _) -> withHalted gdb $ configureSeams gdb node
+  forM_ runs $ \(node, gdb, _, _) -> configureSeams gdb node
   putStrLn "Loading per-chip split images into each FPGA's gmem..."
   forConcurrently_ runs $ \(node, gdb, bins, _) -> do
     forM_ bins $ \b -> restoreWords gdb node (binBase b) (binWords b)
@@ -865,18 +906,27 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
     poke64 gdb aGmem (fromIntegral (binBase (last bins)))
     poke64 gdb aStart 1
 
+  -- End of the halted region: every MU runs (and monitors its elastic buffers)
+  -- for the entire armed main run. The CMD_START_AT margin absorbs the resume
+  -- time, so the chips still ungate together at S.
+  resumeAll
+
   -- 5. Armed run: poll the reporter's exception id until the app FINISH. The application eid
   -- is captured separately from the STALL gate, so the reporter surfaces FINISH here once the
-  -- coordinated wave has halted everyone.
-  -- Each poll halts/resumes the reporter's MU (~10ms); paced + bounded (~6 min max).
+  -- coordinated wave has halted everyone. Each poll briefly halts ONLY the reporter's MU
+  -- (haltSynced/withHalted); slow pacing keeps its monitor mostly live. ~6 min bound.
   let pollFinish n
-        | n > (30000 :: Int) = peek32 rGdb aEid
+        | n > (720 :: Int) = withHalted rGdb $ peek32 rGdb aEid
         | otherwise = do
-            e <- peek32 rGdb aEid
+            e <- withHalted rGdb $ peek32 rGdb aEid
             if classifyWith rExc e == "FINISH" || e > 0xFFFF
               then pure e
-              else threadDelay 2_000 >> pollFinish (n + 1)
+              else threadDelay 500_000 >> pollFinish (n + 1)
   finalEid <- pollFinish (0 :: Int)
+
+  -- Post-FINISH readback: one more coarse halted region for the flush + trace +
+  -- terminal-eid reads.
+  haltAll
   vcFinal <- peek64 rGdb aVc
 
   -- 5b. Recover the reporter's FINAL $display (SIG) record so the pass is DATA-DEPENDENT, not just
@@ -892,8 +942,7 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   waitDone rGdb
   let gmemRead32 :: Int -> IO Int
       gmemRead32 byteOff =
-        withHalted rGdb $
-          fromIntegral <$> (Gdb.readLe rGdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
+        fromIntegral <$> (Gdb.readLe rGdb (aGmemRegion + fromIntegral byteOff) :: IO Word32)
   sig0 <- gmemRead32 0
   sig1 <- gmemRead32 4
   sig2 <- gmemRead32 8
@@ -902,6 +951,10 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   terminals <- forM runs $ \(node, gdb, _, exc) -> do
     e <- peek32 gdb aEid
     pure (node, e, classifyWith exc e)
+
+  -- Leave the MUs running (monitoring) so the archived UART logs record the
+  -- post-run elastic-buffer state as well.
+  resumeAll
   let
     isFinish = classifyWith rExc finalEid == "FINISH"
     sigOk = sig2 == goldenFinalSig2

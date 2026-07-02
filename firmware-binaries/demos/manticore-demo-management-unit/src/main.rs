@@ -14,12 +14,13 @@
 // up to the stored golden latencies (so the inter-chip seams will run at a
 // constant, known latency) and lets the host verify the rig end-to-end.
 //
-// After grooming it MONITORS the elastic buffers (periodic occupancy +
-// under/overflow prints over UART) while the host driver drives the Manticore
-// chip's host registers over GDB, halting this CPU briefly around each access
-// (program load / run / trace readback). Unlike the wire-demo MU there is no
-// application logic of its own; the monitor exists so the UART log shows
-// whether the links stay within elastic-buffer bounds during the app run.
+// After grooming it MONITORS the elastic buffers: per-link occupancy
+// watermarks, printing one UART line per range excursion (then widening the
+// range), so the log stays quiet while the links hold their groomed occupancy
+// and records every drift/rail event. Meanwhile the host driver drives the
+// Manticore chip's host registers over GDB, halting this CPU briefly around
+// each access (program load / run / trace readback). Unlike the wire-demo MU
+// there is no application logic of its own.
 
 use bittide_hal::hals::manticore_demo_management_unit::DeviceInstances;
 use bittide_hal::manual_additions::signed::Signed;
@@ -27,7 +28,7 @@ use bittide_hal::shared_devices::elastic_buffer::ElasticBuffer;
 use bittide_sys::link_startup::LinkStartup;
 use bittide_sys::stability_detector::Stability;
 use core::panic::PanicInfo;
-use ufmt::{uwrite, uwriteln};
+use ufmt::uwriteln;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
@@ -173,29 +174,51 @@ fn main() -> ! {
         eb.set_clear_status_registers(true);
         eb.set_clear_status_registers(false);
     }
-    let mut round: u32 = 0;
+    // Per-link occupancy watermarks, seeded from the current (groomed)
+    // occupancy. The monitor stays SILENT while every link remains inside its
+    // observed range and prints one line per range EXCURSION (then widens the
+    // range to the new extreme) -- so a healthy run logs just the 7 baselines,
+    // while any drift/rail event is recorded with its exact value. Prints are
+    // self-limiting: a link can only print on a new extreme.
+    let mut lo = [0i8; 7];
+    let mut hi = [0i8; 7];
+    for (i, eb) in elastic_buffers.iter().enumerate() {
+        let dc = eb.data_count().into_inner();
+        lo[i] = dc;
+        hi[i] = dc;
+        uwriteln!(uart, "[EBMON] link {} baseline dc={}", i, dc).unwrap();
+    }
     loop {
-        // Coarse pacing (uncalibrated spin, roughly a second); the exact period
-        // is uncritical -- the log correlates rounds with the driver's phases.
-        for _ in 0..30_000_000u32 {
-            core::hint::spin_loop();
-        }
-        uwrite!(uart, "[EBMON] {}", round).unwrap();
         for (i, eb) in elastic_buffers.iter().enumerate() {
-            uwrite!(
-                uart,
-                " |{} dc={} min={} max={}{}{}",
-                i,
-                eb.data_count().into_inner(),
-                eb.min_data_count_seen().into_inner(),
-                eb.max_data_count_seen().into_inner(),
-                if eb.underflow() { " UF" } else { "" },
-                if eb.overflow() { " OF" } else { "" }
-            )
-            .unwrap();
+            let dc = eb.data_count().into_inner();
+            if dc < lo[i] {
+                uwriteln!(
+                    uart,
+                    "[EBMON] link {} dc={} below [{}..{}]{}{}",
+                    i,
+                    dc,
+                    lo[i],
+                    hi[i],
+                    if eb.underflow() { " UF" } else { "" },
+                    if eb.overflow() { " OF" } else { "" }
+                )
+                .unwrap();
+                lo[i] = dc;
+            } else if dc > hi[i] {
+                uwriteln!(
+                    uart,
+                    "[EBMON] link {} dc={} above [{}..{}]{}{}",
+                    i,
+                    dc,
+                    lo[i],
+                    hi[i],
+                    if eb.underflow() { " UF" } else { "" },
+                    if eb.overflow() { " OF" } else { "" }
+                )
+                .unwrap();
+                hi[i] = dc;
+            }
         }
-        uwriteln!(uart, "").unwrap();
-        round += 1;
     }
 }
 
