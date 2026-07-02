@@ -376,7 +376,6 @@ manticoreUserCoreC bitClk bitRst bitEna =
             ( ( ilaConfig
                   $ "trigger_seam"
                   :> "capture_after_trig"
-                  :> "seam_north_tx"
                   :> "seam_south_tx"
                   :> "gth_tx_link_north"
                   :> "rx_raw_link_north"
@@ -396,7 +395,6 @@ manticoreUserCoreC bitClk bitRst bitEna =
             bitClk
             seamTrig -- trigger: the first seam frame (chip N/S tx, or raw-rx bit 44)
             seamCapture -- capture control: every cycle from the trigger onward
-            seamNorthTx
             seamSouthTx
             gthTxLinkN
             rxRawLinkN
