@@ -52,6 +52,13 @@ MANTICORE_TORUS_DIMX="${MANTICORE_TORUS_DIMX:-8}"
 MANTICORE_TORUS_DIMY="${MANTICORE_TORUS_DIMY:-16}"
 MANTICORE_STALL_WAVE="${MANTICORE_STALL_WAVE:-true}"
 MANTICORE_STALL_MARGIN="${MANTICORE_STALL_MARGIN:-4}"
+# TDM serialization period of the inter-chip seam links: each physical seam wire
+# carries nLinks logical links, one packet per logical link per period, so the
+# scheduler must keep a full period free around every crossing. Without this the
+# schedule overdrives the seam mux (packet loss on the rig; the RTL sim shows the
+# same as dbg_seam_overflow). 8 = 2*chipDim slots, verified overflow-free in the
+# 8-chip MultiChipPerMgmtSim. Only meaningful for the multi-chip torus build.
+MANTICORE_TDM_PERIOD="${MANTICORE_TDM_PERIOD:-8}"
 MANTICORE_PROGRAM="${MANTICORE_PROGRAM:-benchmarks/picorv32/picorv32.v benchmarks/picorv32/loop_multi.v}"
 
 # global torus dims for masm -x/-y (= chip dims for the single-chip build)
@@ -61,6 +68,9 @@ if [ "${MANTICORE_TORUS_DIMX}" -gt 0 ] 2>/dev/null; then
   torus_args=(--chip-dim-x "${MANTICORE_DIMX}" --chip-dim-y "${MANTICORE_DIMY}")
   if [ "${MANTICORE_STALL_WAVE}" = "true" ]; then
     torus_args+=(--stall-wave --stall-margin "${MANTICORE_STALL_MARGIN}")
+  fi
+  if [ "${MANTICORE_TDM_PERIOD}" -gt 1 ] 2>/dev/null; then
+    torus_args+=(--tdm-period "${MANTICORE_TDM_PERIOD}")
   fi
 else
   MASM_X="${MANTICORE_DIMX}"
