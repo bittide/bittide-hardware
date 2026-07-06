@@ -1093,6 +1093,25 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   chkAcc <- gmemRead32 16
   let chkFinal = (chkCntLfsr .&. 0xFFFF, chkCntLfsr `shiftR` 16, chkAcc)
 
+  -- 5c. Per-chip trace-frontier dump (diagnostics, non-fatal): flush every
+  -- chip's cache and dump its leading trace words. The USIG probes (a
+  -- \$display inside each picorv_unit's signature-owning process) land on
+  -- whichever chip the placer put that unit's signature on, so a frozen-zero
+  -- USIG means the unit's own grid-spread dataflow is dead, while a golden
+  -- USIG with a zero reporter SIG isolates the loss to the
+  -- signature->reporter seam routes. Non-hosting chips read all-zero.
+  frontier <- try @SomeException $ forM_ runs $ \(node, gdb, bins, _) -> do
+    poke64 gdb aSched flushCmd
+    poke64 gdb aGmem (fromIntegral (binBase (last bins)))
+    poke64 gdb aStart 1
+    waitDone gdb
+    ws <- forM [0 .. 15 :: Int] $ \k ->
+      fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral (k * 4)) :: IO Word32) :: IO Int
+    putStrLn $ "  frontier node " <> show node <> " trace[0..15] = " <> show ws
+  case frontier of
+    Left err -> putStrLn $ "  (frontier dump failed: " <> show err <> ")"
+    Right () -> pure ()
+
   -- 6. Report + golden. Also report each chip's terminal eid.
   terminals <- forM runs $ \(node, gdb, _, exc) -> do
     e <- peek32 gdb aEid

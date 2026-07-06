@@ -890,10 +890,12 @@ jobs:
           # CSV by this delta — one candidate per rig run, always tested from
           # the reliable fresh-boot first session (in-session reloads proved
           # flaky, runs 28800171206/28804256470). Relative to the generated
-          # CSV (seamInternalDelay -2): +1 => absolute -1. Eliminated so far:
-          # -4 (28793172214), -2 (28796880392, reconfirmed boot-gated in
-          # 28804256470). Remove once the true value is pinned down.
-          export MANTICORE_LATENCY_DELTA="1"
+          # CSV (seamInternalDelay -2): -1 => absolute -3. Eliminated so far:
+          # -4 (28793172214), -2 (28796880392, boot-gated 28804256470),
+          # -1 (28806212052). The run also dumps the per-chip USIG frontier
+          # (see loop_multi.v + the driver's 5c dump), which localizes the
+          # sig-chain death regardless of the delta's verdict.
+          export MANTICORE_LATENCY_DELTA="-1"
           .github/scripts/manticore_compile_program.sh
 
       - name: Run tests on hardware
