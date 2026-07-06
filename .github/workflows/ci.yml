@@ -886,16 +886,15 @@ jobs:
           LATENCIES_CSV="$(git rev-parse --show-toplevel)/_build/manticore/latencies.csv"
           cabal run -v0 manticore-latencies -- "${LATENCIES_CSV}"
           export MANTICORE_HOP_LATENCIES="${LATENCIES_CSV}"
-          # Seam-latency candidate under test (debug): shift the BASE build's
-          # CSV by this delta — one candidate per rig run, always tested from
-          # the reliable fresh-boot first session (in-session reloads proved
-          # flaky, runs 28800171206/28804256470). Relative to the generated
-          # CSV (seamInternalDelay -2): -1 => absolute -3. Eliminated so far:
-          # -4 (28793172214), -2 (28796880392, boot-gated 28804256470),
-          # -1 (28806212052). The run also dumps the per-chip USIG frontier
-          # (see loop_multi.v + the driver's 5c dump), which localizes the
-          # sig-chain death regardless of the delta's verdict.
-          export MANTICORE_LATENCY_DELTA="-1"
+          # Seam-latency delta: back to 0 (the derivation-exact CSV). Run
+          # 28808445252's seam ILA showed frames flowing EXACTLY on most
+          # directions but node 2 -> node 0 stone dead (116 TX'd, 0 arrive;
+          # node 0's EB output/datacount/flags frozen at a handshake-era word
+          # since before main) — a dead directed link explains the exact-zero
+          # SIGs without any timing component, so the candidate sweep is
+          # paused. This run maps every link's RX liveness via the receive
+          # ring buffers (driver taps) alongside the USIG frontier.
+          export MANTICORE_LATENCY_DELTA="0"
           .github/scripts/manticore_compile_program.sh
 
       - name: Run tests on hardware

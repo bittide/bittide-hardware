@@ -65,7 +65,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Default (def)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.String.Interpolate (i, __i)
-import Data.Word (Word16, Word32, Word64)
+import Data.Word (Word16, Word32, Word64, Word8)
 import Numeric (showHex)
 import Project.Chan (waitForLine)
 import Project.FilePath (findParentContaining)
@@ -281,6 +281,12 @@ regAddr :: String -> String -> Integer
 regAddr dev reg =
   either (error . (("manticore reg " <> dev <> "." <> reg <> ": ") <>)) id $
     getPathAddress MemoryMaps.managementUnit ["0", dev, reg]
+
+{- | Address of one register of link @k@'s receive ring buffer (duplicate device
+names canonicalize to @ReceiveRingBuffer0..6@ in the memory map).
+-}
+rxRingAddr :: Int -> String -> Integer
+rxRingAddr k = regAddr ("ReceiveRingBuffer" <> show k)
 
 {- | Run a GDB action with the MU briefly halted, resuming it afterwards. The MU
 firmware keeps running between accesses (it monitors the elastic buffers over
@@ -1008,6 +1014,18 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   -- 1. Per-FPGA seam config. 2. Load each chip's split image (concurrently).
   putStrLn "Configuring per-FPGA seams (grid mesh)..."
   forM_ runs $ \(node, gdb, _, _) -> configureSeams gdb node
+  -- RX ring-buffer liveness taps (diagnostics): every link's receive ring
+  -- buffer continuously records the raw post-EB RX words once enabled. The
+  -- post-run window (the buffers hold the last ~32us) distinguishes by VALUE:
+  -- evolving words = live handshake link; a constant TDM-frame/zero word =
+  -- live seam link frozen by the stall gate; a constant HANDSHAKE-era word =
+  -- the link's RX died before main — the seam ILA caught node 0's link 1 in
+  -- exactly that state (EB output word, datacount and status flags all frozen,
+  -- EBMON silent: a frozen counter never crosses a watermark).
+  putStrLn "Enabling RX ring-buffer liveness taps on all links..."
+  forConcurrently_ runs $ \(_, gdb, _, _) ->
+    forM_ [0 .. 6 :: Int] $ \k ->
+      Gdb.writeLe gdb (rxRingAddr k "receive_enable") (1 :: Word8)
   putStrLn "Loading per-chip split images into each FPGA's gmem..."
   forConcurrently_ runs $ \(node, gdb, bins, _) -> do
     forM_ bins $ \b -> restoreWords gdb node (binBase b) (binWords b)
@@ -1108,6 +1126,22 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
     ws <- forM [0 .. 15 :: Int] $ \k ->
       fromIntegral <$> (Gdb.readLe gdb (aGmemRegion + fromIntegral (k * 4)) :: IO Word32) :: IO Int
     putStrLn $ "  frontier node " <> show node <> " trace[0..15] = " <> show ws
+    -- Per-link RX liveness: a window of each receive ring buffer (see the
+    -- enable step before the init phases for how to read the three states).
+    rxLive <- forM [0 .. 6 :: Int] $ \k -> do
+      lws <- forM [0 .. 15 :: Int] $ \j ->
+        Gdb.readLe gdb (rxRingAddr k "data" + fromIntegral (j * 8)) :: IO Word64
+      pure (k, length (L.nub lws), L.head lws)
+    forM_ rxLive $ \(k, uniq, w0) ->
+      putStrLn $
+        "  rxbuf node "
+          <> show node
+          <> " link "
+          <> show k
+          <> ": distinct="
+          <> show uniq
+          <> " sample=0x"
+          <> showHex w0 ""
   case frontier of
     Left err -> putStrLn $ "  (frontier dump failed: " <> show err <> ")"
     Right () -> pure ()
