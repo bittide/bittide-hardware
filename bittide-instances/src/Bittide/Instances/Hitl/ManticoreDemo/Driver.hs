@@ -733,12 +733,24 @@ goldenMultiVcycles = 1025
 @loop_multi@ run. It is the fully-folded signature whose value only comes out right when the
 inter-chip NoC delivered every fold across the chip-to-chip seams — so asserting it makes the
 multi-chip pass DATA-DEPENDENT rather than mere liveness (the reporter's @$finish@ fires on a
-fixed cycle count regardless of received data). @sig0@/@sig1@ read @(1,0)@ on RTL — a known
-RTL-vs-interpreter anomaly present even single-chip (see @Pico84SingleChipTester@) — so they
-are reported, not asserted. Matches the RTL golden (20/96/193/225); the last is 225.
+fixed cycle count regardless of received data). @sig0@/@sig1@ depend on the same cross-seam
+transport and are reported, not asserted (single-chip RTL now matches the interpreter golden
+on the full triple, see @Pico84SingleChipTester@). Interpreter golden (20/96/193/225); the
+last is 225.
 -}
 goldenFinalSig2 :: Int
 goldenFinalSig2 = 225
+
+{- | Final record of the second @$display@ statement (\"CHK %d %d %d\", manifest eid 2, trace
+words [6][7][8,9]): an 8-bit +3 counter, a 16-bit LFSR and a 32-bit accumulator — three
+distinct state registers with different update rules and widths, all LOCAL to the reporter's
+privileged process. Their values never cross a chip seam, so this asserts the multi-state,
+multi-statement @$display@\/trace mechanism itself (guest state -> GST trace words -> host
+readback) end-to-end on the rig, independently of the cross-seam application values.
+Interpreter golden of the last CHK (guest cycle 895): counter 125, LFSR 38621, acc 115254.
+-}
+goldenFinalChk :: (Int, Int, Int)
+goldenFinalChk = (125, 38621, 115254)
 
 {- | Write FPGA node @node@'s inter-chip seam configuration over its (halted) MU gdb: per
 torus edge, the @seam_<edge>_extend@ bit and (when extended) the @seam_<edge>_link@
@@ -946,6 +958,12 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   sig0 <- gmemRead32 0
   sig1 <- gmemRead32 4
   sig2 <- gmemRead32 8
+  -- Second $display statement ("CHK", eid 2): trace words 6..9 = bytes 12..19. The
+  -- compiler numbers trace offsets globally across statements, so both statements'
+  -- final records coexist in gmem and are independently readable here.
+  chkCntLfsr <- gmemRead32 12
+  chkAcc <- gmemRead32 16
+  let chkFinal = (chkCntLfsr .&. 0xFFFF, chkCntLfsr `shiftR` 16, chkAcc)
 
   -- 6. Report + golden. Also report each chip's terminal eid.
   terminals <- forM runs $ \(node, gdb, _, exc) -> do
@@ -958,7 +976,8 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   let
     isFinish = classifyWith rExc finalEid == "FINISH"
     sigOk = sig2 == goldenFinalSig2
-    structOk = isFinish && sigOk
+    chkOk = chkFinal == goldenFinalChk
+    structOk = isFinish && sigOk && chkOk
   putStrLn $
     "=== Manticore MULTI RESULT (reporter node "
       <> show rNode
@@ -984,20 +1003,34 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
       <> ")  [sig2 seam-crossed golden "
       <> show goldenFinalSig2
       <> (if sigOk then " — MATCH" else " — MISMATCH")
-      <> "; sig0/sig1 known RTL anomaly, reported only]"
+      <> "; sig0/sig1 cross-seam too, reported only]"
+  putStrLn $
+    "  reporter final CHK (reporter-local multi-state $display): "
+      <> show chkFinal
+      <> "  [golden "
+      <> show goldenFinalChk
+      <> (if chkOk then " — MATCH: $display/trace mechanism verified]" else " — MISMATCH]")
   putStrLn "  per-chip terminal eids:"
   forM_ terminals $ \(node, e, k) -> putStrLn $ "    node " <> show node <> ": eid=" <> show e <> " -> " <> k
   if structOk
     then
       putStrLn
-        "PASS: reporter reached FINISH via the coordinated stall wave AND final seam-crossed sig2 matches golden"
+        "PASS: reporter reached FINISH via the coordinated stall wave, the multi-state $display (CHK) matches golden, AND final seam-crossed sig2 matches golden"
         >> pure ExitSuccess
     else
       putStrLn
         ( "FAIL: "
             <> ( if not isFinish
                    then "reporter did not reach FINISH"
-                   else "final seam-crossed sig2=" <> show sig2 <> " != golden " <> show goldenFinalSig2
+                   else
+                     if not chkOk
+                       then
+                         "reporter-local CHK "
+                           <> show chkFinal
+                           <> " != golden "
+                           <> show goldenFinalChk
+                           <> " — $display/trace mechanism broke"
+                       else "final seam-crossed sig2=" <> show sig2 <> " != golden " <> show goldenFinalSig2
                )
         )
         >> pure (ExitFailure 1)
