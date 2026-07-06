@@ -886,11 +886,14 @@ jobs:
           LATENCIES_CSV="$(git rev-parse --show-toplevel)/_build/manticore/latencies.csv"
           cabal run -v0 manticore-latencies -- "${LATENCIES_CSV}"
           export MANTICORE_HOP_LATENCIES="${LATENCIES_CSV}"
-          # Seam-latency delta sweep (debug): extra image sets at these deltas
-          # relative to the CSV (absolute seamInternalDelay -1, -3, 0, -5, -6);
-          # the driver runs all sets in one rig session and prints a verdict
-          # matrix. Remove once the true rig seam latency is pinned down.
-          export MANTICORE_SWEEP_DELTAS="1 -1 2 -3 -4"
+          # Seam-latency candidate under test (debug): shift the BASE build's
+          # CSV by this delta — one candidate per rig run, always tested from
+          # the reliable fresh-boot first session (in-session reloads proved
+          # flaky, runs 28800171206/28804256470). Relative to the generated
+          # CSV (seamInternalDelay -2): +1 => absolute -1. Eliminated so far:
+          # -4 (28793172214), -2 (28796880392, reconfirmed boot-gated in
+          # 28804256470). Remove once the true value is pinned down.
+          export MANTICORE_LATENCY_DELTA="1"
           .github/scripts/manticore_compile_program.sh
 
       - name: Run tests on hardware

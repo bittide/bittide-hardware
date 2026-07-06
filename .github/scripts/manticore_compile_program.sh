@@ -208,6 +208,27 @@ run_masm() {
   fi
 }
 
+# Single-delta debug knob: shift every seam latency in the BASE build's CSV by
+# MANTICORE_LATENCY_DELTA (integer, relative to the generated CSV). Unlike the
+# sweep below this needs no in-session program reloads — the (reliable,
+# fresh-boot) first run of the rig session tests the candidate directly.
+if [ -n "${MANTICORE_LATENCY_DELTA:-}" ] && [ "${MANTICORE_LATENCY_DELTA}" != "0" ]; then
+  if [ -z "${MANTICORE_HOP_LATENCIES:-}" ]; then
+    echo "ERROR: MANTICORE_LATENCY_DELTA needs MANTICORE_HOP_LATENCIES" >&2
+    exit 1
+  fi
+  if ! [ "${MANTICORE_LATENCY_DELTA}" -eq "${MANTICORE_LATENCY_DELTA}" ] 2>/dev/null; then
+    echo "ERROR: MANTICORE_LATENCY_DELTA '${MANTICORE_LATENCY_DELTA}' is not an integer" >&2
+    exit 1
+  fi
+  delta_csv="${OUTDIR}.delta.csv"
+  mkdir -p "$(dirname "${delta_csv}")"
+  awk -F, -v d="${MANTICORE_LATENCY_DELTA}" 'NR==1{print;next}{$4=$4+d;print}' OFS=, \
+    "${MANTICORE_HOP_LATENCIES}" > "${delta_csv}"
+  echo "BASE build: seam latencies shifted by ${MANTICORE_LATENCY_DELTA} (${delta_csv})"
+  latency_args=(--hop-latencies "${delta_csv}")
+fi
+
 run_masm "${OUTDIR}" "${latency_args[@]}"
 
 # Seam-latency delta sweep (debug): MANTICORE_SWEEP_DELTAS is a space-separated
