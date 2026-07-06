@@ -1142,6 +1142,27 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
           <> show uniq
           <> " sample=0x"
           <> showHex w0 ""
+    -- Transceiver reset-manager evidence: 'failAfterUps' counts Monitor-state
+    -- trips — a post-init 8b/10b / disparity / control-symbol error makes the
+    -- (never-disarming) ResetManager re-run the channel's full bring-up
+    -- ('Bittide.Transceiver' @errorAfterRxInitDone@), which comma-storms the
+    -- partner into tripping too; the transceivers re-lock but the elastic
+    -- buffers come back railed (auto-centering is stopped post-groom), leaving
+    -- the fabric-level RX stream permanently frozen. Nonzero failAfterUps on
+    -- the dead channels confirms that chain.
+    rxDones <- Gdb.readLe gdb (regAddr "Transceivers" "rx_data_init_dones") :: IO Word32
+    txDones <- Gdb.readLe gdb (regAddr "Transceivers" "tx_data_init_dones") :: IO Word32
+    statsWs <- forM [0 .. 27 :: Int] $ \j ->
+      Gdb.readLe gdb (regAddr "Transceivers" "statistics" + fromIntegral (j * 4)) :: IO Word32
+    putStrLn $
+      "  xcvr node "
+        <> show node
+        <> " rxDones=0x"
+        <> showHex rxDones ""
+        <> " txDones=0x"
+        <> showHex txDones ""
+        <> " statsRaw="
+        <> show statsWs
   case frontier of
     Left err -> putStrLn $ "  (frontier dump failed: " <> show err <> ")"
     Right () -> pure ()
