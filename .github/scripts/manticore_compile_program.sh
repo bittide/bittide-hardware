@@ -222,8 +222,14 @@ if [ -n "${MANTICORE_SWEEP_DELTAS:-}" ]; then
     echo "ERROR: MANTICORE_SWEEP_DELTAS needs MANTICORE_HOP_LATENCIES" >&2
     exit 1
   fi
+  # Split on spaces despite the script's narrow IFS (same as MANTICORE_PROGRAM).
+  IFS=' ' read -r -a _sweep_deltas <<< "${MANTICORE_SWEEP_DELTAS}"
   n=0
-  for delta in ${MANTICORE_SWEEP_DELTAS}; do
+  for delta in "${_sweep_deltas[@]}"; do
+    if ! [ "${delta}" -eq "${delta}" ] 2>/dev/null; then
+      echo "ERROR: MANTICORE_SWEEP_DELTAS entry '${delta}' is not an integer" >&2
+      exit 1
+    fi
     if [ "${delta}" -lt 0 ]; then label="m$(( -delta ))"; else label="p${delta}"; fi
     set_dir="${OUTDIR}/sweep_$(printf '%02d' "${n}")_${label}"
     set_csv="${set_dir}.csv"
