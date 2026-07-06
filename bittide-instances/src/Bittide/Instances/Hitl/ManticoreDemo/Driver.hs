@@ -243,7 +243,7 @@ and runs out of lockstep. On top of arming, the seam-gated boot (see
 seconds, not milliseconds. 1e9 cycles = 8s at 125MHz.
 -}
 startMargin :: Word64
-startMargin = 1_000_000_000
+startMargin = 2_500_000_000
 
 {- | Wall-clock settle time between arming the chips of a phase and re-extending
 their seams: long enough that every chip has finished its (ms-scale) boot and is
@@ -816,11 +816,13 @@ fixed exactly these two failure modes in simulation).
 -}
 setSeamExtends :: Gdb.Gdb -> Int -> Bool -> IO ()
 setSeamExtends gdb node on =
-  forM_ (seamConfig node) $ \(d, ext, _) ->
+  -- Only the topologically-wired edges are touched: unwired ones are 0 and stay
+  -- 0, and every write is a slow (~150ms) GDB round trip inside the arming margin.
+  forM_ [d | (d, ext, _) <- seamConfig node, ext] $ \d ->
     Gdb.writeLe
       gdb
       (regAddr "UserConfig" ("seam_" <> dirName d <> "_extend"))
-      (if on && ext then 1 else 0 :: C.BitVector 32)
+      (if on then 1 else 0 :: C.BitVector 32)
 
 {- | Seam-latency sweep image sets produced by @manticore_compile_program.sh@
 (@MANTICORE_SWEEP_DELTAS@): the @sweep_*@ subdirectories of the program dir that
@@ -967,20 +969,24 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
     -- it is high through sCoreReset..sBoot and low in sResumeWait); assert S is
     -- still comfortably in the future; re-extend. The startMargin is sized for all
     -- of this (see 'startMargin').
+    -- Every GDB round trip costs ~150ms on the rig, so the per-chip batches run
+    -- concurrently (each chip has its own GDB session, exactly like the image
+    -- load) and the margin bookkeeping is sized from measured costs (run
+    -- 28802685894 burned ~6.6s on sequential ops with an 8s margin).
     startPhaseGated :: String -> (Word64 -> IO ()) -> IO Word64
     startPhaseGated label pokes = do
-      forM_ runs $ \(node, gdb, _, _) -> setSeamExtends gdb node False
+      forConcurrently_ runs $ \(node, gdb, _, _) -> setSeamExtends gdb node False
       s <- computeStartAt startMargin
       putStrLn $ "  " <> label <> ": CMD_START_AT S=" <> show s <> " (seam-gated boot)"
       pokes s
       threadDelay bootSettleMicros
-      forM_ runs $ \(node, gdb, _, _) -> do
+      forConcurrently_ runs $ \(node, gdb, _, _) -> do
         ca <- peek32 gdb aCa
         when (ca /= 0) $
           fail $
             "node " <> show node <> " not gated in sResumeWait after boot settle (" <> label <> ")"
       nowExec <- computeStartAt 0
-      when (nowExec > s - 250_000_000) $
+      when (nowExec > s - 500_000_000) $
         fail $
           label
             <> ": start cycle S too close after boot settle (S="
@@ -988,7 +994,7 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
             <> ", now="
             <> show nowExec
             <> ")"
-      forM_ runs $ \(node, gdb, _, _) -> setSeamExtends gdb node True
+      forConcurrently_ runs $ \(node, gdb, _, _) -> setSeamExtends gdb node True
       pure s
 
   (rNode, rGdb, rBins, rExc) <- case [r | r@(n, _, _, _) <- runs, n == 0] of
@@ -1017,7 +1023,7 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   putStrLn $ "Running " <> show nInit <> " coordinated initializer phase(s) (CMD_START_AT)..."
   forM_ [0 .. nInit - 1] $ \ph -> do
     _ <- startPhaseGated ("init phase " <> show ph) $ \s ->
-      forM_ runs $ \(_, gdb, bins, _) -> do
+      forConcurrently_ runs $ \(_, gdb, bins, _) -> do
         let b = filter binIsInit bins !! ph
         poke64 gdb aSched (startAtCmd s)
         poke64 gdb aGmem (fromIntegral (binBase b))
@@ -1035,7 +1041,7 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   -- and halts them together. (Per-$display value capture is postponed.)
   putStrLn "Starting main on all chips (armed CMD_START_AT)..."
   _ <- startPhaseGated "main (ARMED)" $ \sMain ->
-    forM_ runs $ \(_, gdb, bins, _) -> do
+    forConcurrently_ runs $ \(_, gdb, bins, _) -> do
       poke64 gdb aSched (armedStartAtCmd sMain)
       poke64 gdb aGmem (fromIntegral (binBase (last bins)))
       poke64 gdb aStart 1
