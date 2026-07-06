@@ -237,10 +237,21 @@ initTimeout = 1_000_000
 {- | @totalCycleCount@ headroom for CMD_START_AT arming. The host arms 8 chips over slow
 sequential GDB writes (vs the sim's instant pokes, margin 2000), so @s@ must clear the
 full arming + boot spread; otherwise a late-armed chip ungates immediately (RTL @>=@)
-and runs out of lockstep. Generous first cut; tune from the rig.
+and runs out of lockstep. On top of arming, the seam-gated boot (see
+'runManticoreMulti': retract extends, boot, settle, verify, re-extend) spends a
+~1s wall settle plus ~40 GDB writes inside the margin window, so it is sized in
+seconds, not milliseconds. 1e9 cycles = 8s at 125MHz.
 -}
 startMargin :: Word64
-startMargin = 50_000_000
+startMargin = 1_000_000_000
+
+{- | Wall-clock settle time between arming the chips of a phase and re-extending
+their seams: long enough that every chip has finished its (ms-scale) boot and is
+parked in @sResumeWait@ (compute clock gated) — verified afterwards via the
+@clock_active@ register rather than by racing the short boot window.
+-}
+bootSettleMicros :: Int
+bootSettleMicros = 1_000_000
 
 {- | Seconds of headroom between reading node 0's local counter and the timed reset-release
 (mirrors the wire demo). Must exceed the host's per-node TimedReset.release_cycle bookkeeping
@@ -794,6 +805,23 @@ configureSeams gdb node = do
   -- raise seam_enable last so the extend/link config is in place before the switch
   Gdb.writeLe gdb (regAddr "UserConfig" "seam_enable") (1 :: C.BitVector 32)
 
+{- | Set every topologically-wired seam edge's @extend@ bit of one chip to the given
+value (retract to @False@, re-extend to @True@); unwired edges stay retracted. With
+@extend = 0@ a chip edge U-turns inside the chip — exactly the per-chip boot topology
+the split images are built for — and the boundary bridge is bypassed, so boot NoC
+frames cannot leak across a seam and any frames left frozen in the bridge by a
+previous (stall-gated) run drain into the disconnected demux instead of the booting
+cores. Mirrors the sim kernel's boot gating ('MultiChipPerMgmtSimKernel', which
+fixed exactly these two failure modes in simulation).
+-}
+setSeamExtends :: Gdb.Gdb -> Int -> Bool -> IO ()
+setSeamExtends gdb node on =
+  forM_ (seamConfig node) $ \(d, ext, _) ->
+    Gdb.writeLe
+      gdb
+      (regAddr "UserConfig" ("seam_" <> dirName d <> "_extend"))
+      (if on && ext then 1 else 0 :: C.BitVector 32)
+
 {- | Seam-latency sweep image sets produced by @manticore_compile_program.sh@
 (@MANTICORE_SWEEP_DELTAS@): the @sweep_*@ subdirectories of the program dir that
 contain a manifest, in name order (the script prefixes a run-order index).
@@ -903,10 +931,12 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
       | eid > (0xFFFF :: Int) = "TIMEOUT"
       | otherwise = fromMaybe "unknown" (lookup eid exc)
 
+    -- Bound sized for the seam-gated phases: the ungate cycle S sits a full
+    -- 'startMargin' (8s) past arming, and completion can only be observed after it.
     waitDone g = go (0 :: Int)
      where
       go n
-        | n > 5000 = fail "Manticore multi: timeout waiting for command completion"
+        | n > 15_000 = fail "Manticore multi: timeout waiting for command completion"
         | otherwise = do
             d <- peek32 g aDone
             when (d == 0) (threadDelay 2_000 >> go (n + 1))
@@ -916,9 +946,50 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
     -- lets them all ungate together (the RTL ungates on totalCycleCount >= S; a chip armed
     -- after S has already passed runs immediately, hence the generous margin).
     aExec = regAddr "ManticoreControl" "execution_cycles"
+    aCa = regAddr "ManticoreControl" "clock_active"
     computeStartAt margin = do
       execs <- forM runs $ \(_, gdb, _, _) -> peek64 gdb aExec
       pure (fromIntegral (maximum execs) + margin :: Word64)
+
+    -- Seam-gated coordinated phase start: boot every chip with its seams RETRACTED
+    -- (extend = 0: edges U-turn, the per-chip boot topology the split images are
+    -- built for), then re-extend once every chip is parked in sResumeWait, so the
+    -- seams come up clean before the common ungate at S. Without this, boot NoC
+    -- frames leak across the live seams and frames left frozen in the boundary
+    -- bridges by a previous stall-gated run thaw into the booting cores — the sim
+    -- kernel gates exactly this way ('MultiChipPerMgmtSimKernel' boot gating; its
+    -- absence in the sim caused imem body-truncation and boot-frame gate
+    -- violations, and on the rig a reload-boot after an armed run hangs).
+    --
+    -- Sequencing: retract everywhere; arm every chip (the caller's pokes, ending in
+    -- the start pulse); settle a fixed wall delay (boots are ms-scale, so no racy
+    -- mid-boot polling); assert every chip is booted-and-gated (clock_active low —
+    -- it is high through sCoreReset..sBoot and low in sResumeWait); assert S is
+    -- still comfortably in the future; re-extend. The startMargin is sized for all
+    -- of this (see 'startMargin').
+    startPhaseGated :: String -> (Word64 -> IO ()) -> IO Word64
+    startPhaseGated label pokes = do
+      forM_ runs $ \(node, gdb, _, _) -> setSeamExtends gdb node False
+      s <- computeStartAt startMargin
+      putStrLn $ "  " <> label <> ": CMD_START_AT S=" <> show s <> " (seam-gated boot)"
+      pokes s
+      threadDelay bootSettleMicros
+      forM_ runs $ \(node, gdb, _, _) -> do
+        ca <- peek32 gdb aCa
+        when (ca /= 0) $
+          fail $
+            "node " <> show node <> " not gated in sResumeWait after boot settle (" <> label <> ")"
+      nowExec <- computeStartAt 0
+      when (nowExec > s - 250_000_000) $
+        fail $
+          label
+            <> ": start cycle S too close after boot settle (S="
+            <> show s
+            <> ", now="
+            <> show nowExec
+            <> ")"
+      forM_ runs $ \(node, gdb, _, _) -> setSeamExtends gdb node True
+      pure s
 
   (rNode, rGdb, rBins, rExc) <- case [r | r@(n, _, _, _) <- runs, n == 0] of
     (r : _) -> pure r
@@ -945,13 +1016,12 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
         [] -> 0
   putStrLn $ "Running " <> show nInit <> " coordinated initializer phase(s) (CMD_START_AT)..."
   forM_ [0 .. nInit - 1] $ \ph -> do
-    s <- computeStartAt startMargin
-    putStrLn $ "  init phase " <> show ph <> ": CMD_START_AT S=" <> show s
-    forM_ runs $ \(_, gdb, bins, _) -> do
-      let b = filter binIsInit bins !! ph
-      poke64 gdb aSched (startAtCmd s)
-      poke64 gdb aGmem (fromIntegral (binBase b))
-      poke64 gdb aStart 1
+    _ <- startPhaseGated ("init phase " <> show ph) $ \s ->
+      forM_ runs $ \(_, gdb, bins, _) -> do
+        let b = filter binIsInit bins !! ph
+        poke64 gdb aSched (startAtCmd s)
+        poke64 gdb aGmem (fromIntegral (binBase b))
+        poke64 gdb aStart 1
     forM_ runs $ \(node, gdb, _, _) -> do
       waitDone gdb
       eid <- peek32 gdb aEid
@@ -964,12 +1034,11 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   -- All chips run in lockstep from the aligned S until the app's $finish trips the stall wave
   -- and halts them together. (Per-$display value capture is postponed.)
   putStrLn "Starting main on all chips (armed CMD_START_AT)..."
-  sMain <- computeStartAt startMargin
-  putStrLn $ "  main (ARMED): CMD_START_AT S=" <> show sMain
-  forM_ runs $ \(_, gdb, bins, _) -> do
-    poke64 gdb aSched (armedStartAtCmd sMain)
-    poke64 gdb aGmem (fromIntegral (binBase (last bins)))
-    poke64 gdb aStart 1
+  _ <- startPhaseGated "main (ARMED)" $ \sMain ->
+    forM_ runs $ \(_, gdb, bins, _) -> do
+      poke64 gdb aSched (armedStartAtCmd sMain)
+      poke64 gdb aGmem (fromIntegral (binBase (last bins)))
+      poke64 gdb aStart 1
 
   -- End of the halted region: every MU runs (and monitors its elastic buffers)
   -- for the entire armed main run. The CMD_START_AT margin absorbs the resume
