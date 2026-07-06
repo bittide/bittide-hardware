@@ -191,18 +191,49 @@ fi
 # MASM_ROOT lets the compiler locate the frontend binary and repo-relative
 # resources (mirror the ./masm wrapper). --dump-* mirror the manticore-runtime
 # test flow (create_test.cmake).
-MASM_ROOT="${COMPILERDIR}" java -cp "${JAR}" manticore.compiler.Main \
-  -x "${MASM_X}" -y "${MASM_Y}" \
-  -o "${OUTDIR}" \
-  --dump-ascii --dump-register-file --dump-scratch-pad \
-  "${torus_args[@]}" \
-  "${latency_args[@]}" \
-  "${cf_args[@]}" \
-  "${PROGRAM_FILES[@]}"
+run_masm() {
+  # run_masm <outdir> <hop-latency-args...>
+  local out="$1"; shift
+  MASM_ROOT="${COMPILERDIR}" java -cp "${JAR}" manticore.compiler.Main \
+    -x "${MASM_X}" -y "${MASM_Y}" \
+    -o "${out}" \
+    --dump-ascii --dump-register-file --dump-scratch-pad \
+    "${torus_args[@]}" \
+    "$@" \
+    "${cf_args[@]}" \
+    "${PROGRAM_FILES[@]}"
+  if [ ! -f "${out}/manifest.json" ]; then
+    echo "ERROR: manifest.json not produced in ${out}" >&2
+    exit 1
+  fi
+}
 
-if [ ! -f "${OUTDIR}/manifest.json" ]; then
-  echo "ERROR: manifest.json not produced in ${OUTDIR}" >&2
-  exit 1
+run_masm "${OUTDIR}" "${latency_args[@]}"
+
+# Seam-latency delta sweep (debug): MANTICORE_SWEEP_DELTAS is a space-separated
+# list of integer deltas RELATIVE to the generated latencies CSV. For each delta
+# an extra image set is compiled into ${OUTDIR}/sweep_<NN>_<m|p><d>/ from a CSV
+# with every seam latency shifted by that delta. The HITL driver detects the
+# sweep_* dirs and runs every set in one rig session (the bitstream is identical;
+# only the gmem images differ), reporting a per-delta verdict matrix — one run
+# localizes the true rig seam latency instead of one run per candidate.
+if [ -n "${MANTICORE_SWEEP_DELTAS:-}" ]; then
+  if [ -z "${MANTICORE_HOP_LATENCIES:-}" ]; then
+    echo "ERROR: MANTICORE_SWEEP_DELTAS needs MANTICORE_HOP_LATENCIES" >&2
+    exit 1
+  fi
+  n=0
+  for delta in ${MANTICORE_SWEEP_DELTAS}; do
+    if [ "${delta}" -lt 0 ]; then label="m$(( -delta ))"; else label="p${delta}"; fi
+    set_dir="${OUTDIR}/sweep_$(printf '%02d' "${n}")_${label}"
+    set_csv="${set_dir}.csv"
+    mkdir -p "$(dirname "${set_csv}")"
+    awk -F, -v d="${delta}" 'NR==1{print;next}{$4=$4+d;print}' OFS=, \
+      "${MANTICORE_HOP_LATENCIES}" > "${set_csv}"
+    echo "Sweep set ${label}: latencies ${delta:+shifted by }${delta} -> ${set_dir}"
+    run_masm "${set_dir}" --hop-latencies "${set_csv}"
+    n=$((n + 1))
+  done
 fi
 
 echo "Manticore program ready in ${OUTDIR}:"

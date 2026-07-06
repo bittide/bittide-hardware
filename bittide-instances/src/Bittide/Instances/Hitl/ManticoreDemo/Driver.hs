@@ -70,6 +70,7 @@ import Numeric (showHex)
 import Project.Chan (waitForLine)
 import Project.FilePath (findParentContaining)
 import Project.Handle (assertEither)
+import System.Directory (doesFileExist, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import Vivado.Tcl (
@@ -537,7 +538,18 @@ driver testName targets = do
               case zip muGdbs targets of
                 [] -> pure ExitSuccess
                 ((gdb, _) : _) -> runManticore gdb bins (cmExceptions single)
-            cs -> liftIO $ runManticoreMulti programDir (userBase manifest) cs (L.zip [0 ..] muGdbs)
+            cs -> liftIO $ do
+              -- Seam-latency sweep (debug): if the compile step produced
+              -- sweep_* image sets, run EVERY set in this one rig session
+              -- (same bitstream, images differ only in the seam-latency CSV)
+              -- and report a per-set verdict matrix. Otherwise the plain run.
+              sweeps <- findSweepSets programDir
+              if null sweeps
+                then runManticoreMulti programDir (userBase manifest) cs (L.zip [0 ..] muGdbs)
+                else
+                  runManticoreSweep
+                    (("baseline", programDir) : sweeps)
+                    (L.zip [0 ..] muGdbs)
           -- Dump the clock-control samples LAST (mirrors the wire demo): this halts
           -- the CC CPUs, which is only safe once the application run is over.
           liftIO goDumpCcSamples
@@ -781,6 +793,44 @@ configureSeams gdb node = do
         (fromIntegral lk :: C.Index LinkCount)
   -- raise seam_enable last so the extend/link config is in place before the switch
   Gdb.writeLe gdb (regAddr "UserConfig" "seam_enable") (1 :: C.BitVector 32)
+
+{- | Seam-latency sweep image sets produced by @manticore_compile_program.sh@
+(@MANTICORE_SWEEP_DELTAS@): the @sweep_*@ subdirectories of the program dir that
+contain a manifest, in name order (the script prefixes a run-order index).
+-}
+findSweepSets :: FilePath -> IO [(String, FilePath)]
+findSweepSets dir = do
+  entries <- either (\(_ :: SomeException) -> []) id <$> try (listDirectory dir)
+  let candidates = L.sort [e | e <- entries, "sweep_" `L.isPrefixOf` e]
+  fmap concat $ forM candidates $ \e -> do
+    hasManifest <- doesFileExist (dir </> e </> "manifest.json")
+    pure [(e, dir </> e) | hasManifest]
+
+{- | Run every image set in one rig session and report a per-set verdict matrix.
+The chips accept a fresh image load + coordinated start after a (stall-gated)
+FINISH — each phase is a full re-boot from gmem, exactly like the proven
+init0/init1/main sequence — so one HITL run can test several seam-latency
+hypotheses back to back. A set that throws (e.g. a command-completion timeout)
+is reported and does not abort the remaining sets. The sweep passes iff ANY
+set passes, and the matrix names the winner(s).
+-}
+runManticoreSweep :: [(String, FilePath)] -> [(Int, Gdb.Gdb)] -> IO ExitCode
+runManticoreSweep sets nodeGdbs = do
+  putStrLn $ "=== SEAM-LATENCY SWEEP: " <> show (length sets) <> " image set(s) ==="
+  results <- forM sets $ \(label, dir) -> do
+    putStrLn $ "=== sweep set '" <> label <> "' (" <> dir <> ") ==="
+    r <- try @SomeException $ do
+      mf <- parseManifest (dir </> "manifest.json")
+      runManticoreMulti dir (userBase mf) (chips mf) nodeGdbs
+    case r of
+      Left err -> do
+        putStrLn $ "  sweep set '" <> label <> "' EXCEPTION: " <> show err
+        pure (label, False)
+      Right ec -> pure (label, ec == ExitSuccess)
+  putStrLn "=== SWEEP VERDICT MATRIX (per seam-latency delta) ==="
+  forM_ results $ \(label, ok) ->
+    putStrLn $ "  " <> label <> ": " <> (if ok then "PASS (sig2 golden)" else "fail")
+  pure (if any snd results then ExitSuccess else ExitFailure 1)
 
 {- | Distributed multi-chip run. Each chip's split image is loaded into ITS OWN FPGA's
 gmem (after the caller's timed-reset release gave every chip's totalCycleCount a common
