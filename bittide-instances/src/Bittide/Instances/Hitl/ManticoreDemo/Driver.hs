@@ -1025,7 +1025,7 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   putStrLn "Enabling RX ring-buffer liveness taps on all links..."
   forConcurrently_ runs $ \(_, gdb, _, _) ->
     forM_ [0 .. 6 :: Int] $ \k ->
-      Gdb.writeLe gdb (rxRingAddr k "receive_enable") (1 :: Word8)
+      Gdb.writeLe gdb (rxRingAddr k "enable") (1 :: Word8)
   putStrLn "Loading per-chip split images into each FPGA's gmem..."
   forConcurrently_ runs $ \(node, gdb, bins, _) -> do
     forM_ bins $ \b -> restoreWords gdb node (binBase b) (binWords b)
