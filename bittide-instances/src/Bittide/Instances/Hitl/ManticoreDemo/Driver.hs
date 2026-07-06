@@ -734,9 +734,10 @@ goldenMultiVcycles = 1025
 inter-chip NoC delivered every fold across the chip-to-chip seams — so asserting it makes the
 multi-chip pass DATA-DEPENDENT rather than mere liveness (the reporter's @$finish@ fires on a
 fixed cycle count regardless of received data). @sig0@/@sig1@ depend on the same cross-seam
-transport and are reported, not asserted (single-chip RTL now matches the interpreter golden
-on the full triple, see @Pico84SingleChipTester@). Interpreter golden (20/96/193/225); the
-last is 225.
+transport and are reported, not asserted (the full triple is asserted once a green rig run
+confirms; the 8-chip SIM now reaches the full golden (225,225,225) after the compiler's
+NoC reservation-anchoring fix — see manticore-compiler 2b203f9 and SEAM-RESIDUAL.md).
+Interpreter golden (20/96/193/225); the last is 225.
 -}
 goldenFinalSig2 :: Int
 goldenFinalSig2 = 225
