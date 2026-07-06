@@ -48,7 +48,7 @@ import Data.Maybe (fromJust)
 
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Ugn (UgnEdge (..), indexToNodeId)
-import Bittide.Instances.Hitl.WireDemo.Driver (goldenUgns, internalDelay, marginFrames)
+import Bittide.Instances.Hitl.WireDemo.Driver (goldenUgns, marginFrames)
 
 -- | Chip grid: @chipCols x chipRows@ chips of @chipDimX x chipDimY@ cores -> 8x16.
 chipCols, chipRows, chipDimX, chipDimY :: Int
@@ -213,19 +213,50 @@ goldenUgnOf edges a b =
  where
   nodeId k = indexToNodeId (fromIntegral k :: C.Index FpgaCount)
 
+{- | The delay in compute-clock cycles between the UGN probe points and the Manticore
+chip's seam ports — the ManticoreDemo analogue of the WireDemo's @internalDelay@,
+derived for THIS demo's seam datapath. The WireDemo constant (@-4@) backtracks the
+MU-measured UGN to its ring-buffer PE taps and does NOT apply to the seam ports;
+borrowing it made every seam frame land 2 cycles later than the compiler's schedule
+(rig-only: the sim builds its cables FROM the CSV, so any consistent value stays
+green there).
+
+Register accounting per directed cable, @P@ = physical flight from the GTH-TX
+register to the elastic-buffer output (transceivers + fiber + EB occupancy):
+
+  * UGN probe path (5 stages + P): 'Bittide.CaptureUgn.sendUgn' stamps the local
+    counter combinationally at the ring-buffer TX point, then the handshake block's
+    TX 'Clash.Explicit.Prelude.dflipflop' (1), the user core's @gthTxR@ (2), P, the
+    generic core's @rxs2@ (3) and @rxs4@ (4) flops, and 'Bittide.CaptureUgn.captureUgn'
+    registers its link input once more (5) before the combinational capture — so
+    @ugn = P + 5@ (plus counter offsets absorbed by the relabel gauge).
+  * Seam path (3 stages + P): chip seam TX port -> @gthTxR@ (1), P, @rxs2@ (2) and
+    the user core's @mkSeamIn@ input register (3) -> chip seam RX port — so the
+    port-to-port wire is @P + 3 = ugn - 2@.
+
+The bridge's own stages are covered by the @period + 3@ term of 'linkLatency' and
+are identical on the chip (static @seamLatency = 26@, @wireLat = 15@) and in the
+sim kernels (per-CSV @totalLatency@, wire @= latency - period - 3@): both demuxes
+hold @totalLatency - 4 - wireLat - age = 7 - age@, so the bridge behaviour cancels
+and only the wire term differs — which is exactly what this constant corrects.
+-}
+seamInternalDelay :: Int
+seamInternalDelay = -2
+
 {- | Per-crossing seam latency (the @--hop-latencies@ value) for a directed seam from
 IC @s@ to IC @t@ in direction @d@: the groomed link latency (golden UGN + safety
-margin, backtracked to PE-to-PE by @internalDelay@) plus the chip's TDM seam
-serialization (@period + 3@). Matches the chip's @seamLatency = wire + period + 3@
-('TdmTorusBoundaryBridge'); @period = 2 * nLinks * cyclesPerSlot@ over the edge's
-@nLinks@ boundary links (chipDimY for E/W, chipDimX for N/S). The @+ 3@ (was @+ 2@)
-includes the demux io.out pipeline register that breaks the seam->boundary-switch
-timing path; only seam crossings carry this extra cycle, not intra-chip hops.
+margin, backtracked to the chip's seam ports by 'seamInternalDelay') plus the chip's
+TDM seam serialization (@period + 3@). Matches the chip's
+@seamLatency = wire + period + 3@ ('TdmTorusBoundaryBridge');
+@period = 2 * nLinks * cyclesPerSlot@ over the edge's @nLinks@ boundary links
+(chipDimY for E/W, chipDimX for N/S). The @+ 3@ (was @+ 2@) includes the demux
+io.out pipeline register that breaks the seam->boundary-switch timing path; only
+seam crossings carry this extra cycle, not intra-chip hops.
 -}
 linkLatency :: [UgnEdge] -> Int -> Int -> TorusDir -> Integer
 linkLatency edges s t d = wire + period + 3
  where
-  wire = goldenUgnOf edges s t + fromIntegral marginFrames + fromIntegral internalDelay
+  wire = goldenUgnOf edges s t + fromIntegral marginFrames + fromIntegral seamInternalDelay
   nLinks = case d of East -> chipDimY; West -> chipDimY; North -> chipDimX; South -> chipDimX
   period = fromIntegral (2 * nLinks * cyclesPerSlot)
 

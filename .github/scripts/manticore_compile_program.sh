@@ -97,9 +97,9 @@ fi
 # Per-directed-link seam latencies for the compiler's NoC schedule. For a
 # single chip (the current demo) there are no inter-chip seams, so this is
 # empty/unset. For a multi-chip torus across the rig it must be derived from the
-# golden UGNs the same way the WireDemo derives its schedule (per directed link:
-# latency = golden_ugn + marginFrames + internalDelay; see
-# Hitl/WireDemo/Driver.hs appSchedule + MANTICORE-KNOWLEDGE §14). Point
+# golden UGNs (per directed link: wire = golden_ugn + marginFrames +
+# seamInternalDelay, latency = wire + period + 3; see
+# Hitl/ManticoreDemo/Latencies.hs linkLatency for the full derivation). Point
 # MANTICORE_HOP_LATENCIES at that latencies.csv when it exists.
 latency_args=()
 if [ -n "${MANTICORE_HOP_LATENCIES:-}" ]; then
