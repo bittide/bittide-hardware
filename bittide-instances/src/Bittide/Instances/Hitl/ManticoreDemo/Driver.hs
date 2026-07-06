@@ -747,10 +747,12 @@ distinct state registers with different update rules and widths, all LOCAL to th
 privileged process. Their values never cross a chip seam, so this asserts the multi-state,
 multi-statement @$display@\/trace mechanism itself (guest state -> GST trace words -> host
 readback) end-to-end on the rig, independently of the cross-seam application values.
-Interpreter golden of the last CHK (guest cycle 895): counter 125, LFSR 38621, acc 115254.
+Interpreter golden of the last CHK (guest cycle 895; the display reads the states'
+next-value wires, which co-locates the update logic with the reporter process): counter
+128, LFSR 11707, acc 115475.
 -}
 goldenFinalChk :: (Int, Int, Int)
-goldenFinalChk = (125, 38621, 115254)
+goldenFinalChk = (128, 11707, 115475)
 
 {- | Write FPGA node @node@'s inter-chip seam configuration over its (halted) MU gdb: per
 torus edge, the @seam_<edge>_extend@ bit and (when extended) the @seam_<edge>_link@
