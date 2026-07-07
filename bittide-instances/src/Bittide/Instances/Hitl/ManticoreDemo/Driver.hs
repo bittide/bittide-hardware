@@ -243,7 +243,7 @@ and runs out of lockstep. On top of arming, the seam-gated boot (see
 seconds, not milliseconds. 1e9 cycles = 8s at 125MHz.
 -}
 startMargin :: Word64
-startMargin = 2_500_000_000
+startMargin = 6_000_000_000
 
 {- | Wall-clock settle time between arming the chips of a phase and re-extending
 their seams: long enough that every chip has finished its (ms-scale) boot and is
@@ -291,6 +291,38 @@ rxRingAddr k = regAddr ("ReceiveRingBuffer" <> show k)
 -- | Same for the transmit ring buffers.
 txRingAddr :: Int -> String -> Integer
 txRingAddr k = regAddr ("TransmitRingBuffer" <> show k)
+
+-- | Same for the elastic buffers.
+ebAddr :: Int -> String -> Integer
+ebAddr k = regAddr ("ElasticBuffer" <> show k)
+
+{- | Stage-sampled RX liveness of one link (diagnostics): a window of the
+receive ring buffer plus the elastic buffer's data count. A live link shows
+many distinct words (rotating TDM idle tags change the word every cycle while
+the far chip's compute clock runs; beacon and handshake words evolve too); a
+frozen link shows one. Run 28850737197's beacon proved node 0 link 1's whole
+GTH -> EB -> ring-buffer path alive right after grooming, while every main
+window since 28808445252 shows it frozen at a single TDM idle word — this
+sampler pins the stage in between where the stream stops.
+-}
+sampleLink :: String -> Int -> Gdb.Gdb -> Int -> IO ()
+sampleLink stage node gdb k = do
+  ws <- forM [0 .. 7 :: Int] $ \j ->
+    Gdb.readLe gdb (rxRingAddr k "data" + fromIntegral (j * 8)) :: IO Word64
+  dc <- Gdb.readLe gdb (ebAddr k "data_count") :: IO Word32
+  putStrLn $
+    "  stage["
+      <> stage
+      <> "] node "
+      <> show node
+      <> " link "
+      <> show k
+      <> ": distinct="
+      <> show (length (L.nub ws))
+      <> " sample=0x"
+      <> showHex (L.head ws) ""
+      <> " dc="
+      <> show dc
 
 {- | Link-identity beacon word for @(node, link)@: a constant, unmistakable
 pattern (all byte-MSBs clear, so it can never be confused with word-alignment
@@ -1082,13 +1114,26 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
       forM_ [0 .. 6 :: Int] $ \k ->
         Gdb.writeLe gdb (txRingAddr k "enable") (0 :: Word8)
 
+  -- Stage-sampled liveness of the chronic direction (node2.link1 -> node0.link1)
+  -- and its reverse, at every stage between the (proven-alive) beacon and main:
+  -- pins the stage where the RX stream stops changing.
+  let
+    sampleStage stage =
+      forM_ [(0 :: Int, 1 :: Int), (2, 1)] $ \(n, k) ->
+        case [g | (node, g, _, _) <- runs, node == n] of
+          (g : _) -> sampleLink stage n g k
+          [] -> pure ()
+  sampleStage "post-beacon"
+
   -- 1. Per-FPGA seam config. 2. Load each chip's split image (concurrently).
   putStrLn "Configuring per-FPGA seams (grid mesh)..."
   forM_ runs $ \(node, gdb, _, _) -> configureSeams gdb node
+  sampleStage "post-seam-config"
   putStrLn "Loading per-chip split images into each FPGA's gmem..."
   forConcurrently_ runs $ \(node, gdb, bins, _) -> do
     forM_ bins $ \b -> restoreWords gdb node (binBase b) (binWords b)
     poke64 gdb aTrace 0
+  sampleStage "post-image-load"
 
   -- 3. Run each chip's initializers, COORDINATED per phase (CMD_START_AT aligned start) so
   -- any cross-chip init traffic stays in lockstep and each seam empties on a shared vcycle
@@ -1111,11 +1156,13 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
       when (eid > 0xFFFF) $
         fail $
           "node " <> show node <> " init phase " <> show ph <> " timed out (eid=" <> show eid <> ")"
+    sampleStage ("post-init" <> show ph)
 
   -- 4. Armed coordinated start of main (CMD_START_AT + STALL_ARM): every chip gates ONLY on
   -- the coordinated STALL wave (eid 0x7FFF), so $display/FLUSH is captured but NON-stalling.
   -- All chips run in lockstep from the aligned S until the app's $finish trips the stall wave
   -- and halts them together. (Per-$display value capture is postponed.)
+  sampleStage "pre-main"
   putStrLn "Starting main on all chips (armed CMD_START_AT)..."
   _ <- startPhaseGated "main (ARMED)" $ \sMain ->
     forConcurrently_ runs $ \(_, gdb, bins, _) -> do
