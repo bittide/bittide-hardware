@@ -681,6 +681,13 @@ transceiverPrbsWith gthCore opts input = output
         , rxInitDone = withLockRxFree (pure True) -- See note @ withLockRxFree
         , rxDataGood = withLockRxFree (prbsOk .||. prbsOkDelayedSticky)
         , errorAfterRxUser = withLockRxFree errorAfterRxInitDone
+        , -- Once both directions are established (the protocol's no-more-resets
+          -- guarantee point), a Monitor-state failure no longer restarts the
+          -- bring-up: a transient 8b/10b error must not tear down a groomed
+          -- link (the re-bring-up comma-storms the partner and leaves the
+          -- elastic buffers railed — a permanently dead channel, invisible to
+          -- watermark monitors). See 'ResetManager.Input.commissioned'.
+          commissioned = txDataInitDoneFree
         }
 
   -- Synchronized version of 'resets.txUser' and 'resets.txDomain'. We use

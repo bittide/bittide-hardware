@@ -39,10 +39,12 @@ data Statistics = Statistics
   the state machine back to 'ResetUserTx'.
   -}
   , failAfterUps :: Unsigned 32
-  {- ^ How many times the link failed when in the 'Monitor' state - i.e., after
-  detecting it fully worked. A failure can have a diverse number of root
-  causes. Examples include 8b/10b decoding errors, disconnected cables, or
-  instable clocks.
+  {- ^ How many cycles the link reported failure when in the 'Monitor' state -
+  i.e., after detecting it fully worked. A failure can have a diverse number
+  of root causes. Examples include 8b/10b decoding errors, disconnected
+  cables, or instable clocks. Before 'Input.commissioned' such a failure
+  restarts the channel bring-up; after it the state machine holds (see
+  'Monitor') and this counter is the only trace of the event.
   -}
   }
   deriving (Generic, NFDataX, BitPackC)
@@ -131,11 +133,23 @@ data State dom
     -}
     WaitRx (MaxRxTimeoutMs, IndexMs dom 1)
   | {- | Wait till the end of the universe, or until a link goes down - whichever
-    comes first. In case of the latter, the state machine moves to 'ResetUserTx'.
+    comes first. In case of the latter, the response depends on
+    'Input.commissioned':
 
-    TODO: Manager should stay in the monitor state on failure and export
-      failure reason. It should only move back upon 'Input.channelReset'
-      assertion.
+      * not commissioned (the neighbor may still legitimately reset its
+        transmit side, shifting its word phase — our frozen word aligner
+        could not recover from that silently): move back to 'ResetUserTx'
+        and renegotiate.
+      * commissioned (both sides passed the point where the protocol
+        guarantees no more resets): HOLD this state and only count the
+        failure in 'Statistics.failAfterUps'. A transient decode error must
+        not tear down a working link: the full re-bring-up destroys
+        application state built on top of it (e.g. groomed elastic-buffer
+        occupancies) while the transceivers re-lock, turning a one-cycle
+        glitch into a permanently dead channel. Recovery agency lies with
+        the application layer via 'Input.channelReset'.
+
+    TODO: export a failure reason.
     -}
     Monitor
   deriving (Generic, NFDataX, Eq, Ord)
@@ -159,6 +173,13 @@ data Input dom = Input
   'Monitor' state.
 
   TODO: Accept more fine-grained error information here.
+  -}
+  , commissioned :: Signal dom Bool
+  {- ^ Both directions of the link are established and the protocol guarantees
+  the neighbor will not reset its transmit side anymore (e.g.
+  @txDataInitDone@). Once asserted, failures in 'Monitor' no longer restart
+  the bring-up: they are only counted (see 'Monitor' for the rationale).
+  Must be monotone (once high, stays high) while the channel is up.
   -}
   }
 
@@ -246,6 +267,7 @@ resetManager config clk rst args = (resets, statistics)
       , args.rxInitDone
       , args.rxDataGood
       , args.errorAfterRxUser
+      , args.commissioned
       )
 
   initStats :: Statistics
@@ -264,9 +286,9 @@ resetManager config clk rst args = (resets, statistics)
   -- separated from the next. Without them, it's hard to read (IMO).
   update ::
     (State dom, Statistics) ->
-    (Bool, Bool, Bool, Bool, Bool) ->
+    (Bool, Bool, Bool, Bool, Bool, Bool) ->
     (State dom, Statistics)
-  update st (channelReset, txInitDone, rxInitDone, rxDataGood, errorAfterRxUser) =
+  update st (channelReset, txInitDone, rxInitDone, rxDataGood, errorAfterRxUser, commissioned) =
     case st of
       -- Reset everything, including TX PLLs - transmit and receive side.
       (InReset, stats) -> (StartTxClock, stats)
@@ -308,12 +330,15 @@ resetManager config clk rst args = (resets, statistics)
         | otherwise ->
             (WaitRx (countSucc cntr), stats)
       --
-      -- Monitor link. Move all the way back to 'ResetUserTx' if the link goes down
-      -- for some reason.
-      --
-      -- TODO: Make this more fine-grained, add error state, wait for user channel reset.
+      -- Monitor link. Before commissioning a failure moves all the way back to
+      -- 'ResetUserTx' (the neighbor may still reset its TX, so renegotiating is
+      -- the only safe recovery). After commissioning, HOLD and count: a full
+      -- re-bring-up would destroy the application state built on the link (the
+      -- groomed elastic-buffer occupancies) and turn a transient decode error
+      -- into a permanently dead channel — see 'Monitor'.
       (Monitor, stats@Statistics{failAfterUps})
         | rxInitDone && rxDataGood && not errorAfterRxUser -> (Monitor, stats)
+        | commissioned -> (Monitor, stats{failAfterUps = satSucc SatBound failAfterUps})
         | otherwise -> (ResetUserTx, stats{failAfterUps = satSucc SatBound failAfterUps})
 
   stateToFsmResets st =
