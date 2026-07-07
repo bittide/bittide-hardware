@@ -894,7 +894,7 @@ jobs:
           # SIGs without any timing component, so the candidate sweep is
           # paused. This run maps every link's RX liveness via the receive
           # ring buffers (driver taps) alongside the USIG frontier.
-          export MANTICORE_LATENCY_DELTA="1"
+          export MANTICORE_LATENCY_DELTA="-1"
           .github/scripts/manticore_compile_program.sh
 
       - name: Run tests on hardware
