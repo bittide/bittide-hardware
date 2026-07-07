@@ -288,6 +288,19 @@ names canonicalize to @ReceiveRingBuffer0..6@ in the memory map).
 rxRingAddr :: Int -> String -> Integer
 rxRingAddr k = regAddr ("ReceiveRingBuffer" <> show k)
 
+-- | Same for the transmit ring buffers.
+txRingAddr :: Int -> String -> Integer
+txRingAddr k = regAddr ("TransmitRingBuffer" <> show k)
+
+{- | Link-identity beacon word for @(node, link)@: a constant, unmistakable
+pattern (all byte-MSBs clear, so it can never be confused with word-alignment
+or handshake traffic) that a node transmits on one of its links so receivers
+can identify which PHYSICAL port actually feeds each of their fibers.
+-}
+beaconWord :: Int -> Int -> Word64
+beaconWord node k =
+  (0x0B `shiftL` 56) .|. (fromIntegral node `shiftL` 16) .|. (fromIntegral k `shiftL` 8)
+
 {- | Run a GDB action with the MU briefly halted, resuming it afterwards. The MU
 firmware keeps running between accesses (it monitors the elastic buffers over
 UART during the application phase); RISC-V debug memory access on this rig
@@ -1011,9 +1024,6 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   -- The MUs' elastic-buffer monitors pause here and run again for the main phase.
   haltAll
 
-  -- 1. Per-FPGA seam config. 2. Load each chip's split image (concurrently).
-  putStrLn "Configuring per-FPGA seams (grid mesh)..."
-  forM_ runs $ \(node, gdb, _, _) -> configureSeams gdb node
   -- RX ring-buffer liveness taps (diagnostics): every link's receive ring
   -- buffer continuously records the raw post-EB RX words once enabled. The
   -- post-run window (the buffers hold the last ~32us) distinguishes by VALUE:
@@ -1026,6 +1036,55 @@ runManticoreMulti programDir ubase cms nodeGdbs = do
   forConcurrently_ runs $ \(_, gdb, _, _) ->
     forM_ [0 .. 6 :: Int] $ \k ->
       Gdb.writeLe gdb (rxRingAddr k "enable") (1 :: Word8)
+
+  -- Link-identity beacon (diagnostics): run BEFORE any seam config, so every
+  -- link's gthTx still forwards the post-handshake fromCore path — the
+  -- transmit ring buffers. Each node fills all 7 of its transmit ring buffers
+  -- with a unique (node, link) pattern and enables transmission; each node's
+  -- receive ring buffers then hold the pattern of whichever PHYSICAL port
+  -- actually feeds them. The printed matrix, checked against fpgaSetup, either
+  -- verifies the cabling or exposes a crossed pair. Motivation (run
+  -- 28847848367): node 2's link-1 fabric verifiably emits TDM frames while
+  -- node 0's link-1 EB receives a constant handshake-era Meta word on a LIVE
+  -- write clock (the groom correction moved its occupancy exactly) — the
+  -- fiber into node 0 link 1 is not carrying what fpgaSetup says. A port
+  -- whose handshake never completed keeps transmitting Meta words instead of
+  -- its beacon, so a crossed feeder shows up by elimination: its beacon
+  -- appears nowhere in the matrix. Transmit enables are dropped again before
+  -- the application flow.
+  do
+    putStrLn "Link-identity beacon: loading TX patterns + enabling..."
+    forConcurrently_ runs $ \(node, gdb, _, _) ->
+      forM_ [0 .. 6 :: Int] $ \k -> do
+        let
+          w = beaconWord node k
+          bytes =
+            BS.pack (concat (replicate 4000 [fromIntegral (w `shiftR` (8 * i)) | i <- [0 .. 7]]))
+          path = "/tmp/manticore_beacon_" <> show node <> "_" <> show k <> ".bin"
+        BS.writeFile path bytes
+        Gdb.runCommand gdb ("restore " <> path <> " binary 0x" <> showHex (txRingAddr k "data") "")
+        Gdb.writeLe gdb (txRingAddr k "enable") (1 :: Word8)
+    threadDelay 1_000_000
+    putStrLn "Link-identity beacon: RX matrix (expected feeder per fpgaSetup in parens):"
+    forM_ runs $ \(node, gdb, _, _) ->
+      forM_ [0 .. 6 :: Int] $ \k -> do
+        ws <- forM [0 .. 3 :: Int] $ \j ->
+          Gdb.readLe gdb (rxRingAddr k "data" + fromIntegral (j * 8)) :: IO Word64
+        putStrLn $
+          "  beacon rx node "
+            <> show node
+            <> " link "
+            <> show k
+            <> ": "
+            <> L.intercalate "," (map (\w -> "0x" <> showHex w "") ws)
+    putStrLn "Link-identity beacon: disabling TX..."
+    forConcurrently_ runs $ \(_, gdb, _, _) ->
+      forM_ [0 .. 6 :: Int] $ \k ->
+        Gdb.writeLe gdb (txRingAddr k "enable") (0 :: Word8)
+
+  -- 1. Per-FPGA seam config. 2. Load each chip's split image (concurrently).
+  putStrLn "Configuring per-FPGA seams (grid mesh)..."
+  forM_ runs $ \(node, gdb, _, _) -> configureSeams gdb node
   putStrLn "Loading per-chip split images into each FPGA's gmem..."
   forConcurrently_ runs $ \(node, gdb, bins, _) -> do
     forM_ bins $ \b -> restoreWords gdb node (binBase b) (binWords b)
