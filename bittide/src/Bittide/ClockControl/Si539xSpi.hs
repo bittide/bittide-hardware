@@ -310,7 +310,7 @@ si539xSpi
       _ -> False
 
     romOut = rom (configPreamble ++ config ++ configPostamble) romAddress
-    romAddress = bitCoerce . getStateAddress <$> configState
+    romAddress = getStateAddress <$> configState
 
     (configState, spiOperation, configBusy, configByte) =
       mealyB go (WaitForReady False) (romOut, externalOperation, driverByte, driverBusy)
