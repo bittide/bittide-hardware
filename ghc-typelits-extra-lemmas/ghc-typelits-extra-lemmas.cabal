@@ -51,6 +51,6 @@ test-suite unittests
   build-depends:
     base,
     ghc-typelits-extra-lemmas,
-    hedgehog >=1.0 && <1.5,
+    hedgehog >=1.0 && <1.6,
     tasty,
     tasty-hedgehog >=1.2 && <1.6,
