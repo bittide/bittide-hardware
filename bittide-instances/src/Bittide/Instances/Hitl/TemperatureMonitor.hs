@@ -49,11 +49,16 @@ temperatureMonitor diffClk = temperatureIla `hwSeqX` bundle (testDone, testSucce
   temperature = E.regMaybe clk rst enableGen 0 temperatureMaybe
 
   testDone = trueFor (SNat @(Milliseconds 1200)) clk testRst (pure True)
+  -- This is a plausibility check on the system monitor readings, not a
+  -- constraint on lab conditions. Boards have been observed idling at 46
+  -- degrees Celcius in summer. Hence, the upper bound has generous headroom,
+  -- while staying below the 100 degrees Celcius commercial temperature grade
+  -- limit.
   testSuccess =
     trueFor (SNat @(Seconds 1)) clk testRst
-      $ 20
+      $ 10
       .<=. temperature
-      .&&. temperature .<=. 45
+      .&&. temperature .<=. 70
 
   testRst = unsafeFromActiveLow $ hitlVioBool clk testDone testSuccess
 
