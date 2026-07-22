@@ -1,0 +1,39 @@
+-- Info-table-map build for -hi heap profiling (space-leak hunting).
+-- Usage:
+--   cabal build --project-file=cabal.project.infotable --builddir=dist-info bittide-instances:unittests
+--   $(cabal list-bin --project-file=cabal.project.infotable --builddir=dist-info bittide-instances:unittests) \
+--     -p /RegisterWb.sim/ +RTS -s -hi -i0.2 -l -RTS
+--
+-- Only instruments the packages involved in circuit simulation; external
+-- deps (base, containers, ...) stay uninstrumented to keep build times sane.
+import: cabal.project
+
+package clash-prelude
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package clash-protocols
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package clash-protocols-base
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package clash-protocols-memmap
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package clash-bitpackc
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package clash-vexriscv
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package bittide
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package bittide-extra
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package bittide-cpus
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables
+
+package bittide-instances
+  ghc-options: -finfo-table-map -fdistinct-constructor-tables -rtsopts

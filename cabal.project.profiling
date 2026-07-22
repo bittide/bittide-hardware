@@ -1,0 +1,23 @@
+-- Profiling configuration for measuring Clash compiler performance.
+-- Usage:
+--   cabal build --project-file=cabal.project.profiling bittide-instances:clash
+--   cabal run --project-file=cabal.project.profiling bittide-instances:clash -- <args> +RTS -p -s
+--
+-- Uses late-cost-center profiling on the clash packages only, so profiles
+-- attribute time to Clash compiler functions with minimal optimization
+-- distortion elsewhere.
+import: cabal.project
+
+profiling: True
+
+package *
+  profiling-detail: none
+
+package clash-lib
+  profiling-detail: late
+
+package clash-ghc
+  profiling-detail: late
+
+package bittide-instances
+  ghc-options: -rtsopts

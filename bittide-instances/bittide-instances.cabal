@@ -390,6 +390,23 @@ executable vexriscv-sim
     -Wall
     -threaded
 
+-- Debug helper for hunting space leaks in circuit simulation, see
+-- https://github.com/bittide/bittide-hardware/issues/784. Run it with
+-- GHC_DEBUG_SOCKET set and attach a ghc-debug client.
+executable leak-debug
+  import: ghc2024, extra, sane-records
+  main-is: leak_debug.hs
+  hs-source-dirs: bin
+  build-depends:
+    base,
+    bittide-instances,
+    ghc-debug-stub,
+
+  ghc-options:
+    -Wall
+    -threaded
+    -rtsopts
+
 executable samples-to
   import: ghc2024, extra, sane-records
   main-is: samples_to.hs

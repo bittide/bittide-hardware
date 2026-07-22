@@ -310,7 +310,9 @@ si539xSpi
       _ -> False
 
     romOut = rom (configPreamble ++ config ++ configPostamble) romAddress
-    romAddress = bitCoerce . getStateAddress <$> configState
+    -- rom now takes any Enum address (clash #3320); Index entries flows in
+    -- directly, no bitCoerce to Unsigned needed.
+    romAddress = getStateAddress <$> configState
 
     (configState, spiOperation, configBusy, configByte) =
       mealyB go (WaitForReady False) (romOut, externalOperation, driverByte, driverBusy)

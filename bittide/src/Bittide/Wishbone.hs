@@ -430,7 +430,24 @@ uartInterfaceWb ::
 uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(bus, uartRx) -> do
   [dataWb, rxEmptyWb, txFullWb] <- MmWb.deviceWbI (MmWb.deviceConfig "Uart") -< bus
 
-  let txFifoIn = MmWb.busActivityWrite <$> regOutActivity
+  -- During simulation the ack/status values are forced through the transmit
+  -- FIFO's input, which sees demand on every cycle. They are otherwise only
+  -- demanded when a bus transaction acknowledges ('getBusActivity' and the
+  -- short-circuiting (.&&.) skip them on idle cycles), so on a quiet UART
+  -- their unevaluated per-cycle thunks pile up and retain the FIFO and data
+  -- register history. See
+  -- https://github.com/bittide/bittide-hardware/issues/784.
+  let
+    txFifoIn
+      | clashSimulation =
+          (\r e f br ack w -> r `seqX` e `seqX` f `seqX` br `seqX` ack `seqX` w)
+            <$> regOut
+            <*> rxEmpty
+            <*> txFull
+            <*> busRead
+            <*> regOutAck
+            <*> (MmWb.busActivityWrite <$> regOutActivity)
+      | otherwise = MmWb.busActivityWrite <$> regOutActivity
   (txFifoOut, Fwd txFifoMeta) <- fifoWithMeta txDepth <| unsafeToDf -< Fwd txFifoIn
 
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
@@ -447,7 +464,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(bus, uartRx) ->
 
   Fwd regOutActivity <- unsafeFromDf -< (regOutActivityDf, Fwd (fmap Ack regOutAck))
 
-  (_regOut, regOutActivityDf) <-
+  (Fwd regOut, regOutActivityDf) <-
     MmWb.registerWbDfI
       (registerConfig "data" "")
         { MmWb.access = Mm.ReadWrite
