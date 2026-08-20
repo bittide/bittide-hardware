@@ -14,6 +14,7 @@ SPDX-License-Identifier: Apache-2.0
   - [Transmit Ring Buffer](sections/components/transmit-ring-buffer.md)
   - [Receive Ring Buffer](sections/components/receive-ring-buffer.md)
 - [Demos]()
+  - [Decode Demo](sections/demos/decode-demo.md)
   - [Soft UGN Demo](sections/demos/soft-ugn-demo.md)
   - [Wire Demo](sections/demos/wire-demo.md)
 - [Ring Buffer alignment](sections/ringbuffer-alignment.md)
