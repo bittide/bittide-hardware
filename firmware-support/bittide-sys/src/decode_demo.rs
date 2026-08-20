@@ -476,6 +476,10 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                     cfg.poll_timeout,
                 ) {
                     results.lost_frames += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        uwriteln!(uart, "C lost gate tok={} seq={}", token, seq1).unwrap();
+                    }
                     continue 'tokens;
                 }
                 let contribution = make_contribution(cfg.local_pattern, vw);
@@ -517,6 +521,10 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                     cfg.poll_timeout,
                 ) {
                     results.lost_frames += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        uwriteln!(uart, "C lost gate tok={} seq={}", token, seq2).unwrap();
+                    }
                     continue 'tokens;
                 }
                 send_frame(bufs.down_tx, seq2, &payload[..vw]);
@@ -567,6 +575,10 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                     cfg.poll_timeout,
                 ) {
                     results.lost_frames += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        uwriteln!(uart, "C lost gate tok={} seq={}", token, seq1).unwrap();
+                    }
                     continue 'tokens;
                 }
                 add_contribution(&mut payload, cfg.local_pattern, vw);
@@ -590,6 +602,10 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                     cfg.poll_timeout,
                 ) {
                     results.lost_frames += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        uwriteln!(uart, "C lost gate tok={} seq={}", token, seq2).unwrap();
+                    }
                     continue 'tokens;
                 }
                 send_frame(bufs.down_tx, seq2, &payload[..vw]);

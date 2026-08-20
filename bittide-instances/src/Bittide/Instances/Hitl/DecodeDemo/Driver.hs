@@ -79,7 +79,10 @@ layersPerTokenC = 16
 
 hwTokenCount, cTokenCount, aPrimeTokenCount :: Unsigned 32
 hwTokenCount = 10_000
-cTokenCount = 2_000
+-- A variant-C token costs ~0.23 s on the rig (16 layers x 16 serial
+-- hop-services on the management units), so counts and timeouts are sized
+-- for that.
+cTokenCount = 500
 aPrimeTokenCount = 200
 
 {- | The delay in clock cycles between two PEs which is not accounted for by
@@ -248,7 +251,10 @@ writeDecodeConfig gdb base variant tokenCount (lapOff, layerPer, tokenPer) node 
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 24) tokenCount
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 28) vectorWordsC
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 32) 0 -- compute_cycles
-  Gdb.writeLe @(Unsigned 32) gdb (fieldAt 36) 50_000_000 -- poll_timeout: 0.25 s
+  -- Far above one token's duration: a poll that times out abandons a frame
+  -- the ring then permanently misses, so this is a last resort, not a pacing
+  -- mechanism.
+  Gdb.writeLe @(Unsigned 32) gdb (fieldAt 36) 400_000_000 -- poll_timeout: 2 s
   Gdb.writeLe @(Unsigned 64) gdb (fieldAt 40) node.firstCycle
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 48) lapOff
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 52) layerPer
@@ -590,7 +596,7 @@ driver testName targets = do
                     $ \(n, gdb, (resAddr, _)) -> do
                       r <- readMcResults gdb resAddr
                       putStrLn $ "  TIMEOUT node " <> show n <> ": " <> show r
-              T.tryWithTimeoutOn T.PrintActionTime ("Waiting for " <> show variant) 300_000_000 onTimeout
+              T.tryWithTimeoutOn T.PrintActionTime ("Waiting for " <> show variant) 480_000_000 onTimeout
                 $ forM_ serials
                 $ \serial -> waitForLine serial doneLine
               mapConcurrently_ Gdb.interrupt managementUnitGdbs
