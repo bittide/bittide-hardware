@@ -119,9 +119,11 @@ chaining once around yields the lap offset.
 generateDecodeSchedule ::
   Vec FpgaCount (Calc.FpgaId, Vec LinkCount (Index FpgaCount)) ->
   Vec FpgaCount (Vec LinkCount (Unsigned 64, Unsigned 64)) ->
+  -- | Vector words (the checksums depend on it)
+  Unsigned 32 ->
   Unsigned 64 ->
   DecodeSchedule
-generateDecodeSchedule fpgaTable ugnParts startCycle =
+generateDecodeSchedule fpgaTable ugnParts vectorWords startCycle =
   DecodeSchedule
     { nodes = genConfig <$> indicesI <*> firstCycles
     , lapOffset = closedCycle - startCycle
@@ -158,8 +160,8 @@ generateDecodeSchedule fpgaTable ugnParts startCycle =
   patterns = fromJust (V.fromList (L.map (resize . (.dna)) demoRigInfo))
 
   vw, iSum :: BitVector 64
-  vw = fromIntegral vectorWordsC
-  iSum = fromIntegral (vectorWordsC * (vectorWordsC - 1) `div` 2)
+  vw = fromIntegral vectorWords
+  iSum = fromIntegral (vectorWords * (vectorWords - 1) `div` 2)
 
   grandTotal = vw * sum patterns + fromIntegral (natToNum @FpgaCount :: Integer) * iSum
 
@@ -299,13 +301,15 @@ writePeConfig ::
   (HasCallStack) =>
   Gdb ->
   PeVariant ->
+  -- | (vector words, token count)
+  (Unsigned 32, Unsigned 32) ->
   -- | (lap offset, layer period, token period)
   (Unsigned 32, Unsigned 32, Unsigned 32) ->
   -- | Histogram base
   Unsigned 32 ->
   DecodeNodeConfig ->
   IO ()
-writePeConfig gdb variant (lapOff, layerPer, tokenPer) histBase node = do
+writePeConfig gdb variant (vectorWords, tokenCount) (lapOff, layerPer, tokenPer) histBase node = do
   let
     w :: forall a. (BitPackC a, Typeable a, NFDataX a) => String -> a -> IO ()
     w reg value = do
@@ -320,8 +324,8 @@ writePeConfig gdb variant (lapOff, layerPer, tokenPer) histBase node = do
   w "layer_period" layerPer
   w "layers_per_token" (fromIntegral layersPerTokenC :: Unsigned 16)
   w "token_period" tokenPer
-  w "token_count" (fromIntegral hwTokenCount :: Unsigned 32)
-  w "vector_words" (fromIntegral vectorWordsC :: Unsigned 16)
+  w "token_count" tokenCount
+  w "vector_words" (fromIntegral vectorWords :: Unsigned 16)
   w "compute_cycles" (0 :: Unsigned 32)
   w "local_pattern" node.localPattern
   w "expected_window_a" node.expectedWindowA
@@ -533,8 +537,8 @@ driver testName targets = do
             -- The schedule is regenerated per variant with a fresh start
             -- cycle; the ring structure (links, patterns, lap offset) is
             -- identical every time.
-            scheduleAt start = generateDecodeSchedule fpgaSetup ugnPairsTableV start
-            probeSchedule = scheduleAt (secondsFromNow 2)
+            scheduleAt vw start = generateDecodeSchedule fpgaSetup ugnPairsTableV vw start
+            probeSchedule = scheduleAt vectorWordsC (secondsFromNow 2)
             lapOff = probeSchedule.lapOffset
           liftIO $ putStrLn $ "Ring lap offset (cycles): " <> show lapOff
 
@@ -545,7 +549,7 @@ driver testName targets = do
               let
                 -- Generous start gate: every node must finish ring-buffer
                 -- alignment before anyone transmits.
-                sched = scheduleAt (currentTime + 2 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                sched = scheduleAt vectorWordsC (currentTime + 2 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 -- A' management-unit calendar: unlike the hardware schedule
                 -- (35 cycles per hop), each software hop costs the CPU its
                 -- per-frame service time (~9k cycles), so windows stagger by
@@ -623,19 +627,18 @@ driver testName targets = do
             threadDelay 3_000_000
 
           let
-            layerPer = truncateB (2 * lapOff) + fromIntegral vectorWordsC + 256 :: Unsigned 32
-            tokenPer = fromIntegral layersPerTokenC * layerPer + 1024
-            predictedTokenLatency =
-              fromIntegral (layersPerTokenC - 1)
-                * layerPer
-                + truncateB (2 * lapOff)
-                + fromIntegral vectorWordsC
-
-            runPeVariant variant = do
-              putStrLn $ "Running variant " <> show variant
+            runPeVariant variant vw tokenCount fileTag = do
+              putStrLn $ "Running variant " <> show variant <> " (" <> fileTag <> ")"
               currentTime <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
               let
-                sched = scheduleAt (currentTime + 2 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                layerPer = truncateB (2 * lapOff) + fromIntegral vw + 256 :: Unsigned 32
+                tokenPer = fromIntegral layersPerTokenC * layerPer + 1024
+                predictedTokenLatency =
+                  fromIntegral (layersPerTokenC - 1)
+                    * layerPer
+                    + truncateB (2 * lapOff)
+                    + fromIntegral vw
+                sched = scheduleAt vw (currentTime + 2 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 histBase n
                   | variant == VariantA || n == (0 :: Int) =
                       satSub SatZero predictedTokenLatency 8
@@ -643,7 +646,7 @@ driver testName targets = do
               forM_ managementUnitGdbs $ \gdb -> writeCreditLinkKnobs gdb variant
               forM_ (L.zip3 [0 ..] managementUnitGdbs (toList sched.nodes))
                 $ \(n, gdb, node) ->
-                  writePeConfig gdb variant (truncateB lapOff, layerPer, tokenPer) (histBase n) node
+                  writePeConfig gdb variant (vw, tokenCount) (truncateB lapOff, layerPer, tokenPer) (histBase n) node
               -- Arm relays first, the injector (node 0) last.
               forM_ (L.reverse managementUnitGdbs) armDecodePe
               forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
@@ -659,7 +662,7 @@ driver testName targets = do
                   <> " credit link: "
                   <> show cl
                 writeFile
-                  (hitlDir </> "pe-" <> peVariantName variant <> "-" <> show n <.> "txt")
+                  (hitlDir </> "pe-" <> fileTag <> "-" <> show n <.> "txt")
                   ( unlines
                       $ [ "tokens_done " <> show st.tokensDone
                         , "checksum_fail_count " <> show st.checksumFailCount
@@ -682,14 +685,14 @@ driver testName targets = do
                   )
               pure (statuses, clStatuses)
 
-            checkPeVariant variant statuses clStatuses = do
+            checkPeVariant variant tokenCount statuses clStatuses = do
               let expectedTransfers =
-                    2 * fromIntegral layersPerTokenC * hwTokenCount :: Unsigned 32
+                    2 * fromIntegral layersPerTokenC * tokenCount :: Unsigned 32
               forM_ (L.zip3 [0 :: Int ..] statuses clStatuses) $ \(n, st, cl) -> do
                 let who = show variant <> " node " <> show n
                 when (st.checksumFailCount /= 0)
                   $ fail (who <> ": checksum failures, first at " <> show st.firstFailCycle)
-                when (st.tokensDone /= fromIntegral hwTokenCount)
+                when (st.tokensDone /= tokenCount)
                   $ fail (who <> ": incomplete: " <> show st.tokensDone)
                 when (st.maxLatency - st.minLatency > 4)
                   $ fail
@@ -709,12 +712,19 @@ driver testName targets = do
                     )
                     $ fail (who <> ": credit accounting mismatch: " <> show cl)
 
-          (aStatuses, aCl) <- liftIO $ runPeVariant VariantA
-          liftIO $ checkPeVariant VariantA aStatuses aCl
-          (bStatuses, bCl) <- liftIO $ runPeVariant VariantB
-          liftIO $ checkPeVariant VariantB bStatuses bCl
-          (bsfStatuses, bsfCl) <- liftIO $ runPeVariant VariantBsf
-          liftIO $ checkPeVariant VariantBsf bsfStatuses bsfCl
+          -- Probe stage: variant A with single-word vectors and few tokens.
+          -- Degenerates to (nearly) the wire demo's shape, so it validates
+          -- the schedule and the internalDelay constant before the full-width
+          -- runs; its first_fail_cycle localizes any tap-timing surprise.
+          (probeStatuses, probeCl) <- liftIO $ runPeVariant VariantA 1 100 "probe"
+          liftIO $ checkPeVariant VariantA 100 probeStatuses probeCl
+
+          (aStatuses, aCl) <- liftIO $ runPeVariant VariantA vectorWordsC hwTokenCount "a"
+          liftIO $ checkPeVariant VariantA hwTokenCount aStatuses aCl
+          (bStatuses, bCl) <- liftIO $ runPeVariant VariantB vectorWordsC hwTokenCount "b"
+          liftIO $ checkPeVariant VariantB hwTokenCount bStatuses bCl
+          (bsfStatuses, bsfCl) <- liftIO $ runPeVariant VariantBsf vectorWordsC hwTokenCount "bsf"
+          liftIO $ checkPeVariant VariantBsf hwTokenCount bsfStatuses bsfCl
 
           liftIO goDumpCcSamples
 
