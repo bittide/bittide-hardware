@@ -509,6 +509,10 @@ driver testName targets = do
             managementUnitTapInfos
             targets
         liftIO $ mapConcurrently_ ((assertEither =<<) . Gdb.loadBinary) managementUnitGdbs
+        -- The results/config structs live inside known ELF symbols; GDB's
+        -- examine output would annotate their addresses ("<RESULTS+8>:"),
+        -- which the memory-read parser does not accept.
+        liftIO $ mapConcurrently_ (\gdb -> Gdb.runCommand gdb "set print symbol off") managementUnitGdbs
 
         brackets serialStarts (liftIO . snd) $ \(L.map fst -> serials) -> do
           let goDumpCcSamples = dumpCcSamples MemoryMaps.clockControl hitlDir (defCcConf (natToNum @FpgaCount)) clockControlGdbs
