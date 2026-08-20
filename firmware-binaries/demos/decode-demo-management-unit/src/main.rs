@@ -129,6 +129,15 @@ fn main() -> ! {
     .unwrap();
     uwriteln!(uart, "Printed all hardware UGNs").unwrap();
 
+    // Alignment runs once, on the first `go`: the buffer offset is a
+    // property of the (fixed) link latency, not of a run, and re-running
+    // the marker protocol races against neighbors that are still in — or
+    // already past — their own alignment. Engines are validated to reuse
+    // aligned buffers back to back (the decode_loop sim test runs three
+    // engines on one alignment); the driver keeps the ring links identical
+    // across runs.
+    let mut buffers_aligned = false;
+
     loop {
         // `go` is written by the host over GDB (with this CPU halted, so no
         // tearing); read it volatile so the loop is not optimized away.
@@ -155,27 +164,30 @@ fn main() -> ! {
         // upstream neighbor's downstream-facing one, so running them
         // sequentially deadlocks the whole ring (every node waits for its
         // upstream's second phase).
-        uwriteln!(uart, "Aligning ring buffers...").unwrap();
-        let up_rx_copy = unsafe {
-            bittide_hal::decode_demo_management_unit::devices::ReceiveRingBuffer::new(
-                rx_buffers[up].0,
-            )
-        };
-        let down_rx_copy = unsafe {
-            bittide_hal::decode_demo_management_unit::devices::ReceiveRingBuffer::new(
-                rx_buffers[down].0,
-            )
-        };
-        let mut up_aligned = AlignedReceiveBuffer::new(up_rx_copy);
-        let mut down_aligned = AlignedReceiveBuffer::new(down_rx_copy);
-        loop {
-            let up_done = up_aligned.align_step(tx_buffers[up]);
-            let down_done = down_aligned.align_step(tx_buffers[down]);
-            if up_done && down_done {
-                break;
+        if !buffers_aligned {
+            uwriteln!(uart, "Aligning ring buffers...").unwrap();
+            let up_rx_copy = unsafe {
+                bittide_hal::decode_demo_management_unit::devices::ReceiveRingBuffer::new(
+                    rx_buffers[up].0,
+                )
+            };
+            let down_rx_copy = unsafe {
+                bittide_hal::decode_demo_management_unit::devices::ReceiveRingBuffer::new(
+                    rx_buffers[down].0,
+                )
+            };
+            let mut up_aligned = AlignedReceiveBuffer::new(up_rx_copy);
+            let mut down_aligned = AlignedReceiveBuffer::new(down_rx_copy);
+            loop {
+                let up_done = up_aligned.align_step(tx_buffers[up]);
+                let down_done = down_aligned.align_step(tx_buffers[down]);
+                if up_done && down_done {
+                    break;
+                }
             }
+            buffers_aligned = true;
+            uwriteln!(uart, "Ring buffers aligned").unwrap();
         }
-        uwriteln!(uart, "Ring buffers aligned").unwrap();
 
         // `go` must be cleared BEFORE announcing completion: the host
         // writes the next run's `go` as soon as it sees the announcement,
