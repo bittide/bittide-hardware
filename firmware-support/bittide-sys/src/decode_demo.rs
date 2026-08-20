@@ -294,6 +294,21 @@ fn poll_ack<Rx: ReceiveRingBufferInterface>(
     }
 }
 
+/// Region reuse gate: waits for the ack of whatever frame was last sent in
+/// `seq`'s region (`true` when the region may be rewritten).
+fn region_free<Rx: ReceiveRingBufferInterface>(
+    rx: &Rx,
+    timer: &Timer,
+    sent_in_region: &[Option<u32>; REGION_COUNT],
+    seq: u32,
+    timeout: u32,
+) -> bool {
+    match sent_in_region[(seq as usize) % REGION_COUNT] {
+        None => true,
+        Some(prev) => poll_ack(rx, timer, prev, timeout),
+    }
+}
+
 /// Reads the trailer slot of `seq`'s region once; `Some(seq)` of whatever
 /// frame currently occupies the region (0 when empty).
 fn peek_trailer<Rx: ReceiveRingBufferInterface>(rx: &Rx, seq: u32) -> (u32, u32) {
@@ -393,6 +408,11 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
     let vw = (cfg.vector_words as usize).min(MAX_VECTOR_WORDS);
     let injector = cfg.is_injector != 0;
     let mut payload = [[0u8; 8]; MAX_VECTOR_WORDS];
+    // Region reuse is gated on the ack of the frame LAST SENT in that
+    // region (not blindly seq - 4): after an abandoned token some sequence
+    // numbers were never sent, and waiting for their acks would cascade the
+    // loss into every following token.
+    let mut sent_in_region: [Option<u32>; REGION_COUNT] = [None; REGION_COUNT];
 
     // Wait out one buffer wrap so cleared transmit buffers have propagated,
     // then gate on the common start cycle.
@@ -409,19 +429,19 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 // Send our contribution around the ring (lap 1). Region
                 // reuse is guarded by the ack of the frame four sequence
                 // numbers ago.
-                if seq1 >= REGION_COUNT as u32
-                    && !poll_ack(
-                        bufs.down_ack_rx,
-                        timer,
-                        seq1 - REGION_COUNT as u32,
-                        cfg.poll_timeout,
-                    )
-                {
+                if !region_free(
+                    bufs.down_ack_rx,
+                    timer,
+                    &sent_in_region,
+                    seq1,
+                    cfg.poll_timeout,
+                ) {
                     results.lost_frames += 1;
                     continue 'tokens;
                 }
                 let contribution = make_contribution(cfg.local_pattern, vw);
                 send_frame(bufs.down_tx, seq1, &contribution[..vw]);
+                sent_in_region[(seq1 as usize) % REGION_COUNT] = Some(seq1);
 
                 // Turnaround: the accumulated lap-1 vector returns; verify
                 // the grand total and forward it into lap 2.
@@ -433,18 +453,18 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 if checksum64(&payload[..vw]) != cfg.expected_window_b {
                     results.checksum_fails += 1;
                 }
-                if seq2 >= REGION_COUNT as u32
-                    && !poll_ack(
-                        bufs.down_ack_rx,
-                        timer,
-                        seq2 - REGION_COUNT as u32,
-                        cfg.poll_timeout,
-                    )
-                {
+                if !region_free(
+                    bufs.down_ack_rx,
+                    timer,
+                    &sent_in_region,
+                    seq2,
+                    cfg.poll_timeout,
+                ) {
                     results.lost_frames += 1;
                     continue 'tokens;
                 }
                 send_frame(bufs.down_tx, seq2, &payload[..vw]);
+                sent_in_region[(seq2 as usize) % REGION_COUNT] = Some(seq2);
 
                 // Sink: the broadcast lap returns.
                 if !poll_frame(bufs.up_rx, timer, seq2, vw, cfg.poll_timeout, &mut payload) {
@@ -466,19 +486,19 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 if checksum64(&payload[..vw]) != cfg.expected_window_a {
                     results.checksum_fails += 1;
                 }
-                if seq1 >= REGION_COUNT as u32
-                    && !poll_ack(
-                        bufs.down_ack_rx,
-                        timer,
-                        seq1 - REGION_COUNT as u32,
-                        cfg.poll_timeout,
-                    )
-                {
+                if !region_free(
+                    bufs.down_ack_rx,
+                    timer,
+                    &sent_in_region,
+                    seq1,
+                    cfg.poll_timeout,
+                ) {
                     results.lost_frames += 1;
                     continue 'tokens;
                 }
                 add_contribution(&mut payload, cfg.local_pattern, vw);
                 send_frame(bufs.down_tx, seq1, &payload[..vw]);
+                sent_in_region[(seq1 as usize) % REGION_COUNT] = Some(seq1);
 
                 // Lap 2 — verify the grand total, forward unchanged.
                 if !poll_frame(bufs.up_rx, timer, seq2, vw, cfg.poll_timeout, &mut payload) {
@@ -489,18 +509,18 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 if checksum64(&payload[..vw]) != cfg.expected_window_b {
                     results.checksum_fails += 1;
                 }
-                if seq2 >= REGION_COUNT as u32
-                    && !poll_ack(
-                        bufs.down_ack_rx,
-                        timer,
-                        seq2 - REGION_COUNT as u32,
-                        cfg.poll_timeout,
-                    )
-                {
+                if !region_free(
+                    bufs.down_ack_rx,
+                    timer,
+                    &sent_in_region,
+                    seq2,
+                    cfg.poll_timeout,
+                ) {
                     results.lost_frames += 1;
                     continue 'tokens;
                 }
                 send_frame(bufs.down_tx, seq2, &payload[..vw]);
+                sent_in_region[(seq2 as usize) % REGION_COUNT] = Some(seq2);
             }
 
             if cfg.compute_cycles != 0 && layer + 1 < cfg.layers_per_token {
