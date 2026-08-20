@@ -150,22 +150,31 @@ fn main() -> ! {
         // Align both neighbor-facing buffer pairs with the marker protocol:
         // the announce toward the upstream neighbor travels on the read
         // link's reverse direction, the downstream neighbor announces to us
-        // on the write link's reverse direction.
+        // on the write link's reverse direction. The two alignments MUST be
+        // interleaved: this node's upstream-facing alignment pairs with the
+        // upstream neighbor's downstream-facing one, so running them
+        // sequentially deadlocks the whole ring (every node waits for its
+        // upstream's second phase).
         uwriteln!(uart, "Aligning ring buffers...").unwrap();
         let up_rx_copy = unsafe {
             bittide_hal::decode_demo_management_unit::devices::ReceiveRingBuffer::new(
                 rx_buffers[up].0,
             )
         };
-        let mut up_aligned = AlignedReceiveBuffer::new(up_rx_copy);
-        while !up_aligned.align_step(tx_buffers[up]) {}
         let down_rx_copy = unsafe {
             bittide_hal::decode_demo_management_unit::devices::ReceiveRingBuffer::new(
                 rx_buffers[down].0,
             )
         };
+        let mut up_aligned = AlignedReceiveBuffer::new(up_rx_copy);
         let mut down_aligned = AlignedReceiveBuffer::new(down_rx_copy);
-        while !down_aligned.align_step(tx_buffers[down]) {}
+        loop {
+            let up_done = up_aligned.align_step(tx_buffers[up]);
+            let down_done = down_aligned.align_step(tx_buffers[down]);
+            if up_done && down_done {
+                break;
+            }
+        }
         uwriteln!(uart, "Ring buffers aligned").unwrap();
 
         match go {
