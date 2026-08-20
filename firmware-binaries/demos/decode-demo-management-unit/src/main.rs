@@ -177,18 +177,22 @@ fn main() -> ! {
         }
         uwriteln!(uart, "Ring buffers aligned").unwrap();
 
+        // `go` must be cleared BEFORE announcing completion: the host
+        // writes the next run's `go` as soon as it sees the announcement,
+        // and a pending clear on this side would silently erase it.
         match go {
             MODE_C => {
                 run_variant_c(cfg, &timer, &mut uart, &bufs, results);
+                unsafe { addr_of_mut!(CONFIG.go).write_volatile(MODE_IDLE) };
                 uwriteln!(uart, "Variant C done").unwrap();
             }
             MODE_A_PRIME => {
                 run_variant_a_prime(cfg, &timer, &mut uart, &bufs, results);
+                unsafe { addr_of_mut!(CONFIG.go).write_volatile(MODE_IDLE) };
                 uwriteln!(uart, "Variant A' done").unwrap();
             }
             _ => unreachable!(),
         }
-        unsafe { addr_of_mut!(CONFIG.go).write_volatile(MODE_IDLE) };
     }
 }
 
