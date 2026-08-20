@@ -250,7 +250,10 @@ increaseBusWidth SNat = Circuit (unbundle . fmap go . bundle)
         }
 
     newAddr = addrMsbs
-    bitShift = natToNum @width * fromIntegral addrLsbs -- `shiftL` takes an `Int`
+    -- `shiftL` takes an `Int`. Note the use of `fromEnum` instead of
+    -- `fromIntegral`: `fromEnum` maps to a primitive with a black box, while
+    -- `fromIntegral` goes through `Integer`, ending up in the generated HDL.
+    bitShift = natToNum @width * fromEnum addrLsbs
     (addrMsbs, addrLsbs :: BitVector power) = bitCoerce (m2sLeft.addr)
     newWriteData = pack (repeat m2sLeft.writeData)
     newBusSelect = shiftL (resize m2sLeft.busSelect) bitShift
