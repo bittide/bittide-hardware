@@ -349,10 +349,6 @@ fn poll_frame<Rx: ReceiveRingBufferInterface>(
 ) -> bool {
     let deadline = now_cycles(timer) + timeout as u64;
     let want = seq + 1;
-    // The trailer read can race the streaming hardware write and return a
-    // torn word, so the overwrite verdict requires the same later sequence
-    // number on two consecutive reads — a genuine overwrite persists.
-    let mut prev_overwrite: u32 = 0;
     loop {
         let (got, got_checksum) = peek_trailer(rx, seq);
         unsafe {
@@ -366,15 +362,19 @@ fn poll_frame<Rx: ReceiveRingBufferInterface>(
             if checksum32(&payload[..vector_words]) == got_checksum {
                 return true;
             }
-            prev_overwrite = 0;
         } else if got > want && ((got - want) as usize).is_multiple_of(REGION_COUNT) {
-            if got == prev_overwrite {
-                // A later frame overwrote the region: `seq` is lost.
-                return false;
+            // Possibly a later frame overwrote the region — but trailer
+            // reads can race the streaming hardware write and return torn
+            // words, so the verdict requires a checksum-consistent read of
+            // the region, which a torn read can never satisfy.
+            let mut confirm = [[0u8; 8]; MAX_VECTOR_WORDS];
+            if let Some(seen) =
+                read_region_frame(rx, seq % REGION_COUNT as u32, vector_words, &mut confirm)
+            {
+                if seen > seq && ((seen - seq) as usize).is_multiple_of(REGION_COUNT) {
+                    return false;
+                }
             }
-            prev_overwrite = got;
-        } else {
-            prev_overwrite = 0;
         }
         if now_cycles(timer) > deadline {
             return false;
