@@ -557,13 +557,16 @@ driver testName targets = do
               putStrLn $ "Running variant " <> show variant <> " (" <> fileTag <> ")"
               currentTime <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
               let
-                -- Generous start gate: every node must finish ring-buffer
-                -- alignment before anyone transmits — and A''s ABSOLUTE
-                -- schedule must additionally absorb the sequential GDB
-                -- config writes to eight nodes (~7 s), or its first token
-                -- slots are in the past before the engines start.
+                -- The start gate is load-bearing for BOTH variants: buffers
+                -- are aligned once per boot and reused, so `first_cycle` is
+                -- the only barrier that keeps a reactive relay from scanning
+                -- a neighbor's leftover (checksum-valid!) frames from the
+                -- previous run before every node's transmit-trailer clears
+                -- have propagated. The sequential GDB config writes to eight
+                -- nodes take ~7 s, so anything much smaller leaves the gate
+                -- in the past — and no barrier at all — by resume time.
                 gateSeconds :: Unsigned 64
-                gateSeconds = if variant == VariantAPrime then 15 else 2
+                gateSeconds = 15
                 sched =
                   scheduleAt vectorWordsC (currentTime + gateSeconds * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 -- A' management-unit calendar: unlike the hardware schedule
