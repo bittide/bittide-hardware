@@ -346,7 +346,7 @@ data PeStatus = PeStatus
   , maxLatency :: Unsigned 32
   , lastLatency :: Unsigned 32
   , done :: Bool
-  , hist :: Vec 64 (Unsigned 32)
+  , hist :: Vec 16 (Unsigned 32)
   }
   deriving (Show)
 
@@ -558,10 +558,10 @@ driver testName targets = do
                 -- Node k's windows shift by k software hops.
                 aPrimeNode k node
                   | variant == VariantAPrime =
-                      node{firstCycle = node.firstCycle + fromIntegral k * extend aPrimeHop}
+                      node{firstCycle = node.firstCycle + fromIntegral k * widenU aPrimeHop}
                   | otherwise = node
-                extend :: Unsigned 32 -> Unsigned 64
-                extend = resize
+                widenU :: Unsigned 32 -> Unsigned 64
+                widenU = resize
               forM_
                 (L.zip3 managementUnitGdbs structAddrs (L.zipWith aPrimeNode [0 :: Int ..] (toList sched.nodes)))
                 $ \(gdb, (_, cfgAddr), node) ->

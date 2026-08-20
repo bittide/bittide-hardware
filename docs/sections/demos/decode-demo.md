@@ -51,7 +51,7 @@ The demo instantiates the `GenericDemo` fabric (as the wire demo does) with a
 three-bus user core:
 
 - `DecodePeConfig` — the PE's workload/schedule registers, status counters and
-  a 64-bin, 1-cycle-wide latency histogram, plus a write-only `arm` register
+  a 16-bin, 1-cycle-wide latency histogram, plus a write-only `arm` register
   that clears all status and (re)starts a run: variants A, B and B_sf run back
   to back without a reset.
 - `CreditLinkConfig` — the credit link's knobs (`cut_through`,

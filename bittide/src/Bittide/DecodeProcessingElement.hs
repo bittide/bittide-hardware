@@ -34,6 +34,7 @@ module Bittide.DecodeProcessingElement (
   LapResult (..),
 
   -- * Settings and status
+  HistBins,
   PeMode (..),
   DecodePeSettings (..),
   DecodePeStatus (..),
@@ -117,6 +118,13 @@ data LapResult = LapResult
   }
   deriving (Eq, Show, Generic, NFDataX)
 
+{- | Number of histogram bins. Kept small: the Wishbone register machinery's
+'Clash.Class.BitPackC.BitPackC' @Vec@ instance stops normalizing past ~20
+elements (Clash inline limit); anything outside the bins is clamped to the
+edges and covered exactly by @min_latency@/@max_latency@.
+-}
+type HistBins = 16
+
 -- | Transport discipline selector.
 data PeMode = ModeCalendar | ModeCredit
   deriving (Eq, Show, Generic, NFDataX)
@@ -151,7 +159,7 @@ data DecodePeStatus = DecodePeStatus
   , maxLatency :: Unsigned 32
   , lastLatency :: Unsigned 32
   , done :: Bool
-  , histIncr :: Maybe (Index 64)
+  , histIncr :: Maybe (Index HistBins)
   }
   deriving (Generic, NFDataX)
 
@@ -402,10 +410,10 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
         , histIncr = histBin
         }
 
-  toBin :: Unsigned 32 -> Unsigned 32 -> Index 64
+  toBin :: Unsigned 32 -> Unsigned 32 -> Index HistBins
   toBin base latency
     | latency <= base = 0
-    | offset >= 63 = maxBound
+    | offset >= natToNum @(HistBins - 1) = maxBound
     | otherwise = unpack (resize (pack offset))
    where
     offset = latency - base
@@ -522,8 +530,8 @@ calendarFrontEnd rst localCounter settings armPulse =
 
 {- | The Wishbone configuration/status device (@DecodePeConfig@). Exposes the
 'DecodePeSettings' fields as read-write registers, mirrors 'DecodePeStatus'
-into read-only registers, maintains the 64-bin token-latency histogram (one
-cycle per bin from @hist_base@; out-of-range samples clamp to the edge bins)
+into read-only registers, maintains the token-latency histogram (one cycle
+per bin from @hist_base@; out-of-range samples clamp to the edge bins)
 and derives the arm pulse from writes to the write-only @arm@ register. The
 arm pulse clears all status, including the histogram.
 -}
@@ -669,7 +677,10 @@ decodePeConfig = circuit $ \(bus, status) -> do
 
   (Fwd hist, _histActivity) <-
     registerWbVecI
-      (registerConfig "hist" "64-bin latency histogram; bin = sample - hist_base, clamped.")
+      ( registerConfig
+          "hist"
+          "Latency histogram, one cycle per bin from hist_base; out-of-range samples clamp to the edge bins."
+      )
         { access = ReadOnly
         }
       (0 :: Unsigned 32)
@@ -730,7 +741,8 @@ decodePeConfig = circuit $ \(bus, status) -> do
   decodeMode 0 = ModeCalendar
   decodeMode _ = ModeCredit
 
-  histUpdateF :: Bool -> Maybe (Index 64) -> Vec 64 (Unsigned 32) -> Vec 64 (Maybe (Unsigned 32))
+  histUpdateF ::
+    Bool -> Maybe (Index HistBins) -> Vec HistBins (Unsigned 32) -> Vec HistBins (Maybe (Unsigned 32))
   histUpdateF True _ _ = repeat (Just 0)
   histUpdateF False Nothing _ = repeat Nothing
   histUpdateF False (Just bin) hist =

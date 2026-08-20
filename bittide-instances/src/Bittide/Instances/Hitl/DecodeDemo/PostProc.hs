@@ -11,7 +11,7 @@ Inputs, all in @_build/hitl/Decode_Demo_DUT/@ (written by the driver):
   firmware's @DecodeResults@ struct (layout mirrored from
   @firmware-support/bittide-sys/src/decode_demo.rs@).
 * @pe-{a,b,bsf}-<n>.txt@ — key/value dumps of the processing-element and
-  credit-link registers, including the 64-bin hardware histogram.
+  credit-link registers, including the hardware histogram.
 
 Outputs: @decode-demo-hist.csv@ (variant, node, latency-in-cycles,
 bin-width, count) and @decode-demo-summary.txt@.
