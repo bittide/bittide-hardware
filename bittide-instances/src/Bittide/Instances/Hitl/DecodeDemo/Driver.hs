@@ -577,10 +577,20 @@ driver testName targets = do
                     (aPrimeLapOff, aPrimeLayerPer, aPrimeTokenPer)
                     node
               mapConcurrently_ Gdb.continue managementUnitGdbs
-              let doneLine = case variant of
-                    VariantC -> "[MU] Variant C done"
-                    VariantAPrime -> "[MU] Variant A' done"
-              T.tryWithTimeoutOn T.PrintActionTime ("Waiting for " <> show variant) 300_000_000 goDumpCcSamples
+              let
+                doneLine = case variant of
+                  VariantC -> "[MU] Variant C done"
+                  VariantAPrime -> "[MU] Variant A' done"
+                -- On timeout: freeze the management units and print every
+                -- node's result counters, so a stall pinpoints itself.
+                onTimeout = do
+                  goDumpCcSamples
+                  mapConcurrently_ Gdb.interrupt managementUnitGdbs
+                  forM_ (L.zip3 [0 :: Int ..] managementUnitGdbs structAddrs)
+                    $ \(n, gdb, (resAddr, _)) -> do
+                      r <- readMcResults gdb resAddr
+                      putStrLn $ "  TIMEOUT node " <> show n <> ": " <> show r
+              T.tryWithTimeoutOn T.PrintActionTime ("Waiting for " <> show variant) 300_000_000 onTimeout
                 $ forM_ serials
                 $ \serial -> waitForLine serial doneLine
               mapConcurrently_ Gdb.interrupt managementUnitGdbs

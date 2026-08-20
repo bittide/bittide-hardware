@@ -40,6 +40,8 @@ use bittide_hal::manual_additions::ring_buffer::{
 };
 use bittide_hal::manual_additions::timer::WaitResult;
 use bittide_hal::shared_devices::timer::Timer;
+use bittide_hal::shared_devices::Uart;
+use ufmt::uwriteln;
 
 pub const DECODE_CONFIG_MAGIC: u32 = 0xDEC0_C0F6;
 pub const DECODE_RESULTS_MAGIC: u32 = 0xDEC0_DE01;
@@ -255,11 +257,13 @@ fn checksum64(payload: &[[u8; 8]]) -> u64 {
 }
 
 /// Writes payload then trailer (trailer last: the hardware sweeps slots in
-/// cycle order, so a visible trailer implies a complete payload).
+/// cycle order, so a visible trailer implies a complete payload). The
+/// trailer's upper half stores `seq + 1`, so an empty (all-zero) region can
+/// never alias a valid frame.
 fn send_frame<Tx: TransmitRingBufferInterface>(tx: &Tx, seq: u32, payload: &[[u8; 8]]) {
     let base = region_base(seq);
     tx.write_slice(payload, base);
-    let trailer = ((seq as u64) << 32) | checksum32(payload) as u64;
+    let trailer = (((seq + 1) as u64) << 32) | checksum32(payload) as u64;
     tx.write_slice(&[u64_to_word(trailer)], base + TRAILER_OFFSET);
 }
 
@@ -309,8 +313,8 @@ fn region_free<Rx: ReceiveRingBufferInterface>(
     }
 }
 
-/// Reads the trailer slot of `seq`'s region once; `Some(seq)` of whatever
-/// frame currently occupies the region (0 when empty).
+/// Reads the trailer slot of `seq`'s region once, returning
+/// `(seq_plus_one, checksum)` of whatever occupies it (0 = empty).
 fn peek_trailer<Rx: ReceiveRingBufferInterface>(rx: &Rx, seq: u32) -> (u32, u32) {
     let base = region_base(seq);
     let mut buf = [[0u8; 8]; 1];
@@ -400,6 +404,7 @@ fn add_contribution(payload: &mut [[u8; 8]; MAX_VECTOR_WORDS], pattern: u64, vec
 pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInterface>(
     cfg: &DecodeConfig,
     timer: &Timer,
+    uart: &mut Uart,
     bufs: &DecodeBuffers<Rx, Tx>,
     results: &mut DecodeResults,
 ) {
@@ -418,8 +423,19 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
     // then gate on the common start cycle.
     let _ = timer.wait_until_stall_raw(now_cycles(timer) + 2 * Tx::DATA_LEN as u64);
     let _ = timer.wait_until_stall_raw(cfg.first_cycle);
+    uwriteln!(uart, "C start").unwrap();
 
     'tokens: for token in 0..cfg.token_count {
+        if token % 256 == 0 && token != 0 {
+            uwriteln!(
+                uart,
+                "C progress: t={} lost={} fails={}",
+                token,
+                results.lost_frames,
+                results.checksum_fails
+            )
+            .unwrap();
+        }
         let token_start = now_cycles(timer);
         for layer in 0..cfg.layers_per_token {
             let seq1 = (token * cfg.layers_per_token + layer) * 2;
@@ -543,6 +559,7 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
 pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInterface>(
     cfg: &DecodeConfig,
     timer: &Timer,
+    uart: &mut Uart,
     bufs: &DecodeBuffers<Rx, Tx>,
     results: &mut DecodeResults,
 ) {
@@ -559,7 +576,18 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
         }
     };
 
+    uwriteln!(uart, "A' start").unwrap();
     'tokens: for token in 0..cfg.token_count {
+        if token % 64 == 0 && token != 0 {
+            uwriteln!(
+                uart,
+                "A' progress: t={} missed={} fails={}",
+                token,
+                results.deadlines_missed,
+                results.checksum_fails
+            )
+            .unwrap();
+        }
         let token_base = cfg.first_cycle + (token as u64) * (cfg.token_period as u64);
         let token_start = now_cycles(timer);
         for layer in 0..cfg.layers_per_token {
@@ -584,7 +612,7 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
                     continue 'tokens;
                 }
                 let (got1, _) = peek_trailer(bufs.up_rx, seq1);
-                if got1 != seq1 {
+                if got1 != seq1 + 1 {
                     results.deadlines_missed += 1;
                     continue 'tokens;
                 }
@@ -599,7 +627,7 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
                     continue 'tokens;
                 }
                 let (got2, _) = peek_trailer(bufs.up_rx, seq2);
-                if got2 != seq2 {
+                if got2 != seq2 + 1 {
                     results.deadlines_missed += 1;
                     continue 'tokens;
                 }
@@ -613,7 +641,7 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
                     continue 'tokens;
                 }
                 let (got1, _) = peek_trailer(bufs.up_rx, seq1);
-                if got1 != seq1 {
+                if got1 != seq1 + 1 {
                     results.deadlines_missed += 1;
                     continue 'tokens;
                 }
@@ -629,7 +657,7 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
                     continue 'tokens;
                 }
                 let (got2, _) = peek_trailer(bufs.up_rx, seq2);
-                if got2 != seq2 {
+                if got2 != seq2 + 1 {
                     results.deadlines_missed += 1;
                     continue 'tokens;
                 }

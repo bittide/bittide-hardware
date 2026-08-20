@@ -91,7 +91,7 @@ fn main() -> ! {
     let mut cfg = base_config();
     cfg.go = MODE_C;
     cfg.first_cycle = now_cycles(&timer) + 1024;
-    run_variant_c(&cfg, &timer, &bufs, results);
+    run_variant_c(&cfg, &timer, &mut uart, &bufs, results);
     uwriteln!(
         uart,
         "C: tokens {} fails {} lost {} min {} max {}",
@@ -120,7 +120,7 @@ fn main() -> ! {
     cfg.lap_offset = APRIME_LAP;
     cfg.layer_period = 3 * APRIME_LAP + APRIME_LAP;
     cfg.token_period = LAYERS * (3 * APRIME_LAP + APRIME_LAP) + APRIME_LAP;
-    run_variant_a_prime(&cfg, &timer, &bufs, results);
+    run_variant_a_prime(&cfg, &timer, &mut uart, &bufs, results);
     uwriteln!(
         uart,
         "A': tokens {} fails {} missed {} min {} max {}",
@@ -148,7 +148,7 @@ fn main() -> ! {
     cfg.token_count = 1;
     cfg.poll_timeout = 2_000;
     cfg.first_cycle = now_cycles(&timer) + 1024;
-    run_variant_c(&cfg, &timer, &bufs, results);
+    run_variant_c(&cfg, &timer, &mut uart, &bufs, results);
     uwriteln!(
         uart,
         "Relay-timeout: tokens {} lost {}",

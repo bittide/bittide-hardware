@@ -179,11 +179,11 @@ fn main() -> ! {
 
         match go {
             MODE_C => {
-                run_variant_c(cfg, &timer, &bufs, results);
+                run_variant_c(cfg, &timer, &mut uart, &bufs, results);
                 uwriteln!(uart, "Variant C done").unwrap();
             }
             MODE_A_PRIME => {
-                run_variant_a_prime(cfg, &timer, &bufs, results);
+                run_variant_a_prime(cfg, &timer, &mut uart, &bufs, results);
                 uwriteln!(uart, "Variant A' done").unwrap();
             }
             _ => unreachable!(),
