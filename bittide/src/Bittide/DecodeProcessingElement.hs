@@ -178,10 +178,14 @@ emptyStatus =
 
 data CoreState
   = CoreIdle
-  | -- | Streaming a window. @pendingTx@ is the one-register relay stage.
+  | {- | Streaming a window. @pendingTx@ is the one-register relay stage;
+    @contribution@ is @local_pattern + wordIdx@, carried incrementally so
+    the transmit word needs only a single 64-bit adder per cycle.
+    -}
     CoreStream
       { role :: Role
       , wordIdx :: Unsigned 16
+      , contribution :: BitVector 64
       , checksum :: BitVector 64
       , pendingTx :: Maybe (BitVector 64)
       }
@@ -250,6 +254,7 @@ decodeReduceCore rst localCounter settings = Circuit go
             CoreStream
               { role = info.role
               , wordIdx = 0
+              , contribution = cfg.localPattern
               , checksum = 0
               , pendingTx = Nothing
               }
@@ -257,10 +262,9 @@ decodeReduceCore rst localCounter settings = Circuit go
       CoreFlush{} -> CoreIdle
 
     step :: CoreState -> CoreState
-    step CoreStream{role, wordIdx, checksum} =
+    step CoreStream{role, wordIdx, contribution, checksum} =
       let
         rx = streamIn.rxWord
-        contribution = cfg.localPattern + resize (pack wordIdx)
         thisTx = case role of
           RoleInject -> Just contribution
           RoleAddRelay -> Just (rx + contribution)
@@ -277,6 +281,7 @@ decodeReduceCore rst localCounter settings = Circuit go
             CoreStream
               { role
               , wordIdx = wordIdx + 1
+              , contribution = contribution + 1
               , checksum = thisChecksum
               , pendingTx = thisTx
               }
@@ -285,6 +290,11 @@ decodeReduceCore rst localCounter settings = Circuit go
 data SeqState = SeqState
   { layerIdx :: Unsigned 16
   , tokenStart :: Unsigned 64
+  , pendingSample :: Maybe (Unsigned 32)
+  {- ^ Latency (or external) sample awaiting statistics/histogram folding —
+  a pipeline stage that keeps the 64-bit subtraction and the 32-bit
+  min/max/bin logic in separate cycles.
+  -}
   , status :: DecodePeStatus
   }
   deriving (Generic, NFDataX)
@@ -322,7 +332,7 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
   withClockResetEnable hasClock rst enableGen
     $ mealy
       goSeq
-      SeqState{layerIdx = 0, tokenStart = 0, status = emptyStatus}
+      SeqState{layerIdx = 0, tokenStart = 0, pendingSample = Nothing, status = emptyStatus}
       (bundle (settings, armPulse, fires, lapResults, extSamples, localCounter))
  where
   goSeq ::
@@ -336,8 +346,11 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
     ) ->
     (SeqState, DecodePeStatus)
   goSeq s (cfg, arm, fire, lapResult, extSample, counter)
-    | arm = (SeqState{layerIdx = 0, tokenStart = 0, status = emptyStatus}, emptyStatus)
-    | otherwise = (s2{status = statusOut}, statusOut)
+    | arm =
+        ( SeqState{layerIdx = 0, tokenStart = 0, pendingSample = Nothing, status = emptyStatus}
+        , emptyStatus
+        )
+    | otherwise = (s2{pendingSample = nextSample, status = statusOut}, statusOut)
    where
     -- Latch the token start at the first window fire of layer 0.
     tokenStartRole = if cfg.isInjector then RoleInject else RoleAddRelay
@@ -378,34 +391,37 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
       | otherwise =
           st
             { layerIdx = 0
-            , status =
-                recordLatency
-                  (truncateB (result.endCycle - st.tokenStart))
-                  st.status{tokensDone = st.status.tokensDone + 1}
+            , status = st.status{tokensDone = st.status.tokensDone + 1}
             }
 
-    recordLatency latency st =
-      st
-        { minLatency = min st.minLatency latency
-        , maxLatency = max st.maxLatency latency
-        , lastLatency = latency
-        }
-
-    -- Histogram: external samples (credit RTTs) when provided, else the
-    -- token latency latched this cycle.
+    -- Statistics pipeline, stage 1: only the 64-bit subtraction happens on
+    -- the completion cycle; the sample is folded into min/max/last and the
+    -- histogram bin one cycle later (stage 2, below). External samples
+    -- (credit round-trip times) enter the same stage. Samples are at least
+    -- a full window apart, so the single-entry stage never overflows.
     tokenLatencySample = case lapResult of
       Just result
         | result.role == tokenCompletionRole
         , s1.layerIdx + 1 >= cfg.layersPerToken ->
             Just (truncateB (result.endCycle - s1.tokenStart) :: Unsigned 32)
       _ -> Nothing
-    histSample = case extSample of
+    nextSample = case extSample of
       Just _ -> extSample
       Nothing -> tokenLatencySample
-    histBin = toBin cfg.histBase <$> histSample
+
+    -- Statistics pipeline, stage 2: fold the sample registered last cycle.
+    folded = case s.pendingSample of
+      Nothing -> s2.status
+      Just latency ->
+        s2.status
+          { minLatency = min s2.status.minLatency latency
+          , maxLatency = max s2.status.maxLatency latency
+          , lastLatency = latency
+          }
+    histBin = toBin cfg.histBase <$> s.pendingSample
 
     statusOut =
-      s2.status
+      folded
         { done = s2.status.tokensDone >= cfg.tokenCount && cfg.tokenCount /= 0
         , histIncr = histBin
         }
@@ -417,6 +433,8 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
     | otherwise = unpack (resize (pack offset))
    where
     offset = latency - base
+-- OPAQUE: separate Verilog module, so timing reports carry its name.
+{-# OPAQUE decodeSequencer #-}
 
 data CalState = CalState
   { running :: Bool
@@ -527,6 +545,8 @@ calendarFrontEnd rst localCounter settings armPulse =
 
   widen :: Unsigned 32 -> Unsigned 64
   widen = resize
+-- OPAQUE: separate Verilog module, so timing reports carry its name.
+{-# OPAQUE calendarFrontEnd #-}
 
 {- | The Wishbone configuration/status device (@DecodePeConfig@). Exposes the
 'DecodePeSettings' fields as read-write registers, mirrors 'DecodePeStatus'
@@ -688,7 +708,11 @@ decodePeConfig = circuit $ \(bus, status) -> do
 
   let
     armPulse = isJust . busActivityWrite <$> armActivity
-    histUpdate = histUpdateF <$> armPulse <*> ((.histIncr) <$> status') <*> hist
+    -- Registered so the histogram's read-modify-write is not chained onto
+    -- the statistics logic in one cycle; an arm pulse drops any in-flight
+    -- increment so it cannot land after the clear.
+    histIncrR = register Nothing (mux armPulse (pure Nothing) ((.histIncr) <$> status'))
+    histUpdate = histUpdateF <$> armPulse <*> histIncrR <*> hist
     settings =
       DecodePeSettings
         <$> readLink

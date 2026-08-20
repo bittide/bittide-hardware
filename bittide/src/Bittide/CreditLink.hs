@@ -195,6 +195,10 @@ data TxState = TxState
   , txCreditHeld :: Bool
   , txSendCycle :: Unsigned 64
   , txPrevCreditIn :: Bool
+  , txPendingRtt :: Maybe (Unsigned 32)
+  {- ^ Round-trip time awaiting min/max folding — a pipeline stage keeping
+  the 64-bit subtraction and the 32-bit compares in separate cycles.
+  -}
   , txBlockedFor :: Unsigned 32
   , txCreditsConsumed :: Unsigned 32
   , txCreditsReturned :: Unsigned 32
@@ -369,6 +373,7 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
           , txCreditHeld = True
           , txSendCycle = 0
           , txPrevCreditIn = False
+          , txPendingRtt = Nothing
           , txBlockedFor = 0
           , txCreditsConsumed = 0
           , txCreditsReturned = 0
@@ -585,6 +590,7 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
             , txCreditHeld = True
             , txBlockedFor = 0
             , txPrevCreditIn = False
+            , txPendingRtt = Nothing
             , txCreditsConsumed = 0
             , txCreditsReturned = 0
             , txCreditErrors = 0
@@ -599,23 +605,32 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
     | otherwise = (sFinal, (txOutput{txRttSample = rttSampleOut}, fwdAcc, injAcc))
    where
     -- Credit intake (edge-deduplicated), independent of the send FSM.
+    -- RTT statistics are pipelined: this cycle only the 64-bit subtraction
+    -- runs; the min/max folding of the previous sample happens in parallel.
     creditEdge = isCreditWord creditIn && not s.txPrevCreditIn
     rtt :: Unsigned 32
     rtt = truncateB (counter - s.txSendCycle)
     creditAccepted = creditEdge && not s.txCreditHeld
+    sFolded = case s.txPendingRtt of
+      Nothing -> s
+      Just pending ->
+        s
+          { txMinRtt = min s.txMinRtt pending
+          , txMaxRtt = max s.txMaxRtt pending
+          , txLastRtt = pending
+          }
     sCredit
-      | creditEdge && s.txCreditHeld = s{txCreditErrors = s.txCreditErrors + 1}
+      | creditEdge && s.txCreditHeld =
+          sFolded{txCreditErrors = s.txCreditErrors + 1, txPendingRtt = Nothing}
       | creditAccepted =
-          s
+          sFolded
             { txCreditHeld = True
             , txCreditsReturned = s.txCreditsReturned + 1
-            , txMinRtt = min s.txMinRtt rtt
-            , txMaxRtt = max s.txMaxRtt rtt
-            , txLastRtt = rtt
+            , txPendingRtt = Just rtt
             }
-      | otherwise = s
+      | otherwise = sFolded{txPendingRtt = Nothing}
     sCredit' = sCredit{txPrevCreditIn = isCreditWord creditIn}
-    rttSampleOut = if creditAccepted then Just rtt else Nothing
+    rttSampleOut = s.txPendingRtt
 
     canSend = sCredit'.txCreditHeld
 
@@ -748,6 +763,9 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
           | remaining <= 1 -> (s{injFsm = InjRequesting}, Nothing)
           | otherwise -> (s{injFsm = InjGap{remaining = remaining - 1}}, Nothing)
         InjDone -> (s, Nothing)
+
+-- OPAQUE: separate Verilog module, so timing reports carry its name.
+{-# OPAQUE creditLink #-}
 
 {- | The Wishbone configuration/status device (@CreditLinkConfig@). Knobs are
 read-write; status is read-only and mirrors 'CreditLinkStatus' (clearing is
