@@ -41,9 +41,17 @@ import qualified Data.List as L
 parseExamineMemoryOutput :: forall n. (KnownNat n) => String -> Either String [Bytes n]
 parseExamineMemoryOutput =
   traverse parseHex -- parse hexadecimal numbers to Integer
-    . L.drop 1 -- drop the address
+    . dropLabel -- drop the address label
     . words -- split on tabs
  where
+  -- The line label is either "ADDR:" or, when the address falls inside a
+  -- known symbol, "ADDR <symbol+offset>:" — drop everything up to and
+  -- including the token that ends in a colon.
+  dropLabel :: [String] -> [String]
+  dropLabel tokens = case L.break (\t -> not (null t) && L.last t == ':') tokens of
+    (_, _label : rest) -> rest
+    _ -> tokens
+
   integerToBytes :: Integer -> Either String (Bytes n)
   integerToBytes x
     | x > fromIntegral (maxBound :: Bytes n) =
