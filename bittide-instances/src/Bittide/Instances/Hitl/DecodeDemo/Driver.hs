@@ -558,13 +558,14 @@ driver testName targets = do
                 sched = scheduleAt vectorWordsC (currentTime + 2 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 -- A' management-unit calendar: unlike the hardware schedule
                 -- (35 cycles per hop), each software hop costs the CPU its
-                -- per-frame service time (~9k cycles), so windows stagger by
+                -- per-frame service time — measured on the rig via variant C
+                -- at ~54k cycles for 64-word vectors — so windows stagger by
                 -- a software hop stride and a lap is a full software ring
                 -- traversal.
-                aPrimeHop = 25_000 :: Unsigned 32
+                aPrimeHop = 80_000 :: Unsigned 32
                 aPrimeLapOff = natToNum @FpgaCount * aPrimeHop
-                aPrimeLayerPer = 2 * aPrimeLapOff + 100_000
-                aPrimeTokenPer = fromIntegral layersPerTokenC * aPrimeLayerPer + 100_000
+                aPrimeLayerPer = 2 * aPrimeLapOff + 160_000
+                aPrimeTokenPer = fromIntegral layersPerTokenC * aPrimeLayerPer + 160_000
                 -- Node k's windows shift by k software hops.
                 aPrimeNode k node
                   | variant == VariantAPrime =
