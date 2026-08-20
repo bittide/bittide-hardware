@@ -721,7 +721,15 @@ driver testName targets = do
                   $ fail (who <> ": checksum failures, first at " <> show st.firstFailCycle)
                 when (st.tokensDone /= tokenCount)
                   $ fail (who <> ": incomplete: " <> show st.tokensDone)
-                when (st.maxLatency - st.minLatency > 4)
+                -- The injector's token latency must be a spike in every
+                -- hardware variant. Credit-mode relays histogram per-transfer
+                -- credit round-trip times instead, whose grant timing depends
+                -- on each relay's own forward progress (store-and-forward
+                -- especially), so they only get a sanity bound.
+                let spreadBound
+                      | variant == VariantA || n == 0 = 4
+                      | otherwise = 256
+                when (st.maxLatency - st.minLatency > spreadBound)
                   $ fail
                     ( who
                         <> ": latency spread "
