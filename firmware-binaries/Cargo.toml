@@ -28,6 +28,7 @@ members = [
   "sim-tests/registerwb_test",
   "sim-tests/ring_buffer_test",
   "sim-tests/capture_ugn_test",
+  "sim-tests/decode_loop_test",
   "sim-tests/clock-control-wb",
   "sim-tests/dna_port_e2_test",
   "sim-tests/elastic_buffer_wb_test",
@@ -48,6 +49,9 @@ members = [
   "demos/wire-demo-clock-control",
   "demos/wire-demo-boot",
   "demos/wire-demo-management-unit",
+  "demos/decode-demo-clock-control",
+  "demos/decode-demo-boot",
+  "demos/decode-demo-management-unit",
 ]
 resolver = "2"
 

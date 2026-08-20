@@ -6,6 +6,8 @@
 
 module Bittide.Instances.Hitl.SoftUgnDemo.TopEntity where
 
+import Prelude (Maybe (..))
+
 import Bittide.Hitl (HitlTestGroup)
 import Bittide.Instances.Hitl.GenericDemo.TopEntity (demoTest, mkTests)
 import Bittide.Instances.Hitl.SoftUgnDemo.UserCore (mkUserCore, ringBufferDepth)
@@ -18,4 +20,4 @@ softUgnDemoTest = demoTest ringBufferDepth mkUserCore
 makeTopEntity 'softUgnDemoTest
 
 tests :: HitlTestGroup
-tests = mkTests 'softUgnDemoTest Driver.driver
+tests = mkTests "Bittide_Demo_DUT" 'softUgnDemoTest Driver.driver Nothing

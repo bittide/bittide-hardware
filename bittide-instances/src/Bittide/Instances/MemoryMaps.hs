@@ -21,6 +21,7 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.DecodeDemo.MemoryMaps as DecodeDemo
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
@@ -29,6 +30,7 @@ import qualified Bittide.Instances.Tests.AddressableBytesWb as AddressableBytesW
 import qualified Bittide.Instances.Tests.Axi as Axi
 import qualified Bittide.Instances.Tests.CaptureUgn as CaptureUgn
 import qualified Bittide.Instances.Tests.ClockControlWb as ClockControlWb
+import qualified Bittide.Instances.Tests.DecodeLoop as DecodeLoop
 import qualified Bittide.Instances.Tests.DnaPortE2 as DnaPortE2
 import qualified Bittide.Instances.Tests.ElasticBufferWb as ElasticBufferWb
 import qualified Bittide.Instances.Tests.NestedInterconnect as NestedInterconnect
@@ -51,6 +53,10 @@ $( do
            , ("AxiStreamSelfTest", Axi.memoryMap)
            , ("ClockControlWb", ClockControlWb.dutMm)
            , ("CaptureUgnTest", CaptureUgn.memoryMap)
+           , ("DecodeDemoBoot", DecodeDemo.boot)
+           , ("DecodeDemoManagementUnit", DecodeDemo.managementUnit)
+           , ("DecodeDemoClockControl", DecodeDemo.clockControl)
+           , ("DecodeLoopTest", DecodeLoop.dutMM)
            , ("DnaPortE2Test", DnaPortE2.dutMm)
            , ("Ethernet", vexRiscvEthernetMM)
            , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)

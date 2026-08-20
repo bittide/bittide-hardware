@@ -23,6 +23,7 @@ import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.AddressableBytesWb as AddressableBytesWb
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
+import qualified Wishbone.DecodeLoop as DecodeLoop
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.NestedInterconnect as NestedInterconnect
 import qualified Wishbone.RegisterWb as RegisterWb
@@ -76,6 +77,7 @@ prepareTests = do
           , Axi.tests
           , CaptureUgn.tests
           , ClockControlWb.tests
+          , DecodeLoop.tests
           , DnaPortE2.tests
           , ElasticBufferWb.tests
           , MemoryMap.tests

@@ -166,6 +166,11 @@ library
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.Ddr4
+    Bittide.Instances.Hitl.DecodeDemo.Driver
+    Bittide.Instances.Hitl.DecodeDemo.MemoryMaps
+    Bittide.Instances.Hitl.DecodeDemo.PostProc
+    Bittide.Instances.Hitl.DecodeDemo.TopEntity
+    Bittide.Instances.Hitl.DecodeDemo.UserCore
     Bittide.Instances.Hitl.DnaOverSerial
     Bittide.Instances.Hitl.Driver.ClockControl.Config
     Bittide.Instances.Hitl.Driver.ClockControl.Plot.Common
@@ -234,6 +239,7 @@ library
     Bittide.Instances.Tests.Axi
     Bittide.Instances.Tests.CaptureUgn
     Bittide.Instances.Tests.ClockControlWb
+    Bittide.Instances.Tests.DecodeLoop
     Bittide.Instances.Tests.DnaPortE2
     Bittide.Instances.Tests.ElasticBufferWb
     Bittide.Instances.Tests.NestedInterconnect
@@ -331,6 +337,7 @@ test-suite unittests
     Wishbone.AddressableBytesWb
     Wishbone.Axi
     Wishbone.CaptureUgn
+    Wishbone.DecodeLoop
     Wishbone.DnaPortE2
     Wishbone.NestedInterconnect
     Wishbone.RegisterWb

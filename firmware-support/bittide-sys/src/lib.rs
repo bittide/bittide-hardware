@@ -6,6 +6,7 @@
 #![feature(sync_unsafe_cell)]
 
 pub mod callisto;
+pub mod decode_demo;
 pub mod link_startup;
 pub mod mac;
 pub mod sample_store;

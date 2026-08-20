@@ -6,6 +6,8 @@
 
 module Bittide.Instances.Hitl.WireDemo.TopEntity where
 
+import Prelude (Maybe (..))
+
 import Bittide.Hitl (HitlTestGroup)
 import Bittide.Instances.Hitl.GenericDemo.TopEntity (demoTest, mkTests)
 import Bittide.Instances.Hitl.WireDemo.UserCore (mkUserCore, ringBufferDepth)
@@ -18,4 +20,4 @@ wireDemoTest = demoTest ringBufferDepth mkUserCore
 makeTopEntity 'wireDemoTest
 
 tests :: HitlTestGroup
-tests = mkTests 'wireDemoTest Driver.driver
+tests = mkTests "Bittide_Demo_DUT" 'wireDemoTest Driver.driver Nothing

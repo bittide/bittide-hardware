@@ -70,6 +70,12 @@ pub struct DecodeConfig {
     /// done.
     pub go: u32,
     pub is_injector: u32,
+    /// Ring upstream link index (which ring-buffer pair receives forward
+    /// frames and sends acks).
+    pub read_link: u32,
+    /// Ring downstream link index (which ring-buffer pair sends forward
+    /// frames and receives acks).
+    pub write_link: u32,
     pub layers_per_token: u32,
     pub token_count: u32,
     /// Payload words per frame; at most [`MAX_VECTOR_WORDS`].
@@ -103,6 +109,8 @@ impl DecodeConfig {
             magic: DECODE_CONFIG_MAGIC,
             go: MODE_IDLE,
             is_injector: 0,
+            read_link: 0,
+            write_link: 0,
             layers_per_token: 1,
             token_count: 0,
             vector_words: 64,
@@ -180,8 +188,8 @@ impl DecodeResults {
         self.min_latency = self.min_latency.min(latency);
         self.max_latency = self.max_latency.max(latency);
         self.last_latency = latency;
-        let bin = (latency.saturating_sub(self.hist_base) >> self.hist_shift)
-            .min((HIST_BINS - 1) as u32);
+        let bin =
+            (latency.saturating_sub(self.hist_base) >> self.hist_shift).min((HIST_BINS - 1) as u32);
         self.bins[bin as usize] += 1;
         self.raw[(self.raw_next as usize) % RAW_SAMPLES] = latency;
         self.raw_next = self.raw_next.wrapping_add(1);
@@ -326,7 +334,8 @@ fn poll_frame<Rx: ReceiveRingBufferInterface>(
             if checksum32(&payload[..vector_words]) == got_checksum {
                 return true;
             }
-        } else if got_seq > seq && (got_seq as usize) % REGION_COUNT == (seq as usize) % REGION_COUNT
+        } else if got_seq > seq
+            && (got_seq as usize) % REGION_COUNT == (seq as usize) % REGION_COUNT
         {
             // A later frame overwrote the region: `seq` is lost.
             return false;
@@ -337,13 +346,21 @@ fn poll_frame<Rx: ReceiveRingBufferInterface>(
     }
 }
 
-/// Prepares both transmit buffers: cleared and enabled, so stale trailers
-/// from a previous run cannot alias this run's sequence numbers.
+/// Prepares the transmit buffers: only the trailer and ack slots can alias a
+/// later run's sequence numbers (payload is read positionally after a trailer
+/// match and verified by checksum), so clearing those 16 words — instead of
+/// both full buffers — keeps this far cheaper than one frame's service time.
 fn prepare_buffers<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInterface>(
     bufs: &DecodeBuffers<Rx, Tx>,
 ) {
-    bufs.down_tx.clear();
-    bufs.up_ack_tx.clear();
+    let zero = [[0u8; 8]; 1];
+    for region in 0..REGION_COUNT {
+        let base = region * REGION_STRIDE;
+        bufs.down_tx.write_slice(&zero, base + TRAILER_OFFSET);
+        bufs.down_tx.write_slice(&zero, base + ACK_OFFSET);
+        bufs.up_ack_tx.write_slice(&zero, base + TRAILER_OFFSET);
+        bufs.up_ack_tx.write_slice(&zero, base + ACK_OFFSET);
+    }
     bufs.down_tx.set_enable(true);
     bufs.up_ack_tx.set_enable(true);
     bufs.up_rx.set_enable(true);
@@ -393,7 +410,12 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 // reuse is guarded by the ack of the frame four sequence
                 // numbers ago.
                 if seq1 >= REGION_COUNT as u32
-                    && !poll_ack(bufs.down_ack_rx, timer, seq1 - REGION_COUNT as u32, cfg.poll_timeout)
+                    && !poll_ack(
+                        bufs.down_ack_rx,
+                        timer,
+                        seq1 - REGION_COUNT as u32,
+                        cfg.poll_timeout,
+                    )
                 {
                     results.lost_frames += 1;
                     continue 'tokens;
@@ -412,7 +434,12 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                     results.checksum_fails += 1;
                 }
                 if seq2 >= REGION_COUNT as u32
-                    && !poll_ack(bufs.down_ack_rx, timer, seq2 - REGION_COUNT as u32, cfg.poll_timeout)
+                    && !poll_ack(
+                        bufs.down_ack_rx,
+                        timer,
+                        seq2 - REGION_COUNT as u32,
+                        cfg.poll_timeout,
+                    )
                 {
                     results.lost_frames += 1;
                     continue 'tokens;
@@ -440,7 +467,12 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                     results.checksum_fails += 1;
                 }
                 if seq1 >= REGION_COUNT as u32
-                    && !poll_ack(bufs.down_ack_rx, timer, seq1 - REGION_COUNT as u32, cfg.poll_timeout)
+                    && !poll_ack(
+                        bufs.down_ack_rx,
+                        timer,
+                        seq1 - REGION_COUNT as u32,
+                        cfg.poll_timeout,
+                    )
                 {
                     results.lost_frames += 1;
                     continue 'tokens;
@@ -458,7 +490,12 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                     results.checksum_fails += 1;
                 }
                 if seq2 >= REGION_COUNT as u32
-                    && !poll_ack(bufs.down_ack_rx, timer, seq2 - REGION_COUNT as u32, cfg.poll_timeout)
+                    && !poll_ack(
+                        bufs.down_ack_rx,
+                        timer,
+                        seq2 - REGION_COUNT as u32,
+                        cfg.poll_timeout,
+                    )
                 {
                     results.lost_frames += 1;
                     continue 'tokens;
@@ -495,7 +532,7 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
     let injector = cfg.is_injector != 0;
     let mut payload = [[0u8; 8]; MAX_VECTOR_WORDS];
 
-    let mut wait = |target: u64| -> bool {
+    let wait = |target: u64| -> bool {
         match timer.wait_until_stall_raw(target) {
             WaitResult::Success => true,
             WaitResult::AlreadyPassed => false,
@@ -503,8 +540,7 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
     };
 
     'tokens: for token in 0..cfg.token_count {
-        let token_base =
-            cfg.first_cycle + (token as u64) * (cfg.token_period as u64);
+        let token_base = cfg.first_cycle + (token as u64) * (cfg.token_period as u64);
         let token_start = now_cycles(timer);
         for layer in 0..cfg.layers_per_token {
             let seq1 = (token * cfg.layers_per_token + layer) * 2;

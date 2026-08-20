@@ -22,6 +22,7 @@ import Prelude
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.Ddr4 as Ddr4
+import qualified Bittide.Instances.Hitl.DecodeDemo.TopEntity as DecodeDemo
 import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
@@ -51,3 +52,4 @@ hitlTests =
     <> [Transceivers.tests]
     <> [VexRiscv.tests]
     <> [WireDemo.tests]
+    <> [DecodeDemo.tests]

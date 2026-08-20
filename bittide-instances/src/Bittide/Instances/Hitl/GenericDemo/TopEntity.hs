@@ -15,6 +15,7 @@ import Bittide.Hitl (
   DeviceInfo,
   HitlTestCase (..),
   HitlTestGroup (..),
+  TestStepResult,
   hitlVioBool,
   paramForHwTargets,
  )
@@ -118,14 +119,17 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
         , (spiS2M, syncIn, (), ())
         )
 
-{- | 'HitlTestGroup' template shared by the two demos. Each demo supplies the
-TH name of its own top entity and its own driver.
+{- | 'HitlTestGroup' template shared by the demos. Each demo supplies its
+test-case name (which doubles as its @_build/hitl/<name>@ directory), the TH
+name of its own top entity, its own driver, and optionally a post-processor.
 -}
 mkTests ::
+  String ->
   ClashTargetName ->
   (String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode) ->
+  Maybe (FilePath -> ExitCode -> IO (TestStepResult ())) ->
   HitlTestGroup
-mkTests topEntityName driver =
+mkTests caseName topEntityName driver postProc =
   HitlTestGroup
     { topEntity = topEntityName
     , targetXdcs =
@@ -139,11 +143,11 @@ mkTests topEntityName driver =
     , externalHdl = []
     , testCases =
         [ HitlTestCase
-            { name = "Bittide_Demo_DUT"
+            { name = caseName
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }
         ]
     , mDriverProc = Just driver
-    , mPostProc = Nothing
+    , mPostProc = postProc
     }
