@@ -743,7 +743,9 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
             .unwrap();
         }
         let token_base = cfg.first_cycle + (token as u64) * (cfg.token_period as u64);
-        let token_start = now_cycles(timer);
+        // Re-captured at the token's first actual window so the recorded
+        // latency spans the work, not the schedule wait.
+        let mut token_start = now_cycles(timer);
         for layer in 0..cfg.layers_per_token {
             let seq1 = (token * cfg.layers_per_token + layer) * 2;
             let seq2 = seq1 + 1;
@@ -757,6 +759,9 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
                 if !wait(layer_base) {
                     results.deadlines_missed += 1;
                     continue 'tokens;
+                }
+                if layer == 0 {
+                    token_start = now_cycles(timer);
                 }
                 let contribution = make_contribution(cfg.local_pattern, vw);
                 send_frame(bufs.down_tx, seq1, &contribution[..vw]);
@@ -793,6 +798,9 @@ pub fn run_variant_a_prime<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBuffe
                 if !wait(layer_base) {
                     results.deadlines_missed += 1;
                     continue 'tokens;
+                }
+                if layer == 0 {
+                    token_start = now_cycles(timer);
                 }
                 let (got1, _) = peek_trailer(bufs.up_rx, seq1);
                 if got1 != seq1 + 1 {

@@ -554,8 +554,14 @@ driver testName targets = do
               currentTime <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
               let
                 -- Generous start gate: every node must finish ring-buffer
-                -- alignment before anyone transmits.
-                sched = scheduleAt vectorWordsC (currentTime + 2 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                -- alignment before anyone transmits — and A''s ABSOLUTE
+                -- schedule must additionally absorb the sequential GDB
+                -- config writes to eight nodes (~7 s), or its first token
+                -- slots are in the past before the engines start.
+                gateSeconds :: Unsigned 64
+                gateSeconds = if variant == VariantAPrime then 15 else 2
+                sched =
+                  scheduleAt vectorWordsC (currentTime + gateSeconds * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 -- A' management-unit calendar: unlike the hardware schedule
                 -- (35 cycles per hop), each software hop costs the CPU its
                 -- per-frame service time — measured on the rig via variant C
@@ -655,7 +661,11 @@ driver testName targets = do
                     * layerPer
                     + truncateB (2 * lapOff)
                     + fromIntegral vw
-                sched = scheduleAt vw (currentTime + 2 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                -- 15 s: the schedule is absolute and the sequential GDB
+                -- config writes to eight nodes take several seconds; the
+                -- calendar compares for equality, so a first window in the
+                -- past would simply never fire.
+                sched = scheduleAt vw (currentTime + 15 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 histBase n
                   | variant == VariantA || n == (0 :: Int) =
                       satSub SatZero predictedTokenLatency 8
