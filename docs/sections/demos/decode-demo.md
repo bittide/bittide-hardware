@@ -103,3 +103,50 @@ RTT; B_sf shifts right by roughly `vector_words` + handshake slack per hop;
 C is a smear with a displaced mean — the software-path penalty — and A′ sits
 between, isolating the engine cost from the protocol cost. Deviations from
 these predictions are findings, not failures.
+
+## Measured results
+
+From the rig (2026-08-20; 8 nodes, 16 layers/token, 64×64-bit words per
+all-reduce, 125 MHz link clock; 10,000 tokens per hardware variant, 500 for
+C, 200 for A′). "Latency" is the injector's per-token latency: the full
+16-layer chain of complete all-reduces.
+
+| Variant | Token latency (cycles) | Spread | vs. B |
+|---|---|---|---|
+| A — scheduled | 10,128 (81.0 µs) | 0 (min == max) | +2.3% |
+| B — hardware async, cut-through | 9,903 (79.2 µs) | 0 (min == max) | 1× |
+| B_sf — hardware async, store-and-forward | 25,743 (205.9 µs) | 0 (min == max) | 2.60× |
+| A′ — software scheduled | 22,895,335 (183 ms) | 0 (one 512-cycle bin) | 2,312× |
+| C — software async | 13.80M–13.86M (~110 ms) | ~68k cycles, multi-modal | ~1,394× |
+
+Zero checksum failures, lost frames, or missed deadlines in any variant; the
+credit link's accounting is exact (320,000 frames = credits consumed =
+returned = granted, zero header/credit errors, drops or timeouts).
+
+What the numbers say:
+
+- B's 9,903 = 16 × (2·`lap_offset` + `vector_words` + 1) is the ring's
+  dataflow optimum, and — as pre-registered after analysis — the credit
+  handshake hides off the critical path in cut-through mode: its cost shows
+  up only in the measured per-hop credit RTT (130–143 cycles cut-through,
+  ~198–211 store-and-forward), not in token latency.
+- A, fired purely by `localCounter == t` comparisons against a schedule
+  computed once from the UGNs, lands within 16 cycles per layer of that
+  optimum — the margin is a driver constant, and every one of the 80,000
+  windows across A and its probe run hit exactly.
+- B_sf puts the per-hop cost on the critical path: +990 cycles per layer ≈
+  14 relay hops × (64-word frame buffering + ~7 cycles of handshake slack) —
+  the "validate before forwarding" penalty the async-fabric comparison is
+  about, still perfectly deterministic.
+- C pays ~1,400× over the hardware floor for running the same rendezvous in
+  management-unit firmware (~54k cycles per hop service), and it alone shows
+  variance: a ~68k-cycle multi-modal smear from instruction-timing beats
+  between the eight soft cores.
+- A′ — the same software engine, but timer-fired on the shared clock — is
+  slower still in the mean (its schedule must reserve worst-case per-hop
+  service), yet its variance collapses to zero: scheduling, not hardware,
+  is what removes the jitter.
+
+Scope honesty applies unchanged: all variants share bittide's synchronized
+clocks and contention-free links, so these numbers isolate coordination
+overhead only.

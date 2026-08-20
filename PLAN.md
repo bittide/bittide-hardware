@@ -199,6 +199,27 @@ the "hardware vs software is unfair" objection.
   mean with a visible tail.
 - Deviations from these predictions are findings, not failures — report them.
 
+### Measured (rig, 2026-08-20; 8 nodes, 16 layers, 64 words, 125 MHz)
+
+Injector per-token latency, zero data errors in every variant:
+
+| Variant | cycles | spread |
+|---|---|---|
+| A | 10,128 (81.0 µs) | 0 |
+| B (cut-through) | 9,903 (79.2 µs) | 0 |
+| B_sf (store-and-forward) | 25,743 (205.9 µs) | 0 |
+| A′ | 22,895,335 (183 ms) | < 512 |
+| C | 13.80M–13.86M (~110 ms) | ~68k, multi-modal |
+
+The revised B prediction held: B sits at the dataflow optimum
+`16 * (2 * lap_offset + vector_words + 1)` with the handshake visible only in
+the per-hop credit RTT (130–143 cycles cut-through; ~198–211
+store-and-forward), while B_sf pays it on the critical path (+990
+cycles/layer ≈ 14 relay hops × (frame buffering + ~7)). A runs 16
+cycles/layer of calendar margin above the optimum. C's per-hop service is
+~54k cycles of management-unit firmware; A′ trades a slower schedule-reserved
+mean for zero variance — the smear in C is coordination, not clocks.
+
 ## 3. Implementation approach
 
 **Clash work is the critical path** (the `decodePe`, its config device, and

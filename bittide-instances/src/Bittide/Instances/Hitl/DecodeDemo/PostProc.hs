@@ -7,7 +7,7 @@ into one pooled CSV per variant plus a human-readable summary.
 
 Inputs, all in @_build/hitl/Decode_Demo_DUT/@ (written by the driver):
 
-* @results-{c,aprime}-<n>.bin@ — GDB memory dumps of the management-unit
+* @results-{c,aprime}-<n>.data@ — GDB memory dumps of the management-unit
   firmware's @DecodeResults@ struct (layout mirrored from
   @firmware-support/bittide-sys/src/decode_demo.rs@).
 * @pe-{a,b,bsf}-<n>.txt@ — key/value dumps of the processing-element and
@@ -107,7 +107,7 @@ parsePeDump name n contents = do
 loadDumps :: FilePath -> IO [VariantDump]
 loadDumps hitlDir = do
   mcDumps <- forM [(v, n) | v <- ["c", "aprime"], n <- [0 .. fpgaCount - 1]] $ \(v, n) -> do
-    let path = hitlDir </> "results-" <> v <> "-" <> show n <> ".bin"
+    let path = hitlDir </> "results-" <> v <> "-" <> show n <> ".data"
     exists <- doesFileExist path
     if exists
       then Just . parseMcResults v n <$> BS.readFile path

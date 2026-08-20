@@ -621,7 +621,9 @@ driver testName targets = do
                 $ \(n, gdb, (resAddr, _)) -> do
                   Gdb.dumpMemoryRegion
                     gdb
-                    (hitlDir </> "results-" <> fileTag <> "-" <> show n <.> "bin")
+                    -- Not ".bin": CI's clock-control report step globs every
+                    -- .bin in the HITL directory as cc-samples dumps.
+                    (hitlDir </> "results-" <> fileTag <> "-" <> show n <.> "data")
                     resAddr
                     (resAddr + decodeResultsSize)
                   readMcResults gdb resAddr
