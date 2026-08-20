@@ -140,8 +140,9 @@ fn main() -> ! {
         uwriteln!(uart, "FAIL: variant A'").unwrap();
     }
 
-    // Test 3: the lost-frame path — a relay whose upstream never sends. Every
-    // layer's first poll times out; the token is abandoned and counted.
+    // Test 3: the give-up path — a reactive relay whose upstream never
+    // sends. After a quiet period it gives up, counting every frame of the
+    // run as lost (1 token x 2 layers x 2 laps = 4).
     let mut cfg = base_config();
     cfg.go = MODE_C;
     cfg.is_injector = 0;
@@ -156,7 +157,7 @@ fn main() -> ! {
         results.lost_frames
     )
     .unwrap();
-    if results.tokens_done != 0 || results.lost_frames != 1 {
+    if results.tokens_done != 0 || results.lost_frames != 2 * LAYERS {
         all_passed = false;
         uwriteln!(uart, "FAIL: lost-frame path").unwrap();
     }

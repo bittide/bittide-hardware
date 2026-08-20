@@ -417,7 +417,41 @@ fn add_contribution(payload: &mut [[u8; 8]; MAX_VECTOR_WORDS], pattern: u64, vec
     }
 }
 
+/// Reads whatever frame currently occupies `region`, tear-checked: the
+/// trailer must be nonzero, the payload checksum must match it, and the
+/// trailer must be unchanged on a re-read. Returns the frame's sequence
+/// number.
+fn read_region_frame<Rx: ReceiveRingBufferInterface>(
+    rx: &Rx,
+    region: u32,
+    vector_words: usize,
+    payload: &mut [[u8; 8]; MAX_VECTOR_WORDS],
+) -> Option<u32> {
+    let (got1, checksum1) = peek_trailer(rx, region);
+    if got1 == 0 {
+        return None;
+    }
+    rx.read_slice(&mut payload[..vector_words], region_base(region));
+    if checksum32(&payload[..vector_words]) != checksum1 {
+        return None;
+    }
+    let (got2, _) = peek_trailer(rx, region);
+    if got2 != got1 {
+        return None;
+    }
+    Some(got1 - 1)
+}
+
 /// Variant C: rendezvous by polling, acks on the reverse link direction.
+///
+/// The injector drives the schedule: it sends each layer's lap-1 frame,
+/// waits for the accumulated vector to return (turnaround), broadcasts it as
+/// lap 2 and waits for the sink. A poll timeout abandons the token.
+///
+/// Relays are purely reactive: they follow the stream, resynchronizing from
+/// the sequence numbers they receive instead of running their own token
+/// schedule — so a lost frame can never desynchronize the ring; the skipped
+/// sequence numbers are simply counted as lost.
 pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInterface>(
     cfg: &DecodeConfig,
     timer: &Timer,
@@ -447,9 +481,8 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
     )
     .unwrap();
     // Region reuse is gated on the ack of the frame LAST SENT in that
-    // region (not blindly seq - 4): after an abandoned token some sequence
-    // numbers were never sent, and waiting for their acks would cascade the
-    // loss into every following token.
+    // region; a missing ack after the (generous) timeout means the receiver
+    // abandoned that frame and the region is safe to overwrite.
     let mut sent_in_region: [Option<u32>; REGION_COUNT] = [None; REGION_COUNT];
 
     // Wait out one buffer wrap so cleared transmit buffers have propagated,
@@ -458,48 +491,38 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
     let _ = timer.wait_until_stall_raw(cfg.first_cycle);
     uwriteln!(uart, "C start").unwrap();
 
-    'tokens: for token in 0..cfg.token_count {
-        if token % 256 == 0 && token != 0 {
-            uwriteln!(
-                uart,
-                "C progress: t={} lost={} fails={}",
-                token,
-                results.lost_frames,
-                results.checksum_fails
-            )
-            .unwrap();
+    let gate = |uart: &mut Uart, sent: &[Option<u32>; REGION_COUNT], seq: u32, diag: &mut u32| {
+        if !region_free(bufs.down_ack_rx, timer, sent, seq, cfg.poll_timeout) && *diag > 0 {
+            *diag -= 1;
+            uwriteln!(uart, "C slow gate seq={}", seq).unwrap();
         }
-        let token_start = now_cycles(timer);
-        for layer in 0..cfg.layers_per_token {
-            let seq1 = (token * cfg.layers_per_token + layer) * 2;
-            let seq2 = seq1 + 1;
+    };
 
-            if injector {
-                // Send our contribution around the ring (lap 1). Region
-                // reuse is guarded by the ack of the frame four sequence
-                // numbers ago.
-                if !region_free(
-                    bufs.down_ack_rx,
-                    timer,
-                    &sent_in_region,
-                    seq1,
-                    cfg.poll_timeout,
-                ) {
-                    // A missing ack after the (generous) timeout means the
-                    // receiver abandoned that frame; the region is safe to
-                    // overwrite. Proceeding here is what stops one hiccup
-                    // from cascading into losing the rest of the run.
-                    if diag_budget > 0 {
-                        diag_budget -= 1;
-                        uwriteln!(uart, "C slow gate tok={} seq={}", token, seq1).unwrap();
-                    }
-                }
+    if injector {
+        'tokens: for token in 0..cfg.token_count {
+            if token % 256 == 0 && token != 0 {
+                uwriteln!(
+                    uart,
+                    "C progress: t={} lost={} fails={}",
+                    token,
+                    results.lost_frames,
+                    results.checksum_fails
+                )
+                .unwrap();
+            }
+            let token_start = now_cycles(timer);
+            for layer in 0..cfg.layers_per_token {
+                let seq1 = (token * cfg.layers_per_token + layer) * 2;
+                let seq2 = seq1 + 1;
+
+                // Send our contribution around the ring (lap 1).
+                gate(uart, &sent_in_region, seq1, &mut diag_budget);
                 let contribution = make_contribution(cfg.local_pattern, vw);
                 send_frame(bufs.down_tx, seq1, &contribution[..vw]);
                 sent_in_region[(seq1 as usize) % REGION_COUNT] = Some(seq1);
 
                 // Turnaround: the accumulated lap-1 vector returns; verify
-                // the grand total and forward it into lap 2.
+                // the grand total and broadcast it as lap 2.
                 if !poll_frame(bufs.up_rx, timer, seq1, vw, cfg.poll_timeout, &mut payload) {
                     results.lost_frames += 1;
                     if diag_budget > 0 {
@@ -525,22 +548,7 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                         .unwrap();
                     }
                 }
-                if !region_free(
-                    bufs.down_ack_rx,
-                    timer,
-                    &sent_in_region,
-                    seq2,
-                    cfg.poll_timeout,
-                ) {
-                    // A missing ack after the (generous) timeout means the
-                    // receiver abandoned that frame; the region is safe to
-                    // overwrite. Proceeding here is what stops one hiccup
-                    // from cascading into losing the rest of the run.
-                    if diag_budget > 0 {
-                        diag_budget -= 1;
-                        uwriteln!(uart, "C slow gate tok={} seq={}", token, seq2).unwrap();
-                    }
-                }
+                gate(uart, &sent_in_region, seq2, &mut diag_budget);
                 send_frame(bufs.down_tx, seq2, &payload[..vw]);
                 sent_in_region[(seq2 as usize) % REGION_COUNT] = Some(seq2);
 
@@ -553,93 +561,122 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 if checksum64(&payload[..vw]) != cfg.expected_window_b {
                     results.checksum_fails += 1;
                 }
-            } else {
-                // Relay: lap 1 — verify the prefix sum, add our
-                // contribution, forward.
-                if !poll_frame(bufs.up_rx, timer, seq1, vw, cfg.poll_timeout, &mut payload) {
-                    results.lost_frames += 1;
-                    if diag_budget > 0 {
-                        diag_budget -= 1;
-                        let saw = unsafe { core::ptr::addr_of!(LAST_SEEN_TRAILER).read_volatile() };
-                        uwriteln!(uart, "C lost lap1 tok={} seq={} saw={:x}", token, seq1, saw)
-                            .unwrap();
-                    }
-                    continue 'tokens;
+
+                if cfg.compute_cycles != 0 && layer + 1 < cfg.layers_per_token {
+                    timer.wait_stall(bittide_hal::manual_additions::timer::Duration::from_cycles(
+                        cfg.compute_cycles,
+                        timer.frequency().into_inner(),
+                    ));
                 }
-                write_ack(bufs.up_ack_tx, seq1);
+            }
+            let latency = (now_cycles(timer) - token_start) as u32;
+            results.record_latency(latency);
+            results.tokens_done += 1;
+        }
+    } else {
+        // Reactive relay: process the oldest unprocessed frame visible in
+        // any region; role from the sequence number's parity.
+        let total_frames = cfg.token_count * cfg.layers_per_token * 2;
+        let final_seq = total_frames - 1;
+        let mut expected: u32 = 0;
+        let mut token_start = now_cycles(timer);
+        let mut idle_since = now_cycles(timer);
+        'stream: loop {
+            let mut best: Option<u32> = None;
+            for region in 0..REGION_COUNT as u32 {
+                let (got, _) = peek_trailer(bufs.up_rx, region);
+                if got == 0 {
+                    continue;
+                }
+                let seq = got - 1;
+                if seq >= expected && seq <= final_seq && best.is_none_or(|b| seq < b) {
+                    best = Some(seq);
+                }
+            }
+            let Some(candidate) = best else {
+                // Nothing new: give up once the stream has been quiet for
+                // several timeouts (the injector has finished or moved on).
+                if now_cycles(timer) - idle_since > 3 * cfg.poll_timeout as u64 {
+                    results.lost_frames += final_seq - expected + 1;
+                    if diag_budget > 0 {
+                        uwriteln!(uart, "C gave up at seq={}", expected).unwrap();
+                    }
+                    break 'stream;
+                }
+                continue 'stream;
+            };
+            // Tear-checked read; on any inconsistency just rescan.
+            let Some(seq) = read_region_frame(
+                bufs.up_rx,
+                candidate % REGION_COUNT as u32,
+                vw,
+                &mut payload,
+            ) else {
+                continue 'stream;
+            };
+            if seq != candidate {
+                continue 'stream;
+            }
+            idle_since = now_cycles(timer);
+            if seq > expected {
+                results.lost_frames += seq - expected;
+                if diag_budget > 0 {
+                    diag_budget -= 1;
+                    uwriteln!(uart, "C skipped {}..{}", expected, seq).unwrap();
+                }
+            }
+            write_ack(bufs.up_ack_tx, seq);
+
+            let layer_idx = (seq / 2) % cfg.layers_per_token;
+            let lap2 = seq & 1 == 1;
+            if lap2 {
+                if checksum64(&payload[..vw]) != cfg.expected_window_b {
+                    results.checksum_fails += 1;
+                }
+            } else {
+                if layer_idx == 0 {
+                    token_start = now_cycles(timer);
+                }
                 if checksum64(&payload[..vw]) != cfg.expected_window_a {
                     results.checksum_fails += 1;
                     if diag_budget > 0 {
                         diag_budget -= 1;
                         uwriteln!(
                             uart,
-                            "C sum lap1 tok={} got={:x} want={:x}",
-                            token,
+                            "C sum lap1 seq={} got={:x} want={:x}",
+                            seq,
                             checksum64(&payload[..vw]),
                             cfg.expected_window_a
                         )
                         .unwrap();
                     }
                 }
-                if !region_free(
-                    bufs.down_ack_rx,
-                    timer,
-                    &sent_in_region,
-                    seq1,
-                    cfg.poll_timeout,
-                ) {
-                    // A missing ack after the (generous) timeout means the
-                    // receiver abandoned that frame; the region is safe to
-                    // overwrite. Proceeding here is what stops one hiccup
-                    // from cascading into losing the rest of the run.
-                    if diag_budget > 0 {
-                        diag_budget -= 1;
-                        uwriteln!(uart, "C slow gate tok={} seq={}", token, seq1).unwrap();
-                    }
-                }
                 add_contribution(&mut payload, cfg.local_pattern, vw);
-                send_frame(bufs.down_tx, seq1, &payload[..vw]);
-                sent_in_region[(seq1 as usize) % REGION_COUNT] = Some(seq1);
-
-                // Lap 2 — verify the grand total, forward unchanged.
-                if !poll_frame(bufs.up_rx, timer, seq2, vw, cfg.poll_timeout, &mut payload) {
-                    results.lost_frames += 1;
-                    continue 'tokens;
-                }
-                write_ack(bufs.up_ack_tx, seq2);
-                if checksum64(&payload[..vw]) != cfg.expected_window_b {
-                    results.checksum_fails += 1;
-                }
-                if !region_free(
-                    bufs.down_ack_rx,
-                    timer,
-                    &sent_in_region,
-                    seq2,
-                    cfg.poll_timeout,
-                ) {
-                    // A missing ack after the (generous) timeout means the
-                    // receiver abandoned that frame; the region is safe to
-                    // overwrite. Proceeding here is what stops one hiccup
-                    // from cascading into losing the rest of the run.
-                    if diag_budget > 0 {
-                        diag_budget -= 1;
-                        uwriteln!(uart, "C slow gate tok={} seq={}", token, seq2).unwrap();
-                    }
-                }
-                send_frame(bufs.down_tx, seq2, &payload[..vw]);
-                sent_in_region[(seq2 as usize) % REGION_COUNT] = Some(seq2);
             }
+            gate(uart, &sent_in_region, seq, &mut diag_budget);
+            send_frame(bufs.down_tx, seq, &payload[..vw]);
+            sent_in_region[(seq as usize) % REGION_COUNT] = Some(seq);
 
-            if cfg.compute_cycles != 0 && layer + 1 < cfg.layers_per_token {
-                timer.wait_stall(bittide_hal::manual_additions::timer::Duration::from_cycles(
-                    cfg.compute_cycles,
-                    timer.frequency().into_inner(),
-                ));
+            if lap2 && layer_idx == cfg.layers_per_token - 1 {
+                let latency = (now_cycles(timer) - token_start) as u32;
+                results.record_latency(latency);
+                results.tokens_done += 1;
+                if results.tokens_done.is_multiple_of(256) {
+                    uwriteln!(
+                        uart,
+                        "C progress: t={} lost={} fails={}",
+                        results.tokens_done,
+                        results.lost_frames,
+                        results.checksum_fails
+                    )
+                    .unwrap();
+                }
+            }
+            expected = seq + 1;
+            if seq == final_seq {
+                break 'stream;
             }
         }
-        let latency = (now_cycles(timer) - token_start) as u32;
-        results.record_latency(latency);
-        results.tokens_done += 1;
     }
 }
 
