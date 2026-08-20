@@ -63,7 +63,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWbI,
   registerWbI_,
-  registerWbVecI,
+  registerWbVecI_,
  )
 import Protocols.MemoryMap.Registers.WishboneStandard.Internal (
   RegisterWb,
@@ -159,7 +159,11 @@ data DecodePeStatus = DecodePeStatus
   , maxLatency :: Unsigned 32
   , lastLatency :: Unsigned 32
   , done :: Bool
-  , histIncr :: Maybe (Index HistBins)
+  , hist :: Vec HistBins (Unsigned 32)
+  {- ^ Latency histogram, one cycle per bin from @hist_base@; out-of-range
+  samples clamp to the edge bins. Maintained here (and mirrored into a
+  read-only register) so the histogram state lives with the statistics.
+  -}
   }
   deriving (Generic, NFDataX)
 
@@ -173,7 +177,7 @@ emptyStatus =
     , maxLatency = 0
     , lastLatency = 0
     , done = False
-    , histIncr = Nothing
+    , hist = repeat 0
     }
 
 data CoreState
@@ -396,34 +400,35 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
 
     -- Statistics pipeline, stage 1: only the 64-bit subtraction happens on
     -- the completion cycle; the sample is folded into min/max/last and the
-    -- histogram bin one cycle later (stage 2, below). External samples
-    -- (credit round-trip times) enter the same stage. Samples are at least
-    -- a full window apart, so the single-entry stage never overflows.
+    -- histogram one cycle later (stage 2, below). In credit mode, relays
+    -- histogram per-transfer credit round-trip times (the external samples)
+    -- INSTEAD of token spans, so the two distributions never mix.
     tokenLatencySample = case lapResult of
       Just result
         | result.role == tokenCompletionRole
         , s1.layerIdx + 1 >= cfg.layersPerToken ->
             Just (truncateB (result.endCycle - s1.tokenStart) :: Unsigned 32)
       _ -> Nothing
-    nextSample = case extSample of
-      Just _ -> extSample
-      Nothing -> tokenLatencySample
+    nextSample
+      | cfg.mode == ModeCredit && not cfg.isInjector = extSample
+      | otherwise = tokenLatencySample
 
     -- Statistics pipeline, stage 2: fold the sample registered last cycle.
     folded = case s.pendingSample of
       Nothing -> s2.status
       Just latency ->
-        s2.status
-          { minLatency = min s2.status.minLatency latency
-          , maxLatency = max s2.status.maxLatency latency
-          , lastLatency = latency
-          }
-    histBin = toBin cfg.histBase <$> s.pendingSample
+        let bin = toBin cfg.histBase latency
+         in s2.status
+              { minLatency = min s2.status.minLatency latency
+              , maxLatency = max s2.status.maxLatency latency
+              , lastLatency = latency
+              , hist =
+                  replace bin (satAdd SatBound (s2.status.hist !! bin) 1) s2.status.hist
+              }
 
     statusOut =
       folded
         { done = s2.status.tokensDone >= cfg.tokenCount && cfg.tokenCount /= 0
-        , histIncr = histBin
         }
 
   toBin :: Unsigned 32 -> Unsigned 32 -> Index HistBins
@@ -695,24 +700,18 @@ decodePeConfig = circuit $ \(bus, status) -> do
     -< wbLastLatency
   roReg "done" "All tokens completed." False ((.done) <$> status') -< wbDone
 
-  (Fwd hist, _histActivity) <-
-    registerWbVecI
-      ( registerConfig
-          "hist"
-          "Latency histogram, one cycle per bin from hist_base; out-of-range samples clamp to the edge bins."
-      )
-        { access = ReadOnly
-        }
-      (0 :: Unsigned 32)
-      -< (wbHist, Fwd histUpdate)
+  registerWbVecI_
+    ( registerConfig
+        "hist"
+        "Latency histogram, one cycle per bin from hist_base; out-of-range samples clamp to the edge bins."
+    )
+      { access = ReadOnly
+      }
+    (0 :: Unsigned 32)
+    -< (wbHist, Fwd (fmap Just <$> ((.hist) <$> status')))
 
   let
     armPulse = isJust . busActivityWrite <$> armActivity
-    -- Registered so the histogram's read-modify-write is not chained onto
-    -- the statistics logic in one cycle; an arm pulse drops any in-flight
-    -- increment so it cannot land after the clear.
-    histIncrR = register Nothing (mux armPulse (pure Nothing) ((.histIncr) <$> status'))
-    histUpdate = histUpdateF <$> armPulse <*> histIncrR <*> hist
     settings =
       DecodePeSettings
         <$> readLink
@@ -764,10 +763,3 @@ decodePeConfig = circuit $ \(bus, status) -> do
   decodeMode :: Unsigned 8 -> PeMode
   decodeMode 0 = ModeCalendar
   decodeMode _ = ModeCredit
-
-  histUpdateF ::
-    Bool -> Maybe (Index HistBins) -> Vec HistBins (Unsigned 32) -> Vec HistBins (Maybe (Unsigned 32))
-  histUpdateF True _ _ = repeat (Just 0)
-  histUpdateF False Nothing _ = repeat Nothing
-  histUpdateF False (Just bin) hist =
-    replace bin (Just (satAdd SatBound (hist !! bin) 1)) (repeat Nothing)

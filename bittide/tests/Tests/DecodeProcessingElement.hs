@@ -23,7 +23,7 @@ module Tests.DecodeProcessingElement where
 
 import Clash.Prelude
 
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Protocols (toSignals)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -169,9 +169,9 @@ case_calendarTwoNode = do
     (sts0, sts1) = dutA
     fin0 = L.last sts0
     fin1 = L.last sts1
-    -- Histogram feed events at the injector, over both runs.
-    bins0 = mapMaybe (.histIncr) sts0
-    bins1 = mapMaybe (.histIncr) sts1
+    -- Final histograms (the second run cleared the first via arm).
+    hist0 = fin0.hist
+    hist1 = fin1.hist
 
   assertEqual "injector tokens_done" (fromIntegral tokensC) fin0.tokensDone
   assertEqual "relay tokens_done" (fromIntegral tokensC) fin1.tokensDone
@@ -188,12 +188,12 @@ case_calendarTwoNode = do
   assertEqual "relay min latency" (fromIntegral relayLatencyC) fin1.minLatency
   assertEqual "relay max latency" (fromIntegral relayLatencyC) fin1.maxLatency
 
-  -- Two runs of `tokensC` tokens each, every sample in histogram bin 4
-  -- (latency - hist_base = 4).
-  assertEqual "injector histogram events" (2 * tokensC) (L.length bins0)
-  assertEqual "relay histogram events" (2 * tokensC) (L.length bins1)
-  assertBool "injector histogram single bin" (L.all (== 4) bins0)
-  assertBool "relay histogram single bin" (L.all (== 4) bins1)
+  -- The re-arm cleared the first run's histogram; the second run's tokens
+  -- all land in bin 4 (latency - hist_base = 4).
+  assertEqual "injector histogram" (fromIntegral tokensC) (hist0 !! (4 :: Int))
+  assertEqual "injector histogram mass" (fromIntegral tokensC) (sum hist0)
+  assertEqual "relay histogram" (fromIntegral tokensC) (hist1 !! (4 :: Int))
+  assertEqual "relay histogram mass" (fromIntegral tokensC) (sum hist1)
 
 tests :: TestTree
 tests = $(testGroupGenerator)
