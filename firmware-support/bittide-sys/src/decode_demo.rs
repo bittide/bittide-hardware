@@ -335,6 +335,10 @@ fn read_payload<Rx: ReceiveRingBufferInterface>(
 /// Polls for frame `seq`. `true` and fills `payload` when received intact;
 /// `false` when lost (overwritten by a later frame in the same region, poll
 /// timeout, or trailer/payload checksum mismatch after a re-read).
+/// On failure the raw trailer word occupying the region is left in
+/// `LAST_SEEN_TRAILER` for diagnostics.
+static mut LAST_SEEN_TRAILER: u64 = 0;
+
 fn poll_frame<Rx: ReceiveRingBufferInterface>(
     rx: &Rx,
     timer: &Timer,
@@ -344,18 +348,21 @@ fn poll_frame<Rx: ReceiveRingBufferInterface>(
     payload: &mut [[u8; 8]; MAX_VECTOR_WORDS],
 ) -> bool {
     let deadline = now_cycles(timer) + timeout as u64;
+    let want = seq + 1;
     loop {
-        let (got_seq, got_checksum) = peek_trailer(rx, seq);
-        if got_seq == seq {
+        let (got, got_checksum) = peek_trailer(rx, seq);
+        unsafe {
+            core::ptr::addr_of_mut!(LAST_SEEN_TRAILER)
+                .write_volatile(((got as u64) << 32) | got_checksum as u64)
+        };
+        if got == want {
             read_payload(rx, seq, vector_words, payload);
             // The region may have been overwritten between trailer and
             // payload reads; the checksum in the trailer detects it.
             if checksum32(&payload[..vector_words]) == got_checksum {
                 return true;
             }
-        } else if got_seq > seq
-            && (got_seq as usize) % REGION_COUNT == (seq as usize) % REGION_COUNT
-        {
+        } else if got > want && ((got - want) as usize).is_multiple_of(REGION_COUNT) {
             // A later frame overwrote the region: `seq` is lost.
             return false;
         }
@@ -413,6 +420,22 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
     let vw = (cfg.vector_words as usize).min(MAX_VECTOR_WORDS);
     let injector = cfg.is_injector != 0;
     let mut payload = [[0u8; 8]; MAX_VECTOR_WORDS];
+    // A small budget of diagnostic prints, so the first few failures explain
+    // themselves without flooding the UART.
+    let mut diag_budget: u32 = 8;
+    uwriteln!(
+        uart,
+        "C cfg inj={} up={} down={} vw={} n={} pat={:x} expA={:x} expB={:x}",
+        cfg.is_injector,
+        cfg.read_link,
+        cfg.write_link,
+        cfg.vector_words,
+        cfg.token_count,
+        cfg.local_pattern,
+        cfg.expected_window_a,
+        cfg.expected_window_b
+    )
+    .unwrap();
     // Region reuse is gated on the ack of the frame LAST SENT in that
     // region (not blindly seq - 4): after an abandoned token some sequence
     // numbers were never sent, and waiting for their acks would cascade the
@@ -463,11 +486,28 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 // the grand total and forward it into lap 2.
                 if !poll_frame(bufs.up_rx, timer, seq1, vw, cfg.poll_timeout, &mut payload) {
                     results.lost_frames += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        let saw = unsafe { core::ptr::addr_of!(LAST_SEEN_TRAILER).read_volatile() };
+                        uwriteln!(uart, "C lost turn tok={} seq={} saw={:x}", token, seq1, saw)
+                            .unwrap();
+                    }
                     continue 'tokens;
                 }
                 write_ack(bufs.up_ack_tx, seq1);
                 if checksum64(&payload[..vw]) != cfg.expected_window_b {
                     results.checksum_fails += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        uwriteln!(
+                            uart,
+                            "C sum turn tok={} got={:x} want={:x}",
+                            token,
+                            checksum64(&payload[..vw]),
+                            cfg.expected_window_b
+                        )
+                        .unwrap();
+                    }
                 }
                 if !region_free(
                     bufs.down_ack_rx,
@@ -496,11 +536,28 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 // contribution, forward.
                 if !poll_frame(bufs.up_rx, timer, seq1, vw, cfg.poll_timeout, &mut payload) {
                     results.lost_frames += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        let saw = unsafe { core::ptr::addr_of!(LAST_SEEN_TRAILER).read_volatile() };
+                        uwriteln!(uart, "C lost lap1 tok={} seq={} saw={:x}", token, seq1, saw)
+                            .unwrap();
+                    }
                     continue 'tokens;
                 }
                 write_ack(bufs.up_ack_tx, seq1);
                 if checksum64(&payload[..vw]) != cfg.expected_window_a {
                     results.checksum_fails += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        uwriteln!(
+                            uart,
+                            "C sum lap1 tok={} got={:x} want={:x}",
+                            token,
+                            checksum64(&payload[..vw]),
+                            cfg.expected_window_a
+                        )
+                        .unwrap();
+                    }
                 }
                 if !region_free(
                     bufs.down_ack_rx,
