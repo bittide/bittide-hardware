@@ -207,6 +207,8 @@ library
     Bittide.ClockControl.Topology
     Bittide.ClockControl.Topology.LinkMasks
     Bittide.Counter
+    Bittide.CreditLink
+    Bittide.DecodeProcessingElement
     Bittide.Df
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
@@ -294,6 +296,8 @@ test-suite unittests
     Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
     Tests.Counter
+    Tests.CreditLink
+    Tests.DecodeProcessingElement
     Tests.DelayWishbone
     Tests.Df
     Tests.DoubleBufferedRam
