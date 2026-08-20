@@ -241,9 +241,13 @@ writeDecodeConfig ::
   Unsigned 32 ->
   -- | (lap offset, layer period, token period) for A' schedules
   (Unsigned 32, Unsigned 32, Unsigned 32) ->
+  {- | Histogram base; latencies bin at @(latency - base) >> 9@ (512-cycle
+  bins, 256 of them: a 131k-cycle window)
+  -}
+  Unsigned 32 ->
   DecodeNodeConfig ->
   IO ()
-writeDecodeConfig gdb base variant tokenCount (lapOff, layerPer, tokenPer) node = do
+writeDecodeConfig gdb base variant tokenCount (lapOff, layerPer, tokenPer) histBase node = do
   let fieldAt off = base + off
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 8) (if node.isInjector then 1 else 0)
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 12) (fromIntegral node.readLink)
@@ -260,8 +264,8 @@ writeDecodeConfig gdb base variant tokenCount (lapOff, layerPer, tokenPer) node 
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 48) lapOff
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 52) layerPer
   Gdb.writeLe @(Unsigned 32) gdb (fieldAt 56) tokenPer
-  Gdb.writeLe @(Unsigned 32) gdb (fieldAt 60) 0 -- hist_base
-  Gdb.writeLe @(Unsigned 32) gdb (fieldAt 64) 4 -- hist_shift: 16-cycle bins
+  Gdb.writeLe @(Unsigned 32) gdb (fieldAt 60) histBase
+  Gdb.writeLe @(Unsigned 32) gdb (fieldAt 64) 9 -- hist_shift: 512-cycle bins
   Gdb.writeLe @(BitVector 64) gdb (fieldAt 72) node.localPattern
   Gdb.writeLe @(BitVector 64) gdb (fieldAt 80) node.expectedWindowA
   Gdb.writeLe @(BitVector 64) gdb (fieldAt 88) node.expectedWindowB
@@ -549,8 +553,8 @@ driver testName targets = do
           liftIO $ putStrLn $ "Ring lap offset (cycles): " <> show lapOff
 
           let
-            runMcVariant variant tokenCount fileTag = do
-              putStrLn $ "Running variant " <> show variant
+            runMcVariant variant tokenCount fileTag histBases = do
+              putStrLn $ "Running variant " <> show variant <> " (" <> fileTag <> ")"
               currentTime <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
               let
                 -- Generous start gate: every node must finish ring-buffer
@@ -580,14 +584,20 @@ driver testName targets = do
                 widenU :: Unsigned 32 -> Unsigned 64
                 widenU = resize
               forM_
-                (L.zip3 managementUnitGdbs structAddrs (L.zipWith aPrimeNode [0 :: Int ..] (toList sched.nodes)))
-                $ \(gdb, (_, cfgAddr), node) ->
+                ( L.zip4
+                    managementUnitGdbs
+                    structAddrs
+                    (L.zipWith aPrimeNode [0 :: Int ..] (toList sched.nodes))
+                    histBases
+                )
+                $ \(gdb, (_, cfgAddr), node, histBase) ->
                   writeDecodeConfig
                     gdb
                     cfgAddr
                     variant
                     tokenCount
                     (aPrimeLapOff, aPrimeLayerPer, aPrimeTokenPer)
+                    histBase
                     node
               mapConcurrently_ Gdb.continue managementUnitGdbs
               let
@@ -629,10 +639,20 @@ driver testName targets = do
                 when (r.lostFrames + r.deadlinesMissed > lostBudget)
                   $ fail (show variant <> " node " <> show n <> " too many lost/missed: " <> show r)
 
+          let
+            -- Software latencies are only predictable to within tens of
+            -- thousands of cycles, so a short warmup run discovers each
+            -- node's actual latency and the real run places its histogram
+            -- window (131k cycles) with the warmup minimum at bin 32.
+            runMcVariantWithWarmup variant tokenCount fileTag = do
+              warmup <- runMcVariant variant 3 (fileTag <> "-warmup") (L.replicate 8 (0 :: Unsigned 32))
+              let histBases = [satSub SatZero r.minLatency (32 * 512) | r <- warmup]
+              runMcVariant variant tokenCount fileTag histBases
+
           -- Variant C, then A' — strictly before the one-shot mux arming.
-          cResults <- liftIO $ runMcVariant VariantC cTokenCount "c"
+          cResults <- liftIO $ runMcVariantWithWarmup VariantC cTokenCount "c"
           liftIO $ checkMcResults VariantC cTokenCount cResults
-          aPrimeResults <- liftIO $ runMcVariant VariantAPrime aPrimeTokenCount "aprime"
+          aPrimeResults <- liftIO $ runMcVariantWithWarmup VariantAPrime aPrimeTokenCount "aprime"
           liftIO $ checkMcResults VariantAPrime aPrimeTokenCount aPrimeResults
 
           -- Arm the programmable mux: the links belong to the processing
@@ -654,7 +674,10 @@ driver testName targets = do
               putStrLn $ "Running variant " <> show variant <> " (" <> fileTag <> ")"
               currentTime <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
               let
-                layerPer = truncateB (2 * lapOff) + fromIntegral vw + 256 :: Unsigned 32
+                -- Variant B measured the dataflow floor at exactly
+                -- 2 * lapOff + vw + 1 cycles per layer, so 16 cycles of
+                -- margin puts the calendar within 2.5% of it.
+                layerPer = truncateB (2 * lapOff) + fromIntegral vw + 16 :: Unsigned 32
                 tokenPer = fromIntegral layersPerTokenC * layerPer + 1024
                 predictedTokenLatency =
                   fromIntegral (layersPerTokenC - 1)
@@ -666,9 +689,22 @@ driver testName targets = do
                 -- calendar compares for equality, so a first window in the
                 -- past would simply never fire.
                 sched = scheduleAt vw (currentTime + 15 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                -- The 16-bin hardware histogram only has room for a spike:
+                -- base each variant's injector window on its own analytic
+                -- prediction. B's is the dataflow floor; B_sf additionally
+                -- pays a full frame buffering plus header check per relay
+                -- hop (14 relay hops over two laps).
+                predictedByVariant = case variant of
+                  VariantA -> predictedTokenLatency
+                  VariantB ->
+                    fromIntegral layersPerTokenC
+                      * (truncateB (2 * lapOff) + fromIntegral vw + 1)
+                  VariantBsf ->
+                    fromIntegral layersPerTokenC
+                      * (truncateB (2 * lapOff) + fromIntegral vw + 1 + 14 * (fromIntegral vw + 7))
                 histBase n
-                  | variant == VariantA || n == (0 :: Int) =
-                      satSub SatZero predictedTokenLatency 8
+                  | n == (0 :: Int) || variant == VariantA =
+                      satSub SatZero predictedByVariant 8
                   | otherwise = 100 -- relays histogram credit RTTs in B modes
               forM_ managementUnitGdbs $ \gdb -> writeCreditLinkKnobs gdb variant
               forM_ (L.zip3 [0 ..] managementUnitGdbs (toList sched.nodes))
@@ -681,7 +717,7 @@ driver testName targets = do
               statuses <- mapM readPeStatus managementUnitGdbs
               clStatuses <- mapM readClStatus managementUnitGdbs
               forM_ (L.zip3 [0 :: Int ..] statuses clStatuses) $ \(n, st, cl) -> do
-                putStrLn $ "  node " <> show n <> ": " <> show st{hist = repeat 0}
+                putStrLn $ "  node " <> show n <> ": " <> show st
                 when (variant /= VariantA)
                   $ putStrLn
                   $ "  node "
