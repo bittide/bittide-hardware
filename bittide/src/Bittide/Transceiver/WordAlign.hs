@@ -175,13 +175,17 @@ dealignMsbFirst offset old new = takeLsbs $ shiftBytesR (old ++# new) offset
 alignMsbFirst :: AlignmentFn n
 alignMsbFirst offset old new = takeMsbs $ shiftBytesL (old ++# new) offset
 
+-- Note the use of 'fromEnum' instead of 'fromIntegral' in the functions
+-- below: 'fromEnum' on 'Index' maps to a primitive with a black box, while
+-- 'fromIntegral' goes through 'Integer', which ends up in the generated HDL.
+
 -- | Like 'shiftR', but for 'Bytes'
 shiftBytesR :: forall n. (KnownNat n) => Bytes (2 * n) -> Index n -> Bytes (2 * n)
-shiftBytesR bv n = shiftR bv (8 * fromIntegral n)
+shiftBytesR bv n = shiftR bv (8 * fromEnum n)
 
 -- | Like 'shiftL', but for 'Bytes'
 shiftBytesL :: forall n. (KnownNat n) => Bytes (2 * n) -> Index n -> Bytes (2 * n)
-shiftBytesL bv n = shiftL bv (8 * fromIntegral n)
+shiftBytesL bv n = shiftL bv (8 * fromEnum n)
 
 -- | Take upper bits of given 'BitVector'
 takeMsbs :: forall n. (KnownNat n) => Bytes (2 * n) -> Bytes n
