@@ -41,6 +41,7 @@ import Clash.Class.BitPackC (BitPackC)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
+import Control.Exception (SomeException, try)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
@@ -594,8 +595,8 @@ driver testName targets = do
                   mapConcurrently_ Gdb.interrupt managementUnitGdbs
                   forM_ (L.zip3 [0 :: Int ..] managementUnitGdbs structAddrs)
                     $ \(n, gdb, (resAddr, _)) -> do
-                      r <- readMcResults gdb resAddr
-                      putStrLn $ "  TIMEOUT node " <> show n <> ": " <> show r
+                      result <- try @SomeException (readMcResults gdb resAddr)
+                      putStrLn $ "  TIMEOUT node " <> show n <> ": " <> show result
               T.tryWithTimeoutOn T.PrintActionTime ("Waiting for " <> show variant) 480_000_000 onTimeout
                 $ forM_ serials
                 $ \serial -> waitForLine serial doneLine

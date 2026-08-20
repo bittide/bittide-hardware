@@ -500,7 +500,7 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
 
     if injector {
         'tokens: for token in 0..cfg.token_count {
-            if token % 256 == 0 && token != 0 {
+            if token % 64 == 0 && token != 0 {
                 uwriteln!(
                     uart,
                     "C progress: t={} lost={} fails={}",
@@ -555,6 +555,12 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 // Sink: the broadcast lap returns.
                 if !poll_frame(bufs.up_rx, timer, seq2, vw, cfg.poll_timeout, &mut payload) {
                     results.lost_frames += 1;
+                    if diag_budget > 0 {
+                        diag_budget -= 1;
+                        let saw = unsafe { core::ptr::addr_of!(LAST_SEEN_TRAILER).read_volatile() };
+                        uwriteln!(uart, "C lost sink tok={} seq={} saw={:x}", token, seq2, saw)
+                            .unwrap();
+                    }
                     continue 'tokens;
                 }
                 write_ack(bufs.up_ack_tx, seq2);
@@ -581,7 +587,18 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
         let mut expected: u32 = 0;
         let mut token_start = now_cycles(timer);
         let mut idle_since = now_cycles(timer);
+        // Consecutive tear-check failures on one candidate; a bounded retry
+        // so an inconsistent region can never wedge the scan loop.
+        let mut stuck_on: Option<(u32, u32)> = None;
         'stream: loop {
+            // Liveness: give up once nothing has been PROCESSED for several
+            // timeouts, regardless of what the scan keeps seeing (the
+            // injector has finished, moved on, or the stream is wedged).
+            if now_cycles(timer) - idle_since > 3 * cfg.poll_timeout as u64 {
+                results.lost_frames += final_seq - expected + 1;
+                uwriteln!(uart, "C gave up at seq={}", expected).unwrap();
+                break 'stream;
+            }
             let mut best: Option<u32> = None;
             for region in 0..REGION_COUNT as u32 {
                 let (got, _) = peek_trailer(bufs.up_rx, region);
@@ -594,29 +611,38 @@ pub fn run_variant_c<Rx: ReceiveRingBufferInterface, Tx: TransmitRingBufferInter
                 }
             }
             let Some(candidate) = best else {
-                // Nothing new: give up once the stream has been quiet for
-                // several timeouts (the injector has finished or moved on).
-                if now_cycles(timer) - idle_since > 3 * cfg.poll_timeout as u64 {
-                    results.lost_frames += final_seq - expected + 1;
-                    if diag_budget > 0 {
-                        uwriteln!(uart, "C gave up at seq={}", expected).unwrap();
-                    }
-                    break 'stream;
-                }
                 continue 'stream;
             };
-            // Tear-checked read; on any inconsistency just rescan.
-            let Some(seq) = read_region_frame(
+            // Tear-checked read; on inconsistency rescan, but only boundedly
+            // often for the same candidate.
+            let stable = read_region_frame(
                 bufs.up_rx,
                 candidate % REGION_COUNT as u32,
                 vw,
                 &mut payload,
-            ) else {
-                continue 'stream;
-            };
-            if seq != candidate {
+            );
+            if stable != Some(candidate) {
+                match stuck_on {
+                    Some((c, n)) if c == candidate => {
+                        if n >= 256 {
+                            // Permanently inconsistent: skip past it.
+                            results.lost_frames += candidate - expected + 1;
+                            if diag_budget > 0 {
+                                diag_budget -= 1;
+                                uwriteln!(uart, "C wedged region at seq={}", candidate).unwrap();
+                            }
+                            expected = candidate + 1;
+                            stuck_on = None;
+                        } else {
+                            stuck_on = Some((c, n + 1));
+                        }
+                    }
+                    _ => stuck_on = Some((candidate, 1)),
+                }
                 continue 'stream;
             }
+            let seq = candidate;
+            stuck_on = None;
             idle_since = now_cycles(timer);
             if seq > expected {
                 results.lost_frames += seq - expected;
