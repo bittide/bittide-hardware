@@ -1044,12 +1044,15 @@ driver testName targets = do
                   | n == (0 :: Int) = (satSub SatZero bPredicted 8, 6) -- 64-cycle bins
                   | otherwise = (100, 4) -- relay credit RTTs, 16-cycle bins
                   -- The generator's receive schedule: the upstream neighbor's
-                  -- slots land one cycle before this node's own decode window
-                  -- base (the generator has no core output register; the ring
-                  -- chaining and the sim's two-node loop both pin the -1).
+                  -- slots land exactly at this node's own decode window base:
+                  -- the generator shares the decode core's emission pipeline
+                  -- (one output register plus the registered transmit
+                  -- vector), and the rig's capture registers confirmed the
+                  -- first burst word arrives one cycle after the old -1
+                  -- convention sampled.
                 rxBase k node
-                  | k == (0 :: Int) = node.firstCycle + sched.lapOffset - 1
-                  | otherwise = node.firstCycle - 1
+                  | k == (0 :: Int) = node.firstCycle + sched.lapOffset
+                  | otherwise = node.firstCycle
               putStrLn
                 $ "  plan: layer_period "
                 <> show layerPer
