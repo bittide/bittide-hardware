@@ -359,6 +359,7 @@ data PeStatus = PeStatus
   , checksumFailCount :: Unsigned 32
   , firstFailCycle :: Unsigned 64
   , firstFailChecksum :: BitVector 64
+  , lastWindowFirstWord :: BitVector 64
   , minLatency :: Unsigned 32
   , maxLatency :: Unsigned 32
   , lastLatency :: Unsigned 32
@@ -375,6 +376,7 @@ readPeStatus gdb = do
   checksumFailCount <- r "checksum_fail_count"
   firstFailCycle <- r "first_fail_cycle"
   firstFailChecksum <- r "first_fail_checksum"
+  lastWindowFirstWord <- r "last_window_first_word"
   minLatency <- r "min_latency"
   maxLatency <- r "max_latency"
   lastLatency <- r "last_latency"
@@ -386,6 +388,7 @@ readPeStatus gdb = do
       , checksumFailCount
       , firstFailCycle
       , firstFailChecksum
+      , lastWindowFirstWord
       , minLatency
       , maxLatency
       , lastLatency
@@ -1013,10 +1016,13 @@ driver testName targets = do
                   writeTgConfig gdb plan (node.firstCycle, rxBase n node)
               -- Arm relays first, the injector (node 0) last.
               forM_ (L.reverse managementUnitGdbs) armDecodePe
-              forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
-                waitPeDone (fileTag <> " node " <> show n) gdb
-              forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
-                waitTgDone (fileTag <> " node " <> show n) gdb
+              -- Wait out both flows, but dump the registers even on a
+              -- timeout: a wedged cell's counters are the diagnostics.
+              waitResult <- try @SomeException $ do
+                forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
+                  waitPeDone (fileTag <> " node " <> show n) gdb
+                forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
+                  waitTgDone (fileTag <> " node " <> show n) gdb
               -- Let the last bursts drain to their receivers.
               threadDelay 100_000
               statuses <- mapM readPeStatus managementUnitGdbs
@@ -1039,6 +1045,7 @@ driver testName targets = do
                         , "checksum_fail_count " <> show st.checksumFailCount
                         , "first_fail_cycle " <> show st.firstFailCycle
                         , "first_fail_checksum " <> show st.firstFailChecksum
+                        , "last_window_first_word " <> show st.lastWindowFirstWord
                         , "min_latency " <> show st.minLatency
                         , "max_latency " <> show st.maxLatency
                         , "hist_base " <> show (fst (histBase n))
@@ -1078,6 +1085,9 @@ driver testName targets = do
                         ]
                       <> ["tg_hist " <> L.unwords (L.map show (toList tg.tgHist))]
                   )
+              case waitResult of
+                Left e -> fail (fileTag <> ": " <> show e)
+                Right () -> pure ()
               pure (plan, predicted, statuses, clStatuses, tgStatuses)
 
             checkContentionCell variant dutyPct (plan, predicted, statuses, clStatuses, tgStatuses) = do

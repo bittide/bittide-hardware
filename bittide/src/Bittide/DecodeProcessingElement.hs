@@ -159,6 +159,8 @@ data DecodePeStatus = DecodePeStatus
   , firstFailCycle :: Unsigned 64
   , firstFailChecksum :: BitVector 64
   -- ^ The observed checksum of the first failing window (diagnostic)
+  , lastWindowFirstWord :: BitVector 64
+  -- ^ The receive word consumed at the most recent window fire (diagnostic)
   , minLatency :: Unsigned 32
   , maxLatency :: Unsigned 32
   , lastLatency :: Unsigned 32
@@ -177,6 +179,7 @@ emptyStatus =
     { tokensDone = 0
     , checksumFailCount = 0
     , firstFailChecksum = 0
+    , lastWindowFirstWord = 0
     , firstFailCycle = 0
     , minLatency = maxBound
     , maxLatency = 0
@@ -334,15 +337,17 @@ decodeSequencer ::
   Signal dom (Maybe FireInfo) ->
   -- | Lap results from the core
   Signal dom (Maybe LapResult) ->
+  -- | The receive stream (for the first-word diagnostic capture)
+  Signal dom (BitVector 64) ->
   -- | External histogram samples (credit RTTs); 'Nothing' when unused
   Signal dom (Maybe (Unsigned 32)) ->
   Signal dom DecodePeStatus
-decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
+decodeSequencer rst localCounter settings armPulse fires lapResults rxWords extSamples =
   withClockResetEnable hasClock rst enableGen
     $ mealy
       goSeq
       SeqState{layerIdx = 0, tokenStart = 0, pendingSample = Nothing, status = emptyStatus}
-      (bundle (settings, armPulse, fires, lapResults, extSamples, localCounter))
+      (bundle (settings, armPulse, fires, lapResults, rxWords, extSamples, localCounter))
  where
   goSeq ::
     SeqState ->
@@ -350,24 +355,31 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
     , Bool
     , Maybe FireInfo
     , Maybe LapResult
+    , BitVector 64
     , Maybe (Unsigned 32)
     , Unsigned 64
     ) ->
     (SeqState, DecodePeStatus)
-  goSeq s (cfg, arm, fire, lapResult, extSample, counter)
+  goSeq s (cfg, arm, fire, lapResult, rx, extSample, counter)
     | arm =
         ( SeqState{layerIdx = 0, tokenStart = 0, pendingSample = Nothing, status = emptyStatus}
         , emptyStatus
         )
     | otherwise = (s2{pendingSample = nextSample, status = statusOut}, statusOut)
    where
-    -- Latch the token start at the first window fire of layer 0.
+    -- Latch the token start at the first window fire of layer 0, and the
+    -- receive word every window consumes on its fire cycle (diagnostic:
+    -- with checksums failing everywhere, the last window's first word
+    -- identifies what leaked into the stream).
     tokenStartRole = if cfg.isInjector then RoleInject else RoleAddRelay
+    s0 = case fire of
+      Just _ -> s{status = s.status{lastWindowFirstWord = rx}}
+      Nothing -> s
     s1 = case fire of
       Just info
-        | info.role == tokenStartRole && s.layerIdx == 0 ->
-            s{tokenStart = counter}
-      _ -> s
+        | info.role == tokenStartRole && s0.layerIdx == 0 ->
+            s0{tokenStart = counter}
+      _ -> s0
 
     -- Checksum verification and layer/token accounting on window completion.
     s2 = case lapResult of
@@ -610,6 +622,7 @@ decodePeConfig = circuit $ \(bus, status) -> do
     , wbChecksumFailCount
     , wbFirstFailCycle
     , wbFirstFailChecksum
+    , wbLastWindowFirstWord
     , wbMinLatency
     , wbMaxLatency
     , wbLastLatency
@@ -699,6 +712,12 @@ decodePeConfig = circuit $ \(bus, status) -> do
     (0 :: BitVector 64)
     ((.firstFailChecksum) <$> status')
     -< wbFirstFailChecksum
+  roReg
+    "last_window_first_word"
+    "Receive word consumed at the most recent window fire (diagnostic)."
+    (0 :: BitVector 64)
+    ((.lastWindowFirstWord) <$> status')
+    -< wbLastWindowFirstWord
   roReg
     "min_latency"
     "Minimum histogram sample this run, in cycles."

@@ -119,7 +119,8 @@ nodeB cfgS knobsS arm cnt rxs = (fwdTx, crdTx, status, clStatus)
   clOut =
     creditLink hasReset cnt cfgS knobsS arm fwdRx crdRx (pure True) (pure True) streamOut
   fire = (.fire) <$> clOut
-  streamIn = StreamIn <$> fire <*> ((.coreRxWord) <$> clOut)
+  rxWordSeq = (.coreRxWord) <$> clOut
+  streamIn = StreamIn <$> fire <*> rxWordSeq
   (_, streamOut) = toSignals (decodeReduceCore hasReset cnt cfgS) (streamIn, ())
   -- Relays sample per-transfer credit round-trip times into the histogram;
   -- the injector's histogram carries token latencies.
@@ -129,7 +130,7 @@ nodeB cfgS knobsS arm cnt rxs = (fwdTx, crdTx, status, clStatus)
       cfgS
       ((.rttSample) <$> clOut)
   status =
-    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) extSample
+    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) rxWordSeq extSample
   fwdTx = (.forwardTx) <$> clOut
   crdTx = (.creditTx) <$> clOut
   clStatus = (.status) <$> clOut
@@ -301,6 +302,7 @@ nodeAB cfgS knobsS arm cnt rxs = (txs, status, clStatus)
     creditLink hasReset cnt cfgS knobsS arm fwdRx crdRx (pure True) (pure True) streamOut
   fire = mux isCredit ((.fire) <$> clOut) fireA
   rxWord = mux isCredit ((.coreRxWord) <$> clOut) ((!! (0 :: Index 2)) <$> rxs)
+  rxWordSeq = rxWord
   streamIn = StreamIn <$> fire <*> rxWord
   (_, streamOut) = toSignals (decodeReduceCore hasReset cnt cfgS) (streamIn, ())
   extSample =
@@ -309,7 +311,7 @@ nodeAB cfgS knobsS arm cnt rxs = (txs, status, clStatus)
       cfgS
       ((.rttSample) <$> clOut)
   status =
-    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) extSample
+    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) rxWordSeq extSample
   clStatus = (.status) <$> clOut
   idle = pack <$> cnt
   coreTx = liftA2 fromMaybe idle ((.txWord) <$> streamOut)

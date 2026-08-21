@@ -255,7 +255,7 @@ nodeShared cfgS tgCfgS knobsS arm cnt rxs = (txs, status, clStatus, tgStat)
       cfgS
       ((.rttSample) <$> clOut)
   status =
-    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) extSample
+    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) rxWord extSample
   clStatus = (.status) <$> clOut
   tgStat =
     liftA2

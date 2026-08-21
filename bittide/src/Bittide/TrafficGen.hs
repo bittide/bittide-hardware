@@ -572,11 +572,17 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
           w = mkTgCreditWord trSeqDone
           lastPulse = trPulseIdx + 1 >= 4
    where
-    checkWord st seqNr wordIdx =
+    checkWord st0 seqNr wordIdx =
       let
         expectW = mkTgPatternWord seqNr wordIdx
         bad = rx /= expectW
         lastWord = wordIdx >= cfg.tgBurstWords - 1
+        -- Latch the first mismatch: the received word's value identifies
+        -- what leaked into the stream (diagnostic).
+        st
+          | bad && st0.trErrors == 0 =
+              st0{trFirstBadExpected = expectW, trFirstBadActual = rx}
+          | otherwise = st0
         errors' = if bad then st.trErrors + 1 else st.trErrors
         stDone = (advanceRx cfg st){trReceived = st.trReceived + 1, trErrors = errors'}
        in

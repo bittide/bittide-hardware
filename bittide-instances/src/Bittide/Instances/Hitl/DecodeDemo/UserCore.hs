@@ -174,6 +174,7 @@ mkUserCore bitClk bitRst bitEna localCounter _maybeDna =
             armPulse
             fire
             ((.lapResult) <$> coreOut)
+            rxWord
             extSample
       clStatus = (.status) <$> clOut
       tgStatus =

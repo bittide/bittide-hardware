@@ -122,7 +122,7 @@ nodeA cfgS arm cnt rx = (tx, status)
   streamIn = StreamIn <$> fire <*> rx
   (_, streamOut) = toSignals (decodeReduceCore hasReset cnt cfgS) (streamIn, ())
   status =
-    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) (pure Nothing)
+    decodeSequencer hasReset cnt cfgS arm fire ((.lapResult) <$> streamOut) rx (pure Nothing)
   tx = fromMaybe <$> (pack <$> cnt) <*> ((.txWord) <$> streamOut)
 
 delayLine ::
