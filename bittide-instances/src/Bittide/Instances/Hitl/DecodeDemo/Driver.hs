@@ -1266,8 +1266,6 @@ driver testName targets = do
           (bsfStatuses, bsfCl) <- liftIO $ runPeVariant VariantBsf vectorWordsC hwTokenCount "bsf"
           liftIO $ checkPeVariant VariantBsf hwTokenCount bsfStatuses bsfCl
 
-          liftIO goDumpCcSamples
-
           liftIO $ do
             let
               aLat = (L.head aStatuses).maxLatency
@@ -1309,6 +1307,13 @@ driver testName targets = do
                   putStrLn $ "CELL FAILED: " <> show e
                   pure (Just (variant, duty, show e))
                 Right () -> pure Nothing
+          -- Only at the very end: dumping the clock-control samples HALTS
+          -- the clock-control CPUs and never resumes them. With clock
+          -- control dead the oscillators free-run and the elastic buffers
+          -- slip words — which is precisely what shredded every time-based
+          -- variant run after this call while it sat before the sweep.
+          liftIO goDumpCcSamples
+
           case a2Failure <> mapMaybe id cellFailures of
             [] -> pure ExitSuccess
             failures -> liftIO $ fail $ "Contention cells failed: " <> show failures
