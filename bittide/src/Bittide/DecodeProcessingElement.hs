@@ -343,24 +343,33 @@ decodeSequencer ::
   Signal dom (Maybe (Unsigned 32)) ->
   Signal dom DecodePeStatus
 decodeSequencer rst localCounter settings armPulse fires lapResults rxWords extSamples =
-  withClockResetEnable hasClock rst enableGen
-    $ mealy
+  withClockResetEnable hasClock rst enableGen out
+ where
+  out :: (HiddenClockResetEnable dom) => Signal dom DecodePeStatus
+  out =
+    mealy
       goSeq
       SeqState{layerIdx = 0, tokenStart = 0, pendingSample = Nothing, status = emptyStatus}
-      (bundle (settings, armPulse, fires, lapResults, rxWords, extSamples, localCounter))
- where
+      (bundle (settings, armPulse, fires, lapResults, capture, extSamples, localCounter))
+   where
+    -- The first-word diagnostic capture is registered before it enters the
+    -- state: the receive word reaches here through the demux and mode
+    -- muxes, too long a path to also traverse the status logic in one
+    -- cycle. One cycle of skew is irrelevant to a diagnostic.
+    capture =
+      register Nothing (mux (isJust <$> fires) (Just <$> rxWords) (pure Nothing))
   goSeq ::
     SeqState ->
     ( DecodePeSettings linkCount
     , Bool
     , Maybe FireInfo
     , Maybe LapResult
-    , BitVector 64
+    , Maybe (BitVector 64)
     , Maybe (Unsigned 32)
     , Unsigned 64
     ) ->
     (SeqState, DecodePeStatus)
-  goSeq s (cfg, arm, fire, lapResult, rx, extSample, counter)
+  goSeq s (cfg, arm, fire, lapResult, capturedRx, extSample, counter)
     | arm =
         ( SeqState{layerIdx = 0, tokenStart = 0, pendingSample = Nothing, status = emptyStatus}
         , emptyStatus
@@ -372,8 +381,8 @@ decodeSequencer rst localCounter settings armPulse fires lapResults rxWords extS
     -- with checksums failing everywhere, the last window's first word
     -- identifies what leaked into the stream).
     tokenStartRole = if cfg.isInjector then RoleInject else RoleAddRelay
-    s0 = case fire of
-      Just _ -> s{status = s.status{lastWindowFirstWord = rx}}
+    s0 = case capturedRx of
+      Just rx -> s{status = s.status{lastWindowFirstWord = rx}}
       Nothing -> s
     s1 = case fire of
       Just info
