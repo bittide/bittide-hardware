@@ -488,6 +488,23 @@ writeTgConfig gdb plan (firstCycle, rxFirstCycle) = do
   w "tg_burst_count" plan.tgBurstCount
   w "tg_credit_max" (4 :: Unsigned 8)
   w "tg_hist_shift" plan.tgHistShift
+  -- Read-back verification: the simulations feed settings directly, so the
+  -- Wishbone write path (the offsets vector especially — the only
+  -- order-sensitive register) is only ever exercised here.
+  let
+    rb :: forall a. (BitPackC a, Typeable a, NFDataX a, Eq a, Show a) => String -> a -> IO ()
+    rb reg expected = do
+      addr <- peRegister "TrafficGenConfig" reg
+      actual <- Gdb.readLe @a gdb addr
+      unless (actual == expected)
+        $ fail ("TG config readback " <> reg <> ": wrote " <> show expected <> ", read " <> show actual)
+  rb "tg_mode" plan.tgModeCode
+  rb "tg_first_cycle" firstCycle
+  rb "tg_rx_first_cycle" rxFirstCycle
+  rb "tg_period" plan.tgPeriod
+  rb "tg_burst_words" plan.tgBurstWords
+  rb "tg_offsets" offsetsVec
+  rb "tg_burst_count" plan.tgBurstCount
 
 disableTg :: (HasCallStack) => Gdb -> IO ()
 disableTg gdb = do
