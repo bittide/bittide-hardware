@@ -505,6 +505,8 @@ data TgStatus = TgStatus
   , tgTxDone :: Bool
   , tgFirstBadExpected :: BitVector 64
   , tgFirstBadActual :: BitVector 64
+  , tgFirstBadCycle :: Unsigned 64
+  , tgFirstFireCycle :: Unsigned 64
   , tgHist :: Vec 16 (Unsigned 32)
   }
   deriving (Show)
@@ -523,6 +525,8 @@ readTgStatus gdb = do
   tgTxDone <- r "tg_tx_done"
   tgFirstBadExpected <- r "tg_first_bad_expected"
   tgFirstBadActual <- r "tg_first_bad_actual"
+  tgFirstBadCycle <- r "tg_first_bad_cycle"
+  tgFirstFireCycle <- r "tg_first_fire_cycle"
   tgHist <- r "tg_hist"
   pure
     TgStatus
@@ -536,6 +540,8 @@ readTgStatus gdb = do
       , tgTxDone
       , tgFirstBadExpected
       , tgFirstBadActual
+      , tgFirstBadCycle
+      , tgFirstFireCycle
       , tgHist
       }
 
@@ -1031,6 +1037,7 @@ driver testName targets = do
               tgStatuses <- mapM readTgStatus managementUnitGdbs
               forM_ managementUnitGdbs disableTg
               forM_ (L.zip4 [0 :: Int ..] statuses clStatuses tgStatuses) $ \(n, st, cl, tg) -> do
+                let node = toList sched.nodes L.!! n
                 putStrLn $ "  node " <> show n <> ": " <> show st
                 putStrLn $ "  node " <> show n <> " tg: " <> show tg
                 when (variant /= VariantA)
@@ -1051,6 +1058,10 @@ driver testName targets = do
                         , "max_latency " <> show st.maxLatency
                         , "hist_base " <> show (fst (histBase n))
                         , "hist_shift " <> show (snd (histBase n))
+                        , "first_cycle_cfg " <> show node.firstCycle
+                        , "lap_offset_cfg " <> show (truncateB lapOff :: Unsigned 32)
+                        , "layer_period_cfg " <> show layerPer
+                        , "token_period_cfg " <> show tokenPer
                         , "credits_consumed " <> show cl.creditsConsumed
                         , "credits_returned " <> show cl.creditsReturned
                         , "credits_granted " <> show cl.creditsGranted
@@ -1076,6 +1087,10 @@ driver testName targets = do
                         , "tg_max_queue " <> show tg.tgMaxQueue
                         , "tg_first_bad_expected " <> show tg.tgFirstBadExpected
                         , "tg_first_bad_actual " <> show tg.tgFirstBadActual
+                        , "tg_first_bad_cycle " <> show tg.tgFirstBadCycle
+                        , "tg_first_fire_cycle " <> show tg.tgFirstFireCycle
+                        , "tg_first_cycle_cfg " <> show node.firstCycle
+                        , "tg_rx_first_cycle_cfg " <> show (rxBase n node)
                         , "tg_hist_shift " <> show plan.tgHistShift
                         , "tg_period " <> show plan.tgPeriod
                         , "tg_burst_words " <> show plan.tgBurstWords

@@ -168,6 +168,10 @@ data TrafficGenStatus = TrafficGenStatus
   -- ^ Expected word at the first pattern mismatch (diagnostic)
   , tgFirstBadActual :: BitVector 64
   -- ^ Received word at the first pattern mismatch (diagnostic)
+  , tgFirstBadCycle :: Unsigned 64
+  -- ^ Local counter at the first pattern mismatch (diagnostic)
+  , tgFirstFireCycle :: Unsigned 64
+  -- ^ Local counter at the first burst's first emitted word (diagnostic)
   , tgHist :: Vec HistBins (Unsigned 32)
   -- ^ Queueing-delay histogram, @2^tg_hist_shift@ cycles per bin
   }
@@ -210,6 +214,7 @@ data TgTxState = TgTxState
   , ttMinQueue :: Unsigned 32
   , ttMaxQueue :: Unsigned 32
   , ttLastQueue :: Unsigned 32
+  , ttFirstFire :: Unsigned 64
   , ttHist :: Vec HistBins (Unsigned 32)
   }
   deriving (Generic, NFDataX)
@@ -224,6 +229,7 @@ data TgTxOut = TgTxOut
   , ttoMaxQueue :: Unsigned 32
   , ttoLastQueue :: Unsigned 32
   , ttoDone :: Bool
+  , ttoFirstFire :: Unsigned 64
   , ttoHist :: Vec HistBins (Unsigned 32)
   }
   deriving (Generic, NFDataX)
@@ -249,6 +255,7 @@ data TgRxState = TgRxState
   , trExpectedSeq :: Unsigned 32
   , trFirstBadExpected :: BitVector 64
   , trFirstBadActual :: BitVector 64
+  , trFirstBadCycle :: Unsigned 64
   }
   deriving (Generic, NFDataX)
 
@@ -258,6 +265,7 @@ data TgRxOut = TgRxOut
   , troErrors :: Unsigned 32
   , troFirstBadExpected :: BitVector 64
   , troFirstBadActual :: BitVector 64
+  , troFirstBadCycle :: Unsigned 64
   }
   deriving (Generic, NFDataX)
 
@@ -321,6 +329,7 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
           , ttMinQueue = maxBound
           , ttMaxQueue = 0
           , ttLastQueue = 0
+          , ttFirstFire = 0
           , ttHist = repeat 0
           }
         (bundle (settings, armPulse, localCounter, creditRx, portGrantR))
@@ -338,6 +347,7 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
           , trExpectedSeq = 0
           , trFirstBadExpected = 0
           , trFirstBadActual = 0
+          , trFirstBadCycle = 0
           }
         (bundle (settings, armPulse, localCounter, rxStream, creditTxBusy))
 
@@ -361,6 +371,8 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
             , tgTxDone = t.ttoDone
             , tgFirstBadExpected = r.troFirstBadExpected
             , tgFirstBadActual = r.troFirstBadActual
+            , tgFirstBadCycle = r.troFirstBadCycle
+            , tgFirstFireCycle = t.ttoFirstFire
             , tgHist = t.ttoHist
             }
       }
@@ -377,6 +389,7 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
       , ttoMaxQueue = s.ttMaxQueue
       , ttoLastQueue = s.ttLastQueue
       , ttoDone = False
+      , ttoFirstFire = s.ttFirstFire
       , ttoHist = s.ttHist
       }
 
@@ -422,6 +435,7 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
             , ttMinQueue = maxBound
             , ttMaxQueue = 0
             , ttLastQueue = 0
+            , ttFirstFire = 0
             , ttHist = repeat 0
             }
         , txIdleOut s
@@ -455,6 +469,8 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
             ( (foldQueue cfg 0 sCredit)
                 { ttFsm = TtStream{ttHdr = False, ttWordIdx = 1, ttQueue = 0}
                 , ttSlot = slotCycle
+                , ttFirstFire =
+                    if sCredit.ttFirstFire == 0 then counter else sCredit.ttFirstFire
                 }
             , (txIdleOut sCredit)
                 { ttoWord = Just (mkTgPatternWord sCredit.ttSent 0)
@@ -509,6 +525,7 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
       , troErrors = s.trErrors
       , troFirstBadExpected = s.trFirstBadExpected
       , troFirstBadActual = s.trFirstBadActual
+      , troFirstBadCycle = s.trFirstBadCycle
       }
 
   advanceRx :: TrafficGenSettings -> TgRxState -> TgRxState
@@ -533,6 +550,7 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
             , trExpectedSeq = 0
             , trFirstBadExpected = 0
             , trFirstBadActual = 0
+            , trFirstBadCycle = 0
             }
         , rxIdleOut s
         )
@@ -581,7 +599,11 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
         -- what leaked into the stream (diagnostic).
         st
           | bad && st0.trErrors == 0 =
-              st0{trFirstBadExpected = expectW, trFirstBadActual = rx}
+              st0
+                { trFirstBadExpected = expectW
+                , trFirstBadActual = rx
+                , trFirstBadCycle = counter
+                }
           | otherwise = st0
         errors' = if bad then st.trErrors + 1 else st.trErrors
         stDone = (advanceRx cfg st){trReceived = st.trReceived + 1, trErrors = errors'}
@@ -829,6 +851,8 @@ trafficGenConfig = circuit $ \(bus, status) -> do
     , wbTxDone
     , wbFirstBadExpected
     , wbFirstBadActual
+    , wbFirstBadCycle
+    , wbFirstFireCycle
     , wbHist
     ] <-
     deviceWbI (deviceConfig "TrafficGenConfig") -< bus
@@ -919,6 +943,18 @@ trafficGenConfig = circuit $ \(bus, status) -> do
     (0 :: BitVector 64)
     ((.tgFirstBadActual) <$> status')
     -< wbFirstBadActual
+  roReg
+    "tg_first_bad_cycle"
+    "Local counter at the first pattern mismatch (diagnostic)."
+    (0 :: Unsigned 64)
+    ((.tgFirstBadCycle) <$> status')
+    -< wbFirstBadCycle
+  roReg
+    "tg_first_fire_cycle"
+    "Local counter at the first burst's first emitted word (diagnostic)."
+    (0 :: Unsigned 64)
+    ((.tgFirstFireCycle) <$> status')
+    -< wbFirstFireCycle
 
   registerWbVecI_
     ( registerConfig
