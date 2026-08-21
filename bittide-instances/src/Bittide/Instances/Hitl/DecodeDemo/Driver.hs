@@ -567,9 +567,11 @@ tgSlotPlan dutyPct lapOff vw baseLayerPer = (layerPer', offsets)
   b2 = bursts - b1
   gap2Start = lapOff + decodeWindow
   layerPer' = max baseLayerPer (gap2Start + b2 * slotStride + margin)
+  -- Enumerate over Int: an empty gap would make an Unsigned upper bound of
+  -- @0 - 1@ wrap into four billion offsets.
   offsets =
-    [decodeWindow + i * slotStride | i <- [0 .. b1 - 1]]
-      <> [gap2Start + j * slotStride | j <- [0 .. b2 - 1]]
+    [decodeWindow + fromIntegral i * slotStride | i <- [0 .. fromIntegral b1 - 1 :: Int]]
+      <> [gap2Start + fromIntegral j * slotStride | j <- [0 .. fromIntegral b2 - 1 :: Int]]
 
 driver ::
   (HasCallStack) =>
