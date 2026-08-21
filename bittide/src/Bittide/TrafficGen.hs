@@ -671,7 +671,16 @@ rxStreamDemux rst armPulse lens rx =
           | otherwise -> (DmTg{dmRemaining = dmRemaining - 1}, (0, w))
 {-# OPAQUE rxStreamDemux #-}
 
-data PortOwner = PortFree | PortDecode | PortTg
+data PortOwner
+  = PortFree
+  | PortDecode
+  | PortTg
+  | {- | One-cycle gap after an owner finishes: the owners' transmit words
+    are registered, so the wire trails their state machines by a cycle,
+    and a same-cycle re-grant would overlay the new frame's first word
+    onto the old frame's draining last word.
+    -}
+    PortDrain
   deriving (Generic, NFDataX, Eq)
 
 data ArbState = ArbState
@@ -777,18 +786,22 @@ linkPortArbiter rst armPulse ctReserve decodeReq tgReq decodeActive tgActive wor
     ownerActive = case s.arbOwner of
       PortDecode -> dActive
       PortTg -> tActive
-      PortFree -> False
+      _ -> False
 
-    -- Release: the owner streamed and finished, or never showed up.
-    released
-      | s.arbOwner == PortFree = True
+    owned = s.arbOwner == PortDecode || s.arbOwner == PortTg
+
+    -- Finished: the owner streamed and completed, or never showed up. The
+    -- port then drains for one cycle before anyone else may be granted.
+    finished
+      | not owned = False
       | s.arbSeenActive && not ownerActive = True
       | not s.arbSeenActive && s.arbGrace == 0 = True
       | otherwise = False
 
     (dGrant, tGrant, ownerNext, seenNext, tgNextNext, graceNext)
-      | not released =
+      | owned && not finished =
           (False, False, s.arbOwner, s.arbSeenActive || ownerActive, s.arbTgNext, satPred SatZero s.arbGrace)
+      | owned = (False, False, PortDrain, False, s.arbTgNext, 0)
       -- A cut-through reservation wins the cycle outright; it can only be
       -- asserted when the registered port-free view was true.
       | reserve = (False, False, PortDecode, False, s.arbTgNext, maxBound)

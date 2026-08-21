@@ -788,5 +788,87 @@ case_ring8ScheduledInterleave = do
     assertDecodeEqual ("ring8 a_c vs quiet node " <> show k) q s
     assertTgClean ("ring8 a_c " <> show k <> "->" <> show ((k + 1) `mod` 8)) sender tgTx tgRx
 
+{- | Long credit-mode stress run: high generator duty against many decode
+tokens, hunting rare arbitration races (the rig lost one decode frame to a
+single port collision in ~10^8 cycles at 48% duty). The token count and the
+generator's slot schedule are deliberately coprime-ish so the flows sweep
+their relative phases.
+-}
+case_creditStress :: Assertion
+case_creditStress = do
+  let
+    stressTokens = 400 :: Unsigned 32
+    stressSettings isInjector =
+      (mkSettings ModeCredit isInjector){tokenCount = stressTokens}
+    stressTg _isInjector =
+      tgOff
+        { tgMode = TgCredit
+        , tgFirstCycle = 100
+        , tgPeriod = 197 -- prime: sweeps phase against the decode dataflow
+        , tgBurstWords = 16
+        , tgBurstsPerPeriod = 5
+        , tgOffsets = 0 :> 37 :> 74 :> 111 :> 148 :> repeat 0
+        , tgBurstCount = 3200
+        , tgCreditMax = 4
+        }
+    nCycles = 700_000
+    (sts0, sts1, tg0, tg1, cls0, cls1) = go
+    go =
+      ( sampleN nCycles st0
+      , sampleN nCycles st1
+      , sampleN nCycles tgS0
+      , sampleN nCycles tgS1
+      , sampleN nCycles cl0
+      , sampleN nCycles cl1
+      )
+     where
+      (st0, st1, tgS0, tgS1, cl0, cl1) = withClockResetEnable clockGen resetGen enableGen build
+      build ::
+        (HiddenClockResetEnable System) =>
+        ( Signal System DecodePeStatus
+        , Signal System DecodePeStatus
+        , Signal System TrafficGenStatus
+        , Signal System TrafficGenStatus
+        , Signal System CreditLinkStatus
+        , Signal System CreditLinkStatus
+        )
+      build = (status0, status1, tgStat0, tgStat1, clStat0, clStat1)
+       where
+        cnt :: Signal System (Unsigned 64)
+        cnt = register 0 (cnt + 1)
+        arm = (== 20) <$> cnt
+        (txs0, status0, clStat0, tgStat0) =
+          nodeShared (pure (stressSettings True)) (pure (stressTg True)) (pure (mkKnobs True)) arm cnt rxs0
+        (txs1, status1, clStat1, tgStat1) =
+          nodeShared (pure (stressSettings False)) (pure (stressTg False)) (pure (mkKnobs True)) arm cnt rxs1
+        rxs0 =
+          bundle
+            ( delayBy (SNat @ForwardDelay) ((!! (1 :: Index 2)) <$> txs1)
+                :> delayBy (SNat @5) ((!! (0 :: Index 2)) <$> txs1)
+                :> Nil
+            )
+        rxs1 =
+          bundle
+            ( delayBy (SNat @ForwardDelay) ((!! (1 :: Index 2)) <$> txs0)
+                :> delayBy (SNat @5) ((!! (0 :: Index 2)) <$> txs0)
+                :> Nil
+            )
+    fin0 = L.last sts0
+    fin1 = L.last sts1
+  assertEqual "stress injector tokens" stressTokens fin0.tokensDone
+  assertEqual "stress injector fails" 0 fin0.checksumFailCount
+  assertEqual "stress relay fails" 0 fin1.checksumFailCount
+  assertEqual "stress collisions n0" 0 (L.last tg0).tgCollisions
+  assertEqual "stress collisions n1" 0 (L.last tg1).tgCollisions
+  assertEqual "stress tg received 0->1" 3200 (L.last tg1).tgReceived
+  assertEqual "stress tg received 1->0" 3200 (L.last tg0).tgReceived
+  assertEqual "stress tg errors n0" 0 (L.last tg0).tgPatternErrors
+  assertEqual "stress tg errors n1" 0 (L.last tg1).tgPatternErrors
+  let transfers = 2 * fromIntegral layersC * stressTokens
+  assertEqual "stress credit accounting" transfers (L.last cls0).creditsConsumed
+  assertEqual "stress frames" transfers (L.last cls1).framesReceived
+  assertEqual "stress drops" 0 (L.last cls0).noCreditDrops
+  assertEqual "stress timeouts" 0 (L.last cls0).timeoutCount
+
 tests :: TestTree
 tests = $(testGroupGenerator)
