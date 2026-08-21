@@ -88,13 +88,14 @@ aPrimeTokenCount = 200
 
 {- | The delay in clock cycles between two PEs which is not accounted for by
 the `captureUgn` component (see the wire demo driver for the full story).
-The decode PE has the same taps and the same one-register output stage as the
-wire demo PE, so the constant is expected to carry over; it is re-derived
-empirically on the rig if variant A shows checksum failures
-(`first_fail_cycle` localizes the offset).
+The wire demo's constant is -4; the decode user core adds one output
+register stage after the per-link transmit mux (every TXDATA bit fed from a
+dedicated register), so arrivals are one cycle later and the counter-map
+offsets grow by one: -3. Re-derive empirically if variant A shows checksum
+failures (`first_fail_cycle` localizes the offset).
 -}
 internalDelay :: Int
-internalDelay = -4
+internalDelay = -3
 
 data DecodeNodeConfig = DecodeNodeConfig
   { firstCycle :: Unsigned 64

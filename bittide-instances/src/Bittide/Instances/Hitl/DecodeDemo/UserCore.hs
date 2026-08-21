@@ -215,7 +215,19 @@ mkUserCore bitClk bitRst bitEna localCounter _maybeDna =
         base = repeat idleW
         withForward = maybe base (\wl -> replace wl fwdW base) cfg.writeLink
         withReverse = maybe withForward (\rl -> replace rl crdW withForward) cfg.readLink
-      peTxs = buildTxs <$> settings <*> idleWord <*> fwdWord <*> crdWord
+      -- Final output register stage: every transceiver TXDATA bit is fed
+      -- from a dedicated register after all per-link muxing. Without it the
+      -- shared mux cone (selects and valids fanning out to seven links'
+      -- TXDATA pins) is chronically timing-marginal. The extra cycle on the
+      -- processing element's transmit path is absorbed by the driver's
+      -- internalDelay calibration.
+      peTxs =
+        register
+          bitClk
+          businessLogicReset
+          bitEna
+          (repeat 0)
+          (buildTxs <$> settings <*> idleWord <*> fwdWord <*> crdWord)
     -- Stop business logic
 
     -- Start programmable mux

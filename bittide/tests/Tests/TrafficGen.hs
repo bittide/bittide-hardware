@@ -68,11 +68,11 @@ expectedWindowBC =
 transfersPerRun :: Unsigned 32
 transfersPerRun = fromIntegral (2 * layersC * tokensC)
 
-{- | The relay's calendar windows sit one hop (delay + one register) after
-the injector's.
+{- | The relay's calendar windows sit one hop (wire delay + the core
+register + the transmit output register) after the injector's.
 -}
 hopC :: Unsigned 64
-hopC = natToNum @ForwardDelay + 1
+hopC = natToNum @ForwardDelay + 2
 
 mkSettings :: PeMode -> Bool -> DecodePeSettings 2
 mkSettings mode isInjector =
@@ -82,7 +82,7 @@ mkSettings mode isInjector =
     , isInjector
     , mode
     , firstCycle = if mode == ModeCalendar && not isInjector then 100 + hopC else 100
-    , lapOffset = 2 * (natToNum @ForwardDelay + 1)
+    , lapOffset = 2 * fromIntegral hopC
     , layerPeriod = 200
     , layersPerToken = fromIntegral layersC
     , -- A multiple of the generator's period, so the decode windows sit at
@@ -283,7 +283,8 @@ nodeShared cfgS tgCfgS knobsS arm cnt rxs = (txs, status, clStatus, tgStat)
   pick :: Maybe (BitVector 64) -> Maybe (BitVector 64) -> BitVector 64 -> BitVector 64
   pick d t i = fromMaybe (fromMaybe i t) d
 
-  txs = bundle (crdWord :> fwdWord :> Nil)
+  -- The user core's final output register stage (see the demo UserCore).
+  txs = register (repeat 0) (bundle (crdWord :> fwdWord :> Nil))
 
 -- | Two shared-link nodes in a loop; node 0 injects, node 1 relays.
 dutShared ::
@@ -382,7 +383,7 @@ case_regressionQuiet = do
     (ctSts0, ctSts1, ctCls0, _, _) = dutShared ModeCredit (const tgOff) True 1600
     (sfSts0, _, sfCls0, _, _) = dutShared ModeCredit (const tgOff) False 2200
     (calSts0, calSts1, _, _, _) = dutShared ModeCalendar (const tgOff) True 2200
-    ctTokenLatency = layersC * (4 * (natToNum @ForwardDelay + 1) + vectorWordsC) + (layersC - 1)
+    ctTokenLatency = layersC * (4 * fromIntegral hopC + vectorWordsC) + (layersC - 1)
   assertDecodeClean "quiet ct injector" (L.last ctSts0)
   assertDecodeClean "quiet ct relay" (L.last ctSts1)
   assertCreditClean "quiet ct injector" (L.last ctCls0)
@@ -462,7 +463,7 @@ rigSettings mode isInjector =
     , isInjector
     , mode
     , firstCycle = if mode == ModeCalendar && not isInjector then 100 + rigHop else 100
-    , lapOffset = 2 * (natToNum @RigDelay + 1)
+    , lapOffset = 2 * fromIntegral rigHop
     , layerPeriod = 640
     , layersPerToken = fromIntegral layersC
     , tokenPeriod = 1920
@@ -480,14 +481,14 @@ rigSettings mode isInjector =
     , histShift = 0
     }
  where
-  rigHop = natToNum @RigDelay + 1
+  rigHop = natToNum @RigDelay + 2 :: Unsigned 64
 
 rigTgScheduled :: Bool -> TrafficGenSettings
 rigTgScheduled isInjector =
   tgOff
     { tgMode = TgScheduled
     , tgFirstCycle = txFirst
-    , tgRxFirstCycle = peerTxFirst + natToNum @RigDelay + 1
+    , tgRxFirstCycle = peerTxFirst + rigHop
     , tgPeriod = 640
     , tgBurstWords = fromIntegral rigVw
     , tgBurstsPerPeriod = 2
@@ -495,7 +496,7 @@ rigTgScheduled isInjector =
     , tgBurstCount = 16
     }
  where
-  rigHop = natToNum @RigDelay + 1
+  rigHop = natToNum @RigDelay + 2 :: Unsigned 64
   txFirst = if isInjector then 100 else 100 + rigHop
   peerTxFirst = if isInjector then 100 + rigHop else 100
 
@@ -570,10 +571,10 @@ case_rigScheduledInterleave = do
 type Rig3Delay = 92
 
 rig3Hop :: Unsigned 64
-rig3Hop = natToNum @Rig3Delay + 1
+rig3Hop = natToNum @Rig3Delay + 2
 
 rig3Lap :: Unsigned 32
-rig3Lap = 3 * (natToNum @Rig3Delay + 1)
+rig3Lap = 3 * (natToNum @Rig3Delay + 2)
 
 rig3Patterns :: Int -> BitVector 64
 rig3Patterns 0 = 0x1000
@@ -691,8 +692,10 @@ case_rig3ScheduledInterleave = do
 -- than a burst!), lap 280 — the two- and three-node loops have hops longer
 -- than a burst, which the hardware run suggested matters.
 
+type Ring8Delay = 33
+
 ring8Hop :: Unsigned 64
-ring8Hop = natToNum @ForwardDelay + 1
+ring8Hop = natToNum @Ring8Delay + 2
 
 ring8Lap :: Unsigned 32
 ring8Lap = 8 * fromIntegral ring8Hop
@@ -763,7 +766,7 @@ dutSharedRing8 mode tgCfg nCycles =
     txsFor k = (\(t, _, _, _) -> t) (outs L.!! k)
     statuses = L.map (\(_, s, _, _) -> s) outs
     tgStats = L.map (\(_, _, _, t) -> t) outs
-    fwd t = delayBy (SNat @ForwardDelay) ((!! (1 :: Index 2)) <$> t)
+    fwd t = delayBy (SNat @Ring8Delay) ((!! (1 :: Index 2)) <$> t)
     rev t = delayBy (SNat @5) ((!! (0 :: Index 2)) <$> t)
     rxsFor k = bundle (fwd (txsFor ((k + 7) `mod` 8)) :> rev (txsFor ((k + 1) `mod` 8)) :> Nil)
 
