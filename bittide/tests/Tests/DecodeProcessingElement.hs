@@ -105,6 +105,7 @@ mkSettings isInjector firstCycle =
         fromIntegral
           $ (if isInjector then injectorLatencyC else relayLatencyC)
           - 4
+    , histShift = 0
     }
 
 -- | One calendar-mode node: calendar front-end + reduce core + sequencer.

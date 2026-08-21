@@ -88,6 +88,7 @@ mkSettingsB mode isInjector firstCycle =
     , expectedWindowA = expectedWindowAC
     , expectedWindowB = expectedWindowBC
     , histBase = 0
+    , histShift = 0
     }
 
 mkKnobs :: Bool -> CreditLinkKnobs
@@ -113,7 +114,10 @@ nodeB ::
   )
 nodeB cfgS knobsS arm cnt rxs = (fwdTx, crdTx, status, clStatus)
  where
-  clOut = creditLink hasReset cnt cfgS knobsS arm rxs streamOut
+  fwdRx = liftA2 (\cfg v -> v !! fromMaybe (0 :: Index 2) cfg.readLink) cfgS rxs
+  crdRx = liftA2 (\cfg v -> v !! fromMaybe (0 :: Index 2) cfg.writeLink) cfgS rxs
+  clOut =
+    creditLink hasReset cnt cfgS knobsS arm fwdRx crdRx (pure True) (pure True) streamOut
   fire = (.fire) <$> clOut
   streamIn = StreamIn <$> fire <*> ((.coreRxWord) <$> clOut)
   (_, streamOut) = toSignals (decodeReduceCore hasReset cnt cfgS) (streamIn, ())
@@ -291,7 +295,10 @@ nodeAB cfgS knobsS arm cnt rxs = (txs, status, clStatus)
  where
   isCredit = (\cfg -> cfg.mode == ModeCredit) <$> cfgS
   fireA = calendarFrontEnd hasReset cnt cfgS arm
-  clOut = creditLink hasReset cnt cfgS knobsS arm rxs streamOut
+  fwdRx = liftA2 (\cfg v -> v !! fromMaybe (0 :: Index 2) cfg.readLink) cfgS rxs
+  crdRx = liftA2 (\cfg v -> v !! fromMaybe (0 :: Index 2) cfg.writeLink) cfgS rxs
+  clOut =
+    creditLink hasReset cnt cfgS knobsS arm fwdRx crdRx (pure True) (pure True) streamOut
   fire = mux isCredit ((.fire) <$> clOut) fireA
   rxWord = mux isCredit ((.coreRxWord) <$> clOut) ((!! (0 :: Index 2)) <$> rxs)
   streamIn = StreamIn <$> fire <*> rxWord

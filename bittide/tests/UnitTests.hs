@@ -27,6 +27,7 @@ import qualified Tests.ElasticBuffer
 import qualified Tests.Handshake
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
+import qualified Tests.TrafficGen
 import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
@@ -48,6 +49,7 @@ tests =
     , Tests.ClockControl.Freeze.tests
     , Tests.ClockControl.Si539xSpi.tests
     , Tests.CreditLink.tests
+    , Tests.TrafficGen.tests
     , Tests.DecodeProcessingElement.tests
     , Tests.DelayWishbone.tests
     , Tests.Df.tests

@@ -10,8 +10,12 @@ Inputs, all in @_build/hitl/Decode_Demo_DUT/@ (written by the driver):
 * @results-{c,aprime}-<n>.data@ — GDB memory dumps of the management-unit
   firmware's @DecodeResults@ struct (layout mirrored from
   @firmware-support/bittide-sys/src/decode_demo.rs@).
-* @pe-{a,b,bsf}-<n>.txt@ — key/value dumps of the processing-element and
-  credit-link registers, including the hardware histogram.
+* @pe-<variant>-<n>.txt@ — key/value dumps of the processing-element and
+  credit-link registers, including the hardware histogram. Variants: the
+  quiet runs (@a@, @b@, @bsf@) and the contention cells
+  (@{ac,bc}{25,50,75}@).
+* @tg-<cell>-<n>.txt@ — the traffic generator's counters and queue-delay
+  histogram for each contention cell.
 
 Outputs: @decode-demo-hist.csv@ (variant, node, latency-in-cycles,
 bin-width, count) and @decode-demo-summary.txt@.
@@ -93,6 +97,7 @@ parsePeDump name n contents = do
   maxLatency <- field "max_latency"
   histBase <- field "hist_base"
   binsRaw <- lookup "hist" kvs
+  let histShift = maybe 0 fromIntegral (field "hist_shift" :: Maybe Word32)
   pure
     VariantDump
       { variantName = name
@@ -101,7 +106,37 @@ parsePeDump name n contents = do
       , failures
       , minLatency
       , maxLatency
-      , histogram = Histogram{histBase, binWidth = 1, bins = map read binsRaw}
+      , histogram =
+          Histogram{histBase, binWidth = 1 `shiftL` histShift, bins = map read binsRaw}
+      }
+
+{- | The traffic generator's side of a contention cell, as a variant dump:
+"latency" is the burst queueing delay (slot time to port grant).
+-}
+parseTgDump :: String -> Int -> String -> Maybe VariantDump
+parseTgDump name n contents = do
+  let
+    kvs = [(k, vs) | k : vs <- words <$> lines contents]
+    field k = case lookup k kvs of
+      Just (v : _) -> Just (read v)
+      _ -> Nothing
+  received <- field "tg_received"
+  errors <- field "tg_pattern_errors"
+  collisions <- field "tg_collisions"
+  minQ <- field "tg_min_queue"
+  maxQ <- field "tg_max_queue"
+  binsRaw <- lookup "tg_hist" kvs
+  let histShift = maybe 0 fromIntegral (field "tg_hist_shift" :: Maybe Word32)
+  pure
+    VariantDump
+      { variantName = name
+      , node = n
+      , tokensDone = received
+      , failures = errors + collisions
+      , minLatency = minQ
+      , maxLatency = maxQ
+      , histogram =
+          Histogram{histBase = 0, binWidth = 1 `shiftL` histShift, bins = map read binsRaw}
       }
 
 loadDumps :: FilePath -> IO [VariantDump]
@@ -112,13 +147,20 @@ loadDumps hitlDir = do
     if exists
       then Just . parseMcResults v n <$> BS.readFile path
       else pure Nothing
-  peDumps <- forM [(v, n) | v <- ["a", "b", "bsf"], n <- [0 .. fpgaCount - 1]] $ \(v, n) -> do
+  let cells = [d <> duty | d <- ["ac", "bc"], duty <- ["25", "50", "75"]]
+  peDumps <- forM [(v, n) | v <- ["a", "b", "bsf"] <> cells, n <- [0 .. fpgaCount - 1]] $ \(v, n) -> do
     let path = hitlDir </> "pe-" <> v <> "-" <> show n <> ".txt"
     exists <- doesFileExist path
     if exists
       then parsePeDump v n <$> readFile path
       else pure Nothing
-  pure $ catMaybes (mcDumps <> peDumps)
+  tgDumps <- forM [(v, n) | v <- cells, n <- [0 .. fpgaCount - 1]] $ \(v, n) -> do
+    let path = hitlDir </> "tg-" <> v <> "-" <> show n <> ".txt"
+    exists <- doesFileExist path
+    if exists
+      then parseTgDump ("tg-" <> v) n <$> readFile path
+      else pure Nothing
+  pure $ catMaybes (mcDumps <> peDumps <> tgDumps)
 
 histCsv :: [VariantDump] -> String
 histCsv dumps =

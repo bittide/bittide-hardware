@@ -316,11 +316,11 @@ writePeConfig ::
   (Unsigned 32, Unsigned 32) ->
   -- | (lap offset, layer period, token period)
   (Unsigned 32, Unsigned 32, Unsigned 32) ->
-  -- | Histogram base
-  Unsigned 32 ->
+  -- | (histogram base, histogram bin width as log2 cycles)
+  (Unsigned 32, Unsigned 8) ->
   DecodeNodeConfig ->
   IO ()
-writePeConfig gdb variant (vectorWords, tokenCount) (lapOff, layerPer, tokenPer) histBase node = do
+writePeConfig gdb variant (vectorWords, tokenCount) (lapOff, layerPer, tokenPer) (histBase, histShift) node = do
   let
     w :: forall a. (BitPackC a, Typeable a, NFDataX a) => String -> a -> IO ()
     w reg value = do
@@ -342,6 +342,7 @@ writePeConfig gdb variant (vectorWords, tokenCount) (lapOff, layerPer, tokenPer)
   w "expected_window_a" node.expectedWindowA
   w "expected_window_b" node.expectedWindowB
   w "hist_base" histBase
+  w "hist_shift" (histShift :: Unsigned 8)
 
 writeCreditLinkKnobs :: (HasCallStack) => Gdb -> PeVariant -> IO ()
 writeCreditLinkKnobs gdb variant = do
@@ -441,6 +442,134 @@ waitPeDone who gdb = do
             then fail $ who <> ": decode PE did not finish within 60 s"
             else threadDelay 100_000 >> poll (attempt + 1)
   poll 0
+
+-- | One node's traffic-generator burst plan for a contention cell.
+data TgPlan = TgPlan
+  { tgModeCode :: Unsigned 8
+  -- ^ 1 = scheduled (calendar slots), 2 = credit
+  , tgPeriod :: Unsigned 32
+  , tgBurstWords :: Unsigned 16
+  , tgOffsets :: [Unsigned 32]
+  -- ^ Burst slot offsets within a period (at most 8)
+  , tgBurstCount :: Unsigned 32
+  , tgHistShift :: Unsigned 8
+  }
+  deriving (Show)
+
+writeTgConfig ::
+  (HasCallStack) =>
+  Gdb ->
+  TgPlan ->
+  -- | (transmit schedule base, receive schedule base), local cycles
+  (Unsigned 64, Unsigned 64) ->
+  IO ()
+writeTgConfig gdb plan (firstCycle, rxFirstCycle) = do
+  let
+    w :: forall a. (BitPackC a, Typeable a, NFDataX a) => String -> a -> IO ()
+    w reg value = do
+      addr <- peRegister "TrafficGenConfig" reg
+      Gdb.writeLe @a gdb addr value
+    offsetsVec :: Vec 8 (Unsigned 32)
+    offsetsVec = V.unsafeFromList (L.take 8 (plan.tgOffsets <> L.repeat 0))
+  w "tg_mode" plan.tgModeCode
+  w "tg_first_cycle" firstCycle
+  w "tg_rx_first_cycle" rxFirstCycle
+  w "tg_period" plan.tgPeriod
+  w "tg_burst_words" plan.tgBurstWords
+  w "tg_bursts_per_period" (fromIntegral (L.length plan.tgOffsets) :: Unsigned 8)
+  w "tg_offsets" offsetsVec
+  w "tg_burst_count" plan.tgBurstCount
+  w "tg_credit_max" (4 :: Unsigned 8)
+  w "tg_hist_shift" plan.tgHistShift
+
+disableTg :: (HasCallStack) => Gdb -> IO ()
+disableTg gdb = do
+  addr <- peRegister "TrafficGenConfig" "tg_mode"
+  Gdb.writeLe @(Unsigned 8) gdb addr 0
+
+data TgStatus = TgStatus
+  { tgSent :: Unsigned 32
+  , tgReceived :: Unsigned 32
+  , tgPatternErrors :: Unsigned 32
+  , tgCollisions :: Unsigned 32
+  , tgCreditsReturned :: Unsigned 32
+  , tgMinQueue :: Unsigned 32
+  , tgMaxQueue :: Unsigned 32
+  , tgTxDone :: Bool
+  , tgHist :: Vec 16 (Unsigned 32)
+  }
+  deriving (Show)
+
+readTgStatus :: (HasCallStack) => Gdb -> IO TgStatus
+readTgStatus gdb = do
+  let r :: forall a. (BitPackC a, Typeable a, NFDataX a) => String -> IO a
+      r reg = Gdb.readLe @a gdb =<< peRegister "TrafficGenConfig" reg
+  tgSent <- r "tg_sent"
+  tgReceived <- r "tg_received"
+  tgPatternErrors <- r "tg_pattern_errors"
+  tgCollisions <- r "tg_collisions"
+  tgCreditsReturned <- r "tg_credits_returned"
+  tgMinQueue <- r "tg_min_queue"
+  tgMaxQueue <- r "tg_max_queue"
+  tgTxDone <- r "tg_tx_done"
+  tgHist <- r "tg_hist"
+  pure
+    TgStatus
+      { tgSent
+      , tgReceived
+      , tgPatternErrors
+      , tgCollisions
+      , tgCreditsReturned
+      , tgMinQueue
+      , tgMaxQueue
+      , tgTxDone
+      , tgHist
+      }
+
+-- | Poll a node's @tg_tx_done@ register until set (or time out).
+waitTgDone :: (HasCallStack) => String -> Gdb -> IO ()
+waitTgDone who gdb = do
+  doneAddr <- peRegister "TrafficGenConfig" "tg_tx_done"
+  let poll attempt = do
+        done <- Gdb.readLe @Bool gdb doneAddr
+        unless done
+          $ if (attempt :: Int) > 600
+            then fail $ who <> ": traffic generator did not finish within 60 s"
+            else threadDelay 100_000 >> poll (attempt + 1)
+  poll 0
+
+{- | Place a duty cycle's worth of generator bursts into the decode
+calendar's per-link idle gaps. Decode occupies its transmit link twice per
+layer period — lap 1 around offset 0, lap 2 around @lapOff@ — each for
+@vw + 2@ cycles. Bursts go into the gap between the laps first, then after
+lap 2, stretching the layer period deterministically when the requested
+duty does not fit: the stretch IS variant A_c's precomputable latency
+shift. Returns the (possibly stretched) layer period and the slot offsets.
+-}
+tgSlotPlan ::
+  -- | Requested duty, percent
+  Unsigned 32 ->
+  -- | Ring lap offset, cycles
+  Unsigned 32 ->
+  -- | Vector\/burst words
+  Unsigned 32 ->
+  -- | Base decode layer period
+  Unsigned 32 ->
+  (Unsigned 32, [Unsigned 32])
+tgSlotPlan dutyPct lapOff vw baseLayerPer = (layerPer', offsets)
+ where
+  margin = 8
+  decodeWindow = vw + 2 + margin
+  slotStride = vw + 2
+  bursts = max 1 (min 8 ((dutyPct * baseLayerPer) `div` (100 * vw)))
+  gap1Capacity = satSub SatZero lapOff (decodeWindow + margin) `div` slotStride
+  b1 = min bursts gap1Capacity
+  b2 = bursts - b1
+  gap2Start = lapOff + decodeWindow
+  layerPer' = max baseLayerPer (gap2Start + b2 * slotStride + margin)
+  offsets =
+    [decodeWindow + i * slotStride | i <- [0 .. b1 - 1]]
+      <> [gap2Start + j * slotStride | j <- [0 .. b2 - 1]]
 
 driver ::
   (HasCallStack) =>
@@ -714,7 +843,13 @@ driver testName targets = do
               forM_ managementUnitGdbs $ \gdb -> writeCreditLinkKnobs gdb variant
               forM_ (L.zip3 [0 ..] managementUnitGdbs (toList sched.nodes))
                 $ \(n, gdb, node) ->
-                  writePeConfig gdb variant (vw, tokenCount) (truncateB lapOff, layerPer, tokenPer) (histBase n) node
+                  writePeConfig
+                    gdb
+                    variant
+                    (vw, tokenCount)
+                    (truncateB lapOff, layerPer, tokenPer)
+                    (histBase n, 0)
+                    node
               -- Arm relays first, the injector (node 0) last.
               forM_ (L.reverse managementUnitGdbs) armDecodePe
               forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
@@ -788,6 +923,200 @@ driver testName targets = do
                     )
                     $ fail (who <> ": credit accounting mismatch: " <> show cl)
 
+            -- One contention cell (PLAN2): the decode workload against the
+            -- traffic generator at a given duty, in one discipline. The
+            -- generator's burst count is sized to outlive the decode run, so
+            -- every decode token runs contended; the driver then waits out
+            -- the generator's tail before reading counters, making the
+            -- sent/received assertions exact.
+            runContentionCell variant dutyPct = do
+              let fileTag = (if variant == VariantA then "ac" else "bc") <> show dutyPct
+              putStrLn $ "Running contention cell " <> fileTag
+              currentTime <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
+              let
+                vw = vectorWordsC
+                baseLayerPer = truncateB (2 * lapOff) + fromIntegral vw + 16 :: Unsigned 32
+                (layerPer, tgOffs) =
+                  tgSlotPlan dutyPct (truncateB lapOff) (fromIntegral vw) baseLayerPer
+                burstsPerPeriod = fromIntegral (L.length tgOffs) :: Unsigned 32
+                -- A multiple of the layer (= generator) period, so the decode
+                -- windows keep the same in-period offsets in every token.
+                tokenPer = (fromIntegral layersPerTokenC + 1) * layerPer
+                predicted =
+                  fromIntegral (layersPerTokenC - 1)
+                    * layerPer
+                    + truncateB (2 * lapOff)
+                    + fromIntegral vw
+                bPredicted =
+                  fromIntegral layersPerTokenC
+                    * (truncateB (2 * lapOff) + fromIntegral vw + 1)
+                widen :: Unsigned 32 -> Unsigned 64
+                widen = resize
+                runCycles :: Unsigned 64
+                runCycles
+                  | variant == VariantA = widen hwTokenCount * widen tokenPer
+                  | otherwise = 3 * widen hwTokenCount * widen bPredicted
+                tgCount :: Unsigned 32
+                tgCount = truncateB (runCycles `div` widen layerPer + 256) * burstsPerPeriod
+                plan =
+                  TgPlan
+                    { tgModeCode = if variant == VariantA then 1 else 2
+                    , tgPeriod = layerPer
+                    , tgBurstWords = fromIntegral vw
+                    , tgOffsets = tgOffs
+                    , tgBurstCount = tgCount
+                    , tgHistShift = 4
+                    }
+                sched = scheduleAt vw (currentTime + 15 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                histBase n
+                  | variant == VariantA = (satSub SatZero predicted 8, 0 :: Unsigned 8)
+                  | n == (0 :: Int) = (satSub SatZero bPredicted 8, 6) -- 64-cycle bins
+                  | otherwise = (100, 4) -- relay credit RTTs, 16-cycle bins
+                  -- The generator's receive schedule: the upstream neighbor's
+                  -- slots land one cycle before this node's own decode window
+                  -- base (the generator has no core output register; the ring
+                  -- chaining and the sim's two-node loop both pin the -1).
+                rxBase k node
+                  | k == (0 :: Int) = node.firstCycle + sched.lapOffset - 1
+                  | otherwise = node.firstCycle - 1
+              putStrLn
+                $ "  plan: layer_period "
+                <> show layerPer
+                <> ", offsets "
+                <> show tgOffs
+                <> ", bursts "
+                <> show tgCount
+                <> ", achieved duty "
+                <> show (100 * burstsPerPeriod * fromIntegral vw `div` layerPer)
+                <> "%"
+              forM_ managementUnitGdbs $ \gdb -> writeCreditLinkKnobs gdb VariantB
+              forM_ (L.zip3 [0 ..] managementUnitGdbs (toList sched.nodes))
+                $ \(n, gdb, node) -> do
+                  writePeConfig
+                    gdb
+                    variant
+                    (vw, hwTokenCount)
+                    (truncateB lapOff, layerPer, tokenPer)
+                    (histBase n)
+                    node
+                  writeTgConfig gdb plan (node.firstCycle, rxBase n node)
+              -- Arm relays first, the injector (node 0) last.
+              forM_ (L.reverse managementUnitGdbs) armDecodePe
+              forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
+                waitPeDone (fileTag <> " node " <> show n) gdb
+              forM_ (L.zip [0 :: Int ..] managementUnitGdbs) $ \(n, gdb) ->
+                waitTgDone (fileTag <> " node " <> show n) gdb
+              -- Let the last bursts drain to their receivers.
+              threadDelay 100_000
+              statuses <- mapM readPeStatus managementUnitGdbs
+              clStatuses <- mapM readClStatus managementUnitGdbs
+              tgStatuses <- mapM readTgStatus managementUnitGdbs
+              forM_ managementUnitGdbs disableTg
+              forM_ (L.zip4 [0 :: Int ..] statuses clStatuses tgStatuses) $ \(n, st, cl, tg) -> do
+                putStrLn $ "  node " <> show n <> ": " <> show st
+                putStrLn $ "  node " <> show n <> " tg: " <> show tg
+                when (variant /= VariantA)
+                  $ putStrLn
+                  $ "  node "
+                  <> show n
+                  <> " credit link: "
+                  <> show cl
+                writeFile
+                  (hitlDir </> "pe-" <> fileTag <> "-" <> show n <.> "txt")
+                  ( unlines
+                      $ [ "tokens_done " <> show st.tokensDone
+                        , "checksum_fail_count " <> show st.checksumFailCount
+                        , "first_fail_cycle " <> show st.firstFailCycle
+                        , "min_latency " <> show st.minLatency
+                        , "max_latency " <> show st.maxLatency
+                        , "hist_base " <> show (fst (histBase n))
+                        , "hist_shift " <> show (snd (histBase n))
+                        , "credits_consumed " <> show cl.creditsConsumed
+                        , "credits_returned " <> show cl.creditsReturned
+                        , "credits_granted " <> show cl.creditsGranted
+                        , "frames_received " <> show cl.framesReceived
+                        , "header_errors " <> show cl.headerErrors
+                        , "credit_errors " <> show cl.creditErrors
+                        , "no_credit_drops " <> show cl.noCreditDrops
+                        , "timeout_count " <> show cl.timeoutCount
+                        , "min_credit_rtt " <> show cl.minCreditRtt
+                        , "max_credit_rtt " <> show cl.maxCreditRtt
+                        ]
+                      <> ["hist " <> L.unwords (L.map show (toList st.hist))]
+                  )
+                writeFile
+                  (hitlDir </> "tg-" <> fileTag <> "-" <> show n <.> "txt")
+                  ( unlines
+                      $ [ "tg_sent " <> show tg.tgSent
+                        , "tg_received " <> show tg.tgReceived
+                        , "tg_pattern_errors " <> show tg.tgPatternErrors
+                        , "tg_collisions " <> show tg.tgCollisions
+                        , "tg_credits_returned " <> show tg.tgCreditsReturned
+                        , "tg_min_queue " <> show tg.tgMinQueue
+                        , "tg_max_queue " <> show tg.tgMaxQueue
+                        , "tg_hist_shift " <> show plan.tgHistShift
+                        , "tg_period " <> show plan.tgPeriod
+                        , "tg_burst_words " <> show plan.tgBurstWords
+                        , "tg_offsets " <> L.unwords (L.map show plan.tgOffsets)
+                        , "tg_burst_count " <> show plan.tgBurstCount
+                        , "layer_period " <> show layerPer
+                        , "predicted " <> show (if variant == VariantA then predicted else bPredicted)
+                        ]
+                      <> ["tg_hist " <> L.unwords (L.map show (toList tg.tgHist))]
+                  )
+              pure (plan, predicted, statuses, clStatuses, tgStatuses)
+
+            checkContentionCell variant dutyPct (plan, predicted, statuses, clStatuses, tgStatuses) = do
+              let
+                expectedTransfers =
+                  2 * fromIntegral layersPerTokenC * hwTokenCount :: Unsigned 32
+              forM_ (L.zip4 [0 :: Int ..] statuses clStatuses tgStatuses) $ \(n, st, cl, tg) -> do
+                let who = (if variant == VariantA then "A_c" else "B_c") <> show dutyPct <> " node " <> show n
+                -- Both flows must be lossless and verified, or the cell is
+                -- invalid.
+                when (st.checksumFailCount /= 0)
+                  $ fail (who <> ": checksum failures, first at " <> show st.firstFailCycle)
+                when (st.tokensDone /= hwTokenCount)
+                  $ fail (who <> ": incomplete: " <> show st.tokensDone)
+                when (tg.tgPatternErrors /= 0)
+                  $ fail (who <> ": generator pattern errors: " <> show tg.tgPatternErrors)
+                when (tg.tgCollisions /= 0)
+                  $ fail (who <> ": port collisions: " <> show tg.tgCollisions)
+                when (tg.tgSent /= plan.tgBurstCount || tg.tgReceived /= plan.tgBurstCount)
+                  $ fail (who <> ": generator traffic incomplete: " <> show tg)
+                when (variant == VariantA) $ do
+                  -- The admission contract, literally: a spike, exactly at
+                  -- the precomputed latency, and the generator never queues.
+                  when (st.minLatency /= st.maxLatency)
+                    $ fail (who <> ": latency spread " <> show st.minLatency <> ".." <> show st.maxLatency)
+                  when (n == 0 && st.minLatency /= predicted)
+                    $ fail (who <> ": measured " <> show st.minLatency <> " /= predicted " <> show predicted)
+                  when (tg.tgMaxQueue /= 0)
+                    $ fail (who <> ": generator queued " <> show tg.tgMaxQueue <> " cycles under a calendar")
+                when (variant /= VariantA) $ do
+                  when (cl.headerErrors /= 0 || cl.creditErrors /= 0 || cl.noCreditDrops /= 0 || cl.timeoutCount /= 0)
+                    $ fail (who <> ": credit link errors: " <> show cl)
+                  when
+                    ( L.any
+                        (/= fromIntegral expectedTransfers)
+                        [cl.creditsConsumed, cl.creditsReturned, cl.creditsGranted, cl.framesReceived]
+                    )
+                    $ fail (who <> ": credit accounting mismatch: " <> show cl)
+                  when (tg.tgCreditsReturned /= plan.tgBurstCount)
+                    $ fail (who <> ": generator credit mismatch: " <> show tg)
+              when (variant /= VariantA) $ do
+                let inj = L.head statuses
+                putStrLn
+                  $ "  B_c"
+                  <> show dutyPct
+                  <> " injector latency: "
+                  <> show inj.minLatency
+                  <> ".."
+                  <> show inj.maxLatency
+                  <> " (quiet floor "
+                  <> show predicted
+                  <> ")"
+
           -- Probe stage: variant A with single-word vectors and few tokens.
           -- Degenerates to (nearly) the wire demo's shape, so it validates
           -- the schedule and the internalDelay constant before the full-width
@@ -814,5 +1143,15 @@ driver testName targets = do
             putStrLn $ "Token latency B_sf: " <> show bsfLat
             unless (bsfLat > bLat)
               $ fail "Store-and-forward should be slower than cut-through"
+
+          -- Contention sweep (PLAN2): the same decode workload against the
+          -- verified competing flow, in both disciplines, three duty points
+          -- each. The base runs above are the 0%-duty regression gate.
+          forM_ [25, 50, 75 :: Unsigned 32] $ \duty -> do
+            cell <- liftIO $ runContentionCell VariantA duty
+            liftIO $ checkContentionCell VariantA duty cell
+          forM_ [25, 50, 75 :: Unsigned 32] $ \duty -> do
+            cell <- liftIO $ runContentionCell VariantB duty
+            liftIO $ checkContentionCell VariantB duty cell
 
           pure ExitSuccess

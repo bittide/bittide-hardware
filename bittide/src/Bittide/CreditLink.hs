@@ -33,6 +33,15 @@ Two relay disciplines, selected at runtime:
   the upstream neighbor is only granted after the relay's own forward
   completes. This exposes the per-hop handshake on the critical path, the
   discipline of fabrics that validate frames per hop.
+
+Under contention (PLAN2), the forward port is shared with a traffic
+generator through 'Bittide.TrafficGen.linkPortArbiter'. Cut-through is
+opportunistic: a relay claims the port by reservation exactly when the
+arbiter's registered port-free view and the sender's registered readiness
+both hold; otherwise the frame takes the store-and-forward path and competes
+through a level request — \"cut-through degrades toward store-and-forward\"
+is literally this fallback. On a quiet link the reservation always succeeds
+and behavior is identical to the base demo.
 -}
 module Bittide.CreditLink (
   -- * Configuration and status
@@ -83,7 +92,7 @@ import Bittide.DecodeProcessingElement (
   StreamOut (..),
  )
 
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
 
 -- | Top 16 bits of a frame header word.
 headerMagic :: BitVector 16
@@ -150,6 +159,14 @@ data CreditLinkOut = CreditLinkOut
   , status :: CreditLinkStatus
   , rttSample :: Maybe (Unsigned 32)
   -- ^ Per-transfer credit round-trip time samples
+  , reservePort :: Bool
+  -- ^ Cut-through port reservation (header cycle; stream starts next cycle)
+  , portRequest :: Bool
+  {- ^ Level request for the shared port (store-and-forward or injector,
+  with the credit already in hand)
+  -}
+  , txActive :: Bool
+  -- ^ The sender owns the port (registered)
   }
   deriving (Generic, NFDataX)
 
@@ -194,7 +211,11 @@ data TxState = TxState
   { txFsm :: TxFsm
   , txCreditHeld :: Bool
   , txSendCycle :: Unsigned 64
-  , txPrevCreditIn :: Bool
+  , txLastCredit :: BitVector 64
+  {- ^ Last credit word seen: intake counts value changes, not presence
+  edges, so another flow's credit words interleaving on the same tap cannot
+  fake an edge.
+  -}
   , txPendingRtt :: Maybe (Unsigned 32)
   {- ^ Round-trip time awaiting min/max folding — a pipeline stage keeping
   the 64-bit subtraction and the 32-bit compares in separate cycles.
@@ -235,6 +256,8 @@ data RxOut = RxOut
   -- ^ Cut-through: forward now (header this cycle)
   , rxFwdReq :: Maybe (Unsigned 32)
   -- ^ Store-and-forward: request to forward (level)
+  , rxCtReserve :: Bool
+  -- ^ Cut-through port reservation for the arbiter (header cycle)
   , rxCreditWord :: Maybe (BitVector 64)
   , rxRamWrite :: Maybe (Index 64, BitVector 64)
   , rxRamReadAddr :: Index 64
@@ -270,6 +293,7 @@ idleRxOut s =
     { rxFire = Nothing
     , rxRelayReq = Nothing
     , rxFwdReq = Nothing
+    , rxCtReserve = False
     , rxCreditWord = Nothing
     , rxRamWrite = Nothing
     , rxRamReadAddr = 0
@@ -322,12 +346,22 @@ creditLink ::
   Signal dom CreditLinkKnobs ->
   -- | Arm pulse: clear status, restart the injector chain
   Signal dom Bool ->
-  -- | Raw receive taps (all links)
-  Signal dom (Vec linkCount (BitVector 64)) ->
+  {- | Forward receive stream (the ring-upstream tap, demuxed when the link
+  is shared with the traffic generator)
+  -}
+  Signal dom (BitVector 64) ->
+  -- | Reverse receive stream (credit words from the downstream neighbor)
+  Signal dom (BitVector 64) ->
+  {- | Port free for a cut-through reservation (the arbiter's registered
+  view; 'pure True' on an unshared link)
+  -}
+  Signal dom Bool ->
+  -- | Port grant for level requests ('pure True' on an unshared link)
+  Signal dom Bool ->
   -- | Reduce-core output (transmit stream + lap results)
   Signal dom StreamOut ->
   Signal dom CreditLinkOut
-creditLink rst localCounter settings knobs armPulse rxs coreOut =
+creditLink rst localCounter settings knobs armPulse forwardRx creditRxWord portFree portGrant coreOut =
   CreditLinkOut
     <$> fire
     <*> coreRxWord
@@ -335,12 +369,18 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
     <*> ((.rxCreditWord) <$> rxOut)
     <*> combinedStatus
     <*> ((.txRttSample) <$> txOut)
+    <*> ((.rxCtReserve) <$> rxOut)
+    <*> portRequest
+    <*> txActiveR
  where
   withCrst :: forall a. ((HiddenClockResetEnable dom) => a) -> a
   withCrst f = withClockResetEnable hasClock rst enableGen f
 
-  forwardRx = liftA2 (\cfg v -> v !! fromMaybe (0 :: Index linkCount) cfg.readLink) settings rxs
-  creditRxWord = liftA2 (\cfg v -> v !! fromMaybe (0 :: Index linkCount) cfg.writeLink) settings rxs
+  portRequest =
+    (\r i ready -> (isJust r.rxFwdReq || isJust i) && ready)
+      <$> rxOut
+      <*> injReq
+      <*> txReadyR
 
   sinkDone =
     (\so -> maybe False (\r -> r.role == RoleSink) so.lapResult) <$> coreOut
@@ -362,7 +402,7 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
           , rxHeaderErrors = 0
           , rxCreditsGranted = 0
           }
-        (bundle (settings, knobs, armPulse, forwardRx, fwdAcceptedR))
+        (bundle (settings, knobs, armPulse, forwardRx, fwdAcceptedR, portFree, txReadyR))
 
   txMealyOut =
     withCrst
@@ -372,7 +412,7 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
           { txFsm = TxIdle
           , txCreditHeld = True
           , txSendCycle = 0
-          , txPrevCreditIn = False
+          , txLastCredit = 0
           , txPendingRtt = Nothing
           , txBlockedFor = 0
           , txCreditsConsumed = 0
@@ -393,18 +433,24 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
             , injReq
             , (.txWord) <$> coreOut
             , localCounter
+            , portGrant
             )
         )
-  txOut = (\(o, _, _) -> o) <$> txMealyOut
-  fwdAccepted = (\(_, a, _) -> a) <$> txMealyOut
-  injAccepted = (\(_, _, a) -> a) <$> txMealyOut
+  txOut = (\(o, _, _, _, _) -> o) <$> txMealyOut
+  fwdAccepted = (\(_, a, _, _, _) -> a) <$> txMealyOut
+  injAccepted = (\(_, _, a, _, _) -> a) <$> txMealyOut
+  txReadyNext = (\(_, _, _, r, _) -> r) <$> txMealyOut
+  txActiveNext = (\(_, _, _, _, a) -> a) <$> txMealyOut
 
   -- Registered before consumption: the receive machine and the injector
   -- controller both feed requests into the transmit machine combinationally,
   -- so reading the acceptance back in the same cycle would form an
-  -- evaluation cycle.
+  -- evaluation cycle. Readiness and activity are post-state values, so the
+  -- registered signals describe the machine as it enters the current cycle.
   fwdAcceptedR = withCrst $ register False fwdAccepted
   injAcceptedR = withCrst $ register False injAccepted
+  txReadyR = withCrst $ register False txReadyNext
+  txActiveR = withCrst $ register False txActiveNext
 
   injReq =
     withCrst
@@ -469,9 +515,11 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
     , Bool
     , BitVector 64
     , Bool
+    , Bool
+    , Bool
     ) ->
     (RxState, RxOut)
-  goRx s (cfg, kn, arm, rx, accepted)
+  goRx s (cfg, kn, arm, rx, accepted, portFreeNow, txReadyNow)
     | arm =
         ( s{rxFsm = RxIdle, rxExpectedSeq = 0, rxFramesReceived = 0, rxHeaderErrors = 0, rxCreditsGranted = 0}
         , idleRxOut s
@@ -483,9 +531,13 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
                 seqNr = wordSeq rx
                 seqOk = seqNr == s.rxExpectedSeq
                 (role, lap) = frameRole cfg.isInjector seqNr
-                -- Live streaming (cut-through, or any non-forwarding role):
-                -- the core is fired next cycle, aligned with payload word 0.
-                live = kn.cutThrough || not (forwards role)
+                -- Live streaming: cut-through needs the shared port free (a
+                -- reservation is placed this cycle) and the sender idle with
+                -- its credit in hand — otherwise the frame takes the
+                -- store-and-forward path and competes through the arbiter.
+                -- Non-forwarding roles always stream live (no port needed).
+                canCutThrough = kn.cutThrough && portFreeNow && txReadyNow
+                live = canCutThrough || not (forwards role)
                in
                 ( s
                     { rxFsm =
@@ -499,7 +551,7 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
                     , rxExpectedSeq = seqNr + 1
                     , rxHeaderErrors = if seqOk then s.rxHeaderErrors else s.rxHeaderErrors + 1
                     }
-                , idleRxOut s
+                , (idleRxOut s){rxCtReserve = canCutThrough && forwards role}
                 )
           | otherwise -> (s, idleRxOut s)
         RxRecv{seqOut, role, lap, wordIdx, buffered} ->
@@ -581,15 +633,16 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
     , Maybe (Unsigned 32)
     , Maybe (BitVector 64)
     , Unsigned 64
+    , Bool
     ) ->
-    (TxState, (TxOut, Bool, Bool))
-  goTx s (kn, arm, creditIn, relayReq, fwdReq, injectReq, coreTx, counter)
+    (TxState, (TxOut, Bool, Bool, Bool, Bool))
+  goTx s (kn, arm, creditIn, relayReq, fwdReq, injectReq, coreTx, counter, granted)
     | arm =
         ( s
             { txFsm = TxIdle
             , txCreditHeld = True
             , txBlockedFor = 0
-            , txPrevCreditIn = False
+            , txLastCredit = 0
             , txPendingRtt = Nothing
             , txCreditsConsumed = 0
             , txCreditsReturned = 0
@@ -600,14 +653,26 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
             , txMaxRtt = 0
             , txLastRtt = 0
             }
-        , (idleTxOut s, False, False)
+        , (idleTxOut s, False, False, True, False)
         )
-    | otherwise = (sFinal, (txOutput{txRttSample = rttSampleOut}, fwdAcc, injAcc))
+    | otherwise =
+        ( sFinal
+        , (txOutput{txRttSample = rttSampleOut}, fwdAcc, injAcc, readyNext, activeNext)
+        )
    where
-    -- Credit intake (edge-deduplicated), independent of the send FSM.
-    -- RTT statistics are pipelined: this cycle only the 64-bit subtraction
-    -- runs; the min/max folding of the previous sample happens in parallel.
-    creditEdge = isCreditWord creditIn && not s.txPrevCreditIn
+    readyNext = case sFinal.txFsm of
+      TxIdle -> sFinal.txCreditHeld
+      _ -> False
+    activeNext = case sFinal.txFsm of
+      TxIdle -> False
+      _ -> True
+
+    -- Credit intake, deduplicated on word-value change (not presence), so
+    -- another flow's credit words interleaving on the shared reverse tap
+    -- cannot fake edges. RTT statistics are pipelined: this cycle only the
+    -- 64-bit subtraction runs; the min/max folding of the previous sample
+    -- happens in parallel.
+    creditEdge = isCreditWord creditIn && creditIn /= s.txLastCredit
     rtt :: Unsigned 32
     rtt = truncateB (counter - s.txSendCycle)
     creditAccepted = creditEdge && not s.txCreditHeld
@@ -629,7 +694,8 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
             , txPendingRtt = Just rtt
             }
       | otherwise = sFolded{txPendingRtt = Nothing}
-    sCredit' = sCredit{txPrevCreditIn = isCreditWord creditIn}
+    sCredit' =
+      sCredit{txLastCredit = if isCreditWord creditIn then creditIn else s.txLastCredit}
     rttSampleOut = s.txPendingRtt
 
     canSend = sCredit'.txCreditHeld
@@ -650,10 +716,10 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
             , False
             , False
             )
-        -- Store-and-forward: accept; the header follows two cycles later
-        -- (see 'TxHeaderPend').
+        -- Store-and-forward: accept once the shared port is granted; the
+        -- header follows two cycles later (see 'TxHeaderPend').
         | Just seqNr <- fwdReq
-        , canSend ->
+        , canSend && granted ->
             ( consume sCredit'{txFsm = TxHeaderPend{seqNr, emitNow = False}}
             , idleTxOut sCredit'
             , True
@@ -661,7 +727,7 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
             )
         -- Injector: fire the core this cycle, header this cycle.
         | Just seqNr <- injectReq
-        , canSend ->
+        , canSend && granted ->
             ( consume sCredit'{txFsm = TxStream{wordIdx = 0}}
             , (idleTxOut sCredit')
                 { txForwardWord = Just (mkHeaderWord seqNr)
@@ -670,24 +736,29 @@ creditLink rst localCounter settings knobs armPulse rxs coreOut =
             , False
             , True
             )
-        -- Blocked with a pending request: run the deadlock-recovery timer.
+        -- Credit-blocked with a pending request: run the deadlock-recovery
+        -- timer. Waiting for the port with the credit in hand is ordinary
+        -- queueing, not a deadlock — the timer only counts credit waits.
         | isJust fwdReq || isJust injectReq ->
-            let
-              blocked = sCredit'.txBlockedFor + 1
-              expired = kn.creditTimeout /= 0 && blocked >= kn.creditTimeout
-             in
-              if expired
-                then
-                  ( sCredit'
-                      { txCreditHeld = True
-                      , txBlockedFor = 0
-                      , txTimeoutCount = sCredit'.txTimeoutCount + 1
-                      }
-                  , idleTxOut sCredit'
-                  , False
-                  , False
-                  )
-                else (sCredit'{txBlockedFor = blocked}, idleTxOut sCredit', False, False)
+            if canSend
+              then (sCredit'{txBlockedFor = 0}, idleTxOut sCredit', False, False)
+              else
+                let
+                  blocked = sCredit'.txBlockedFor + 1
+                  expired = kn.creditTimeout /= 0 && blocked >= kn.creditTimeout
+                 in
+                  if expired
+                    then
+                      ( sCredit'
+                          { txCreditHeld = True
+                          , txBlockedFor = 0
+                          , txTimeoutCount = sCredit'.txTimeoutCount + 1
+                          }
+                      , idleTxOut sCredit'
+                      , False
+                      , False
+                      )
+                    else (sCredit'{txBlockedFor = blocked}, idleTxOut sCredit', False, False)
         | otherwise -> (sCredit'{txBlockedFor = 0}, idleTxOut sCredit', False, False)
       TxHeaderPend{seqNr, emitNow}
         | not emitNow ->

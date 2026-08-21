@@ -147,6 +147,8 @@ data DecodePeSettings linkCount = DecodePeSettings
   , expectedWindowA :: BitVector 64
   , expectedWindowB :: BitVector 64
   , histBase :: Unsigned 32
+  , histShift :: Unsigned 8
+  -- ^ Histogram bin width, log2 cycles
   }
   deriving (Generic, NFDataX)
 
@@ -417,7 +419,7 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
     folded = case s.pendingSample of
       Nothing -> s2.status
       Just latency ->
-        let bin = toBin cfg.histBase latency
+        let bin = toBin cfg.histBase cfg.histShift latency
          in s2.status
               { minLatency = min s2.status.minLatency latency
               , maxLatency = max s2.status.maxLatency latency
@@ -431,13 +433,13 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
         { done = s2.status.tokensDone >= cfg.tokenCount && cfg.tokenCount /= 0
         }
 
-  toBin :: Unsigned 32 -> Unsigned 32 -> Index HistBins
-  toBin base latency
+  toBin :: Unsigned 32 -> Unsigned 8 -> Unsigned 32 -> Index HistBins
+  toBin base shift latency
     | latency <= base = 0
     | offset >= natToNum @(HistBins - 1) = maxBound
     | otherwise = unpack (resize (pack offset))
    where
-    offset = latency - base
+    offset = (latency - base) `shiftR` fromIntegral shift
 -- OPAQUE: separate Verilog module, so timing reports carry its name.
 {-# OPAQUE decodeSequencer #-}
 
@@ -595,6 +597,7 @@ decodePeConfig = circuit $ \(bus, status) -> do
     , wbExpectedWindowA
     , wbExpectedWindowB
     , wbHistBase
+    , wbHistShift
     , wbArm
     , wbTokensDone
     , wbChecksumFailCount
@@ -657,6 +660,8 @@ decodePeConfig = circuit $ \(bus, status) -> do
       -< wbExpectedWindowB
   Fwd histBase <-
     rwReg "hist_base" "Histogram bin 0 latency, in cycles." (0 :: Unsigned 32) -< wbHistBase
+  Fwd histShift <-
+    rwReg "hist_shift" "Histogram bin width, log2 cycles." (0 :: Unsigned 8) -< wbHistShift
 
   (_armValue, Fwd armActivity) <-
     registerWbI
@@ -730,6 +735,7 @@ decodePeConfig = circuit $ \(bus, status) -> do
         <*> expectedWindowA
         <*> expectedWindowB
         <*> histBase
+        <*> histShift
 
   idC -< (Fwd settings, Fwd armPulse)
  where
