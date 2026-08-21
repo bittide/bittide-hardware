@@ -1005,7 +1005,10 @@ driver testName targets = do
                     , tgBurstCount = tgCount
                     , tgHistShift = 4
                     }
-                sched = scheduleAt vw (currentTime + 15 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                -- 25 s: a contention cell writes and reads back ~40
+                -- registers per node over GDB (~2 s each), and an overrun
+                -- gate means the equality-fired calendar never fires at all.
+                sched = scheduleAt vw (currentTime + 25 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 histBase n
                   | variant == VariantA = (satSub SatZero predicted 8, 0 :: Unsigned 8)
                   | n == (0 :: Int) = (satSub SatZero bPredicted 8, 6) -- 64-cycle bins
@@ -1040,6 +1043,22 @@ driver testName targets = do
                   writeTgConfig gdb plan (node.firstCycle, rxBase n node)
               -- Arm relays first, the injector (node 0) last.
               forM_ (L.reverse managementUnitGdbs) armDecodePe
+              -- The schedule is absolute and the calendar compares for
+              -- equality: an arm after the gate silently never fires.
+              armedAt <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
+              let gateAt = (L.head (toList sched.nodes)).firstCycle
+              when (armedAt >= gateAt)
+                $ fail
+                  ( fileTag
+                      <> ": start gate overrun: armed at "
+                      <> show armedAt
+                      <> ", gate at "
+                      <> show gateAt
+                  )
+              putStrLn
+                $ "  armed with "
+                <> show ((gateAt - armedAt) `div` 125_000)
+                <> " ms of gate margin"
               -- Wait out both flows, but dump the registers even on a
               -- timeout: a wedged cell's counters are the diagnostics.
               waitResult <- try @SomeException $ do
@@ -1052,6 +1071,35 @@ driver testName targets = do
               statuses <- mapM readPeStatus managementUnitGdbs
               clStatuses <- mapM readClStatus managementUnitGdbs
               tgStatuses <- mapM readTgStatus managementUnitGdbs
+              -- Post-run config integrity check: were the processing
+              -- element's registers still what the driver wrote? (The
+              -- clobber theory for windows failing against exact data.)
+              forM_ (L.zip3 [0 :: Int ..] managementUnitGdbs (toList sched.nodes))
+                $ \(n, gdb, node) -> do
+                  let
+                    rb :: forall a. (BitPackC a, Typeable a, NFDataX a, Eq a, Show a) => String -> a -> IO ()
+                    rb reg expected = do
+                      addr <- peRegister "DecodePeConfig" reg
+                      actual <- Gdb.readLe @a gdb addr
+                      unless (actual == expected)
+                        $ putStrLn
+                          ( "  CONFIG CLOBBERED node "
+                              <> show n
+                              <> " "
+                              <> reg
+                              <> ": wrote "
+                              <> show expected
+                              <> ", read "
+                              <> show actual
+                          )
+                  rb "first_cycle" node.firstCycle
+                  rb "lap_offset" (truncateB lapOff :: Unsigned 32)
+                  rb "layer_period" layerPer
+                  rb "token_period" tokenPer
+                  rb "vector_words" (fromIntegral vw :: Unsigned 16)
+                  rb "local_pattern" node.localPattern
+                  rb "expected_window_a" node.expectedWindowA
+                  rb "expected_window_b" node.expectedWindowB
               forM_ managementUnitGdbs disableTg
               forM_ (L.zip4 [0 :: Int ..] statuses clStatuses tgStatuses) $ \(n, st, cl, tg) -> do
                 let node = toList sched.nodes L.!! n
