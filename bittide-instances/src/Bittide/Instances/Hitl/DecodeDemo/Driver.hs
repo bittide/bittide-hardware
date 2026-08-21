@@ -358,6 +358,7 @@ data PeStatus = PeStatus
   { tokensDone :: Unsigned 32
   , checksumFailCount :: Unsigned 32
   , firstFailCycle :: Unsigned 64
+  , firstFailChecksum :: BitVector 64
   , minLatency :: Unsigned 32
   , maxLatency :: Unsigned 32
   , lastLatency :: Unsigned 32
@@ -373,6 +374,7 @@ readPeStatus gdb = do
   tokensDone <- r "tokens_done"
   checksumFailCount <- r "checksum_fail_count"
   firstFailCycle <- r "first_fail_cycle"
+  firstFailChecksum <- r "first_fail_checksum"
   minLatency <- r "min_latency"
   maxLatency <- r "max_latency"
   lastLatency <- r "last_latency"
@@ -383,6 +385,7 @@ readPeStatus gdb = do
       { tokensDone
       , checksumFailCount
       , firstFailCycle
+      , firstFailChecksum
       , minLatency
       , maxLatency
       , lastLatency
@@ -496,6 +499,8 @@ data TgStatus = TgStatus
   , tgMinQueue :: Unsigned 32
   , tgMaxQueue :: Unsigned 32
   , tgTxDone :: Bool
+  , tgFirstBadExpected :: BitVector 64
+  , tgFirstBadActual :: BitVector 64
   , tgHist :: Vec 16 (Unsigned 32)
   }
   deriving (Show)
@@ -512,6 +517,8 @@ readTgStatus gdb = do
   tgMinQueue <- r "tg_min_queue"
   tgMaxQueue <- r "tg_max_queue"
   tgTxDone <- r "tg_tx_done"
+  tgFirstBadExpected <- r "tg_first_bad_expected"
+  tgFirstBadActual <- r "tg_first_bad_actual"
   tgHist <- r "tg_hist"
   pure
     TgStatus
@@ -523,6 +530,8 @@ readTgStatus gdb = do
       , tgMinQueue
       , tgMaxQueue
       , tgTxDone
+      , tgFirstBadExpected
+      , tgFirstBadActual
       , tgHist
       }
 
@@ -1029,6 +1038,7 @@ driver testName targets = do
                       $ [ "tokens_done " <> show st.tokensDone
                         , "checksum_fail_count " <> show st.checksumFailCount
                         , "first_fail_cycle " <> show st.firstFailCycle
+                        , "first_fail_checksum " <> show st.firstFailChecksum
                         , "min_latency " <> show st.minLatency
                         , "max_latency " <> show st.maxLatency
                         , "hist_base " <> show (fst (histBase n))
@@ -1056,6 +1066,8 @@ driver testName targets = do
                         , "tg_credits_returned " <> show tg.tgCreditsReturned
                         , "tg_min_queue " <> show tg.tgMinQueue
                         , "tg_max_queue " <> show tg.tgMaxQueue
+                        , "tg_first_bad_expected " <> show tg.tgFirstBadExpected
+                        , "tg_first_bad_actual " <> show tg.tgFirstBadActual
                         , "tg_hist_shift " <> show plan.tgHistShift
                         , "tg_period " <> show plan.tgPeriod
                         , "tg_burst_words " <> show plan.tgBurstWords
@@ -1148,12 +1160,21 @@ driver testName targets = do
 
           -- Contention sweep (PLAN2): the same decode workload against the
           -- verified competing flow, in both disciplines, three duty points
-          -- each. The base runs above are the 0%-duty regression gate.
-          forM_ [25, 50, 75 :: Unsigned 32] $ \duty -> do
-            cell <- liftIO $ runContentionCell VariantA duty
-            liftIO $ checkContentionCell VariantA duty cell
-          forM_ [25, 50, 75 :: Unsigned 32] $ \duty -> do
-            cell <- liftIO $ runContentionCell VariantB duty
-            liftIO $ checkContentionCell VariantB duty cell
-
-          pure ExitSuccess
+          -- each. The base runs above are the 0%-duty regression gate. Every
+          -- cell runs and dumps even when an earlier one fails its checks —
+          -- each rig trip should yield the full sweep's diagnostics.
+          cellFailures <- liftIO
+            $ forM
+              [(v, d) | v <- [VariantA, VariantB], d <- [25, 50, 75 :: Unsigned 32]]
+            $ \(variant, duty) -> do
+              result <- try @SomeException $ do
+                cell <- runContentionCell variant duty
+                checkContentionCell variant duty cell
+              case result of
+                Left e -> do
+                  putStrLn $ "CELL FAILED: " <> show e
+                  pure (Just (variant, duty, show e))
+                Right () -> pure Nothing
+          case mapMaybe id cellFailures of
+            [] -> pure ExitSuccess
+            failures -> liftIO $ fail $ "Contention cells failed: " <> show failures

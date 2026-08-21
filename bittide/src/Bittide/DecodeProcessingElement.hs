@@ -157,6 +157,8 @@ data DecodePeStatus = DecodePeStatus
   { tokensDone :: Unsigned 32
   , checksumFailCount :: Unsigned 32
   , firstFailCycle :: Unsigned 64
+  , firstFailChecksum :: BitVector 64
+  -- ^ The observed checksum of the first failing window (diagnostic)
   , minLatency :: Unsigned 32
   , maxLatency :: Unsigned 32
   , lastLatency :: Unsigned 32
@@ -174,6 +176,7 @@ emptyStatus =
   DecodePeStatus
     { tokensDone = 0
     , checksumFailCount = 0
+    , firstFailChecksum = 0
     , firstFailCycle = 0
     , minLatency = maxBound
     , maxLatency = 0
@@ -387,6 +390,10 @@ decodeSequencer rst localCounter settings armPulse fires lapResults extSamples =
                         if st.status.firstFailCycle == 0
                           then result.endCycle
                           else st.status.firstFailCycle
+                    , firstFailChecksum =
+                        if st.status.firstFailCycle == 0
+                          then result.checksum
+                          else st.status.firstFailChecksum
                     }
               }
 
@@ -602,6 +609,7 @@ decodePeConfig = circuit $ \(bus, status) -> do
     , wbTokensDone
     , wbChecksumFailCount
     , wbFirstFailCycle
+    , wbFirstFailChecksum
     , wbMinLatency
     , wbMaxLatency
     , wbLastLatency
@@ -685,6 +693,12 @@ decodePeConfig = circuit $ \(bus, status) -> do
     (0 :: Unsigned 64)
     ((.firstFailCycle) <$> status')
     -< wbFirstFailCycle
+  roReg
+    "first_fail_checksum"
+    "Observed checksum of the first failing window (diagnostic)."
+    (0 :: BitVector 64)
+    ((.firstFailChecksum) <$> status')
+    -< wbFirstFailChecksum
   roReg
     "min_latency"
     "Minimum histogram sample this run, in cycles."

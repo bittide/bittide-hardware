@@ -25,6 +25,7 @@ module Tests.TrafficGen (tests) where
 
 import Clash.Prelude
 
+import Control.Monad (forM_)
 import Data.Maybe (fromMaybe, isJust)
 import Protocols (toSignals)
 import Test.Tasty
@@ -444,6 +445,345 @@ case_creditContention = do
   assertBool
     ("b_c spread: min " <> show fin0.minLatency <> " max " <> show fin0.maxLatency)
     (fin0.maxLatency > fin0.minLatency)
+
+-- Rig-shaped parameters: full-width vectors and the rig's ring lap of 280
+-- cycles, reproducing the hardware contention cells' geometry exactly.
+
+type RigDelay = 139
+
+rigVw :: Int
+rigVw = 64
+
+rigSettings :: PeMode -> Bool -> DecodePeSettings 2
+rigSettings mode isInjector =
+  DecodePeSettings
+    { readLink = Just 0
+    , writeLink = Just 1
+    , isInjector
+    , mode
+    , firstCycle = if mode == ModeCalendar && not isInjector then 100 + rigHop else 100
+    , lapOffset = 2 * (natToNum @RigDelay + 1)
+    , layerPeriod = 640
+    , layersPerToken = fromIntegral layersC
+    , tokenPeriod = 1920
+    , tokenCount = fromIntegral tokensC
+    , vectorWords = fromIntegral rigVw
+    , computeCycles = 0
+    , localPattern = if isInjector then patternInjector else patternRelay
+    , expectedWindowA =
+        fromIntegral rigVw * patternInjector + fromIntegral (rigVw * (rigVw - 1) `div` 2)
+    , expectedWindowB =
+        fromIntegral rigVw
+          * (patternInjector + patternRelay)
+          + fromIntegral (rigVw * (rigVw - 1))
+    , histBase = 0
+    , histShift = 0
+    }
+ where
+  rigHop = natToNum @RigDelay + 1
+
+rigTgScheduled :: Bool -> TrafficGenSettings
+rigTgScheduled isInjector =
+  tgOff
+    { tgMode = TgScheduled
+    , tgFirstCycle = txFirst
+    , tgRxFirstCycle = peerTxFirst + natToNum @RigDelay
+    , tgPeriod = 640
+    , tgBurstWords = fromIntegral rigVw
+    , tgBurstsPerPeriod = 2
+    , tgOffsets = 74 :> 140 :> repeat 0
+    , tgBurstCount = 16
+    }
+ where
+  rigHop = natToNum @RigDelay + 1
+  txFirst = if isInjector then 100 else 100 + rigHop
+  peerTxFirst = if isInjector then 100 + rigHop else 100
+
+dutSharedRig ::
+  PeMode ->
+  (Bool -> TrafficGenSettings) ->
+  Int ->
+  ( [DecodePeStatus]
+  , [DecodePeStatus]
+  , [TrafficGenStatus]
+  , [TrafficGenStatus]
+  )
+dutSharedRig mode tgCfg nCycles =
+  ( sampleN nCycles st0
+  , sampleN nCycles st1
+  , sampleN nCycles tg0
+  , sampleN nCycles tg1
+  )
+ where
+  (st0, st1, tg0, tg1) = withClockResetEnable clockGen resetGen enableGen go
+  go ::
+    (HiddenClockResetEnable System) =>
+    ( Signal System DecodePeStatus
+    , Signal System DecodePeStatus
+    , Signal System TrafficGenStatus
+    , Signal System TrafficGenStatus
+    )
+  go = (status0, status1, tgStat0, tgStat1)
+   where
+    cnt :: Signal System (Unsigned 64)
+    cnt = register 0 (cnt + 1)
+    arm = (== 20) <$> cnt
+    cfg0 = pure (rigSettings mode True)
+    cfg1 = pure (rigSettings mode False)
+    knobs = pure (mkKnobs True)
+    (txs0, status0, _, tgStat0) = nodeShared cfg0 (pure (tgCfg True)) knobs arm cnt rxs0
+    (txs1, status1, _, tgStat1) = nodeShared cfg1 (pure (tgCfg False)) knobs arm cnt rxs1
+    rxs0 =
+      bundle
+        ( delayBy (SNat @RigDelay) ((!! (1 :: Index 2)) <$> txs1)
+            :> delayBy (SNat @5) ((!! (0 :: Index 2)) <$> txs1)
+            :> Nil
+        )
+    rxs1 =
+      bundle
+        ( delayBy (SNat @RigDelay) ((!! (1 :: Index 2)) <$> txs0)
+            :> delayBy (SNat @5) ((!! (0 :: Index 2)) <$> txs0)
+            :> Nil
+        )
+
+{- | Variant A_c at the rig's exact geometry (lap 280, 64-word vectors, TG
+slots at 74 and 140): decode must stay clean and bit-identical to quiet, the
+generator's traffic must verify, and the port must be collision-free.
+-}
+case_rigScheduledInterleave :: Assertion
+case_rigScheduledInterleave = do
+  let
+    nCycles = 20 + 100 + 8 * 1920 + 2000
+    (quiet0, quiet1, _, _) = dutSharedRig ModeCalendar (const tgOff) nCycles
+    (sts0, sts1, tg0, tg1) = dutSharedRig ModeCalendar rigTgScheduled nCycles
+  assertEqual "rig quiet injector fails" 0 (L.last quiet0).checksumFailCount
+  assertDecodeEqual "rig a_c vs quiet injector" (L.last quiet0) (L.last sts0)
+  assertDecodeEqual "rig a_c vs quiet relay" (L.last quiet1) (L.last sts1)
+  assertEqual "rig a_c injector fails" 0 (L.last sts0).checksumFailCount
+  assertEqual "rig a_c relay fails" 0 (L.last sts1).checksumFailCount
+  assertTgClean "rig a_c node0->node1" (rigTgScheduled True) (L.last tg0) (L.last tg1)
+  assertTgClean "rig a_c node1->node0" (rigTgScheduled False) (L.last tg1) (L.last tg0)
+
+-- A three-node ring at rig-like geometry: the two-node loop has no
+-- relay-to-relay hop, which is where the hardware run's corruption pointed.
+
+type Rig3Delay = 92
+
+rig3Hop :: Unsigned 64
+rig3Hop = natToNum @Rig3Delay + 1
+
+rig3Lap :: Unsigned 32
+rig3Lap = 3 * (natToNum @Rig3Delay + 1)
+
+rig3Patterns :: Int -> BitVector 64
+rig3Patterns 0 = 0x1000
+rig3Patterns 1 = 0x2000
+rig3Patterns _ = 0x3000
+
+rig3Settings :: PeMode -> Int -> DecodePeSettings 2
+rig3Settings mode k =
+  DecodePeSettings
+    { readLink = Just 0
+    , writeLink = Just 1
+    , isInjector = k == 0
+    , mode
+    , firstCycle = 100 + fromIntegral k * rig3Hop
+    , lapOffset = rig3Lap
+    , layerPeriod = 640
+    , layersPerToken = fromIntegral layersC
+    , tokenPeriod = 1920
+    , tokenCount = fromIntegral tokensC
+    , vectorWords = fromIntegral rigVw
+    , computeCycles = 0
+    , localPattern = rig3Patterns k
+    , expectedWindowA =
+        fromIntegral rigVw * prefix + fromIntegral k * iSum
+    , expectedWindowB = fromIntegral rigVw * total + 3 * iSum
+    , histBase = 0
+    , histShift = 0
+    }
+ where
+  prefix = sum [rig3Patterns j | j <- [0 .. k - 1]]
+  total = sum [rig3Patterns j | j <- [0 .. 2]]
+  iSum = fromIntegral (rigVw * (rigVw - 1) `div` 2)
+
+rig3TgScheduled :: Int -> TrafficGenSettings
+rig3TgScheduled k =
+  tgOff
+    { tgMode = TgScheduled
+    , tgFirstCycle = 100 + fromIntegral k * rig3Hop
+    , tgRxFirstCycle = txBase (if k == 0 then 2 else k - 1) + natToNum @Rig3Delay
+    , tgPeriod = 640
+    , tgBurstWords = fromIntegral rigVw
+    , tgBurstsPerPeriod = 2
+    , tgOffsets = 74 :> 140 :> repeat 0
+    , tgBurstCount = 16
+    }
+ where
+  txBase j = 100 + fromIntegral j * rig3Hop
+
+dutSharedRig3 ::
+  PeMode ->
+  (Int -> TrafficGenSettings) ->
+  Int ->
+  ( [DecodePeStatus]
+  , [DecodePeStatus]
+  , [DecodePeStatus]
+  , [TrafficGenStatus]
+  , [TrafficGenStatus]
+  , [TrafficGenStatus]
+  )
+dutSharedRig3 mode tgCfg nCycles =
+  ( sampleN nCycles st0
+  , sampleN nCycles st1
+  , sampleN nCycles st2
+  , sampleN nCycles tg0
+  , sampleN nCycles tg1
+  , sampleN nCycles tg2
+  )
+ where
+  (st0, st1, st2, tg0, tg1, tg2) = withClockResetEnable clockGen resetGen enableGen go
+  go ::
+    (HiddenClockResetEnable System) =>
+    ( Signal System DecodePeStatus
+    , Signal System DecodePeStatus
+    , Signal System DecodePeStatus
+    , Signal System TrafficGenStatus
+    , Signal System TrafficGenStatus
+    , Signal System TrafficGenStatus
+    )
+  go = (status0, status1, status2, tgStat0, tgStat1, tgStat2)
+   where
+    cnt :: Signal System (Unsigned 64)
+    cnt = register 0 (cnt + 1)
+    arm = (== 20) <$> cnt
+    node k = nodeShared (pure (rig3Settings mode k)) (pure (tgCfg k)) (pure (mkKnobs True)) arm cnt
+    (txs0, status0, _, tgStat0) = node 0 rxs0
+    (txs1, status1, _, tgStat1) = node 1 rxs1
+    (txs2, status2, _, tgStat2) = node 2 rxs2
+    fwd t = delayBy (SNat @Rig3Delay) ((!! (1 :: Index 2)) <$> t)
+    rev t = delayBy (SNat @5) ((!! (0 :: Index 2)) <$> t)
+    -- Ring 0 -> 1 -> 2 -> 0; reverse (credit) direction hop-local.
+    rxs0 = bundle (fwd txs2 :> rev txs1 :> Nil)
+    rxs1 = bundle (fwd txs0 :> rev txs2 :> Nil)
+    rxs2 = bundle (fwd txs1 :> rev txs0 :> Nil)
+
+{- | Variant A_c on a three-node ring at rig-like geometry: the relay-to-relay
+hop exists here, unlike the two-node loop.
+-}
+case_rig3ScheduledInterleave :: Assertion
+case_rig3ScheduledInterleave = do
+  let
+    nCycles = 20 + 100 + 8 * 1920 + 2000
+    (quiet0, quiet1, quiet2, _, _, _) = dutSharedRig3 ModeCalendar (const tgOff) nCycles
+    (sts0, sts1, sts2, tg0, tg1, tg2) = dutSharedRig3 ModeCalendar rig3TgScheduled nCycles
+  assertEqual "rig3 quiet injector fails" 0 (L.last quiet0).checksumFailCount
+  assertEqual "rig3 quiet relay1 fails" 0 (L.last quiet1).checksumFailCount
+  assertEqual "rig3 quiet relay2 fails" 0 (L.last quiet2).checksumFailCount
+  assertDecodeEqual "rig3 a_c vs quiet injector" (L.last quiet0) (L.last sts0)
+  assertDecodeEqual "rig3 a_c vs quiet relay1" (L.last quiet1) (L.last sts1)
+  assertDecodeEqual "rig3 a_c vs quiet relay2" (L.last quiet2) (L.last sts2)
+  assertTgClean "rig3 a_c 0->1" (rig3TgScheduled 0) (L.last tg0) (L.last tg1)
+  assertTgClean "rig3 a_c 1->2" (rig3TgScheduled 1) (L.last tg1) (L.last tg2)
+  assertTgClean "rig3 a_c 2->0" (rig3TgScheduled 2) (L.last tg2) (L.last tg0)
+
+-- The full eight-node ring at the rig's exact geometry: hop 35 (smaller
+-- than a burst!), lap 280 — the two- and three-node loops have hops longer
+-- than a burst, which the hardware run suggested matters.
+
+ring8Hop :: Unsigned 64
+ring8Hop = natToNum @ForwardDelay + 1
+
+ring8Lap :: Unsigned 32
+ring8Lap = 8 * fromIntegral ring8Hop
+
+ring8Pattern :: Int -> BitVector 64
+ring8Pattern k = 0x1000 * (1 + fromIntegral k)
+
+ring8Settings :: PeMode -> Int -> DecodePeSettings 2
+ring8Settings mode k =
+  DecodePeSettings
+    { readLink = Just 0
+    , writeLink = Just 1
+    , isInjector = k == 0
+    , mode
+    , firstCycle = 100 + fromIntegral k * ring8Hop
+    , lapOffset = ring8Lap
+    , layerPeriod = 640
+    , layersPerToken = fromIntegral layersC
+    , tokenPeriod = 1920
+    , tokenCount = fromIntegral tokensC
+    , vectorWords = fromIntegral rigVw
+    , computeCycles = 0
+    , localPattern = ring8Pattern k
+    , expectedWindowA = fromIntegral rigVw * prefix + fromIntegral k * iSum
+    , expectedWindowB = fromIntegral rigVw * total + 8 * iSum
+    , histBase = 0
+    , histShift = 0
+    }
+ where
+  prefix = sum [ring8Pattern j | j <- [0 .. k - 1]]
+  total = sum [ring8Pattern j | j <- [0 .. 7]]
+  iSum = fromIntegral (rigVw * (rigVw - 1) `div` 2)
+
+ring8TgScheduled :: Int -> TrafficGenSettings
+ring8TgScheduled k =
+  tgOff
+    { tgMode = TgScheduled
+    , tgFirstCycle = 100 + fromIntegral k * ring8Hop
+    , tgRxFirstCycle = 100 + fromIntegral upstream * ring8Hop + natToNum @ForwardDelay
+    , tgPeriod = 640
+    , tgBurstWords = fromIntegral rigVw
+    , tgBurstsPerPeriod = 2
+    , tgOffsets = 74 :> 140 :> repeat 0
+    , tgBurstCount = 16
+    }
+ where
+  upstream = (k + 7) `mod` 8
+
+dutSharedRing8 ::
+  PeMode ->
+  (Int -> TrafficGenSettings) ->
+  Int ->
+  ([[DecodePeStatus]], [[TrafficGenStatus]])
+dutSharedRing8 mode tgCfg nCycles =
+  (fmap (sampleN nCycles) sts, fmap (sampleN nCycles) tgs)
+ where
+  (sts, tgs) = withClockResetEnable clockGen resetGen enableGen go
+  go ::
+    (HiddenClockResetEnable System) =>
+    ([Signal System DecodePeStatus], [Signal System TrafficGenStatus])
+  go = (statuses, tgStats)
+   where
+    cnt :: Signal System (Unsigned 64)
+    cnt = register 0 (cnt + 1)
+    arm = (== 20) <$> cnt
+    node k = nodeShared (pure (ring8Settings mode k)) (pure (tgCfg k)) (pure (mkKnobs True)) arm cnt
+    outs = [node k (rxsFor k) | k <- [0 .. 7]]
+    txsFor k = (\(t, _, _, _) -> t) (outs L.!! k)
+    statuses = L.map (\(_, s, _, _) -> s) outs
+    tgStats = L.map (\(_, _, _, t) -> t) outs
+    fwd t = delayBy (SNat @ForwardDelay) ((!! (1 :: Index 2)) <$> t)
+    rev t = delayBy (SNat @5) ((!! (0 :: Index 2)) <$> t)
+    rxsFor k = bundle (fwd (txsFor ((k + 7) `mod` 8)) :> rev (txsFor ((k + 1) `mod` 8)) :> Nil)
+
+-- | Variant A_c on the full eight-node ring at the rig's geometry.
+case_ring8ScheduledInterleave :: Assertion
+case_ring8ScheduledInterleave = do
+  let
+    nCycles = 20 + 100 + 8 * 1920 + 2000
+    (quiet, _) = dutSharedRing8 ModeCalendar (const tgOff) nCycles
+    (sts, tgs) = dutSharedRing8 ModeCalendar ring8TgScheduled nCycles
+  forM_ [0 .. 7] $ \k -> do
+    let
+      q = L.last (quiet L.!! k)
+      s = L.last (sts L.!! k)
+      sender = ring8TgScheduled k
+      tgTx = L.last (tgs L.!! k)
+      tgRx = L.last (tgs L.!! ((k + 1) `mod` 8))
+    assertEqual ("ring8 quiet node " <> show k <> " fails") 0 q.checksumFailCount
+    assertDecodeEqual ("ring8 a_c vs quiet node " <> show k) q s
+    assertTgClean ("ring8 a_c " <> show k <> "->" <> show ((k + 1) `mod` 8)) sender tgTx tgRx
 
 tests :: TestTree
 tests = $(testGroupGenerator)
