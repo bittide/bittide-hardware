@@ -717,6 +717,16 @@ driver testName targets = do
             scheduleAt vw start = generateDecodeSchedule fpgaSetup ugnPairsTableV vw start
             probeSchedule = scheduleAt vectorWordsC (secondsFromNow 2)
             lapOff = probeSchedule.lapOffset
+            -- Elastic-buffer occupancies wander after bring-up (that is what
+            -- the elastic_buffer_delta register measures); time-based
+            -- schedules must be built from CURRENT counter relationships.
+            readFreshUgnTable = do
+              t <-
+                zipWithConcurrently
+                  (readHardwareUgns MemoryMaps.managementUnit)
+                  targets
+                  managementUnitGdbs
+              pure (fromJust . V.fromList $ fromJust . V.fromList <$> t)
           liftIO $ putStrLn $ "Ring lap offset (cycles): " <> show lapOff
 
           let
@@ -970,12 +980,32 @@ driver testName targets = do
             runContentionCell variant dutyPct = do
               let fileTag = (if variant == VariantA then "ac" else "bc") <> show dutyPct
               putStrLn $ "Running contention cell " <> fileTag
+              -- Rebuild the schedule from CURRENT counter relationships: the
+              -- bring-up UGN table is minutes old by now and elastic-buffer
+              -- wander shifts every link's latency, which a time-based
+              -- schedule cannot tolerate.
+              freshUgnTable <- readFreshUgnTable
               currentTime <- readCurrentTime MemoryMaps.managementUnit (L.head managementUnitGdbs)
               let
+                schedFreshAt vwX start = generateDecodeSchedule fpgaSetup freshUgnTable vwX start
+                staleProbe = scheduleAt vectorWordsC (currentTime + 1_000_000)
+                freshProbe = schedFreshAt vectorWordsC (currentTime + 1_000_000)
+                lapOffCell = freshProbe.lapOffset
+              putStrLn
+                $ "  UGN drift since bring-up: lap "
+                <> show (toInteger lapOffCell - toInteger lapOff)
+                <> ", per node "
+                <> show
+                  ( L.zipWith
+                      (\a b -> toInteger a.firstCycle - toInteger b.firstCycle)
+                      (toList freshProbe.nodes)
+                      (toList staleProbe.nodes)
+                  )
+              let
                 vw = vectorWordsC
-                baseLayerPer = truncateB (2 * lapOff) + fromIntegral vw + 16 :: Unsigned 32
+                baseLayerPer = truncateB (2 * lapOffCell) + fromIntegral vw + 16 :: Unsigned 32
                 (layerPer, tgOffs) =
-                  tgSlotPlan dutyPct (truncateB lapOff) (fromIntegral vw) baseLayerPer
+                  tgSlotPlan dutyPct (truncateB lapOffCell) (fromIntegral vw) baseLayerPer
                 burstsPerPeriod = fromIntegral (L.length tgOffs) :: Unsigned 32
                 -- A multiple of the layer (= generator) period, so the decode
                 -- windows keep the same in-period offsets in every token.
@@ -983,11 +1013,11 @@ driver testName targets = do
                 predicted =
                   fromIntegral (layersPerTokenC - 1)
                     * layerPer
-                    + truncateB (2 * lapOff)
+                    + truncateB (2 * lapOffCell)
                     + fromIntegral vw
                 bPredicted =
                   fromIntegral layersPerTokenC
-                    * (truncateB (2 * lapOff) + fromIntegral vw + 1)
+                    * (truncateB (2 * lapOffCell) + fromIntegral vw + 1)
                 widen :: Unsigned 32 -> Unsigned 64
                 widen = resize
                 runCycles :: Unsigned 64
@@ -1008,7 +1038,7 @@ driver testName targets = do
                 -- 25 s: a contention cell writes and reads back ~40
                 -- registers per node over GDB (~2 s each), and an overrun
                 -- gate means the equality-fired calendar never fires at all.
-                sched = scheduleAt vw (currentTime + 25 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
+                sched = schedFreshAt vw (currentTime + 25 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 histBase n
                   | variant == VariantA = (satSub SatZero predicted 8, 0 :: Unsigned 8)
                   | n == (0 :: Int) = (satSub SatZero bPredicted 8, 6) -- 64-cycle bins
@@ -1037,7 +1067,7 @@ driver testName targets = do
                     gdb
                     variant
                     (vw, hwTokenCount)
-                    (truncateB lapOff, layerPer, tokenPer)
+                    (truncateB lapOffCell, layerPer, tokenPer)
                     (histBase n)
                     node
                   writeTgConfig gdb plan (node.firstCycle, rxBase n node)
@@ -1093,7 +1123,7 @@ driver testName targets = do
                               <> show actual
                           )
                   rb "first_cycle" node.firstCycle
-                  rb "lap_offset" (truncateB lapOff :: Unsigned 32)
+                  rb "lap_offset" (truncateB lapOffCell :: Unsigned 32)
                   rb "layer_period" layerPer
                   rb "token_period" tokenPer
                   rb "vector_words" (fromIntegral vw :: Unsigned 16)
@@ -1124,7 +1154,7 @@ driver testName targets = do
                         , "hist_base " <> show (fst (histBase n))
                         , "hist_shift " <> show (snd (histBase n))
                         , "first_cycle_cfg " <> show node.firstCycle
-                        , "lap_offset_cfg " <> show (truncateB lapOff :: Unsigned 32)
+                        , "lap_offset_cfg " <> show (truncateB lapOffCell :: Unsigned 32)
                         , "layer_period_cfg " <> show layerPer
                         , "token_period_cfg " <> show tokenPer
                         , "credits_consumed " <> show cl.creditsConsumed
@@ -1254,6 +1284,19 @@ driver testName targets = do
           -- each. The base runs above are the 0%-duty regression gate. Every
           -- cell runs and dumps even when an earlier one fails its checks —
           -- each rig trip should yield the full sweep's diagnostics.
+          -- Control experiment: quiet variant A on the BRING-UP schedule,
+          -- right before the sweep. If this fails while the fresh-schedule
+          -- cells pass, transport drift (not generator interference) is the
+          -- mechanism, measured directly.
+          a2Failure <- liftIO $ do
+            result <- try @SomeException $ do
+              (sts, cls) <- runPeVariant VariantA vectorWordsC hwTokenCount "a2"
+              checkPeVariant VariantA hwTokenCount sts cls
+            case result of
+              Left e -> do
+                putStrLn $ "CONTROL a2 (stale schedule) FAILED: " <> show e
+                pure [(VariantA, 0 :: Unsigned 32, "control a2: " <> show e)]
+              Right () -> pure []
           cellFailures <- liftIO
             $ forM
               [(v, d) | v <- [VariantA, VariantB], d <- [25, 50, 75 :: Unsigned 32]]
@@ -1266,6 +1309,6 @@ driver testName targets = do
                   putStrLn $ "CELL FAILED: " <> show e
                   pure (Just (variant, duty, show e))
                 Right () -> pure Nothing
-          case mapMaybe id cellFailures of
+          case a2Failure <> mapMaybe id cellFailures of
             [] -> pure ExitSuccess
             failures -> liftIO $ fail $ "Contention cells failed: " <> show failures
