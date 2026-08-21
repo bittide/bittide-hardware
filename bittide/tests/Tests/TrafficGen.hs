@@ -133,7 +133,7 @@ tgScheduled isInjector =
   tgOff
     { tgMode = TgScheduled
     , tgFirstCycle = txFirst
-    , tgRxFirstCycle = peerTxFirst + natToNum @ForwardDelay
+    , tgRxFirstCycle = peerTxFirst + hopC
     , tgPeriod = 200
     , tgBurstsPerPeriod = 3
     , tgOffsets = 110 :> 130 :> 150 :> repeat 0
@@ -487,7 +487,7 @@ rigTgScheduled isInjector =
   tgOff
     { tgMode = TgScheduled
     , tgFirstCycle = txFirst
-    , tgRxFirstCycle = peerTxFirst + natToNum @RigDelay
+    , tgRxFirstCycle = peerTxFirst + natToNum @RigDelay + 1
     , tgPeriod = 640
     , tgBurstWords = fromIntegral rigVw
     , tgBurstsPerPeriod = 2
@@ -612,7 +612,7 @@ rig3TgScheduled k =
   tgOff
     { tgMode = TgScheduled
     , tgFirstCycle = 100 + fromIntegral k * rig3Hop
-    , tgRxFirstCycle = txBase (if k == 0 then 2 else k - 1) + natToNum @Rig3Delay
+    , tgRxFirstCycle = txBase (if k == 0 then 2 else k - 1) + rig3Hop
     , tgPeriod = 640
     , tgBurstWords = fromIntegral rigVw
     , tgBurstsPerPeriod = 2
@@ -731,7 +731,7 @@ ring8TgScheduled k =
   tgOff
     { tgMode = TgScheduled
     , tgFirstCycle = 100 + fromIntegral k * ring8Hop
-    , tgRxFirstCycle = 100 + fromIntegral upstream * ring8Hop + natToNum @ForwardDelay
+    , tgRxFirstCycle = 100 + fromIntegral upstream * ring8Hop + ring8Hop
     , tgPeriod = 640
     , tgBurstWords = fromIntegral rigVw
     , tgBurstsPerPeriod = 2

@@ -288,10 +288,16 @@ trafficGen ::
   Signal dom Bool ->
   Signal dom TrafficGenOut
 trafficGen rst localCounter settings armPulse rxStream creditRx portGrant creditTxBusy =
-  mkOut <$> txOut <*> rxOut
+  mkOut <$> txWordR <*> txOut <*> rxOut
  where
   withCrst :: forall a. ((HiddenClockResetEnable dom) => a) -> a
   withCrst f = withClockResetEnable hasClock rst enableGen f
+
+  -- One output register stage, matching the decode core's: the pattern-word
+  -- construction must not reach the transceiver combinationally, and the
+  -- shared convention means a burst emitted at slot @S@ occupies the wire
+  -- exactly like a decode window fired at @S@.
+  txWordR = withCrst $ register Nothing ((.ttoWord) <$> txOut)
 
   -- The grant is consumed registered: the arbiter's grant is a function of
   -- this machine's own request, so reading it back in the same cycle would
@@ -335,10 +341,10 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
           }
         (bundle (settings, armPulse, localCounter, rxStream, creditTxBusy))
 
-  mkOut :: TgTxOut -> TgRxOut -> TrafficGenOut
-  mkOut t r =
+  mkOut :: Maybe (BitVector 64) -> TgTxOut -> TgRxOut -> TrafficGenOut
+  mkOut w t r =
     TrafficGenOut
-      { tgTxWord = t.ttoWord
+      { tgTxWord = w
       , tgPortReq = t.ttoReq
       , tgTxActive = t.ttoActive
       , tgCreditTx = r.troCreditWord
