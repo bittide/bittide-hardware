@@ -1041,7 +1041,9 @@ driver testName targets = do
                 sched = schedFreshAt vw (currentTime + 25 * natToNum @(PeriodToCycles GthTx (Seconds 1)))
                 histBase n
                   | variant == VariantA = (satSub SatZero predicted 8, 0 :: Unsigned 8)
-                  | n == (0 :: Int) = (satSub SatZero bPredicted 8, 6) -- 64-cycle bins
+                  -- 8-cycle bins: the measured smear spans about one burst
+                  -- (66 cycles), so 16 bins cover it with room to spare.
+                  | n == (0 :: Int) = (satSub SatZero bPredicted 8, 3)
                   | otherwise = (100, 4) -- relay credit RTTs, 16-cycle bins
                   -- The generator's receive schedule: the upstream neighbor's
                   -- slots land exactly at this node's own decode window base:
@@ -1202,7 +1204,13 @@ driver testName targets = do
               case waitResult of
                 Left e -> fail (fileTag <> ": " <> show e)
                 Right () -> pure ()
-              pure (plan, predicted, statuses, clStatuses, tgStatuses)
+              pure
+                ( plan
+                , if variant == VariantA then predicted else bPredicted
+                , statuses
+                , clStatuses
+                , tgStatuses
+                )
 
             checkContentionCell variant dutyPct (plan, predicted, statuses, clStatuses, tgStatuses) = do
               let
@@ -1238,6 +1246,30 @@ driver testName targets = do
                         <> show plan.tgBurstCount
                         <> " bursts"
                     )
+                -- Thresholds from the measured run (2026-08-22): the
+                -- arbitrated decode smear spans ~one burst (66 cycles) and
+                -- sits ~200..270 cycles above the quiet dataflow floor; a
+                -- work-conserving arbiter bounds the wait to one burst per
+                -- hop, so 4 burst-lengths of spread and 8 of shift are
+                -- generous without being vacuous.
+                when (variant /= VariantA && n == 0) $ do
+                  let burst = fromIntegral plan.tgBurstWords + 2 :: Unsigned 32
+                  when (st.maxLatency - st.minLatency > 4 * burst)
+                    $ fail
+                      ( who
+                          <> ": contended spread "
+                          <> show st.minLatency
+                          <> ".."
+                          <> show st.maxLatency
+                      )
+                  when (st.maxLatency > predicted + 8 * burst)
+                    $ fail
+                      ( who
+                          <> ": contended max "
+                          <> show st.maxLatency
+                          <> " above bound "
+                          <> show (predicted + 8 * burst)
+                      )
                 when (variant == VariantA) $ do
                   -- The admission contract, literally: a spike, exactly at
                   -- the precomputed latency, and the generator never queues.

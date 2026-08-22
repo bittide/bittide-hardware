@@ -150,3 +150,65 @@ What the numbers say:
 Scope honesty applies unchanged: all variants share bittide's synchronized
 clocks and contention-free links, so these numbers isolate coordination
 overhead only.
+
+## Contention
+
+The quiet numbers above concede that async's parity is a property of an
+unloaded fabric. The contention experiment (`PLAN2.md` at the repository
+root) adds a second, verified traffic flow on the same ring links: a traffic
+generator per node sends fixed-size 64-word bursts to its ring neighbor,
+pattern-checked end to end, at 19/48/68% link duty. Under the calendar
+(A_c) the generator's bursts are slots placed in the decode windows' idle
+gaps, computed jointly by the driver; a hardware collision counter proves
+disjointness. Under credit flow control (B_c) both flows run the credit
+protocol and meet at a work-conserving round-robin frame arbiter with
+opportunistic cut-through — deliberately fair to the async design.
+
+Measured (rig, 2026-08-22; injector token latency over 10,000 tokens per
+cell; quiet floors that boot: A 10,448, B 10,223):
+
+| Duty | A_c decode | A_c generator | B_c decode | B_c generator |
+|---|---|---|---|---|
+| 19% | 10,448, spread 0 | 340,512/340,512, 0 errors, max queue 0 | 10,421..10,487 | 938,492/938,492, 0 errors, max queue 4 |
+| 48% | 10,448, spread 0 | 851,280/851,280, 0 errors, max queue 0 | 10,421..10,487 | 2,346,230/2,346,230, 0 errors, max queue 54 |
+| 68% | 10,448, spread 0 | 1,191,792/1,191,792, 0 errors, max queue 0 | 10,421..10,487 | 3,284,722/3,284,722, 0 errors, max queue 58 |
+
+What the numbers say:
+
+- **A_c is bit-identical to the quiet run at every duty.** The calendar
+  placed up to 68% of competing load into the links' idle cycles with zero
+  effect on decode — not a deterministic shift, but literally none, because
+  the reserved slots fit in the gaps — and the competing flow itself never
+  queued a single cycle. Both flows get exact admission contracts; that is
+  the two-sided guarantee.
+- **B_c shifts and smears, boundedly.** Decode pays +198..264 cycles over
+  the quiet dataflow floor with a 66-cycle spread — almost exactly one
+  burst length, the work-conserving arbiter's per-hop worst case — and the
+  envelope is duty-independent while the probability mass and the competing
+  flow's queueing (max 4 → 54 → 58 cycles) grow with load. The decode
+  credit round-trip inflates from a constant 131 to 133..199. Reported
+  with the same prominence as the headline: a well-designed single-hop
+  arbiter *holds* under this offered load — lossless, bounded interference
+  of well under 1% of token latency. The measured contrast is exactness
+  and guarantees (zero versus small-and-stochastic), not catastrophe.
+
+What the competing flow does and does not model: a dedicated
+NVLink/ICI-class domain running one collective at a time has little internal
+contention — that quiet case is the base demo, already measured at parity.
+The generator models the shared-domain case serving stacks are moving into
+(disaggregated KV-cache transfers riding decode's links, expert-parallel
+all-to-alls overlapping tensor-parallel all-reduces). It does NOT model
+scale-out spine congestion — an 8-node point-to-point ring has no spine.
+The product framing of the result is economic: arbitration makes operators
+choose between isolation (wasted capacity) and interference (jitter); a
+calendar provides guaranteed latency for every admitted flow at high
+utilization.
+
+Two artifacts of the experiment worth naming: the generator's receiver
+initially lost ~3 bursts per million to its own credit-grant train blocking
+header reception (fixed: headers are accepted mid-train), and the shared
+port needed an explicit one-cycle drain between owners because registered
+transmit paths trail their state machines (without it, a frame's first word
+could overwrite the previous owner's last). Both were found by the
+hardware's own accounting counters — the "verified traffic everywhere"
+discipline paying for itself.

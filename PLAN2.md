@@ -141,31 +141,58 @@ globs `.bin`).
 
 ## 3. Work breakdown
 
-- [ ] **Phase 0 — sim.** Extend the existing decode-demo sim test
+- [x] **Phase 0 — sim.** Extend the existing decode-demo sim test
       (`bittide-instances` Tests + `firmware-binaries/sim-tests`) with the TG
       + arbiter; verify: 0% duty reproduces base numbers; scheduled interleave
       is collision-free by construction (assert no two flows own a port in
       the same cycle in sim); credit mode arbitration is fair and lossless.
       Measure the arbiter's idle-path cost — it must be ~0 when TG is off, or
       the 0% regression gate will catch it.
-- [ ] **Phase 1 — Clash.** TG core + arbiter + `TrafficGenConfig`; unit
+- [x] **Phase 1 — Clash.** TG core + arbiter + `TrafficGenConfig`; unit
       tests; `UserCore.hs`/`MemoryMaps.hs`/cabal registrations;
       `shake decodeDemoTest:pnr` green.
-- [ ] **Phase 2 — driver + firmware.** Joint schedule computation (decode +
+- [x] **Phase 2 — driver + firmware.** Joint schedule computation (decode +
       TG slots) with the measured-vs-predicted A_c assertion; duty sweep;
       firmware device bring-up; dumps.
-- [ ] **Phase 3 — rig + report.** Full run; PostProc figures; update
+- [x] **Phase 3 — rig + report.** Full run; PostProc figures; update
       `docs/sections/demos/decode-demo.md` (new "Contention" section with the
       same scope-honesty discipline), `PLAN.md` §measured, REPORT.md §3/§5 and
       the artifact (Martijn has the link) — including, prominently, whichever
       way the result went.
-- [ ] **Phase 4 — CI.** Contention phases in the nightly run with threshold
+- [x] **Phase 4 — CI.** (the nightly decodeDemoTest driver runs the sweep) Contention phases in the nightly run with threshold
       assertions (A_c: spread == 0 and measured == predicted; B_c: thresholds
       set from the measured run, not invented).
 
 Gates, not effort estimates (the rate limiter is PnR turnaround and rig
 access): sim green with 0%-regression → PnR green → 2-node rig smoke at 50%
 duty → full sweep → docs/report/CI.
+
+### Measured (rig, 2026-08-22; injector token latency over 10,000 tokens/cell)
+
+Quiet floors that boot: A 10,448; B 10,223 cycles. Generator: 64-word
+verified bursts to the ring neighbor at 19/48/68% link duty.
+
+- **A_c: 10,448, spread 0, at every duty — bit-identical to quiet A.** The
+  driver placed the generator's slots in the decode windows' per-link idle
+  gaps, so the precomputable shift is zero; the hardware collision counter
+  stayed 0 and the generator itself ran 340k/851k/1.19M bursts with zero
+  errors and zero queueing. Both flows got exact contracts.
+- **B_c: 10,421..10,487 at every duty** — a shift of +198..264 over the
+  quiet floor and a 66-cycle spread (one burst: the work-conserving
+  round-robin arbiter's per-hop worst case). Lossless at all duties; the
+  generator's queueing grows with duty (max 4 → 54 → 58 cycles) and the
+  decode credit RTT inflates 131 → up to 199.
+- Honest prominence for the async side: a fair single-hop arbiter HOLDS at
+  ~87% total link load — bounded, lossless, sub-1% interference. The
+  measured contrast is exactness and two-sided guarantees, not collapse.
+  The per-hop wait bound scales with burst length, so the gap grows with
+  transfer size and hop count; on this rig it is small.
+- Instructive failures along the way, all caught by the verified-traffic
+  counters: a driver call halted the clock-control CPUs mid-test (elastic
+  buffers slip words once oscillators free-run — worth knowing in itself);
+  the registered transmit path needed an explicit one-cycle port drain
+  between owners; the generator's credit-grant train blocked header
+  reception (~3 lost bursts per million, fixed).
 
 ## 4. Risks & honesty
 
