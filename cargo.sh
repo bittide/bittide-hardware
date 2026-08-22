@@ -34,6 +34,12 @@ cd firmware-binaries;
   fb_res="$?"
 cd ..
 
+cd host-binaries;
+  printf "host-binaries " >&2;
+  run cargo "$@";
+  hb_res="$?"
+cd ..
+
 if [[ fs_res -ne 0 ]]; then
   echo "firmware-support failure!"
 fi
@@ -42,7 +48,10 @@ if [[ fb_res -ne 0 ]]; then
   echo "firmware-binaries failure!"
 fi
 
+if [[ hb_res -ne 0 ]]; then
+  echo "host-binaries failure!"
+fi
 
-if [[ fs_res -ne 0 ]] || [[ fb_res -ne 0 ]] ; then
+if [[ fs_res -ne 0 ]] || [[ fb_res -ne 0 ]] || [[ hb_res -ne 0 ]]; then
   exit 1
 fi
