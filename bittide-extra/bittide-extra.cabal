@@ -166,6 +166,7 @@ library
   exposed-modules:
     Bittide.Extra.Maybe
     Clash.Class.Cdc
+    Clash.Class.Cdc.Handshake
     Clash.Cores.Xilinx
     Clash.Cores.Xilinx.Xpm.Cdc.Extra
     Clash.Explicit.Signal.Delayed.Extra

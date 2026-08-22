@@ -57,10 +57,10 @@ import Clash.Prelude (
 import Protocols
 
 import Bittide.CaptureUgn (captureUgns, sendUgn)
-import Bittide.ClockControl (SpeedChange (NoChange))
+import Bittide.ClockControl (RelDataCount, SpeedChange (NoChange))
 import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
 import Bittide.DoubleBufferedRam (wbStorage)
-import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
+import Bittide.ElasticBuffer
 import Bittide.Extra.Maybe (toMaybe)
 import Bittide.Handshake (handshakesWb)
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
@@ -80,6 +80,7 @@ import Bittide.Wishbone (readDnaPortE2WbWorker, timeWb, uartBytes, uartInterface
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx (withXilinx)
 import Clash.Cores.Xilinx.BlockRam (tdpbram)
+import Clash.Cores.Xilinx.ElasticBuffer (xilinxElasticBuffer)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2, simDna2)
 import Clash.Functor.Extra ((<<$>>), (<<*>>))
 import Protocols.Df.Extra (tdpbramRamOp)
@@ -271,31 +272,36 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
       Vec.split -< muWbs3
     -- Stop management unit
 
-    -- Start internal links
-    (_relDatCount, _underflow, _overflow, Fwd rxs1) <-
-      unzip4Vec
-        <| ( Vec.vecCircuits
-               $ xilinxElasticBufferWb
-                 bitClk
-                 bitRst
-                 (SNat @FifoSize)
-                 localCounter
-               <$> rxClocks
-               <*> rxs0
-           )
+    let
+      controlledEbWb ::
+        Clock GthRx ->
+        Reset GthRx ->
+        Signal GthRx (BitVector 64) ->
+        Circuit
+          (BitboneMm Bittide (NmuRemBusWidth userCoreBusses))
+          ( DcFifoOutput FifoSize Bittide GthRx (BitVector 64)
+          , CSignal Bittide (RelDataCount FifoSize)
+          )
+      controlledEbWb clkWrite rstWrite wdata =
+        joinEbAndControl
+          (elasticBufferControl bitClk bitRst localCounter clkWrite rstWrite wdata)
+          (xilinxElasticBuffer bitClk clkWrite)
+
+    Fwd rxs1 <-
+      (Vec.vecCircuits $ controlledEbWb <$> rxClocks <*> rxResets <*> rxs0)
         <| repeatC (fmapC $ withBittideClockResetEnable delayWishbone)
         -< ebWbs
-
     let
-      rxs2 = dflipflop bitClk <$> rxs1
-      rxs2Raw = fmap fromData <$> rxs2
+      rxs2 = ((.fifoOut) . fst) <$> rxs1
+      rxs3 = dflipflop bitClk <$> rxs2
+      rxs3Raw = fmap fromData <$> rxs3
 
     Fwd handshakesOut <-
       withBittideClockReset handshakesWb
         -< ( muHandshakeBus
            , Fwd
                ( Handshake.Inputs
-                   { fromNeighbors = rxs2
+                   { fromNeighbors = rxs3
                    , fromCores = txs1
                    }
                )
@@ -303,14 +309,14 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
 
     let
       -- TODO: Hardware UGN capture is currently mandatory, it shouldn't be.
-      rxs3 = toMaybe <<$>> handshakesOut.toCoreDones <<*>> handshakesOut.toCores
-      rxs4 = dflipflop bitClk <$> rxs3
+      rxs4 = toMaybe <<$>> handshakesOut.toCoreDones <<*>> handshakesOut.toCores
+      rxs5 = dflipflop bitClk <$> rxs4
 
       txs1 = withClock bitClk $ sendUgn localCounter <$> handshakesOut.fromCoreDones <*> txs0
 
-    Fwd rxs5 <-
+    Fwd rxs6 <-
       withBittideClockResetEnable
-        $ captureUgns localCounter (bundle rxs4)
+        $ captureUgns localCounter (bundle rxs5)
         -< ugnWb
     -- Stop internal links
 
@@ -322,7 +328,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
     idleSink
       <| fmapC (withBittideClockResetEnable receiveRingBuffer rxPrim bufferDepth)
       <| Vec.zip
-      -< (rxBufferBusses, Fwd (unbundle rxs5))
+      -< (rxBufferBusses, Fwd (unbundle rxs6))
     Fwd txs0 <-
       fmapC (withBittideClockResetEnable $ transmitRingBuffer txPrim bufferDepth) -< txBufferBusses
     -- Stop ringbuffers
@@ -331,7 +337,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
     Fwd txsOut <-
       mkUserCore bitClk bitRst bitEna localCounter maybeDna
         -< ( extraMuBusses
-           , Fwd (bundle rxs2Raw)
+           , Fwd (bundle rxs3Raw)
            , Fwd (bundle handshakesOut.toNeighbors)
            )
     -- Stop user core
@@ -393,13 +399,3 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
 
   withBittideClockReset :: forall r. ((HiddenClock Bittide, HiddenReset Bittide) => r) -> r
   withBittideClockReset r = withClock bitClk $ withReset bitRst r
-
-uncurry4 ::
-  (a -> b -> c -> d -> e) ->
-  (a, b, c, d) ->
-  e
-uncurry4 fn (a, b, c, d) = fn a b c d
-
-unzip4Vec ::
-  Circuit (Vec n (a, b, c, d)) (Vec n a, Vec n b, Vec n c, Vec n d)
-unzip4Vec = applyC unzip4 (uncurry4 zip4)

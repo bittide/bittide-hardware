@@ -25,10 +25,7 @@ module Clash.Class.Cdc where
 
 import Clash.Prelude hiding (Bit, isRising, regEn)
 
-import Bittide.Extra.Maybe (toMaybe)
-import Clash.Explicit.Prelude (isRising, noReset, regEn)
 import Data.Data (Proxy (Proxy))
-import Data.Maybe (fromMaybe, isJust, isNothing)
 import GHC.Stack (HasCallStack)
 
 {- | Guarantees the existence of a CDC primitive for a fixed-width array of independent bits for a
@@ -700,56 +697,3 @@ withVendor ssym f = let ?vendorName = ssym in f
 -- | Implicitly creates the @SSymbol vendor@ used to call 'withVendor'
 withVendorI :: forall vendor r. (KnownSymbol vendor) => ((HiddenVendor vendor) => r) -> r
 withVendorI = withVendor (SSymbol @vendor)
-
--- | `Maybe a` based version of `handshake`.
-handshakeMaybe ::
-  forall a src dst vendor.
-  ( KnownDomain src
-  , KnownDomain dst
-  , BitPack a
-  , NFDataX a
-  , HiddenVendor vendor
-  , ValidHandshake vendor a src dst
-  ) =>
-  Clock src ->
-  Clock dst ->
-  Signal src (Maybe a) ->
-  Signal dst Bool ->
-  (Signal src Bool, Signal dst (Maybe a))
-handshakeMaybe clkSrc clkDst srcIn dstAck = (srcRcv, toMaybe <$> dstReq <*> dstOut)
- where
-  (dstOut, dstReq, srcRcv) =
-    handshake @vendor clkSrc clkDst (fromMaybe (unpack 0) <$> srcIn) (isJust <$> srcIn) dstAck
-
-{- | Reliable CDC component based on 'handshakeMaybe' without backpressure and with limited
-throughput. Data will be lost if the `src` domain provides more inputs than the circuit can handle.
-Useful for low granularity synchronization.
--}
-maybeLossy ::
-  forall a src dst vendor.
-  ( KnownDomain src
-  , KnownDomain dst
-  , BitPack a
-  , NFDataX a
-  , HiddenVendor vendor
-  , ValidHandshake vendor a src dst
-  ) =>
-  Clock src ->
-  Clock dst ->
-  Signal src (Maybe a) ->
-  Signal dst (Maybe a)
-maybeLossy clkSrc clkDst maybeInp =
-  mux (isRising clkDst noReset enableGen False dstAck) dstOut (pure Nothing)
- where
-  srcReg =
-    regEn
-      clkSrc
-      noReset
-      enableGen
-      Nothing
-      (srcRcv .||. srcRegEmpty)
-      $ mux (srcRegEmpty .&&. fmap not srcRcv) maybeInp (pure Nothing)
-
-  srcRegEmpty = isNothing <$> srcReg
-  (srcRcv, dstOut) = handshakeMaybe @a @src @dst @vendor clkSrc clkDst srcReg (isJust <$> dstOut)
-  dstAck = isJust <$> dstOut

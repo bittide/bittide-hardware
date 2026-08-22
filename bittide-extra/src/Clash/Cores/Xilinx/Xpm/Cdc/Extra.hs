@@ -8,71 +8,11 @@ module Clash.Cores.Xilinx.Xpm.Cdc.Extra (
 ) where
 
 import Clash.Explicit.Prelude
-import Protocols
 
-import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcHandshake)
+import Clash.Class.Cdc.Handshake (safeHandshake)
+import Clash.Cores.Xilinx (withXilinx)
 import GHC.Stack (HasCallStack)
-
-data SafeHandshakeState
-  = InReset
-  | WaitForRising
-  | WaitForFalling
-  deriving (Generic, NFDataX)
-
--- | State machine for the source side of a safe handshake, see 'safeXpmCdcHandshake'.
-safeHandshakeSrcFsm ::
-  forall a dom.
-  (NFDataX a, KnownDomain dom) =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom (Maybe a) ->
-  "src_rcv" ::: Signal dom Bool ->
-  ( "src_send" ::: Signal dom Bool
-  , "src_in" ::: Signal dom a
-  , Signal dom Ack
-  )
-safeHandshakeSrcFsm clk rst ins srcRcvs =
-  mealyB clk rst enableGen go InReset (ins, srcRcvs)
- where
-  go :: SafeHandshakeState -> (Maybe a, Bool) -> (SafeHandshakeState, (Bool, a, Ack))
-  go InReset _ = (WaitForRising, noInput nack)
-  go WaitForRising (Nothing, _) = (WaitForRising, noInput nack)
-  go s@WaitForRising (Just a, rcv) = (if rcv then WaitForFalling else s, input a (Ack rcv))
-  go s@WaitForFalling (_, rcv) = (if rcv then s else WaitForRising, noInput nack)
-
-  noInput :: Ack -> (Bool, a, Ack)
-  noInput acknowledge = (False, deepErrorX "no input", acknowledge)
-
-  input :: a -> Ack -> (Bool, a, Ack)
-  input a acknowledge = (True, a, acknowledge)
-
-  nack :: Ack
-  nack = Ack False
-
-{- | State machine for the destination side of a safe handshake, see
-'safeXpmCdcHandshake'.
--}
-safeHandshakeDstFsm ::
-  (KnownDomain dom) =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom Ack ->
-  "dest_out" ::: Signal dom a ->
-  "dest_req" ::: Signal dom Bool ->
-  ( "dest_ack" ::: Signal dom Bool
-  , Signal dom (Maybe a)
-  )
-safeHandshakeDstFsm clk rst acks outs reqs =
-  mealyB clk rst enableGen go InReset (acks, outs, reqs)
- where
-  go :: SafeHandshakeState -> (Ack, a, Bool) -> (SafeHandshakeState, (Bool, Maybe a))
-  go InReset _ = (WaitForRising, (False, Nothing))
-  go s@WaitForRising (~(Ack acknowledge), a, request)
-    | request = (if acknowledge then WaitForFalling else s, (acknowledge, Just a))
-    | otherwise = (s, (False, Nothing))
-  go s@WaitForFalling (_, _, request)
-    | request = (s, (True, Nothing))
-    | otherwise = (WaitForRising, (False, Nothing))
+import Protocols
 
 {- | A wrapper around 'xpmCdcHandshake' that implements a 'Df'-like interface:
 
@@ -109,11 +49,7 @@ safeXpmCdcHandshake ::
   ( Signal src Ack
   , Signal dst (Maybe a)
   )
-safeXpmCdcHandshake clkSrc rstSrc clkDst rstDst srcData dstAck = (srcAck, dstData)
- where
-  (srcSend, srcIn, srcAck) = safeHandshakeSrcFsm clkSrc rstSrc srcData srcRcv
-  (destAck, dstData) = safeHandshakeDstFsm clkDst rstDst dstAck destOut destReq
-  (destOut, destReq, srcRcv) = xpmCdcHandshake clkSrc clkDst srcIn srcSend destAck
+safeXpmCdcHandshake = withXilinx safeHandshake
 
 {- | 'Df' version of 'xpmCdcHandshake'.
 

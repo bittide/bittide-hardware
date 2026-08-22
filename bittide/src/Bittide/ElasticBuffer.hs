@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 module Bittide.ElasticBuffer where
 
 import Clash.Prelude
@@ -14,9 +13,8 @@ import Bittide.Extra.Maybe (toMaybe)
 import Bittide.SharedTypes (BitboneMm)
 import Bittide.Shutter (shutter)
 import Clash.Class.BitPackC (ByteOrder)
+import Clash.Class.Cdc.Handshake (safeHandshake)
 import Clash.Cores.Xilinx.DcFifo
-import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
-import Clash.Cores.Xilinx.Xpm.Cdc.Pulse (xpmCdcPulse)
 import Data.Maybe (isJust)
 import GHC.Stack (HasCallStack)
 import Protocols.Df (CollectMode (..), roundrobinCollect)
@@ -36,6 +34,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb_,
  )
 
+import qualified Clash.Class.Cdc as Cdc
 import qualified Clash.Explicit.Prelude as E
 
 {- | Elastic buffer adjustment command. Negative values drain (remove frames), positive
@@ -129,80 +128,65 @@ fromElasticBufferData :: a -> ElasticBufferData a -> a
 fromElasticBufferData _ (Data dat) = dat
 fromElasticBufferData dflt _ = dflt
 
-toElasticBufferData :: Bool -> Bool -> a -> ElasticBufferData a
-toElasticBufferData requestedReadInPreviousCycle underflow a
-  | not requestedReadInPreviousCycle = FillCycle
-  | underflow = Empty
-  | otherwise = Data a
+data DcFifoInput (readDom :: Domain) (writeDom :: Domain) (a :: Type) = DcFifoInput
+  { writeData :: Signal writeDom (Maybe a)
+  , readEnable :: Signal readDom Bool
+  }
+  deriving (Generic, NFDataX)
 
-{-# OPAQUE xilinxElasticBuffer #-}
+data DcFifoOutput (n :: Nat) (readDom :: Domain) (writeDom :: Domain) (a :: Type) = DcFifoOutput
+  { dataCount :: Signal readDom (DataCount n)
+  , underflow :: Signal readDom Underflow
+  , overflow :: Signal writeDom Overflow
+  , fifoOut :: Signal readDom (ElasticBufferData a)
+  }
+  deriving (Generic, NFDataX)
 
-{- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
-monitor signals in its read domain.
--}
-xilinxElasticBuffer ::
-  forall n readDom writeDom a.
+instance Protocol (DcFifoOutput n readDom writeDom a) where
+  type Fwd (DcFifoOutput n readDom writeDom a) = DcFifoOutput n readDom writeDom a
+  type Bwd (DcFifoOutput _ _ _ _) = ()
+
+data DcFifoIO (n :: Nat) (readDom :: Domain) (writeDom :: Domain) (a :: Type)
+
+instance Protocol (DcFifoIO n readDom writeDom a) where
+  type Fwd (DcFifoIO n readDom writeDom a) = DcFifoInput readDom writeDom a
+  type Bwd (DcFifoIO n readDom writeDom a) = DcFifoOutput n readDom writeDom a
+
+type DcFifoC
+  (n :: Nat)
+  (readDom :: Domain)
+  (writeDom :: Domain)
+  (a :: Type) =
   ( HasCallStack
   , KnownDomain readDom
   , KnownDomain writeDom
   , NFDataX a
   , KnownNat n
-  , 4 <= n
-  , n <= 17
+  ) =>
+  Circuit (DcFifoIO n readDom writeDom a) ()
+
+elasticBufferAutoCenter ::
+  forall readDom writeDom vendor.
+  ( HasCallStack
+  , KnownDomain readDom
+  , KnownDomain writeDom
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidHandshake vendor (Unsigned 32) readDom writeDom
   ) =>
   Clock readDom ->
+  Reset readDom ->
   Clock writeDom ->
+  Reset writeDom ->
   {- | Operating mode of the elastic buffer. Must remain stable until an acknowledgement
   is received. Negative values drain, positive values fill, zero is a no-op.
   -}
   Signal readDom (Maybe EbAdjustment) ->
-  {- | Data to write into the elastic buffer. Will be ignored for a single cycle
-  when it gets a drain adjustment (negative value). Which cycle this is depends on
-  clock domain crossing.
-  -}
-  Signal writeDom a ->
-  ( Signal readDom (RelDataCount n)
-  , Signal readDom Underflow
-  , Signal writeDom Overflow
-  , Signal readDom (ElasticBufferData a)
-  , -- Acknowledgement for EbMode
-    Signal readDom Ack
-  )
-xilinxElasticBuffer clkRead clkWrite adjustment wdata =
-  ( -- Note that this is chosen to work for 'RelDataCount' either being
-    -- set to 'Signed' with 'targetDataCount' equals 0 or set to
-    -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
-    -- This way, the representation can be easily switched without
-    -- introducing major code changes.
-    (+ targetDataCount)
-      . bitCoerce
-      . (+ (-1 - shiftR maxBound 1))
-      <$> readCount
-  , isUnderflow
-  , isOverflow
-  , fifoOut
-  , adjustmentAck
-  )
+  (Signal writeDom Bool, Signal readDom Bool, Signal readDom Ack)
+elasticBufferAutoCenter clkRead rstRead clkWrite rstWrite adjustment =
+  (drain, readEnable, adjustmentAck)
  where
-  FifoOut{readCount, isUnderflow, isOverflow, fifoData} =
-    dcFifo
-      (defConfig @n){dcOverflow = True, dcUnderflow = True}
-      clkWrite
-      noResetWrite
-      clkRead
-      noResetRead
-      writeData
-      readEnable
-
-  -- We don't reset the Xilinx FIFO: its reset documentation is self-contradictory
-  -- and mentions situations where the FIFO can end up in an unrecoverable state.
-  noResetWrite = unsafeFromActiveHigh (pure False)
-  noResetRead = unsafeFromActiveHigh (pure False)
-
   -- Muxing between drain and fills:
   adjustmentAck = selectAck <$> adjustment <*> drainAck <*> fillAck
-  fifoOut = toElasticBufferData <$> readEnableDelayed <*> isUnderflow <*> fifoData
-  readEnableDelayed = E.register clkRead noResetRead enableGen False readEnable
   readEnable = not <$> fill
 
   selectAck :: Maybe EbAdjustment -> Ack -> Ack -> Ack
@@ -217,7 +201,7 @@ xilinxElasticBuffer clkRead clkWrite adjustment wdata =
   (fillAck, fill) =
     E.mooreB
       clkRead
-      noResetRead
+      rstRead
       enableGen
       goActState
       goActOutput
@@ -235,11 +219,10 @@ xilinxElasticBuffer clkRead clkWrite adjustment wdata =
   goActOutput (Just _) = (Ack False, True)
 
   -- Drain logic (CDC based):
-  writeData = mux drain (pure Nothing) (Just <$> wdata)
   (drainAckWrite, drain) =
-    E.mooreB clkWrite noResetWrite enableGen goActState goActOutput Nothing maybeDrainCmd
+    E.mooreB clkWrite rstWrite enableGen goActState goActOutput Nothing maybeDrainCmd
   (drainAck, maybeDrainCmd) =
-    safeXpmCdcHandshake
+    safeHandshake @vendor
       clkRead
       E.noReset
       clkWrite
@@ -247,256 +230,302 @@ xilinxElasticBuffer clkRead clkWrite adjustment wdata =
       (maybe Nothing toDrainMaybe <$> adjustment)
       drainAckWrite
 
-{-# OPAQUE xilinxElasticBufferWb #-}
-
-{- | Wishbone wrapper around 'xilinxElasticBuffer' that exposes control and monitoring
-via memory-mapped registers using the clash-protocols-memmap infrastructure.
-
-This component allows software control of the elastic buffer's buffer occupancies and
-provides monitoring capabilities. The primary use case is to enable a CPU to perform
-buffer initialization during the system startup phase.
-
-The registers provided are:
-1. Command Register (Write-Only): Adding or removing singular frames from the buffer.
-2. Data Count Register (Read-Only): Current fill level of the buffer.
-3. Underflow Register (Read-Write): Sticky flag indicating if an underflow has occurred.
-   Flag can be cleared by writing false to this register.
-4. Overflow Register (Read-Write): Sticky flag indicating if an overflow has occurred.
-   Flag can be cleared by writing false to this register.
-5. Stable Register (Write-Only): Software can set this flag to indicate that the buffer
-   is stable.
--}
-xilinxElasticBufferWb ::
-  forall n readDom writeDom addrW a.
+elasticBufferControl ::
+  forall n readDom writeDom addrW a vendor.
   ( HasCallStack
   , HasSynchronousReset readDom
   , KnownDomain readDom
   , KnownDomain writeDom
   , NFDataX a
   , KnownNat n
-  , 4 <= n
-  , n <= 17
+  , n <= 32
   , KnownNat addrW
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidPulse vendor Bool writeDom readDom
+  , Cdc.ValidHandshake vendor (Unsigned 32) readDom writeDom
   , ?byteOrder :: ByteOrder
   ) =>
   Clock readDom ->
   Reset readDom ->
-  SNat n ->
   -- | Local counter
   Signal readDom (Unsigned 64) ->
   Clock writeDom ->
+  Reset writeDom ->
   Signal writeDom a ->
   Circuit
     (BitboneMm readDom addrW)
-    ( CSignal readDom (RelDataCount n)
-    , CSignal readDom Underflow
-    , CSignal readDom Overflow
-    , CSignal readDom (ElasticBufferData a)
-    )
-xilinxElasticBufferWb clkRead rstRead SNat localCounter clkWrite wdata =
-  withClockResetEnable clkRead rstRead enableGen $ circuit $ \wb -> do
-    [ wbAdjustmentAsync
-      , wbAdjustmentWait
-      , wbDataCount
-      , wbUnderflow
-      , wbOverflow
-      , wbLocalCounterUnderflow
-      , wbLocalCounterOverflow
-      , wbClearStatusRegisters
-      , wbAutoCenterReset
-      , wbAutoCenterEnable
-      , wbAutoCenterMargin
-      , wbAutoCenterIsIdle
-      , wbAutoCenterTotalAdjustments
-      , wbMinDataCountSeen
-      , wbMaxDataCountSeen
-      ] <-
-      deviceWbI (deviceConfig "ElasticBuffer") -< wb
-
-    (_ebAdjustmentAsync, ebAdjustmentAsyncDfActivity) <-
-      registerWbDfI
-        ( registerConfig
-            "adjustment_async"
-            "Submit an adjustment. Will stall if an adjustment is still in progress."
-        )
-          { access = WriteOnly
-          }
-        (0 :: EbAdjustment)
-        -< (wbAdjustmentAsync, Fwd (pure Nothing))
-
-    (_ebAdjustmentWait, ebAdjustmentWaitDfActivity) <-
-      registerWbDfI
-        (registerConfig "adjustment_wait" "Wait until ready to (immediately) accept a new adjustment")
-          { access = WriteOnly
-          }
-        ()
-        -< (wbAdjustmentWait, Fwd (pure Nothing))
-
-    ebAdjustmentDf0 <- applyC (fmap busActivityWrite) id -< ebAdjustmentAsyncDfActivity
-
-    -- [Note Skid Buffer]
-    --
-    -- By putting a skid buffer here, we ensure that we can immediately accept a new adjustment
-    -- when writing to `adjustment_go`. We then use the 'ready' signal from the skid buffer to
-    -- implement the 'adjustment_wait' register.
-    (ebAdjustmentDf1, Fwd ebReady) <- skid -< ebAdjustmentDf0
-    ackWhen ebReady -< ebAdjustmentWaitDfActivity
-
-    -- Auto-centering state machine
-    (_autoCenterReset, Fwd autoCenterResetActivity) <-
-      registerWbI
-        ( registerConfig
-            "auto_center_reset_unchecked"
-            "Clear total adjustments. You must disable the state machine and wait for it to be idle before resetting it. After resetting, you must also wait for the state machine to become 'idle' again to make sure the registers are cleared."
-        )
-          { access = WriteOnly
-          }
-        ()
-        -< (wbAutoCenterReset, Fwd (pure Nothing))
-
-    (Fwd autoCenterEnable, _autoCenterEnableActivity) <-
-      registerWbI
-        (registerConfig "auto_center_enable" "Enable auto-centering state machine")
-          { access = ReadWrite
-          }
-        False
-        -< (wbAutoCenterEnable, Fwd (pure Nothing))
-
-    (Fwd autoCenterMargin, _autoCenterMarginActivity) <-
-      registerWbI
-        (registerConfig "auto_center_margin" "Margin for auto-centering")
-          { access = ReadWrite
-          }
-        (2 :: Unsigned 16)
-        -< (wbAutoCenterMargin, Fwd (pure Nothing))
-
-    registerWbI_
-      (registerConfig "auto_center_is_idle" "Whether the auto-centering state machine is idle")
-        { access = ReadOnly
-        }
-      False
-      -< (wbAutoCenterIsIdle, Fwd (Just <$> autoCenterIsIdle))
-
-    registerWbI_
-      ( registerConfig
-          "auto_center_total_adjustments"
-          "Total adjustments applied by the auto-centering state machine"
-      )
-        { access = ReadOnly
-        }
-      (0 :: Signed 32)
-      -< (wbAutoCenterTotalAdjustments, Fwd (Just <$> autoCenterTotalAdjustments))
-
+    (DcFifoIO n readDom writeDom a, CSignal readDom (RelDataCount n))
+elasticBufferControl clkRead rstRead localCounter clkWrite rstWrite wdata =
+  Circuit go
+ where
+  go (wbFwd, (dcFifoOut, _)) =
     let
-      autoCenterReset = unsafeFromActiveHigh (isJust . busActivityWrite <$> autoCenterResetActivity)
+      fn = toSignals goC
+      (wbBwd, dcFifoIn) = fn (wbFwd, dcFifoOut)
+     in
+      (wbBwd, (dcFifoIn, relDataCount))
+   where
+    relDataCount =
+      -- Note that this is chosen to work for 'RelDataCount' either being
+      -- set to 'Signed' with 'targetDataCount' equals 0 or set to
+      -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
+      -- This way, the representation can be easily switched without
+      -- introducing major code changes.
+      (+ targetDataCount)
+        . bitCoerce
+        . (+ (-1 - shiftR maxBound 1))
+        <$> dcFifoOut.dataCount
 
-      (dataCount, underflow, overflow0, readData, adjustmentAck) =
-        xilinxElasticBuffer @n clkRead clkWrite ebAdjustmentSig wdata
+    goC :: Circuit (BitboneMm readDom addrW) (DcFifoIO n readDom writeDom a)
+    goC =
+      withClockResetEnable clkRead rstRead enableGen $ circuit $ \wb -> do
+        [ wbAdjustmentAsync
+          , wbAdjustmentWait
+          , wbDataCount
+          , wbUnderflow
+          , wbOverflow
+          , wbLocalCounterUnderflow
+          , wbLocalCounterOverflow
+          , wbClearStatusRegisters
+          , wbAutoCenterReset
+          , wbAutoCenterEnable
+          , wbAutoCenterMargin
+          , wbAutoCenterIsIdle
+          , wbAutoCenterTotalAdjustments
+          , wbMinDataCountSeen
+          , wbMaxDataCountSeen
+          ] <-
+          deviceWbI (deviceConfig "ElasticBuffer") -< wb
 
-    (autoCenterAdjustmentDf, Fwd autoCenterTotalAdjustments, Fwd autoCenterIsIdle) <-
-      autoCenter
-        (autoCenterReset `E.orReset` rstRead)
-        (toEnable autoCenterEnable)
-        autoCenterMargin
-        dataCount
-        -< ()
+        (_ebAdjustmentAsync, ebAdjustmentAsyncDfActivity) <-
+          registerWbDfI @_ @_ @4
+            ( registerConfig
+                "adjustment_async"
+                "Submit an adjustment. Will stall if an adjustment is still in progress."
+            )
+              { access = WriteOnly
+              }
+            (0 :: EbAdjustment)
+            -< (wbAdjustmentAsync, Fwd (pure Nothing))
 
-    -- Multiplex manual and auto-center adjustments using round-robin collection
-    ebAdjustmentDfMuxed <-
-      roundrobinCollect @2 Parallel -< [ebAdjustmentDf1, autoCenterAdjustmentDf]
+        (_ebAdjustmentWait, ebAdjustmentWaitDfActivity) <-
+          registerWbDfI
+            ( registerConfig
+                "adjustment_wait"
+                "Wait until ready to (immediately) accept a new adjustment"
+            )
+              { access = WriteOnly
+              }
+            ()
+            -< (wbAdjustmentWait, Fwd (pure Nothing))
 
-    Fwd ebAdjustmentSig <- unsafeFromDf -< (ebAdjustmentDfMuxed, Fwd adjustmentAck)
+        ebAdjustmentDf0 <- applyC (fmap busActivityWrite) id -< ebAdjustmentAsyncDfActivity
 
-    -- Synchronize overflow pulse from write domain to read domain
-    let overflow1 = xpmCdcPulse clkWrite clkRead overflow0
+        -- [Note Skid Buffer]
+        --
+        -- By putting a skid buffer here, we ensure that we can immediately accept a new adjustment
+        -- when writing to `adjustment_go`. We then use the 'ready' signal from the skid buffer to
+        -- implement the 'adjustment_wait' register.
+        (ebAdjustmentDf1, Fwd ebReady) <- skid -< ebAdjustmentDf0
+        ackWhen ebReady -< ebAdjustmentWaitDfActivity
 
-    let
-      isFirstRising :: Signal readDom Bool -> Signal readDom Bool
-      isFirstRising = E.isRising clkRead flagsReset enableGen False . stickyE clkRead flagsReset
+        -- Auto-centering state machine
+        (_autoCenterReset, Fwd autoCenterResetActivity) <-
+          registerWbI
+            ( registerConfig
+                "auto_center_reset_unchecked"
+                "Clear total adjustments. You must disable the state machine and wait for it to be idle before resetting it. After resetting, you must also wait for the state machine to become 'idle' again to make sure the registers are cleared."
+            )
+              { access = WriteOnly
+              }
+            ()
+            -< (wbAutoCenterReset, Fwd (pure Nothing))
 
-      flagsReset :: Reset readDom
-      flagsReset = E.orReset rstRead (unsafeFromActiveHigh (clearStatusRegisters .== Just (BusWrite True)))
+        (Fwd autoCenterEnable, _autoCenterEnableActivity) <-
+          registerWbI
+            (registerConfig "auto_center_enable" "Enable auto-centering state machine")
+              { access = ReadWrite
+              }
+            False
+            -< (wbAutoCenterEnable, Fwd (pure Nothing))
 
-    localCounterUnderflow <- shutter (isFirstRising underflow) -< Fwd localCounter
-    localCounterOverflow <- shutter (isFirstRising overflow1) -< Fwd localCounter
+        (Fwd autoCenterMargin, _autoCenterMarginActivity) <-
+          registerWbI
+            (registerConfig "auto_center_margin" "Margin for auto-centering")
+              { access = ReadWrite
+              }
+            (2 :: Unsigned 16)
+            -< (wbAutoCenterMargin, Fwd (pure Nothing))
 
-    let
-      minDataCountSeen1 :: Signal readDom (RelDataCount n)
-      minDataCountSeen1 = min <$> minDataCountSeen0 <*> dataCount
+        registerWbI_
+          (registerConfig "auto_center_is_idle" "Whether the auto-centering state machine is idle")
+            { access = ReadOnly
+            }
+          False
+          -< (wbAutoCenterIsIdle, Fwd (Just <$> autoCenterIsIdle))
 
-      maxDataCountSeen1 :: Signal readDom (RelDataCount n)
-      maxDataCountSeen1 = max <$> maxDataCountSeen0 <*> dataCount
+        registerWbI_
+          ( registerConfig
+              "auto_center_total_adjustments"
+              "Total adjustments applied by the auto-centering state machine"
+          )
+            { access = ReadOnly
+            }
+          (0 :: Signed 32)
+          -< (wbAutoCenterTotalAdjustments, Fwd (Just <$> autoCenterTotalAdjustments))
 
-    (dataCountOut, _dataCountActivity) <-
-      registerWbI
-        (registerConfig "data_count" ""){access = ReadOnly}
-        0
-        -< (wbDataCount, Fwd (Just <$> dataCount))
+        let
+          autoCenterReset =
+            unsafeFromActiveHigh (isJust . busActivityWrite <$> autoCenterResetActivity)
 
-    -- Status registers
-    (underflowOut, _underflowActivity) <-
-      registerWb
-        clkRead
-        flagsReset
-        (registerConfig "underflow" "Sticky underflow flag; can be cleared by writing false")
-          { access = ReadOnly
-          }
-        False
-        -< (wbUnderflow, Fwd (flip toMaybe True <$> underflow))
+        (autoCenterAdjustmentDf, Fwd autoCenterTotalAdjustments, Fwd autoCenterIsIdle) <-
+          autoCenter
+            (autoCenterReset `E.orReset` rstRead)
+            (toEnable autoCenterEnable)
+            autoCenterMargin
+            relDataCount
+            -< ()
 
-    registerWb_
-      clkRead
-      flagsReset
-      (registerConfig "underflow_timestamp" "Local counter value when first underflow occurred")
-        { access = ReadOnly
-        }
-      0
-      -< (wbLocalCounterUnderflow, localCounterUnderflow)
+        -- Multiplex manual and auto-center adjustments using round-robin collection
+        ebAdjustmentDfMuxed <-
+          roundrobinCollect @2 Parallel -< [ebAdjustmentDf1, autoCenterAdjustmentDf]
 
-    (overflowOut, _overflowActivity) <-
-      registerWb
-        clkRead
-        flagsReset
-        (registerConfig "overflow" "Sticky overflow flag; can be cleared by writing false")
-          { access = ReadOnly
-          }
-        False
-        -< (wbOverflow, Fwd (flip toMaybe True <$> overflow1))
+        let
+          (writeEnable, readEnable, adjustmentAck) =
+            elasticBufferAutoCenter @readDom @writeDom
+              clkRead
+              rstRead
+              clkWrite
+              rstWrite
+              ebAdjustmentSig
 
-    registerWb_
-      clkRead
-      flagsReset
-      (registerConfig "overflow_timestamp" "Local counter value when first overflow occurred")
-        { access = ReadOnly
-        }
-      0
-      -< (wbLocalCounterOverflow, localCounterOverflow)
+          writeData = mux writeEnable (pure Nothing) (Just <$> wdata)
 
-    (Fwd minDataCountSeen0, _i0) <-
-      registerWb
-        clkRead
-        flagsReset
-        (registerConfig "min_data_count_seen" ""){access = ReadOnly}
-        maxBound
-        -< (wbMinDataCountSeen, Fwd (Just <$> minDataCountSeen1))
+        Fwd ebAdjustmentSig <- unsafeFromDf -< (ebAdjustmentDfMuxed, Fwd adjustmentAck)
 
-    (Fwd maxDataCountSeen0, _i1) <-
-      registerWb
-        clkRead
-        flagsReset
-        (registerConfig "max_data_count_seen" ""){access = ReadOnly}
-        minBound
-        -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountSeen1))
+        -- Synchronize overflow pulse from write domain to read domain
+        let overflow1 = Cdc.pulse @vendor clkWrite clkRead dcFifoOut.overflow
 
-    (_cf, Fwd clearStatusRegisters) <-
-      registerWbI
-        ( registerConfig
-            "clear_status_registers"
-            "Clear the underflow and overflow sticky flags, their respective timestamps and the min/max data count seen registers."
-        )
-          { access = WriteOnly
-          }
-        False
-        -< (wbClearStatusRegisters, Fwd (pure Nothing))
+        let
+          isFirstRising :: Signal readDom Bool -> Signal readDom Bool
+          isFirstRising = E.isRising clkRead flagsReset enableGen False . stickyE clkRead flagsReset
 
-    idC -< (dataCountOut, underflowOut, overflowOut, Fwd readData)
+          flagsReset :: Reset readDom
+          flagsReset =
+            E.orReset rstRead (unsafeFromActiveHigh (clearStatusRegisters .== Just (BusWrite True)))
+
+        localCounterUnderflow <- shutter (isFirstRising dcFifoOut.underflow) -< Fwd localCounter
+        localCounterOverflow <- shutter (isFirstRising overflow1) -< Fwd localCounter
+
+        let
+          minDataCountSeen1 :: Signal readDom (RelDataCount n)
+          minDataCountSeen1 = min <$> minDataCountSeen0 <*> relDataCount
+
+          maxDataCountSeen1 :: Signal readDom (RelDataCount n)
+          maxDataCountSeen1 = max <$> maxDataCountSeen0 <*> relDataCount
+
+        registerWbI_
+          (registerConfig "data_count" ""){access = ReadOnly}
+          0
+          -< (wbDataCount, Fwd (Just <$> relDataCount))
+
+        -- Status registers
+        registerWb_
+          clkRead
+          flagsReset
+          (registerConfig "underflow" "Sticky underflow flag; can be cleared by writing false")
+            { access = ReadOnly
+            }
+          False
+          -< (wbUnderflow, Fwd (flip toMaybe True <$> dcFifoOut.underflow))
+
+        registerWb_
+          clkRead
+          flagsReset
+          (registerConfig "underflow_timestamp" "Local counter value when first underflow occurred")
+            { access = ReadOnly
+            }
+          0
+          -< (wbLocalCounterUnderflow, localCounterUnderflow)
+
+        registerWb_
+          clkRead
+          flagsReset
+          (registerConfig "overflow" "Sticky overflow flag; can be cleared by writing false")
+            { access = ReadOnly
+            }
+          False
+          -< (wbOverflow, Fwd (flip toMaybe True <$> overflow1))
+
+        registerWb_
+          clkRead
+          flagsReset
+          (registerConfig "overflow_timestamp" "Local counter value when first overflow occurred")
+            { access = ReadOnly
+            }
+          0
+          -< (wbLocalCounterOverflow, localCounterOverflow)
+
+        (Fwd minDataCountSeen0, _i0) <-
+          registerWb
+            clkRead
+            flagsReset
+            (registerConfig "min_data_count_seen" ""){access = ReadOnly}
+            maxBound
+            -< (wbMinDataCountSeen, Fwd (Just <$> minDataCountSeen1))
+
+        (Fwd maxDataCountSeen0, _i1) <-
+          registerWb
+            clkRead
+            flagsReset
+            (registerConfig "max_data_count_seen" ""){access = ReadOnly}
+            minBound
+            -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountSeen1))
+
+        (_cf, Fwd clearStatusRegisters) <-
+          registerWbI
+            ( registerConfig
+                "clear_status_registers"
+                "Clear the underflow and overflow sticky flags, their respective timestamps and the min/max data count seen registers."
+            )
+              { access = WriteOnly
+              }
+            False
+            -< (wbClearStatusRegisters, Fwd (pure Nothing))
+
+        let
+          dcFifoIn = DcFifoInput{writeData = writeData, readEnable = readEnable}
+
+        applyC (const dcFifoIn) (const ()) -< ()
+
+joinEbAndControl ::
+  forall n readDom writeDom addrW a vendor.
+  ( HasCallStack
+  , HasSynchronousReset readDom
+  , KnownDomain readDom
+  , KnownDomain writeDom
+  , KnownNat n
+  , n <= 32
+  , NFDataX a
+  , KnownNat addrW
+  , Cdc.HiddenVendor vendor
+  , Cdc.ValidPulse vendor Bool writeDom readDom
+  , Cdc.ValidHandshake vendor (Unsigned 32) readDom writeDom
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Circuit
+    (BitboneMm readDom addrW)
+    (DcFifoIO n readDom writeDom a, CSignal readDom (RelDataCount n)) ->
+  DcFifoC n readDom writeDom a ->
+  Circuit
+    (BitboneMm readDom addrW)
+    (DcFifoOutput n readDom writeDom a, CSignal readDom (RelDataCount n))
+joinEbAndControl controlC fifoC = Circuit go
+ where
+  Circuit controlFn = controlC
+  Circuit fifoFn = fifoC
+
+  go (bitboneFwd, _) = (bitboneBwd, (dcFifoOut, relDataCount))
+   where
+    (bitboneBwd, (dcFifoIn, relDataCount)) = controlFn (bitboneFwd, (dcFifoOut, ()))
+    (dcFifoOut, _) = fifoFn (dcFifoIn, ())
