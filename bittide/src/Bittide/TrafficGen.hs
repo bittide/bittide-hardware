@@ -580,6 +580,22 @@ trafficGen rst localCounter settings armPulse rxStream creditRx portGrant credit
           slotCycle = s.trPeriodBase + resize (cfg.tgOffsets !! s.trBurstIdx)
         TrRecv{trSeqNr, trWordIdx} -> checkWord s trSeqNr trWordIdx
         TrGrant{trSeqDone, trPulseIdx}
+          -- A new burst can arrive while the credit train still runs (the
+          -- decode flow's credits stall it on the shared reverse link). One
+          -- pulse suffices — the sender deduplicates by word value — so
+          -- accept the header rather than lose the burst.
+          | isTgHeaderWord rx && trPulseIdx >= 1 ->
+              let
+                seqNr = tgWordSeq rx
+                seqOk = seqNr == s.trExpectedSeq
+               in
+                ( s
+                    { trFsm = TrRecv{trSeqNr = seqNr, trWordIdx = 0}
+                    , trExpectedSeq = seqNr + 1
+                    , trErrors = if seqOk then s.trErrors else s.trErrors + 1
+                    }
+                , rxIdleOut s
+                )
           | crdBusy -> (s, (rxIdleOut s){troCreditWord = Just w})
           | lastPulse -> (s{trFsm = TrIdle}, (rxIdleOut s){troCreditWord = Just w})
           | otherwise ->
