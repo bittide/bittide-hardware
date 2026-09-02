@@ -32,19 +32,7 @@
           inherit pkgs;
         };
 
-        hls-overlay = final: prev: {
-          haskell-language-server =
-            (prev.haskell-language-server.override { supportedGhcVersions = [ "910" ]; })
-            .overrideDerivation (old: {
-              src = pkgs.fetchFromGitHub {
-                owner = "haskell";
-                repo = "haskell-language-server";
-                rev = "88ccebe0649f7c41be97d49a986bbfd4185982f6";
-                sha256 = "sha256-hR4MtfespgqAEa/vWXNsIOcEcLQNIVaEAHqZJbTaV/g=";
-              };
-            });
-        };
-        overlays = [ (import rust-overlay) hls-overlay ];
+        overlays = [ (import rust-overlay) ];
 
         pkgs = import nixpkgs {
           inherit system overlays;
@@ -76,8 +64,10 @@
             pkgs.gcc
             pkgs.llvmPackages.clang-unwrapped
 
-            pkgs.haskell-language-server
-            pkgs.haskell.compiler.ghc910
+            # TODO: Re-add haskell-language-server once it supports GHC 9.14.
+            # nixpkgs' HLS 2.13 has only preliminary support and its dependency
+            # closure does not build against GHC 9.14 yet.
+            pkgs.haskell.compiler.ghc914
             pkgs.pkg-config
             pkgs.python3
             pkgs.python3Packages.matplotlib
