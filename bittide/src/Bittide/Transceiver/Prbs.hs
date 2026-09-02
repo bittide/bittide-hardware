@@ -108,7 +108,10 @@ checker clk rst ena Config = mealy clk rst ena go (maxBound, maxBound)
 {-# OPAQUE checker #-}
 
 bitStep ::
-  ( BitSize a ~ ((1 + n) + i)
+  -- Stated in the same shape as the constraint on 'slice'. From GHC 9.12 on,
+  -- @ghc-typelits-natnormalise@ no longer unifies the two when this is
+  -- written as @(1 + n) + i@.
+  ( BitSize a ~ ((n + 1) + i)
   , BitPack a
   , KnownNat n
   , KnownNat i
