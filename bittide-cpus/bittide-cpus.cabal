@@ -38,7 +38,7 @@ library
     VexRiscv_Riscv32imc3
 
   build-depends:
-    base ^>=4.20.0.0,
+    base >=4.20.0.0 && <4.23,
     clash-prelude,
     clash-vexriscv,
 

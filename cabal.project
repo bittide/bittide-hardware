@@ -68,6 +68,12 @@ source-repository-package
     clash-prelude-hedgehog
     clash-lib-hedgehog
 
+-- TODO: Switch to released package once a version with GHC 9.14 support is on Hackage
+source-repository-package
+  type: git
+  location: https://github.com/cchalmers/circuit-notation.git
+  tag: c1a3be09a62710491e13c159cd927271b8211a93
+
 -- TODO: Switch to released package once it is on Hackage
 source-repository-package
   type: git
@@ -94,3 +100,22 @@ source-repository-package
 --
 --   ghcid -c repld
 multi-repl: True
+
+-- GHC 9.14 ships base 4.22, containers 0.8, time 1.15 and template-haskell
+-- 2.24, which these packages do not yet admit in their bounds. They build
+-- fine regardless.
+allow-newer:
+  clash-protocols:circuit-notation,
+  clash-protocols:template-haskell,
+  clash-protocols-base:circuit-notation,
+  clash-protocols-base:ghc,
+  clash-protocols-base:template-haskell,
+  clash-shockwaves:containers,
+  clash-shockwaves:time,
+  clash-vexriscv:base,
+  hedgehog:lifted-async,
+  hedgehog:template-haskell,
+  hedgehog:time,
+  ordered-containers:containers,
+  string-random:containers,
+  strict-tuple:base,
