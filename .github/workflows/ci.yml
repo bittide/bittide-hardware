@@ -65,6 +65,9 @@ concurrency:
  group: ${{ github.head_ref || github.run_id }}
  cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   cachix:
     name: Populate Cachix cache
@@ -76,7 +79,7 @@ jobs:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
       options: --memory=15g
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
     - name: Generate flake inputs list
       run: nix flake --extra-experimental-features "nix-command flakes" archive --json | jq -r '.path,(.inputs|to_entries[].value.path)' > flake_inputs
@@ -105,7 +108,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache clean
       - run: cache pull cabal
@@ -167,7 +170,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set -Werror when _not_ in debug mode
         run: |
@@ -214,6 +217,11 @@ jobs:
         target: ${{ fromJson(needs.bittide-instances-matrices.outputs.clock-report) }}
       fail-fast: false
 
+    permissions:
+      contents: read
+      # Needed for `gh run download`
+      actions: read
+
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
       options: --memory=15g
@@ -225,7 +233,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache pull cabal
       - run: cache pull build
@@ -248,7 +256,7 @@ jobs:
           cabal run --offline bittide-instances:samples-to multi-report ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data/hitl
 
       - name: Upload report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: ${{ matrix.target.top }}-${{ matrix.target.iteration }}-clock-report
@@ -257,7 +265,7 @@ jobs:
           retention-days: 14
 
       - name: Upload sources
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: ${{ matrix.target.top }}-${{ matrix.target.iteration }}-clock-report-sources
@@ -279,7 +287,7 @@ jobs:
     outputs:
       run_tests: ${{ steps.check.outputs.run_tests }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - id: check
         name: Check for non-empty debug.json
         run: |
@@ -348,7 +356,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache pull cabal
       - run: cache pull build
@@ -380,7 +388,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache pull cargo
       - run: cache pull build
@@ -406,7 +414,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache pull cargo
       - run: cache pull build
@@ -434,7 +442,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache pull cabal
       - run: cache pull cargo
@@ -463,7 +471,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache pull cargo
       - run: cache pull build
@@ -476,7 +484,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Pick JSON file
         run: |
@@ -550,7 +558,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Determine whether HDL generation should run
         id: check_hdl_gen_status
@@ -592,7 +600,7 @@ jobs:
 
       - name: Archive build artifacts (if anything failed)
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: _build-${{ matrix.target.top }}-failure-hdl
           path: |
@@ -623,7 +631,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Pull HDL artifacts (clash cache)
         run: cache pull clash --prefix="${{ matrix.target.top }}"
@@ -691,7 +699,7 @@ jobs:
 
       - name: Archive build artifacts (if anything failed)
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: _build-${{ matrix.target.top }}-failure-vivado
           path: |
@@ -718,13 +726,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Get build artifacts from local server
         run: cache pull build-post-synth --prefix="${{ matrix.target.top }}"
 
       - name: Archive build artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() }}
         with:
           name: _build-${{ matrix.target.top }}
@@ -772,7 +780,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - run: cache pull cabal
       - run: cache pull cargo
@@ -793,7 +801,7 @@ jobs:
 
       - name: Archive HITL data
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.target.top }}-${{ matrix.target.iteration }}-hitl-data
           path: |
@@ -813,7 +821,7 @@ jobs:
       options: --memory=15g
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Build mdBook
         run: |
@@ -821,7 +829,7 @@ jobs:
           mdbook build
 
       - name: Upload book artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: _build/book
 
@@ -834,7 +842,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Post failure notification to Slack
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
         with:
           method: chat.postMessage
           token: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -852,7 +860,7 @@ jobs:
     runs-on: ubuntu-slim
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Check if 'debug.json' is present
         run: |
@@ -886,8 +894,8 @@ jobs:
       ]
     runs-on: ubuntu-slim
     steps:
-      - uses: actions/checkout@v6
-      - uses: clash-lang/all-jobs-ok@v2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: clash-lang/all-jobs-ok@64cacd2eb5462fee145a7f5fec5e805efca27937 # v2.0.1
         with:
           needs: ${{ toJSON(needs) }}
           exclude: |
