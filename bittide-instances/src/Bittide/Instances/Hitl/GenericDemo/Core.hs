@@ -37,6 +37,7 @@ A handshake pipeline for two links looks as follows:
 >                                       └───────────┘    └───────────┘    └───────────┘    └───────────┘
 -}
 module Bittide.Instances.Hitl.GenericDemo.Core (
+  CcRemBusWidth,
   InternalCpuCount,
   NmuExternalBusses,
   NmuInternalBusses,
@@ -58,7 +59,11 @@ import Protocols
 
 import Bittide.CaptureUgn (captureUgns, sendUgn)
 import Bittide.ClockControl (SpeedChange (NoChange))
-import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.ClockControl.CallistoSw (
+  SwcccInternalBusses,
+  SwcccRemBusWidth,
+  callistoSwClockControlC,
+ )
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
 import Bittide.Extra.Maybe (toMaybe)
@@ -125,6 +130,14 @@ type PeripheralsPerLink = 3
 type NmuExternalBusses userCoreBusses = 4 + userCoreBusses + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth userCoreBusses =
   RemainingBusWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses)
+
+{- Clock control CPU busses, on top of 'SwcccInternalBusses':
+    - UART
+    - Sample memory
+    - Si539x SPI (shared with the boot CPU)
+-}
+type CcExternalBusses = 3
+type CcRemBusWidth = SwcccRemBusWidth CcExternalBusses
 
 {- | Post-handshake stage provided by the demo. Given the Bittide-domain
 clock/reset/enable, a free-running local counter and the FPGA DNA, returns
@@ -249,6 +262,7 @@ core ::
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: BitboneMm Bittide (NmuRemBusWidth userCoreBusses)
+    , "CC_SI539X_SPI" ::: BitboneMm Bittide CcRemBusWidth
     )
 core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
   $ circuit
@@ -341,6 +355,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
       , Fwd swCcOut0
       , [ ccUartBus
           , ccSampleMemoryBus
+          , ccSpiBus
           ]
       ) <-
       withBittideClockResetEnable
@@ -386,6 +401,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
+         , ccSpiBus
          )
  where
   withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
