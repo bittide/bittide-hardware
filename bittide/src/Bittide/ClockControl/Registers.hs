@@ -54,11 +54,14 @@ defCcConfLinks =
 
 {- | A wishbone accessible clock control interface.
 This interface receives the link mask and 'RelDataCount's from all links.
-Furthermore it produces FINC/FDEC pulses for the clock control boards.
+Furthermore it outputs the speed changes written to its @change_speed@ register.
 
 __NB__: the `Maybe SpeedChange` part of the output is only asserted for a single cycle.
 This must be stickied or otherwise held for the minimum pulse width specified by the
 clock board this register is controlling.
+
+__NB__: the @change_speed@ register is deprecated. The clock control CPU sends speed
+changes to the clock chip over SPI instead.
 -}
 clockControlWb ::
   forall dom addrW nLinks m.
@@ -145,7 +148,13 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
   linkMaskPopCountConfig = (registerConfig "link_mask_pop_count" ""){access = ReadOnly}
   linkMaskRevConfig = (registerConfig "link_mask_rev" ""){access = ReadOnly}
   linksOkConfig = (registerConfig "links_ok" ""){access = ReadOnly}
-  changeSpeedConfig = (registerConfig "change_speed" ""){access = WriteOnly}
+  changeSpeedConfig =
+    ( registerConfig
+        "change_speed"
+        "Deprecated: speed changes are sent to the clock chip over SPI instead."
+    )
+      { access = WriteOnly
+      }
   linksStableConfig = registerConfig "links_stable" ""
   linksSettledConfig = registerConfig "links_settled" ""
   minDataCountsSeenConfig = (registerConfig "min_data_counts_seen" ""){access = ReadOnly}
