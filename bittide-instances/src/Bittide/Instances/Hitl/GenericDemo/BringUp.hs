@@ -20,7 +20,6 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
 import Bittide.BootPe (BootPeBusses, bootPe)
-import Bittide.ClockControl
 import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Df (asciiDebugMux)
 import Bittide.Instances.Domains (
@@ -112,7 +111,6 @@ bringUp ::
     ( Spi Basic125
     , Sync Bittide Basic125
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
 bringUp bufferDepth mkUserCore refClk refRst =
   withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -> do
@@ -165,8 +163,7 @@ bringUp bufferDepth mkUserCore refClk refRst =
         Transceiver.defConfig
         -< (transceiverWb, gths, Fwd (bundle coreToTransceivers))
 
-    ( Fwd speedChanges
-      , Fwd coreToTransceivers
+    ( Fwd coreToTransceivers
       , sync
       , uartBytesBittide
       , muTransceiverWbBittide
@@ -199,12 +196,4 @@ bringUp bufferDepth mkUserCore refClk refRst =
       linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
       linksSuitableForCc = fmap pack (bundle tOutputs.txDataInitDones)
 
-      frequencyAdjustments :: Signal Bittide (FINC, FDEC)
-      frequencyAdjustments =
-        delay bittideClk enableGen minBound
-          $ speedChangeToFincFdec
-            bittideClk
-            bittideRst
-            speedChanges
-
-    idC -< (spi, sync, uartTx, Fwd frequencyAdjustments)
+    idC -< (spi, sync, uartTx)
