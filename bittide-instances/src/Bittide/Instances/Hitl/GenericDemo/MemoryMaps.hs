@@ -55,6 +55,5 @@ extractMemoryMaps bufferDepth mkUserCore = (bootMm, managementUnitMm, clockContr
         ( pure (Spi.S2M low)
         , pure low
         , ()
-        , ()
         )
       )

@@ -58,7 +58,6 @@ import Clash.Prelude (
 import Protocols
 
 import Bittide.CaptureUgn (captureUgns, sendUgn)
-import Bittide.ClockControl (SpeedChange (NoChange))
 import Bittide.ClockControl.CallistoSw (
   SwcccInternalBusses,
   SwcccRemBusWidth,
@@ -257,8 +256,7 @@ core ::
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (BitVector 64))
     )
-    ( CSignal Bittide SpeedChange
-    , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
+    ( "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: BitboneMm Bittide (NmuRemBusWidth userCoreBusses)
@@ -350,9 +348,10 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
            )
     -- Stop user core
 
-    -- Start clock control
+    -- Start clock control. Speed changes are sent to the clock chip over SPI
+    -- by the clock control CPU, so the 'SpeedChange' output is unused.
     ( sync
-      , Fwd swCcOut0
+      , _speedChange
       , [ ccUartBus
           , ccSampleMemoryBus
           , ccSpiBus
@@ -377,27 +376,10 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
       withBittideClockResetEnable
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-
-    let
-      swCcOut1 =
-        if clashSimulation
-          then
-            let
-              -- Should all clock control steps be run in simulation?
-              -- False means that clock control will always immediately be done.
-              simulateCc = False
-             in
-              if simulateCc
-                then swCcOut0
-                else pure NoChange
-          else swCcOut0
     -- Stop clock control
 
-    -- Use of `dflipflop` to add pipelining should be replaced by
-    -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
-      -< ( Fwd swCcOut1
-         , Fwd (unbundle txsOut)
+      -< ( Fwd (unbundle txsOut)
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus

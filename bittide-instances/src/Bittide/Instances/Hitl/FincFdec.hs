@@ -3,13 +3,13 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | A couple of tests testing clock board programming, and subsequently the
-FINC and FDEC pins.
+{- | A couple of tests testing clock board programming, and subsequently frequency
+increments and decrements over SPI.
 -}
 module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClock, HiddenReset, withClock, withClockResetEnable, withReset)
+import Clash.Prelude (withClockResetEnable)
 import Protocols
 
 import Clash.Annotations.TH (makeTopEntity)
@@ -17,18 +17,10 @@ import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Uart (ValidBaud)
 import Clash.Cores.Xilinx (withXilinx)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Protocols.MemoryMap (Access (WriteOnly), MemoryMap, Mm, getMMAny)
-import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (..),
-  deviceConfig,
-  deviceWbI,
-  registerConfig,
-  registerWbI,
- )
+import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
 import Protocols.Spi
 import VexRiscv
 
-import Bittide.ClockControl (FDEC, FINC, SpeedChange (..), speedChangeToFincFdec)
 import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
@@ -40,7 +32,7 @@ import Bittide.Hitl (
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup (allHwTargets)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.SharedTypes (BitboneMm, withLittleEndian)
+import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (timeWb, uartDf, uartInterfaceWb)
 
 import GHC.Stack (HasCallStack)
@@ -56,29 +48,6 @@ type Baud = 921_600
 
 baud :: SNat Baud
 baud = SNat
-
-{- | Memory mapped component to control the FINC and FDEC pins. Note that you still need to
-convert from 'SpeedChange' to the FINC/FDEC pins using 'speedChangeToFincFdec'.
--}
-hardwareSpeedChange ::
-  forall aw dom.
-  ( HasCallStack
-  , HiddenClock dom
-  , HiddenReset dom
-  , KnownNat aw
-  , 1 <= aw
-  , ?byteOrder :: ByteOrder
-  ) =>
-  Circuit (BitboneMm dom aw) (CSignal dom SpeedChange)
-hardwareSpeedChange = circuit $ \(mm, wb) -> do
-  [speedChangeBus] <- deviceWbI (deviceConfig "HardwareSpeedChange") -< (mm, wb)
-
-  (speedChange, _speedChangeActivity) <-
-    registerWbI speedChangeConfig NoChange -< (speedChangeBus, Fwd (pure Nothing))
-
-  idC -< speedChange
- where
-  speedChangeConfig = (registerConfig "speed_change" ""){access = WriteOnly}
 
 fincFdecPe ::
   forall free sky vendor.
@@ -103,10 +72,9 @@ fincFdecPe ::
     )
     ( "UART_TX" ::: CSignal free Bit
     , Spi free
-    , CSignal free SpeedChange
     )
 fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
-  [timeBus, uartBus, siBus, dcBus, speedChangeBus] <-
+  [timeBus, uartBus, siBus, dcBus] <-
     withClockResetEnable freeClk freeRst enableGen
       $ processingElement NoDumpVcd peConfig
       -< (mm, jtag)
@@ -125,9 +93,7 @@ fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
   let skyRst = convertReset freeClk skyClk (unsafeFromActiveLow spiDone)
   Fwd _domainDiff <- domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
 
-  speedChange <- withClock freeClk $ withReset freeRst $ hardwareSpeedChange -< speedChangeBus
-
-  idC -< (uartTx, spiOut, speedChange)
+  idC -< (uartTx, spiOut)
  where
   peConfig =
     PeConfig
@@ -154,14 +120,9 @@ fincFdecTests ::
         , "USB_UART_RXD" ::: Signal Basic125 Bit
         , -- SPI to clock board:
           "" ::: Signal Basic125 Spi.M2S
-        , -- Freq increase / freq decrease request to clock board
-          ""
-            ::: ( "FINC" ::: Signal Basic125 FINC
-                , "FDEC" ::: Signal Basic125 FDEC
-                )
         )
 fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
-  (jtagOut, uartTx, spiM2S, fincFdec)
+  (jtagOut, uartTx, spiM2S)
  where
   freeClk :: Clock Basic125
   freeRst :: Reset Basic125
@@ -177,12 +138,10 @@ fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
 
   testRst = unsafeFromActiveLow testStart `orReset` freeRst
 
-  ((_memoryMap, jtagOut), (uartTx, spiM2S, speedChange)) =
+  ((_memoryMap, jtagOut), (uartTx, spiM2S)) =
     toSignals
       (withXilinx $ withLittleEndian $ fincFdecPe freeClk testRst boardClk)
-      (((), jtagIn), ((), spiS2M, ()))
-
-  fincFdec = unbundle $ speedChangeToFincFdec freeClk testRst speedChange
+      (((), jtagIn), ((), spiS2M))
 
 memoryMap :: MemoryMap
 memoryMap =
@@ -203,7 +162,6 @@ tests =
         , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
-        , "si539x" </> "fincfdec.xdc"
         , "si539x" </> "spi.xdc"
         ]
     , externalHdl = []
