@@ -5,6 +5,7 @@ module Bittide.ClockControl.CallistoSw (
   callistoSwClockControlC,
   SwControlConfig (..),
   SwcccInternalBusses,
+  SwcccRemBusWidth,
 ) where
 
 import Clash.Prelude hiding (PeriodToCycles)

@@ -26,6 +26,7 @@ import Protocols.Spi (Spi)
 import VexRiscv
 
 import Bittide.BootPe (bootPe)
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
   HitlTestCase (..),
@@ -83,10 +84,15 @@ si539xConfigPe ::
     , Spi free
     )
 si539xConfigPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
-  (uartBytes, Fwd spiDone, spi, [dcBus]) <-
+  (uartBytes, siBus, [dcBus]) <-
     withClockResetEnable freeClk freeRst enableGen
       $ bootPe peConfig
       -< (mm, jtag)
+
+  (Fwd spiDone, spi) <-
+    withClockResetEnable freeClk freeRst enableGen
+      $ si539xSpiWb (SNat @(Microseconds 10))
+      -< siBus
 
   (_uartInBytes, uartTx) <-
     withClockResetEnable freeClk freeRst enableGen
