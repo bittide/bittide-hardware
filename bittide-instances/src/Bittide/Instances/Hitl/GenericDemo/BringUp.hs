@@ -21,6 +21,7 @@ import Protocols
 
 import Bittide.BootPe (BootPeBusses, bootPe)
 import Bittide.ClockControl
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Df (asciiDebugMux)
 import Bittide.Instances.Domains (
   Basic125,
@@ -126,11 +127,25 @@ bringUp bufferDepth mkUserCore refClk refRst =
         -< muTransceiverWbBittide
 
     -- Start boot PE
-    (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
+    (bootUartBytes, bootSpiWb, bootTransceiverWb) <-
       withRefClockResetEnable
         $ bootPe bootPeConfig
         -< (bootMm, bootJtag)
     -- Stop boot PE
+
+    -- Start Si539x SPI. The boot CPU uses it to configure the clock chip, after
+    -- which the clock control CPU uses it for frequency adjustments. The two
+    -- never use it at the same time: the Bittide domain (and therefore the
+    -- clock control CPU) only runs once the boot CPU finished configuring.
+    spiWb <- withRefClockResetEnable arbiterMm -< [bootSpiWb, ccSpiWb]
+    ccSpiWb <-
+      fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
+        -< ccSpiWbBittide
+    (_spiDone, spi) <-
+      withRefClockResetEnable
+        $ si539xSpiWb (SNat @(Microseconds 10))
+        -< spiWb
+    -- Stop Si539x SPI
 
     -- Start UART multiplexing
     uartTxBytes <-
@@ -155,6 +170,7 @@ bringUp bufferDepth mkUserCore refClk refRst =
       , sync
       , uartBytesBittide
       , muTransceiverWbBittide
+      , ccSpiWbBittide
       ) <-
       core
         bufferDepth
