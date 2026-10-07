@@ -59,7 +59,18 @@ impl Callisto {
 
     /// Clock correction strategy based on:
     /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
-    pub fn update<I>(self: &mut Callisto, cc: &ClockControl, eb_counters_iter: I) -> SpeedChange
+    ///
+    /// If `can_change_speed` is `false`, the returned value is always
+    /// [`SpeedChange::NoChange`]. Use this when a speed change cannot be applied
+    /// at the moment (e.g., because the clock chip is still busy processing the
+    /// previous one), so `accumulated_speed_requests` only counts requests that
+    /// were actually applied.
+    pub fn update<I>(
+        self: &mut Callisto,
+        cc: &ClockControl,
+        eb_counters_iter: I,
+        can_change_speed: bool,
+    ) -> SpeedChange
     where
         I: Iterator<Item = Option<i32>>,
     {
@@ -73,7 +84,9 @@ impl Callisto {
         let c_des = self.config.gain * (measured_sum as f32) + self.steady_state_target;
         let c_est = FSTEP * self.accumulated_speed_requests as f32;
 
-        let speed_request = if c_des < c_est {
+        let speed_request = if !can_change_speed {
+            SpeedChange::NoChange
+        } else if c_des < c_est {
             SpeedChange::SlowDown
         } else if c_des > c_est {
             SpeedChange::SpeedUp

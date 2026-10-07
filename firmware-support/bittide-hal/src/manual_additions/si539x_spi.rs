@@ -4,7 +4,7 @@
 use crate::{
     manual_additions::{timer::Duration, ConvertOptional},
     shared_devices::{Si539xSpi, Timer},
-    types::{Maybe::Nothing, RegisterOperation},
+    types::{Maybe::Nothing, RegisterOperation, SpeedChange},
 };
 use clash_bindings::bitvector::BitVector;
 use clash_macros::bitvector;
@@ -196,11 +196,22 @@ impl Si539xSpi {
     /// When it is doing a `WriteEntry` operation, it also waits on until
     /// `driverByte` is a `Just` while not looking at the value.
     pub fn write(&self, entry: ConfigEntry) {
-        self.set_register_operation(entry.into());
-        self.set_commit(true);
-        while self.commit() {
+        self.start_write(entry);
+        while self.is_busy() {
             continue;
         }
+    }
+
+    /// Start a write operation without waiting for it to finish. Use
+    /// [`Self::is_busy`] to check whether it has finished.
+    pub fn start_write(&self, entry: ConfigEntry) {
+        self.set_register_operation(entry.into());
+        self.set_commit(true);
+    }
+
+    /// Whether an operation is still in progress.
+    pub fn is_busy(&self) -> bool {
+        self.commit()
     }
 
     /// Perform a write operation and then confirm with a read operation.
@@ -249,11 +260,7 @@ impl Si539xSpi {
     /// 1 us of the Si5395.
     pub fn finc(&self, timer: &Timer, n: u8) {
         for _ in 0..n {
-            self.write(ConfigEntry {
-                page: 0x00,
-                address: 0x1D,
-                data: 0b1 << 0,
-            });
+            self.write(FINC);
             timer.wait(Duration::from_micros(1));
         }
     }
@@ -264,12 +271,45 @@ impl Si539xSpi {
     /// 1 us of the Si5395.
     pub fn fdec(&self, timer: &Timer, n: u8) {
         for _ in 0..n {
-            self.write(ConfigEntry {
-                page: 0x00,
-                address: 0x1D,
-                data: 0b1 << 1,
-            });
+            self.write(FDEC);
             timer.wait(Duration::from_micros(1));
         }
     }
+
+    /// Request a single frequency increment or decrement, without waiting for the SPI
+    /// transaction to finish.
+    ///
+    /// Returns `false` if a previous operation is still in progress, in which case
+    /// nothing is requested. [`SpeedChange::NoChange`] is always accepted.
+    ///
+    /// Unlike [`Self::finc`] and [`Self::fdec`], this does not wait 1 us after the
+    /// transaction to adhere to the maximum update rate of the Si5395. With the SPI
+    /// clock we use, a single transaction already takes much longer than that.
+    pub fn try_speed_change(&self, speed_change: SpeedChange) -> bool {
+        let entry = match speed_change {
+            SpeedChange::NoChange => return true,
+            SpeedChange::SpeedUp => FINC,
+            SpeedChange::SlowDown => FDEC,
+        };
+        if self.is_busy() {
+            false
+        } else {
+            self.start_write(entry);
+            true
+        }
+    }
 }
+
+/// Write to this register to increment the output frequency by one step.
+const FINC: ConfigEntry = ConfigEntry {
+    page: 0x00,
+    address: 0x1D,
+    data: 0b1 << 0,
+};
+
+/// Write to this register to decrement the output frequency by one step.
+const FDEC: ConfigEntry = ConfigEntry {
+    page: 0x00,
+    address: 0x1D,
+    data: 0b1 << 1,
+};
