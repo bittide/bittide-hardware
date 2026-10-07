@@ -4,7 +4,7 @@
 
 use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
 use bittide_hal::shared_devices::{
-    ClockControl, Freeze, SampleMemory, SyncOutGenerator, Timer, Uart,
+    ClockControl, Freeze, SampleMemory, Si539xSpi, SyncOutGenerator, Timer, Uart,
 };
 use bittide_sys::callisto::Callisto;
 use bittide_sys::sample_store::SampleStore;
@@ -49,8 +49,16 @@ impl DomainDiffCountersInterface
     }
 }
 
+/// Run software clock control.
+///
+/// Frequency adjustments are sent to the clock chip over SPI. The SPI interface is
+/// shared with the boot CPU, which must be done using it before this function is
+/// called. This is guaranteed by the hardware: the clock control CPU only starts
+/// running once the boot CPU configured the clock chip.
+#[allow(clippy::too_many_arguments)]
 pub fn run<DDC: DomainDiffCountersInterface>(
     cc: ClockControl,
+    si539x_spi: Si539xSpi,
     timer: Timer,
     uart: &mut Uart,
     freeze: Freeze,
@@ -83,8 +91,10 @@ pub fn run<DDC: DomainDiffCountersInterface>(
         // Store frozen elastic buffer counters
         freeze.set_freeze(());
 
-        // Do clock control update
-        cc.set_change_speed(callisto.update(
+        // Do clock control update. A speed change takes a full SPI transaction,
+        // which might not have finished since the previous update. In that case
+        // Callisto skips this update's speed change.
+        let speed_change = callisto.update(
             &cc,
             izip!(0..DDC::ENABLE_LEN, freeze.eb_counters_volatile_iter()).map(|(i, counter)| {
                 if domain_diff_counters.enable(i).unwrap_or(false) {
@@ -93,7 +103,13 @@ pub fn run<DDC: DomainDiffCountersInterface>(
                     None
                 }
             }),
-        ));
+            !si539x_spi.is_busy(),
+        );
+        let accepted = si539x_spi.try_speed_change(speed_change);
+        debug_assert!(
+            accepted,
+            "SPI busy, even though it was idle before the update"
+        );
 
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
