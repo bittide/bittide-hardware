@@ -1,0 +1,5 @@
+[
+  {"top": "fincFdecTests",          "stage": "test",      "cc_report": false},
+  {"top": "softUgnDemoTest",        "stage": "test",      "cc_report": true},
+  {"top": "wireDemoTest",           "stage": "test",      "cc_report": true}
+]
