@@ -24,6 +24,10 @@ use ufmt::uwriteln;
 const N_OPERATIONS: u32 = 1000;
 
 struct Stats {
+    /// Duration of the first operation. This is excluded from the other statistics,
+    /// because it might have to set the address first: the previous SPI operation
+    /// (by the boot CPU) accessed another register.
+    first: Duration,
     min: Duration,
     max: Duration,
     total: Duration,
@@ -34,6 +38,7 @@ impl Stats {
     /// alternate between operations.
     fn measure(timer: &Timer, mut op: impl FnMut(u32)) -> Stats {
         let mut stats = Stats {
+            first: Duration::from_micros(0),
             min: Duration::from_micros(u64::MAX),
             max: Duration::from_micros(0),
             total: Duration::from_micros(0),
@@ -42,24 +47,30 @@ impl Stats {
             let start = timer.now();
             op(i);
             let duration = timer.now() - start;
-            stats.min = stats.min.min(duration);
-            stats.max = stats.max.max(duration);
-            stats.total += duration;
+            if i == 0 {
+                stats.first = duration;
+            } else {
+                stats.min = stats.min.min(duration);
+                stats.max = stats.max.max(duration);
+                stats.total += duration;
+            }
         }
         stats
     }
 
     fn report(&self, uart: &mut Uart, name: &str) {
-        let mean = self.total.micros() / N_OPERATIONS as u64;
+        let n = N_OPERATIONS - 1;
+        let mean = self.total.micros() / n as u64;
         uwriteln!(
             uart,
-            "SPI benchmark: {}: min {} us, mean {} us, max {} us, total {} us, n {}",
+            "SPI benchmark: {}: first {} us, then min {} us, mean {} us, max {} us, total {} us, n {}",
             name,
+            self.first.micros(),
             self.min.micros(),
             mean,
             self.max.micros(),
             self.total.micros(),
-            N_OPERATIONS,
+            n,
         )
         .unwrap();
     }
