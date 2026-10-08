@@ -51,6 +51,16 @@ data Sample = Sample
   , cyclesSinceSyncPulse :: !Word32
   , netSpeedChange :: !Int32
   , buffers :: !(C.Vec 7 Buffer)
+  , requestedSpeedChanges :: !Word32
+  -- ^ Number of speed changes requested by clock control, since it started
+  , skippedSpeedChanges :: !Word32
+  {- ^ Number of requested speed changes that were not applied because the clock
+  chip was still busy processing a previous one, since clock control started
+  -}
+  , minSlackMicros :: !Word32
+  {- ^ Smallest time left before the deadline of a clock control update, since
+  the previous sample
+  -}
   }
   deriving (Show, Eq, Generic)
 
@@ -65,6 +75,9 @@ parse1 = do
   _ <- Get.getByteString 2 -- padding
   netSpeedChange <- Get.getInt32le
   ebCounters <- sequence (C.repeat Get.getInt32le)
+  requestedSpeedChanges <- Get.getWord32le
+  skippedSpeedChanges <- Get.getWord32le
+  minSlackMicros <- Get.getWord32le
 
   return
     Sample
@@ -73,6 +86,9 @@ parse1 = do
       , cyclesSinceSyncPulse
       , netSpeedChange
       , buffers = C.zipWith3 Buffer stables settleds ebCounters
+      , requestedSpeedChanges
+      , skippedSpeedChanges
+      , minSlackMicros
       }
 
 {- | Parse as many samples as possible from a 'ByteStringLazy.ByteString'. Any
@@ -118,6 +134,9 @@ toNamedRecord# sample =
     : ("net_speed_change", Csv.toField sample.netSpeedChange)
     : ("stables", Csv.toField stables)
     : ("settleds", Csv.toField settleds)
+    : ("requested_speed_changes", Csv.toField sample.requestedSpeedChanges)
+    : ("skipped_speed_changes", Csv.toField sample.skippedSpeedChanges)
+    : ("min_slack_micros", Csv.toField sample.minSlackMicros)
     : (zipWith go [0 ..] (C.toList (C.lazyV sample.buffers)))
  where
   go :: Int -> Buffer -> (Csv.Name, Csv.Field)

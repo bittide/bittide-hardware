@@ -60,17 +60,10 @@ impl Callisto {
     /// Clock correction strategy based on:
     /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
     ///
-    /// If `can_change_speed` is `false`, the returned value is always
-    /// [`SpeedChange::NoChange`]. Use this when a speed change cannot be applied
-    /// at the moment (e.g., because the clock chip is still busy processing the
-    /// previous one), so `accumulated_speed_requests` only counts requests that
-    /// were actually applied.
-    pub fn update<I>(
-        self: &mut Callisto,
-        cc: &ClockControl,
-        eb_counters_iter: I,
-        can_change_speed: bool,
-    ) -> SpeedChange
+    /// Returns the requested speed change. Call [`Callisto::apply`] once it has
+    /// actually been applied, which might not be the case if the clock chip is
+    /// still busy processing a previous one.
+    pub fn update<I>(self: &mut Callisto, cc: &ClockControl, eb_counters_iter: I) -> SpeedChange
     where
         I: Iterator<Item = Option<i32>>,
     {
@@ -84,9 +77,7 @@ impl Callisto {
         let c_des = self.config.gain * (measured_sum as f32) + self.steady_state_target;
         let c_est = FSTEP * self.accumulated_speed_requests as f32;
 
-        let speed_request = if !can_change_speed {
-            SpeedChange::NoChange
-        } else if c_des < c_est {
+        let speed_request = if c_des < c_est {
             SpeedChange::SlowDown
         } else if c_des > c_est {
             SpeedChange::SpeedUp
@@ -94,13 +85,18 @@ impl Callisto {
             SpeedChange::NoChange
         };
 
-        self.accumulated_speed_requests += speed_change_to_sign(speed_request);
-
         if let Maybe::Just(wait_time) = self.config.wait_time {
             self.update_reframe_state(wait_time.into_as(), cc.links_stable()[0] != 0, c_des);
         }
 
         speed_request
+    }
+
+    /// Register that a speed change returned by [`Callisto::update`] has been
+    /// applied. Only applied speed changes count towards
+    /// `accumulated_speed_requests`.
+    pub fn apply(&mut self, speed_change: SpeedChange) {
+        self.accumulated_speed_requests += speed_change_to_sign(speed_change);
     }
 
     fn update_reframe_state(&mut self, wait_time: usize, stable: bool, target: f32) {

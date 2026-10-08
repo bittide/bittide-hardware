@@ -36,11 +36,12 @@ dumpCcSamples mm hitlDir ccConf ccGdbs = do
     nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb addr
 
     let
-      bytesPerSample = 13
+      -- Must match `WORDS_PER_SAMPLE` in `sample_store.rs`
+      wordsPerSample = 16
       bytesPerWord = 4
 
       dumpStart = addr + bytesPerWord
-      dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * bytesPerSample
+      dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * wordsPerSample
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]

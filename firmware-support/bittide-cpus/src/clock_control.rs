@@ -6,8 +6,9 @@ use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
 use bittide_hal::shared_devices::{
     ClockControl, Freeze, SampleMemory, Si539xSpi, SyncOutGenerator, Timer, Uart,
 };
+use bittide_hal::types::SpeedChange;
 use bittide_sys::callisto::Callisto;
-use bittide_sys::sample_store::SampleStore;
+use bittide_sys::sample_store::{SampleStore, UpdateMetrics};
 use bittide_sys::stability_detector::StabilityDetector;
 use clash_macros::unsigned;
 use itertools::izip;
@@ -86,6 +87,7 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     let interval = Duration::from_micros(200);
     let mut next_update = timer.now() + interval;
     let mut prev_all_stable = false;
+    let mut metrics = UpdateMetrics::new();
 
     loop {
         // Store frozen elastic buffer counters
@@ -93,7 +95,7 @@ pub fn run<DDC: DomainDiffCountersInterface>(
 
         // Do clock control update. A speed change takes a full SPI transaction,
         // which might not have finished since the previous update. In that case
-        // Callisto skips this update's speed change.
+        // the speed change is skipped, and Callisto will request it again.
         let speed_change = callisto.update(
             &cc,
             izip!(0..DDC::ENABLE_LEN, freeze.eb_counters_volatile_iter()).map(|(i, counter)| {
@@ -103,13 +105,15 @@ pub fn run<DDC: DomainDiffCountersInterface>(
                     None
                 }
             }),
-            !si539x_spi.is_busy(),
         );
-        let accepted = si539x_spi.try_speed_change(speed_change);
-        debug_assert!(
-            accepted,
-            "SPI busy, even though it was idle before the update"
-        );
+        if speed_change != SpeedChange::NoChange {
+            metrics.requested_speed_changes += 1;
+            if si539x_spi.try_speed_change(speed_change) {
+                callisto.apply(speed_change);
+            } else {
+                metrics.skipped_speed_changes += 1;
+            }
+        }
 
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
@@ -118,7 +122,15 @@ pub fn run<DDC: DomainDiffCountersInterface>(
         // reduce plot sizes.
         let has_sense_of_global_time = freeze.number_of_sync_pulses_seen() != unsigned!(0, n = 32);
         if !prev_all_stable && has_sense_of_global_time {
-            sample_store.store(&freeze, stability, callisto.accumulated_speed_requests);
+            let stored = sample_store.store(
+                &freeze,
+                stability,
+                callisto.accumulated_speed_requests,
+                metrics,
+            );
+            if stored {
+                metrics.min_slack_micros = u32::MAX;
+            }
         }
 
         // Emit stability information over UART
@@ -139,6 +151,11 @@ pub fn run<DDC: DomainDiffCountersInterface>(
         }
 
         // Wait for next update
+        let now = timer.now();
+        if now < next_update {
+            let slack = (next_update - now).micros() as u32;
+            metrics.min_slack_micros = metrics.min_slack_micros.min(slack);
+        }
         let timer_result = timer.wait_until_stall(next_update);
         panic_on_missed_deadline(uart, &timer, next_update, timer_result);
         next_update += interval;
