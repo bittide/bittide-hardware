@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::spi_benchmark;
 use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
 use bittide_hal::shared_devices::{
     ClockControl, Freeze, SampleMemory, Si539xSpi, SyncOutGenerator, Timer, Uart,
@@ -68,6 +69,10 @@ pub fn run<DDC: DomainDiffCountersInterface>(
 ) -> ! {
     debug_assert_eq!(DDC::ENABLE_LEN, Freeze::EB_COUNTERS_LEN);
     debug_assert_eq!(DDC::ENABLE_LEN, ClockControl::DATA_COUNTS_LEN);
+
+    // Determine the maximum rate at which we can make frequency adjustments. This
+    // runs before clock control starts, so it does not interfere with its deadlines.
+    spi_benchmark::run(&si539x_spi, &timer, uart);
 
     uwriteln!(uart, "Starting sync out generator..").unwrap();
     sync_out_generator.set_active(true);

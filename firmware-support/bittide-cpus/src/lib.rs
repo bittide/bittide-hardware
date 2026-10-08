@@ -6,3 +6,4 @@
 
 pub mod boot;
 pub mod clock_control;
+pub mod spi_benchmark;
