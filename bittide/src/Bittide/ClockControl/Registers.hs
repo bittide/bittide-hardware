@@ -10,8 +10,7 @@ import Clash.Prelude hiding (PeriodToCycles)
 import Protocols
 import Protocols.Experimental.Wishbone
 
-import Bittide.ClockControl (RelDataCount, SpeedChange (NoChange))
-import Bittide.ClockControl.Callisto.Types (Stability (..))
+import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Config (CcConf (CcConf, callisto, topology), defCcConf)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Explicit.Reset (unsafeOrReset)
@@ -20,7 +19,6 @@ import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), Mm)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access),
-  busActivityWrite,
   deviceConfig,
   deviceWbI,
   registerConfig,
@@ -28,14 +26,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI,
   registerWbI_,
  )
-
-data ClockControlData (nLinks :: Nat) = ClockControlData
-  { clockMod :: Maybe SpeedChange
-  , stabilities :: Vec nLinks Stability
-  , allStable :: Bool
-  , allSettled :: Bool
-  }
-  deriving (Generic, NFDataX, ShowX, Show)
 
 -- | Replace all elements in a vector with a default value where the mask is unset.
 applyMask ::
@@ -54,14 +44,6 @@ defCcConfLinks =
 
 {- | A wishbone accessible clock control interface.
 This interface receives the link mask and 'RelDataCount's from all links.
-Furthermore it outputs the speed changes written to its @change_speed@ register.
-
-__NB__: the `Maybe SpeedChange` part of the output is only asserted for a single cycle.
-This must be stickied or otherwise held for the minimum pulse width specified by the
-clock board this register is controlling.
-
-__NB__: the @change_speed@ register is deprecated. The clock control CPU sends speed
-changes to the clock chip over SPI instead.
 -}
 clockControlWb ::
   forall dom addrW nLinks m.
@@ -81,14 +63,13 @@ clockControlWb ::
   -- | Wishbone accessible clock control circuitry
   Circuit
     (ToConstBwd Mm, Wishbone dom 'Standard addrW 4)
-    (CSignal dom (Maybe SpeedChange))
+    ()
 clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
   [ wbNumLinks
     , wbLinkMask
     , wbLinkMaskPopCount
     , wbLinkMaskRev
     , wbLinksOk
-    , wbChangeSpeed
     , wbLinksStable
     , wbLinksSettled
     , wbMinDataCountSeen
@@ -98,9 +79,6 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
     , wbConfig
     ] <-
     deviceWbI (deviceConfig "ClockControl") -< wb
-
-  (_cs, Fwd changeSpeed) <-
-    registerWbI changeSpeedConfig NoChange -< (wbChangeSpeed, Fwd noWrite)
 
   -- Link configuration
   registerWbI_ numLinksConfig numberOfLinks -< (wbNumLinks, Fwd noWrite)
@@ -139,7 +117,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
     maxDataCountsSeen1 :: Signal dom (Vec nLinks (RelDataCount m))
     maxDataCountsSeen1 = zipWith max <$> maxDataCountsSeen0 <*> maskedCounters
 
-  idC -< Fwd (busActivityWrite <$> changeSpeed)
+  idC -< Fwd ()
  where
   noWrite = pure Nothing
 
@@ -148,13 +126,6 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \wb -> do
   linkMaskPopCountConfig = (registerConfig "link_mask_pop_count" ""){access = ReadOnly}
   linkMaskRevConfig = (registerConfig "link_mask_rev" ""){access = ReadOnly}
   linksOkConfig = (registerConfig "links_ok" ""){access = ReadOnly}
-  changeSpeedConfig =
-    ( registerConfig
-        "change_speed"
-        "Deprecated: speed changes are sent to the clock chip over SPI instead."
-    )
-      { access = WriteOnly
-      }
   linksStableConfig = registerConfig "links_stable" ""
   linksSettledConfig = registerConfig "links_settled" ""
   minDataCountsSeenConfig = (registerConfig "min_data_counts_seen" ""){access = ReadOnly}
