@@ -348,10 +348,8 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
            )
     -- Stop user core
 
-    -- Start clock control. Speed changes are sent to the clock chip over SPI
-    -- by the clock control CPU, so the 'SpeedChange' output is unused.
+    -- Start clock control
     ( sync
-      , _speedChange
       , [ ccUartBus
           , ccSampleMemoryBus
           , ccSpiBus

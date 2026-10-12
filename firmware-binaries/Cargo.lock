@@ -234,7 +234,6 @@ dependencies = [
  "bittide-build-utils",
  "bittide-hal",
  "bittide-sys",
- "rand",
  "riscv-rt 0.11.0",
  "ufmt",
 ]

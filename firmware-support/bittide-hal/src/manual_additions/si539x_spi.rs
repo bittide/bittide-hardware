@@ -4,7 +4,7 @@
 use crate::{
     manual_additions::{timer::Duration, ConvertOptional},
     shared_devices::{Si539xSpi, Timer},
-    types::{Maybe::Nothing, RegisterOperation, SpeedChange},
+    types::{Maybe::Nothing, RegisterOperation},
 };
 use clash_bindings::bitvector::BitVector;
 use clash_macros::bitvector;
@@ -307,6 +307,14 @@ impl Si539xSpi {
             true
         }
     }
+}
+
+/// A request to change the output frequency of the clock chip by one step.
+#[derive(Clone, Copy, PartialEq, Eq, uDebug)]
+pub enum SpeedChange {
+    NoChange,
+    SlowDown,
+    SpeedUp,
 }
 
 /// Write to this register to increment the output frequency by one step.

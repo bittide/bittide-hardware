@@ -5,7 +5,6 @@ module Bittide.Instances.Tests.ClockControlWb where
 
 import Clash.Prelude
 
-import Bittide.ClockControl (SpeedChange)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.Cpus.Riscv32imc (vexRiscv0)
 import Bittide.Instances.Common (PeConfigElfSource (NameOnly), emptyPeConfig, peConfigFromElf)
@@ -50,7 +49,7 @@ peConfigEmpty = emptyPeConfig (SNat @IMemWords) (SNat @DMemWords) d0 d0 False ve
 dut ::
   (HasCallStack) =>
   PeConfig 4 ->
-  Circuit (ToConstBwd Mm, ()) (Df System (BitVector 8), CSignal System (Maybe SpeedChange))
+  Circuit (ToConstBwd Mm, ()) (Df System (BitVector 8))
 dut peConfig =
   withLittleEndian
     $ withClockResetEnable clockGen (resetGenN d2) enableGen
@@ -63,14 +62,13 @@ dut peConfig =
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
 
-      ccd <-
-        clockControlWb
-          (pure linkMask)
-          (pure linksOk)
-          (pure <$> dataCounts)
-          -< (mmCC, ccWb)
+      clockControlWb
+        (pure linkMask)
+        (pure linksOk)
+        (pure <$> dataCounts)
+        -< (mmCC, ccWb)
 
-      idC -< (uartTx, ccd)
+      idC -< uartTx
  where
 
 {-# OPAQUE dut #-}
@@ -81,5 +79,5 @@ dutMm = getMMAny $ dut peConfigEmpty
 dutNoMm ::
   (HasCallStack) =>
   PeConfig 4 ->
-  Circuit () (Df System (BitVector 8), CSignal System (Maybe SpeedChange))
+  Circuit () (Df System (BitVector 8))
 dutNoMm = unMemmap . dut
