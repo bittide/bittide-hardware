@@ -5,16 +5,11 @@
 -- | Clock controller types and some constants/defaults.
 module Bittide.ClockControl (
   RelDataCount,
-  SpeedChange (..),
-  sign,
   targetDataCount,
 )
 where
 
 import Clash.Explicit.Prelude
-
-import Clash.Class.BitPackC (BitPackC)
-import Protocols.MemoryMap.TypeDescription
 
 {- | The (virtual) type of the FIFO's data counter. Setting this to
 'Unsigned' captures the real implementation of the FIFO, while
@@ -34,21 +29,3 @@ maxBound 1 + 1@ if it is 'Unsigned')_
 -}
 targetDataCount :: (KnownNat n) => RelDataCount n
 targetDataCount = 0
-
--- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
-data SpeedChange
-  = NoChange
-  | SlowDown
-  | SpeedUp
-  deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX, BitPackC)
-
-deriveTypeDescription ''SpeedChange
-
-{- | Converts speed changes into a normalized scalar, which reflects
-their effect on clock control.
--}
-sign :: (Num a) => SpeedChange -> a
-sign = \case
-  SpeedUp -> 1
-  NoChange -> 0
-  SlowDown -> -1
