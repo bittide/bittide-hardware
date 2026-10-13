@@ -10,18 +10,17 @@ import Protocols
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Mm)
-import Protocols.Spi (Spi)
 import VexRiscv
 
-import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.ProcessingElement (PeConfig (..), RemainingBusWidth, processingElement)
 import Bittide.SharedTypes (BitboneMm)
 import Bittide.Wishbone (timeWb, uartBytes, uartInterfaceWb)
 
 type BootPeBusses = 6
 
-{- | Processing element with builtin time component, UART interface and SI539x SPI
-interface. It exports one bus for the transceiver component.
+{- | Processing element with builtin time component and UART interface. It exports
+one bus for the SI539x SPI interface and one bus for the transceiver component.
+Both are exported so they can be shared with other CPUs.
 -}
 bootPe ::
   forall dom.
@@ -36,8 +35,7 @@ bootPe ::
     , Jtag dom
     )
     ( "UART_BYTES" ::: Df dom (BitVector 8)
-    , "SPI_DONE" ::: CSignal dom Bool
-    , Spi dom
+    , "SI539X_SPI" ::: BitboneMm dom (RemainingBusWidth BootPeBusses)
     , "TRANSCEIVER" ::: BitboneMm dom (RemainingBusWidth BootPeBusses)
     )
 bootPe peConfig = circuit $ \(mm, jtag) -> do
@@ -47,8 +45,7 @@ bootPe peConfig = circuit $ \(mm, jtag) -> do
   Fwd _localCounter <- timeWb Nothing -< timeBus
   (uartOut, _uartStatus) <-
     uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
-  (spiDone, spiOut) <- si539xSpiWb (SNat @(Microseconds 10)) -< siBus
 
   -- XXX: Should the transceiver just be part of the PE? This would add a whooole
   --      bunch of constraints to it.
-  idC -< (uartOut, spiDone, spiOut, transceiverBus)
+  idC -< (uartOut, siBus, transceiverBus)

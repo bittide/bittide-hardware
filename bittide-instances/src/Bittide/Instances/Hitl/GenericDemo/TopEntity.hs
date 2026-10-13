@@ -72,10 +72,6 @@ demoTest ::
   ( "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
-  , ""
-      ::: ( "FINC" ::: Signal Bittide Bool
-          , "FDEC" ::: Signal Bittide Bool
-          )
   , "" ::: Signal Basic125 Spi.M2S
   , "JTAG" ::: Signal Basic125 JtagOut
   , "USB_UART_RXD" ::: Signal Basic125 Bit
@@ -85,7 +81,6 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
   ( txs
   , txns
   , txps
-  , unbundle swFincFdecs
   , spiM2S
   , jtagOut
   , uartTx
@@ -109,13 +104,12 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
     , ( spiM2S
         , syncOut
         , uartTx
-        , swFincFdecs
         )
     ) =
       toSignals
         (bringUp ringBufferDepth mkUserCore refClk testReset)
         ( (repeat (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
-        , (spiS2M, syncIn, (), ())
+        , (spiS2M, syncIn, ())
         )
 
 {- | 'HitlTestGroup' template shared by the two demos. Each demo supplies the
@@ -133,7 +127,6 @@ mkTests topEntityName driver =
         , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
-        , "si539x" </> "fincfdec.xdc"
         , "si539x" </> "spi.xdc"
         ]
     , externalHdl = []
