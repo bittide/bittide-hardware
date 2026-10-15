@@ -5,7 +5,7 @@
 use bittide_hal::manual_additions::clock_chip::ClockChip;
 use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
 use bittide_hal::shared_devices::{
-    ClockControl, Freeze, SampleMemory, Si539xSpi, SyncOutGenerator, Timer, Uart,
+    ClockControl, Freeze, SampleMemory, SyncOutGenerator, Timer, Uart,
 };
 use bittide_sys::callisto::Callisto;
 use bittide_sys::sample_store::SampleStore;
@@ -52,14 +52,14 @@ impl DomainDiffCountersInterface
 
 /// Run software clock control.
 ///
-/// Frequency adjustments are sent to the clock chip over SPI. The SPI interface is
-/// shared with the boot CPU, which must be done using it before this function is
-/// called. This is guaranteed by the hardware: the clock control CPU only starts
-/// running once the boot CPU configured the clock chip.
+/// Frequency adjustments are sent to the clock chip. Its interface is shared with the
+/// boot CPU, which must be done using it before this function is called. This is
+/// guaranteed by the hardware: the clock control CPU only starts running once the boot
+/// CPU configured the clock chip.
 #[allow(clippy::too_many_arguments)]
-pub fn run<DDC: DomainDiffCountersInterface>(
+pub fn run<C: ClockChip, DDC: DomainDiffCountersInterface>(
     cc: ClockControl,
-    si539x_spi: Si539xSpi,
+    clock_chip: C,
     timer: Timer,
     uart: &mut Uart,
     freeze: Freeze,
@@ -84,8 +84,8 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     let mut sample_store = SampleStore::new(sample_memory, 100);
 
     // Make sure every speed change fits in a single update interval, see
-    // `panic_on_spi_busy`.
-    si539x_spi.prepare_speed_changes();
+    // `panic_on_clock_chip_busy`.
+    clock_chip.prepare_speed_changes();
 
     // Update clock control 5K updates per second
     let interval = Duration::from_micros(200);
@@ -93,9 +93,10 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     let mut prev_all_stable = false;
 
     loop {
-        // A speed change takes a full SPI transaction, which must have finished
-        // before the next update. Otherwise this update could not be applied.
-        panic_on_spi_busy(uart, &timer, &si539x_spi);
+        // A speed change takes a full transaction to the clock chip, which must
+        // have finished before the next update. Otherwise this update could not be
+        // applied.
+        panic_on_clock_chip_busy(uart, &timer, &clock_chip);
 
         // Store frozen elastic buffer counters
         freeze.set_freeze(());
@@ -111,10 +112,10 @@ pub fn run<DDC: DomainDiffCountersInterface>(
                 }
             }),
         );
-        let accepted = si539x_spi.try_speed_change(speed_change);
+        let accepted = clock_chip.try_speed_change(speed_change);
         debug_assert!(
             accepted,
-            "SPI busy, even though it was idle before the update"
+            "Clock chip busy, even though it was idle before the update"
         );
 
         // Detect stability
@@ -169,11 +170,11 @@ fn panic_on_missed_deadline(
     };
 }
 
-fn panic_on_spi_busy(uart: &mut Uart, timer: &Timer, si539x_spi: &Si539xSpi) {
-    if si539x_spi.is_busy() {
+fn panic_on_clock_chip_busy<C: ClockChip>(uart: &mut Uart, timer: &Timer, clock_chip: &C) {
+    if clock_chip.is_busy() {
         uwriteln!(
             uart,
-            "Missed update! SPI still busy with previous speed change. Now: {}",
+            "Missed update! Clock chip still busy with previous speed change. Now: {}",
             timer.now().micros(),
         )
         .unwrap();

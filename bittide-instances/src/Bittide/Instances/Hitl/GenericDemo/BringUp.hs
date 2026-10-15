@@ -19,9 +19,10 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
-import Bittide.BootPe (bootPe, defBootPeConfig)
-import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
+import Bittide.BootPe (bootPe, defFmcBootPeConfig)
+import Bittide.ClockControl.Si5345I2c (si5345I2cWb)
 import Bittide.Df (asciiDebugMux)
+import Bittide.I2c (I2cIn, I2cOut, i2cControllerWb)
 import Bittide.Instances.Domains (
   Basic125,
   Bittide,
@@ -51,7 +52,6 @@ import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Data.Char (ord)
 import Protocols.Extra
 import Protocols.MemoryMap (Mm)
-import Protocols.Spi (Spi)
 import Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import VexRiscv (Jtag)
 
@@ -95,13 +95,16 @@ bringUp ::
     ( Vec (InternalCpuCount + 1) (ToConstBwd Mm)
     , Jtag Basic125
     , Gth.Gths GthRx GthRxS Bittide GthTxS Ext200 LinkCount
+    , "MAIN_I2C" ::: CSignal Basic125 I2cIn
+    , "FMC_I2C" ::: CSignal Basic125 I2cIn
     )
-    ( Spi Basic125
+    ( "MAIN_I2C" ::: CSignal Basic125 I2cOut
+    , "FMC_I2C" ::: CSignal Basic125 I2cOut
     , Sync Bittide Basic125
     , "UART_TX" ::: CSignal Basic125 Bit
     )
 bringUp bufferDepth mkUserCore refClk refRst =
-  withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -> do
+  withLittleEndian $ circuit $ \(memoryMaps, jtag, gths, mainI2cIn, fmcI2cIn) -> do
     ([bootMm], coreMemoryMaps) <- Vec.split -< memoryMaps
 
     [bootJtag, otherJtag] <- jtagChain -< jtag
@@ -113,25 +116,34 @@ bringUp bufferDepth mkUserCore refClk refRst =
         -< muTransceiverWbBittide
 
     -- Start boot PE
-    (bootUartBytes, bootSpiWb, [bootTransceiverWb]) <-
+    (bootUartBytes, bootClockChipWb, [bootTransceiverWb, bootMainI2cWb]) <-
       withRefClockResetEnable
-        $ bootPe defBootPeConfig
+        $ bootPe defFmcBootPeConfig
         -< (bootMm, bootJtag)
+
+    -- The boot CPU sets VADJ over the main I2C bus of the KCU105, before it
+    -- configures the clock chip. See @firmware-support/bittide-cpus/src/fmc_power.rs@.
+    mainI2cOut <-
+      withRefClockResetEnable
+        $ i2cControllerWb (SNat @(Microseconds 10))
+        -< (bootMainI2cWb, mainI2cIn)
     -- Stop boot PE
 
-    -- Start Si539x SPI. The boot CPU uses it to configure the clock chip, after
+    -- Start Si5345 I2C. The boot CPU uses it to configure the clock chip, after
     -- which the clock control CPU uses it for frequency adjustments. The two
     -- never use it at the same time: the Bittide domain (and therefore the
     -- clock control CPU) only runs once the boot CPU finished configuring.
-    spiWb <- withRefClockResetEnable arbiterMm -< [bootSpiWb, ccSpiWb]
-    ccSpiWb <-
+    clockChipWb <- withRefClockResetEnable arbiterMm -< [bootClockChipWb, ccClockChipWb]
+    ccClockChipWb <-
       fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
-        -< ccSpiWbBittide
-    (_spiDone, spi) <-
+        -< ccClockChipWbBittide
+    -- A speed change must finish within one update of the clock control CPU
+    -- (200 us), so run SCL at 400 kHz, the maximum of the Si5345.
+    (_clockChipDone, fmcI2cOut) <-
       withRefClockResetEnable
-        $ si539xSpiWb (SNat @(Microseconds 10))
-        -< spiWb
-    -- Stop Si539x SPI
+        $ si5345I2cWb (SNat @(Nanoseconds 2500)) 0x69
+        -< (clockChipWb, fmcI2cIn)
+    -- Stop Si5345 I2C
 
     -- Start UART multiplexing
     uartTxBytes <-
@@ -155,7 +167,7 @@ bringUp bufferDepth mkUserCore refClk refRst =
       , sync
       , uartBytesBittide
       , muTransceiverWbBittide
-      , ccSpiWbBittide
+      , ccClockChipWbBittide
       ) <-
       core
         bufferDepth
@@ -184,4 +196,4 @@ bringUp bufferDepth mkUserCore refClk refRst =
       linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
       linksSuitableForCc = fmap pack (bundle tOutputs.txDataInitDones)
 
-    idC -< (spi, sync, uartTx)
+    idC -< (mainI2cOut, fmcI2cOut, sync, uartTx)

@@ -15,15 +15,15 @@ use bittide_macros::load_clock_config_csv;
 use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const CONFIG_200: Config<3, 590, 5> = load_clock_config_csv!(
-    "../../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-Registers.csv"
-);
+const CONFIG_200: Config<3, 524, 5> =
+    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5345-200MHz-10ppb-Registers.csv");
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
     bittide_cpus::boot::run(
-        INSTANCES.si539x_spi,
+        INSTANCES.i2c_controller,
+        INSTANCES.si5345_i2c,
         INSTANCES.timer,
         INSTANCES.transceivers,
         &mut uart,

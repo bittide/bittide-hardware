@@ -69,17 +69,22 @@ pub fn enable_transceivers(transceivers: &Transceivers, uart: &mut Uart) {
     }
 }
 
-/// Run the steps of a boot CPU.
+/// Run the steps of a boot CPU with a clock chip on the FMC card, see
+/// [`start_fmc_clock`].
 ///
-/// Panics when writing a configuration fails 'MAX_RETRIES' times.
-pub fn run(
-    si539x_spi: Si539xSpi,
+/// Panics when starting the clock chip fails, also after 'MAX_RETRIES' attempts.
+pub fn run<C: ClockChip, const PRE_LEN: usize, const CFG_LEN: usize, const PST_LEN: usize>(
+    main_i2c: I2cController,
+    clock_chip: C,
     timer: Timer,
     transceivers: Transceivers,
     uart: &mut Uart,
-    config: &Config<3, 590, 5>,
+    config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
 ) -> ! {
-    program_clock_board(&si539x_spi, &timer, uart, config);
+    if let Err(e) = start_fmc_clock(&main_i2c, &clock_chip, &timer, uart, config, MAX_RETRIES) {
+        uwriteln!(uart, "[ERROR] failed to start the clock chip: {:?}", e).unwrap();
+        panic!("[ERROR] failed to start the clock chip, panicking");
+    }
     enable_transceivers(&transceivers, uart);
 
     uwriteln!(uart, "Going into infinite loop..").unwrap();
