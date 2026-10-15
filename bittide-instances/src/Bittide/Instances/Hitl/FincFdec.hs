@@ -85,7 +85,7 @@ fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, (jtag, i2cIn)) -> do
       -< (uartBus, Fwd (pure low))
   (Fwd clockChipDone, i2cOut) <-
     withClockResetEnable freeClk freeRst enableGen
-      $ si5345I2cWb (SNat @(Nanoseconds 2500)) 0x69
+      $ si5345I2cWb (SNat @(Microseconds 10)) 0x69
       -< (siBus, i2cIn)
 
   let skyRst = convertReset freeClk skyClk (unsafeFromActiveLow clockChipDone)

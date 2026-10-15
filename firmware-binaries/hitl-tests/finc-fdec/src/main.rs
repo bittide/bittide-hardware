@@ -155,6 +155,18 @@ fn run_test<Test>(
 where
     Test: FnOnce(&DomainDiffCounters) -> TestResult,
 {
+    uwriteln!(uart, "{}: waiting for clock chip to be ready", name).unwrap();
+    si5345_i2c.wait_for_ready();
+    let design_id = si5345_i2c.read_design_id();
+    uwriteln!(
+        uart,
+        "{}: clock chip ready, design ID {:?}",
+        name,
+        design_id
+    )
+    .unwrap();
+
+    uwriteln!(uart, "{}: writing clock chip configuration", name).unwrap();
     if let Err(WriteError::NotConfirmed { entry, read_data }) =
         si5345_i2c.write_configuration_with_retry(timer, &CONFIG_125, MAX_CONFIG_RETRIES)
     {
@@ -170,13 +182,16 @@ where
         .unwrap();
         return false;
     }
+    uwriteln!(uart, "{}: clock chip configured and locked", name).unwrap();
 
+    uwriteln!(uart, "{}: waiting for domain diff counter", name).unwrap();
     dc.set_enable(0, true);
     loop {
         if dc.counters_active(0) == Some(true) {
             break;
         }
     }
+    uwriteln!(uart, "{}: domain diff counter active, running test", name).unwrap();
 
     let test_result = test_body(dc);
     dc.set_enable(0, false);
@@ -219,6 +234,8 @@ fn main() -> ! {
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
     let dc = INSTANCES.domain_diff_counters;
+
+    uwriteln!(uart, "Starting FINC/FDEC tests").unwrap();
 
     let all_passed = run_tests!(
         clock_chip: si5345_i2c,
