@@ -25,11 +25,11 @@ import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
   HitlTestCase (..),
   HitlTestGroup (..),
+  HwTargetRef (HwTargetByIndex),
   hitlVioBool,
-  paramForHwTargets,
+  paramForSingleHwTarget,
  )
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup (allHwTargets)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (timeWb, uartDf, uartInterfaceWb)
@@ -175,7 +175,9 @@ tests =
     , testCases =
         [ HitlTestCase
             { name = "FincFdecTests"
-            , parameters = paramForHwTargets allHwTargets ()
+            , -- Only node 7 has its system controller UART connected, which
+              -- we need to enable VADJ (and with it the FMC card) by hand.
+              parameters = paramForSingleHwTarget (HwTargetByIndex 7) ()
             , postProcData = ()
             }
         ]
