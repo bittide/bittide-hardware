@@ -3,8 +3,8 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | A couple of tests testing clock board programming, and subsequently frequency
-increments and decrements over SPI.
+{- | A couple of tests testing programming of the Si5345 on the FMC card, and
+subsequently frequency increments and decrements over I2C.
 -}
 module Bittide.Instances.Hitl.FincFdec where
 
@@ -18,10 +18,9 @@ import Clash.Cores.Uart (ValidBaud)
 import Clash.Cores.Xilinx (withXilinx)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
-import Protocols.Spi
 import VexRiscv
 
-import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
+import Bittide.ClockControl.Si5345I2c (I2cIn, I2cOut, si5345I2cWb, splitSdaPins)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
   HitlTestCase (..),
@@ -42,7 +41,6 @@ import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Instances.Hitl.Driver.FincFdec as Driver
 import qualified Clash.Class.Cdc as Cdc
 import qualified Clash.Cores.Xilinx.Gth as Gth
-import qualified Protocols.Spi as Spi
 
 type Baud = 921_600
 
@@ -68,12 +66,12 @@ fincFdecPe ::
   Clock sky ->
   Circuit
     ( ToConstBwd Mm
-    , Jtag free
+    , (Jtag free, CSignal free I2cIn)
     )
     ( "UART_TX" ::: CSignal free Bit
-    , Spi free
+    , CSignal free I2cOut
     )
-fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
+fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, (jtag, i2cIn)) -> do
   [timeBus, uartBus, siBus, dcBus] <-
     withClockResetEnable freeClk freeRst enableGen
       $ processingElement NoDumpVcd peConfig
@@ -85,15 +83,15 @@ fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
       $ uartInterfaceWb d16 d16
       $ uartDf baud
       -< (uartBus, Fwd (pure low))
-  (Fwd spiDone, spiOut) <-
+  (Fwd clockChipDone, i2cOut) <-
     withClockResetEnable freeClk freeRst enableGen
-      $ si539xSpiWb (SNat @(Microseconds 10))
-      -< siBus
+      $ si5345I2cWb (SNat @(Nanoseconds 2500)) 0x69
+      -< (siBus, i2cIn)
 
-  let skyRst = convertReset freeClk skyClk (unsafeFromActiveLow spiDone)
+  let skyRst = convertReset freeClk skyClk (unsafeFromActiveLow clockChipDone)
   Fwd _domainDiff <- domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
 
-  idC -< (uartTx, spiOut)
+  idC -< (uartTx, i2cOut)
  where
   peConfig =
     PeConfig
@@ -110,19 +108,22 @@ fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
 fincFdecTests ::
   -- Pins from internal oscillator:
   "CLK_125MHZ" ::: DiffClock Ext125 ->
-  -- Pins from clock board:
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext125 ->
+  -- Pins from the Si5345 on the FMC card:
+  "FMC_HPC_GBTCLK1_M2C_C" ::: DiffClock Ext200 ->
   "JTAG" ::: Signal Basic125 JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
-  Signal Basic125 Spi.S2M ->
+  -- I2C to the Si5345 on the FMC card:
+  "FMC_SCL" ::: BiSignalIn 'PullUp Basic125 1 ->
+  "FMC_SDA_IN" ::: Signal Basic125 Bit ->
   ""
     ::: ( "JTAG" ::: Signal Basic125 JtagOut
         , "USB_UART_RXD" ::: Signal Basic125 Bit
-        , -- SPI to clock board:
-          "" ::: Signal Basic125 Spi.M2S
+        , "FMC_SCL_OUT" ::: BiSignalOut 'PullUp Basic125 1
+        , "FMC_SDA_OUT" ::: Signal Basic125 Bit
+        , "FMC_MUX_SELECT" ::: Signal Basic125 (BitVector 3)
         )
-fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
-  (jtagOut, uartTx, spiM2S)
+fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx sclIn sdaIn =
+  (jtagOut, uartTx, sclOut, sdaOut, muxSelect)
  where
   freeClk :: Clock Basic125
   freeRst :: Reset Basic125
@@ -130,7 +131,7 @@ fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
 
   (_, odivClk) = Gth.ibufds_gte3 boardClkDiff
 
-  boardClk :: Clock Basic125A
+  boardClk :: Clock Basic200
   boardClk = Gth.bufgGt d0 odivClk noReset
 
   testStart :: Signal Basic125 Bool
@@ -138,17 +139,23 @@ fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
 
   testRst = unsafeFromActiveLow testStart `orReset` freeRst
 
-  ((_memoryMap, jtagOut), (uartTx, spiM2S)) =
+  ((_memoryMap, (jtagOut, _)), (uartTx, i2cOut)) =
     toSignals
       (withXilinx $ withLittleEndian $ fincFdecPe freeClk testRst boardClk)
-      (((), jtagIn), ((), spiS2M))
+      (((), (jtagIn, i2cIn)), ((), ()))
+
+  (i2cIn, sclOut, sdaOut) = splitSdaPins sclIn sdaIn i2cOut
+
+  -- Value used in earlier experiments with this FMC card. It is not known what
+  -- these pins select.
+  muxSelect = pure 0b100
 
 memoryMap :: MemoryMap
 memoryMap =
   getMMAny
     $ withXilinx
     $ withLittleEndian
-    $ fincFdecPe @Basic125 @Basic125A clockGen resetGen clockGen
+    $ fincFdecPe @Basic125 @Basic200 clockGen resetGen clockGen
 
 {-# OPAQUE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
@@ -158,11 +165,11 @@ tests =
   HitlTestGroup
     { topEntity = 'fincFdecTests
     , targetXdcs =
-        [ "si539xConfigTest.xdc"
+        [ "fincFdecTests.xdc"
         , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
-        , "si539x" </> "spi.xdc"
+        , "si5345" </> "i2c.xdc"
         ]
     , externalHdl = []
     , testCases =

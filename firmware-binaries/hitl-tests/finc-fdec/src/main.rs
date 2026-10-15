@@ -14,7 +14,7 @@ use ufmt::uwriteln;
 use bittide_hal::hals::finc_fdec_tests::devices::DomainDiffCounters;
 use bittide_hal::hals::finc_fdec_tests::DeviceInstances;
 use bittide_hal::manual_additions::clock_chip::{ClockChip, Config, WriteError};
-use bittide_hal::shared_devices::{Si539xSpi, Timer, Uart};
+use bittide_hal::shared_devices::{Si5345I2c, Timer, Uart};
 
 use bittide_macros::load_clock_config_csv;
 
@@ -22,9 +22,8 @@ use bittide_macros::load_clock_config_csv;
 use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const CONFIG_125: Config<3, 590, 5> = load_clock_config_csv!(
-    "../../../bittide/data/clock_configs/Si5395J-125MHz-10ppb-Registers.csv"
-);
+const CONFIG_200: Config<3, 524, 5> =
+    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5345-200MHz-10ppb-Registers.csv");
 
 const MAX_CONFIG_RETRIES: usize = 10;
 
@@ -78,32 +77,32 @@ where
     }
 }
 
-// FINC/FDEC test patterns. Each loop iteration sends one SPI request.
+// FINC/FDEC test patterns. Each loop iteration sends one I2C request.
 
-fn do_sw_fdec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_fdec(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.fdec(timer, 1),
+        || si5345_i2c.fdec(timer, 1),
         (i32::lt, -THRESHOLD),
         (i32::gt, THRESHOLD),
         Direction::Fdec,
     )
 }
 
-fn do_sw_finc(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_finc(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.finc(timer, 1),
+        || si5345_i2c.finc(timer, 1),
         (i32::gt, THRESHOLD),
         (i32::lt, -THRESHOLD),
         Direction::Finc,
     )
 }
 
-fn do_sw_fdec_inc(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_fdec_inc(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.fdec(timer, 1),
+        || si5345_i2c.fdec(timer, 1),
         (i32::lt, -THRESHOLD),
         (i32::gt, THRESHOLD),
         Direction::Fdec,
@@ -111,17 +110,17 @@ fn do_sw_fdec_inc(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters
 
     counter_test(
         dc,
-        || si539x_spi.finc(timer, 1),
+        || si5345_i2c.finc(timer, 1),
         (i32::gt, 0),
         (i32::lt, -(3 * THRESHOLD)),
         Direction::Finc,
     )
 }
 
-fn do_sw_finc_dec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_finc_dec(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.finc(timer, 1),
+        || si5345_i2c.finc(timer, 1),
         (i32::gt, THRESHOLD),
         (i32::lt, -THRESHOLD),
         Direction::Finc,
@@ -129,7 +128,7 @@ fn do_sw_finc_dec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters
 
     counter_test(
         dc,
-        || si539x_spi.fdec(timer, 1),
+        || si5345_i2c.fdec(timer, 1),
         (i32::lt, 0),
         (i32::gt, (3 * THRESHOLD)),
         Direction::Fdec,
@@ -138,7 +137,7 @@ fn do_sw_finc_dec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters
 
 /// Run a single test with the full per-test sequence:
 ///
-///  1. Program clock board
+///  1. Program clock chip
 ///  2. Enable domain diff counter
 ///  3. Execute test body (FINC/FDEC until threshold)
 ///  5. Disable domain diff counter
@@ -147,7 +146,7 @@ fn do_sw_finc_dec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters
 /// Returns whether the test passed.
 fn run_test<Test>(
     name: &str,
-    si539x_spi: &Si539xSpi,
+    si5345_i2c: &Si5345I2c,
     timer: &Timer,
     uart: &mut Uart,
     dc: &DomainDiffCounters,
@@ -157,11 +156,11 @@ where
     Test: FnOnce(&DomainDiffCounters) -> TestResult,
 {
     if let Err(WriteError::NotConfirmed { entry, read_data }) =
-        si539x_spi.write_configuration_with_retry(timer, &CONFIG_125, MAX_CONFIG_RETRIES)
+        si5345_i2c.write_configuration_with_retry(timer, &CONFIG_200, MAX_CONFIG_RETRIES)
     {
         uwriteln!(
             uart,
-            "FAIL: {} (clock board at 0x{:02X}{:02X}: wrote 0x{:02X}, read 0x{:02X})",
+            "FAIL: {} (clock chip at 0x{:02X}{:02X}: wrote 0x{:02X}, read 0x{:02X})",
             name,
             entry.page,
             entry.address,
@@ -192,7 +191,7 @@ where
 
 macro_rules! run_tests {
     (
-        spi: $spi:ident,
+        clock_chip: $clock_chip:ident,
         timer: $timer:ident,
         uart: $uart:ident,
         dc: $dc:ident,
@@ -204,7 +203,7 @@ macro_rules! run_tests {
         $(
             run_test(
                 $name,
-                &$spi,
+                &$clock_chip,
                 &$timer,
                 &mut $uart,
                 &$dc,
@@ -216,21 +215,21 @@ macro_rules! run_tests {
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let si539x_spi = INSTANCES.si539x_spi;
+    let si5345_i2c = INSTANCES.si5345_i2c;
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
     let dc = INSTANCES.domain_diff_counters;
 
     let all_passed = run_tests!(
-        spi: si539x_spi,
+        clock_chip: si5345_i2c,
         timer: timer,
         uart: uart,
         dc: dc,
         tests: [
-            [name: "Software FDec",    test: |dc| do_sw_fdec(&si539x_spi, &timer, dc)],
-            [name: "Software FInc",    test: |dc| do_sw_finc(&si539x_spi, &timer, dc)],
-            [name: "Software FDecInc", test: |dc| do_sw_fdec_inc(&si539x_spi, &timer, dc)],
-            [name: "Software FIncDec", test: |dc| do_sw_finc_dec(&si539x_spi, &timer, dc)],
+            [name: "Software FDec",    test: |dc| do_sw_fdec(&si5345_i2c, &timer, dc)],
+            [name: "Software FInc",    test: |dc| do_sw_finc(&si5345_i2c, &timer, dc)],
+            [name: "Software FDecInc", test: |dc| do_sw_fdec_inc(&si5345_i2c, &timer, dc)],
+            [name: "Software FIncDec", test: |dc| do_sw_finc_dec(&si5345_i2c, &timer, dc)],
         ],
     );
 
