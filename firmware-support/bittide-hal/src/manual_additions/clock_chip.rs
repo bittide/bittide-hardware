@@ -27,6 +27,16 @@ pub struct ConfigEntry {
     pub data: u8,
 }
 
+impl ConfigEntry {
+    /// Whether the written value can be read back. Register files from
+    /// ClockBuilder Pro also write the tool version (page 0, 0x0006 to 0x0008).
+    /// These registers are informational, and on the Si5345 0x0007 keeps its
+    /// own value.
+    pub fn is_verifiable(&self) -> bool {
+        !(self.page == 0x00 && (0x06..=0x08).contains(&self.address))
+    }
+}
+
 impl From<ConfigEntry> for RegisterOperation {
     fn from(value: ConfigEntry) -> Self {
         RegisterOperation {
@@ -90,7 +100,11 @@ pub trait ClockChip {
 
         // Write the configuration and confirm by reading back
         for entry in config.config {
-            self.write_and_confirm(entry)?;
+            if entry.is_verifiable() {
+                self.write_and_confirm(entry)?;
+            } else {
+                self.write(entry);
+            }
         }
 
         // Write postamble
@@ -138,7 +152,7 @@ pub trait ClockChip {
     ) -> Result<(), ConfigError> {
         self.wait_for_ready();
         let mut correct = true;
-        for entry in config.config {
+        for entry in config.config.iter().filter(|e| e.is_verifiable()) {
             let read_data = self.read(entry.page, entry.address);
             if read_data != entry.data {
                 correct = false;
