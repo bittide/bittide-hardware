@@ -21,6 +21,18 @@ To add a HTIL test:
 A design marked as a Hardware-in-the-loop test (hitlt) should adhere to
 framework described in the next chapters.
 
+## New FMC cards
+Each board has a Trenz TEF0008 FMC card on its FMC HPC connector. At power-on
+the KCU105 system controller reads the card's FRU EEPROM to decide the VADJ
+voltage. If the EEPROM holds no valid data, as on new cards, VADJ is set to
+0 V. This leaves the FPGA HP banks 47, 48, 66, 67 and 68 and the card's MAX10
+I/O bank on the LA pins unpowered. The card's own 1.8 V rail, which powers the
+Si5345, stays off as well: it is enabled by PG_C2M, which the KCU105 drives from
+the VADJ power good signal. To program the EEPROM, run
+`programFmcEeprom` by adding it to [debug](/.github/synthesis/debug.json) with
+stage `test`, then power cycle the boards. See
+[FmcEeprom.hs](/bittide-instances/src/Bittide/Instances/Hitl/FmcEeprom.hs).
+
 ## ILA
 All ILAs present in the design are armed before the VIO test is started. Each
 ILA produces a separate CSV file for each VIO test.

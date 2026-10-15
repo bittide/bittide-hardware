@@ -531,6 +531,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "program-fmc-eeprom"
+version = "0.1.0"
+dependencies = [
+ "bittide-build-utils",
+ "bittide-hal",
+ "riscv-rt 0.11.0",
+ "ufmt",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
