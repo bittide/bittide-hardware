@@ -7,7 +7,7 @@
 
 use core::panic::PanicInfo;
 
-use bittide_hal::manual_additions::si539x_spi::Config;
+use bittide_hal::manual_additions::clock_chip::Config;
 use bittide_hal::soft_ugn_demo_boot::DeviceInstances;
 use bittide_macros::load_clock_config_csv;
 
