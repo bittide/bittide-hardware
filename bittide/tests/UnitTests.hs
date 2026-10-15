@@ -23,6 +23,7 @@ import qualified Tests.Df
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
 import qualified Tests.Handshake
+import qualified Tests.I2c
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ProgrammableMux
 import qualified Tests.Transceiver
@@ -50,6 +51,7 @@ tests =
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests
     , Tests.Handshake.tests
+    , Tests.I2c.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ProgrammableMux.tests
     , Tests.Transceiver.Prbs.tests
