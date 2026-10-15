@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use bittide_hal::manual_additions::clock_chip::ClockChip;
 use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
 use bittide_hal::shared_devices::{
     ClockControl, Freeze, SampleMemory, Si539xSpi, SyncOutGenerator, Timer, Uart,

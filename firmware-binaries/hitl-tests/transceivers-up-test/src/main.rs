@@ -11,7 +11,7 @@ use ufmt::uwriteln;
 use bittide_cpus::boot::{enable_transceivers, program_clock_board};
 use bittide_cpus::transceivers::{monitor_links, print_statistics, wait_links_up};
 use bittide_hal::hals::transceivers_up_test::DeviceInstances;
-use bittide_hal::manual_additions::si539x_spi::Config;
+use bittide_hal::manual_additions::clock_chip::Config;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_macros::load_clock_config_csv;
 

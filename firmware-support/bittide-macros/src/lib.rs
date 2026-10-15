@@ -43,7 +43,7 @@ pub fn load_clock_config_csv(toks: proc_macro::TokenStream) -> proc_macro::Token
                     data,
                 })) => {
                     let init = quote! {
-                        ::bittide_hal::manual_additions::si539x_spi::ConfigEntry {
+                        ::bittide_hal::manual_additions::clock_chip::ConfigEntry {
                             page: #page,
                             address: #address,
                             data: #data,

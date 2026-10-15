@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
+use bittide_hal::manual_additions::clock_chip::{ClockChip, Config, WriteError};
 use bittide_hal::shared_devices::{Si539xSpi, Timer, Transceivers, Uart};
 use ufmt::uwriteln;
 
