@@ -49,7 +49,20 @@ impl DomainDiffCountersInterface
     }
 }
 
-/// Run software clock control.
+/// Configures whether and how clock control samples are stored after all links
+/// have become stable.
+#[derive(Clone, Copy)]
+pub struct StableSampling {
+    /// Store a sample every _n_ clock control updates. Updates happen every
+    /// 200 us, so '5_000' stores a sample every second.
+    pub store_samples_every: usize,
+    /// Number of samples reserved for the phase after all links have become
+    /// stable. The phase before that can use the rest of the sample memory.
+    pub reserved_samples: usize,
+}
+
+/// Run software clock control. If 'stable_sampling' is 'None', samples are only
+/// stored until all links are stable.
 ///
 /// Frequency adjustments are sent to the clock chip over SPI. The SPI interface is
 /// shared with the boot CPU, which must be done using it before this function is
@@ -65,6 +78,7 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     sample_memory: SampleMemory,
     sync_out_generator: SyncOutGenerator,
     domain_diff_counters: DDC,
+    stable_sampling: Option<StableSampling>,
 ) -> ! {
     debug_assert_eq!(DDC::ENABLE_LEN, Freeze::EB_COUNTERS_LEN);
     debug_assert_eq!(DDC::ENABLE_LEN, ClockControl::DATA_COUNTS_LEN);
@@ -81,6 +95,11 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     // second (20 ms / 200 us = 100). Set to '1' for perfect storage -- not yet
     // possible due to limited memory size.
     let mut sample_store = SampleStore::new(sample_memory, 100);
+    if let Some(stable_sampling) = stable_sampling {
+        sample_store.set_max_samples(
+            SampleStore::CAPACITY.saturating_sub(stable_sampling.reserved_samples),
+        );
+    }
 
     // Update clock control 5K updates per second
     let interval = Duration::from_micros(200);
@@ -114,10 +133,10 @@ pub fn run<DDC: DomainDiffCountersInterface>(
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
 
-        // Store debug information. Stop capturing samples if we are stable to
-        // reduce plot sizes.
+        // Store debug information. Unless configured otherwise, stop capturing
+        // samples if we are stable to reduce plot sizes.
         let has_sense_of_global_time = freeze.number_of_sync_pulses_seen() != unsigned!(0, n = 32);
-        if !prev_all_stable && has_sense_of_global_time {
+        if (!prev_all_stable || stable_sampling.is_some()) && has_sense_of_global_time {
             sample_store.store(&freeze, stability, callisto.accumulated_speed_requests);
         }
 
@@ -125,6 +144,10 @@ pub fn run<DDC: DomainDiffCountersInterface>(
         let all_stable = stability.all_stable();
         if !prev_all_stable && all_stable {
             uwriteln!(uart, "All links stable").unwrap();
+            if let Some(stable_sampling) = stable_sampling {
+                sample_store.set_max_samples(SampleStore::CAPACITY);
+                sample_store.set_store_samples_every(stable_sampling.store_samples_every);
+            }
         } else if prev_all_stable && !all_stable {
             uwriteln!(uart, "Links no longer stable").unwrap();
             panic!("Links no longer stable");
