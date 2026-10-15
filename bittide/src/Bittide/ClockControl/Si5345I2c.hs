@@ -12,6 +12,8 @@ module Bittide.ClockControl.Si5345I2c (
 
   -- * Driver
   si5345I2cDriver,
+  si5345I2cDriverDebug,
+  DriverDebug (..),
   DriverState (..),
   Step (..),
 
@@ -69,7 +71,7 @@ data Step
     Abort
   | -- | Issue no command for a cycle after losing arbitration, then retry
     Retry
-  deriving (Show, Eq, Generic, NFDataX)
+  deriving (Show, Eq, Generic, NFDataX, BitPack)
 
 -- | State of 'si5345I2cDriver'.
 data DriverState = DriverState
@@ -127,7 +129,38 @@ si5345I2cDriver ::
   , Signal dom Busy
   , Signal dom I2cOut
   )
-si5345I2cDriver SNat i2cAddress incomingOp i2cIn = (result, busy, i2cOut)
+si5345I2cDriver minSclPeriod i2cAddress incomingOp i2cIn = (result, busy, i2cOut)
+ where
+  (result, busy, i2cOut, _debug) =
+    si5345I2cDriverDebug minSclPeriod i2cAddress incomingOp i2cIn
+
+-- | Debug information of 'si5345I2cDriverDebug'.
+data DriverDebug = DriverDebug
+  { nackCount :: Unsigned 16
+  -- ^ Number of bytes the chip did not acknowledge, saturating
+  , arbitrationLostCount :: Unsigned 16
+  -- ^ Number of times arbitration was lost, saturating
+  , busState :: BitVector 8
+  {- ^ From MSB to LSB: sampled SCL, sampled SDA, whether the driver is 'Busy',
+  a zero bit, and the current 'Step' (only relevant while 'Busy')
+  -}
+  }
+  deriving (Show, Generic, NFDataX)
+
+-- | Like 'si5345I2cDriver', but also outputs 'DriverDebug'.
+si5345I2cDriverDebug ::
+  forall dom minSclPeriodPs.
+  (HiddenClockResetEnable dom) =>
+  SNat minSclPeriodPs ->
+  BitVector 7 ->
+  Signal dom (Maybe RegisterOperation) ->
+  Signal dom I2cIn ->
+  ( Signal dom (Maybe Byte)
+  , Signal dom Busy
+  , Signal dom I2cOut
+  , Signal dom DriverDebug
+  )
+si5345I2cDriverDebug SNat i2cAddress incomingOp i2cIn = (result, busy, i2cOut, debug)
  where
   -- The I2C controller takes five clock divider periods per SCL period, and
   -- needs a divider of at least 3.
@@ -143,8 +176,16 @@ si5345I2cDriver SNat i2cAddress incomingOp i2cIn = (result, busy, i2cOut)
   (start, stop, rd, wr, ackIn, din) = unbundle (command <$> state)
   busy = isJust . (.operation) <$> state
 
-  (nextState, result) =
+  (nextState, result, nackSeen) =
     unbundle (go <$> state <*> incomingOp <*> hostAck <*> arbitrationLost <*> ackOut <*> dout)
+
+  debug = DriverDebug <$> nackCount <*> arbitrationLostCount <*> busState
+  nackCount = register 0 (countIf <$> nackSeen <*> nackCount)
+  arbitrationLostCount = register 0 (countIf <$> arbitrationLost <*> arbitrationLostCount)
+  countIf event n = if event then satSucc SatBound n else n
+  busState = toBusState <$> i2cIn <*> busy <*> state
+  toBusState (scl, sda) isBusy s =
+    pack scl ++# pack sda ++# pack isBusy ++# (0 :: BitVector 1) ++# pack s.step
 
   targetByte :: Bool -> Byte
   targetByte isRead = i2cAddress ++# boolToBV isRead
@@ -165,6 +206,8 @@ si5345I2cDriver SNat i2cAddress incomingOp i2cIn = (result, busy, i2cOut)
     Abort -> (False, True, False, False, False, 0)
     Retry -> (False, False, False, False, False, 0)
 
+  -- Next state, the result of the operation, and whether the chip did not
+  -- acknowledge a byte
   go ::
     DriverState ->
     Maybe RegisterOperation ->
@@ -172,27 +215,27 @@ si5345I2cDriver SNat i2cAddress incomingOp i2cIn = (result, busy, i2cOut)
     Bool ->
     Bool ->
     Byte ->
-    (DriverState, Maybe Byte)
+    (DriverState, Maybe Byte, Bool)
   go s@DriverState{operation = Nothing} newOp _ _ _ _ =
-    (s{operation = newOp, step = maybe PageTarget (firstStep s.cachedPage) newOp}, Nothing)
+    (s{operation = newOp, step = maybe PageTarget (firstStep s.cachedPage) newOp}, Nothing, False)
   go s@DriverState{cachedPage, operation = Just op, step} _ ack lost nack readByte
     -- The controller released the bus, start over.
-    | lost = (s{cachedPage = Nothing, step = Retry}, Nothing)
-    | step == Retry = (restart, Nothing)
-    | not ack = (s, Nothing)
+    | lost = (s{cachedPage = Nothing, step = Retry}, Nothing, False)
+    | step == Retry = (restart, Nothing, False)
+    | not ack = (s, Nothing, False)
     -- The chip did not acknowledge a byte we wrote.
-    | nack && step /= ReadData && step /= Abort = (s{cachedPage = Nothing, step = Abort}, Nothing)
+    | nack && step /= ReadData && step /= Abort = (s{cachedPage = Nothing, step = Abort}, Nothing, True)
     | otherwise = case step of
-        PageTarget -> (s{step = PageRegister}, Nothing)
-        PageRegister -> (s{step = PageData}, Nothing)
-        PageData -> (s{cachedPage = Just op.page, step = RegTarget}, Nothing)
-        RegTarget -> (s{step = RegAddress}, Nothing)
-        RegAddress -> (s{step = maybe ReadTarget (const WriteData) op.write}, Nothing)
-        WriteData -> (done, op.write)
-        ReadTarget -> (s{step = ReadData}, Nothing)
-        ReadData -> (done, Just readByte)
-        Abort -> (restart, Nothing)
-        Retry -> (restart, Nothing)
+        PageTarget -> (s{step = PageRegister}, Nothing, False)
+        PageRegister -> (s{step = PageData}, Nothing, False)
+        PageData -> (s{cachedPage = Just op.page, step = RegTarget}, Nothing, False)
+        RegTarget -> (s{step = RegAddress}, Nothing, False)
+        RegAddress -> (s{step = maybe ReadTarget (const WriteData) op.write}, Nothing, False)
+        WriteData -> (done, op.write, False)
+        ReadTarget -> (s{step = ReadData}, Nothing, False)
+        ReadData -> (done, Just readByte, False)
+        Abort -> (restart, Nothing, False)
+        Retry -> (restart, Nothing, False)
    where
     restart = s{cachedPage = Nothing, step = PageTarget}
     done = DriverState{cachedPage, operation = Nothing, step = PageTarget}
@@ -200,7 +243,7 @@ si5345I2cDriver SNat i2cAddress incomingOp i2cIn = (result, busy, i2cOut)
   -- Register that selects the page, available on every page.
   pageRegister :: Address
   pageRegister = 0x01
-{-# OPAQUE si5345I2cDriver #-}
+{-# OPAQUE si5345I2cDriverDebug #-}
 
 {- | A memory-mapped version of 'si5345I2cDriver'. It has the same registers as
 'Bittide.ClockControl.Si539xSpi.si539xSpiWb', so software can treat both
@@ -227,7 +270,7 @@ si5345I2cWb ::
     )
 si5345I2cWb minSclPeriod i2cAddress =
   circuit $ \((mm, wb), Fwd i2cIn) -> do
-    [wb0, wb1, wb2, wb3, wb4] <- deviceWbI (deviceConfig "Si5345I2c") -< (mm, wb)
+    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, wb7] <- deviceWbI (deviceConfig "Si5345I2c") -< (mm, wb)
 
     Fwd (regOp, _regOpActivity) <- registerWbI regOpConfig defRegOp -< (wb0, Fwd noWrite)
     Fwd (commit, _) <-
@@ -242,11 +285,17 @@ si5345I2cWb minSclPeriod i2cAddress =
     -- Forgets the selected page. Kept to match the interface of 'si539xSpiWb'.
     Fwd (resetReg, _resetActivity) <- registerWbI resetConfig False -< (wb4, Fwd noWrite)
 
+    -- Debug information, to find out why an operation does not finish
+    registerWbI_ nackCountConfig 0 -< (wb5, Fwd (Just . (.nackCount) <$> debug))
+    registerWbI_ arbitrationLostCountConfig 0
+      -< (wb6, Fwd (Just . (.arbitrationLostCount) <$> debug))
+    registerWbI_ busStateConfig 0 -< (wb7, Fwd (Just . (.busState) <$> debug))
+
     let
       maybeRegOp = toMaybe <$> commit <*> regOp
       reset = unsafeFromActiveHigh resetReg
-      (readData, _busy, i2cOut) =
-        withReset reset $ si5345I2cDriver minSclPeriod i2cAddress maybeRegOp i2cIn
+      (readData, _busy, i2cOut, debug) =
+        withReset reset $ si5345I2cDriverDebug minSclPeriod i2cAddress maybeRegOp i2cIn
 
     idC -< (done, Fwd i2cOut)
  where
@@ -273,6 +322,24 @@ si5345I2cWb minSclPeriod i2cAddress =
   resetConfig =
     (registerConfig "reset" "Reset the I2C driver, so it selects the page again.")
       { access = WriteOnly
+      }
+
+  nackCountConfig =
+    (registerConfig "nack_count" "Number of bytes the chip did not acknowledge, saturating.")
+      { access = ReadOnly
+      }
+
+  arbitrationLostCountConfig =
+    (registerConfig "arbitration_lost_count" "Number of times arbitration was lost, saturating.")
+      { access = ReadOnly
+      }
+
+  busStateConfig =
+    ( registerConfig
+        "bus_state"
+        "From MSB to LSB: sampled SCL, sampled SDA, busy, zero, and the current driver step."
+    )
+      { access = ReadOnly
       }
 
   noWrite = pure Nothing

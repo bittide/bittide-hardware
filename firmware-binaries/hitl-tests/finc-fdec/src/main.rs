@@ -14,6 +14,7 @@ use ufmt::uwriteln;
 use bittide_hal::hals::finc_fdec_tests::devices::DomainDiffCounters;
 use bittide_hal::hals::finc_fdec_tests::DeviceInstances;
 use bittide_hal::manual_additions::clock_chip::{ClockChip, Config, WriteError};
+use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::shared_devices::{Si5345I2c, Timer, Uart};
 
 use bittide_macros::load_clock_config_csv;
@@ -135,6 +136,52 @@ fn do_sw_finc_dec(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters
     )
 }
 
+/// Print the debug registers of the clock chip interface.
+fn print_i2c_status(si5345_i2c: &Si5345I2c, uart: &mut Uart) {
+    let bus_state = si5345_i2c.bus_state().into_inner()[0];
+    uwriteln!(
+        uart,
+        "  nack_count={} arbitration_lost_count={} scl={} sda={} busy={} step={}",
+        si5345_i2c.nack_count().into_inner(),
+        si5345_i2c.arbitration_lost_count().into_inner(),
+        (bus_state >> 7) & 1,
+        (bus_state >> 6) & 1,
+        (bus_state >> 5) & 1,
+        bus_state & 0xF,
+    )
+    .unwrap();
+}
+
+/// Try to read the `DEVICE_READY` register of the clock chip a few times, with a
+/// timeout. Prints the result, or the state of the I2C interface on a timeout.
+fn probe_clock_chip(si5345_i2c: &Si5345I2c, timer: &Timer, uart: &mut Uart) {
+    uwriteln!(uart, "Probing clock chip").unwrap();
+    print_i2c_status(si5345_i2c, uart);
+    for attempt in 0..5 {
+        si5345_i2c.start_read(0x00, 0xFE);
+        let deadline = timer.now() + Duration::from_millis(100);
+        while si5345_i2c.is_busy() && timer.now() < deadline {
+            continue;
+        }
+        if si5345_i2c.is_busy() {
+            uwriteln!(uart, "Probe {}: timeout", attempt).unwrap();
+            print_i2c_status(si5345_i2c, uart);
+            // Reset the driver so the next attempt starts from scratch
+            si5345_i2c.set_reset(true);
+            si5345_i2c.set_reset(false);
+        } else {
+            uwriteln!(
+                uart,
+                "Probe {}: DEVICE_READY=0x{:02X}",
+                attempt,
+                si5345_i2c.read_byte()
+            )
+            .unwrap();
+            print_i2c_status(si5345_i2c, uart);
+        }
+    }
+}
+
 /// Run a single test with the full per-test sequence:
 ///
 ///  1. Program clock chip
@@ -236,6 +283,7 @@ fn main() -> ! {
     let dc = INSTANCES.domain_diff_counters;
 
     uwriteln!(uart, "Starting FINC/FDEC tests").unwrap();
+    probe_clock_chip(&si5345_i2c, &timer, &mut uart);
 
     let all_passed = run_tests!(
         clock_chip: si5345_i2c,

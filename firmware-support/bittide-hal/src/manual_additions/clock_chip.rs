@@ -192,6 +192,17 @@ pub trait ClockChip {
 
     /// Perform a read operation.
     fn read(&self, page: u8, address: u8) -> u8 {
+        self.start_read(page, address);
+        while self.is_busy() {
+            continue;
+        }
+        self.read_byte()
+    }
+
+    /// Start a read operation without waiting for it to finish. Use
+    /// [`Self::is_busy`] to check whether it has finished, and
+    /// [`Self::read_byte`] to get the result.
+    fn start_read(&self, page: u8, address: u8) {
         let read_op = RegisterOperation {
             page: bitvector!([page], n = 8),
             address: bitvector!([address], n = 8),
@@ -199,10 +210,6 @@ pub trait ClockChip {
         };
         self.set_register_operation(read_op);
         self.set_commit(true);
-        while self.commit() {
-            continue;
-        }
-        self.read_byte()
     }
 
     /// Perform a write operation.
