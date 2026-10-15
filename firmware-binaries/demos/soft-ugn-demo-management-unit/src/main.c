@@ -52,7 +52,7 @@
 // Main Entry Point
 // ============================================================================
 
-int c_main(void) {
+bool c_main(void) {
   // Initialize all peripherals
 
   Uart uart = hal.uart;
@@ -237,7 +237,5 @@ int c_main(void) {
     uart_puts(uart, "Failure\n");
     uart_puts(uart, "See report above for details.\n");
   }
-  while (1) {
-    // Protocol complete - idle loop
-  }
+  return success;
 }
