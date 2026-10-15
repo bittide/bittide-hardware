@@ -13,7 +13,7 @@ use ufmt::uwriteln;
 
 use bittide_hal::hals::finc_fdec_tests::devices::DomainDiffCounters;
 use bittide_hal::hals::finc_fdec_tests::DeviceInstances;
-use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
+use bittide_hal::manual_additions::clock_chip::{ClockChip, Config, WriteError};
 use bittide_hal::shared_devices::{Si539xSpi, Timer, Uart};
 
 use bittide_cpus::fmc_power::set_vadj_1v8;
