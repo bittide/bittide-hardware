@@ -22,8 +22,8 @@ use bittide_macros::load_clock_config_csv;
 use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const CONFIG_200: Config<3, 524, 5> =
-    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5345-200MHz-10ppb-Registers.csv");
+const CONFIG_125: Config<3, 524, 5> =
+    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5345-125MHz-10ppb-Registers.csv");
 
 const MAX_CONFIG_RETRIES: usize = 10;
 
@@ -156,7 +156,7 @@ where
     Test: FnOnce(&DomainDiffCounters) -> TestResult,
 {
     if let Err(WriteError::NotConfirmed { entry, read_data }) =
-        si5345_i2c.write_configuration_with_retry(timer, &CONFIG_200, MAX_CONFIG_RETRIES)
+        si5345_i2c.write_configuration_with_retry(timer, &CONFIG_125, MAX_CONFIG_RETRIES)
     {
         uwriteln!(
             uart,

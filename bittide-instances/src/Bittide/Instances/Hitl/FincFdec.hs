@@ -109,7 +109,7 @@ fincFdecTests ::
   -- Pins from internal oscillator:
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   -- Pins from the Si5345 on the FMC card:
-  "FMC_HPC_GBTCLK1_M2C_C" ::: DiffClock Ext200 ->
+  "FMC_HPC_GBTCLK1_M2C_C" ::: DiffClock Ext125 ->
   "JTAG" ::: Signal Basic125 JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
   -- I2C to the Si5345 on the FMC card:
@@ -131,7 +131,7 @@ fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx sclIn sdaIn =
 
   (_, odivClk) = Gth.ibufds_gte3 boardClkDiff
 
-  boardClk :: Clock Basic200
+  boardClk :: Clock Basic125A
   boardClk = Gth.bufgGt d0 odivClk noReset
 
   testStart :: Signal Basic125 Bool
@@ -155,7 +155,7 @@ memoryMap =
   getMMAny
     $ withXilinx
     $ withLittleEndian
-    $ fincFdecPe @Basic125 @Basic200 clockGen resetGen clockGen
+    $ fincFdecPe @Basic125 @Basic125A clockGen resetGen clockGen
 
 {-# OPAQUE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
