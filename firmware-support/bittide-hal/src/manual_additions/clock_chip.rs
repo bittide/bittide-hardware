@@ -27,16 +27,6 @@ pub struct ConfigEntry {
     pub data: u8,
 }
 
-impl ConfigEntry {
-    /// Whether the written value can be read back. Register files from
-    /// ClockBuilder Pro also write the tool version (page 0, 0x0006 to 0x0008).
-    /// These registers are informational, and on the Si5345 0x0007 keeps its
-    /// own value.
-    pub fn is_verifiable(&self) -> bool {
-        !(self.page == 0x00 && (0x06..=0x08).contains(&self.address))
-    }
-}
-
 impl From<ConfigEntry> for RegisterOperation {
     fn from(value: ConfigEntry) -> Self {
         RegisterOperation {
@@ -60,6 +50,12 @@ pub enum ConfigError {
 /// Register based interface to a clock chip. Implementors only provide access to
 /// the hardware registers, all chip logic is provided by this trait.
 pub trait ClockChip {
+    /// Whether [`Self::write_configuration`] reads back every configuration
+    /// register it writes. Only useful when the interface does not detect
+    /// failed writes itself: registers can contain bits that are not stored,
+    /// in which case the read-back value differs from the written one.
+    const VERIFY_WRITES: bool;
+
     /// Set the register operation to perform on the next commit.
     fn set_register_operation(&self, val: RegisterOperation);
     /// Start the register operation. Cleared by hardware once it has finished.
@@ -100,7 +96,7 @@ pub trait ClockChip {
 
         // Write the configuration and confirm by reading back
         for entry in config.config {
-            if entry.is_verifiable() {
+            if Self::VERIFY_WRITES {
                 self.write_and_confirm(entry)?;
             } else {
                 self.write(entry);
@@ -152,7 +148,7 @@ pub trait ClockChip {
     ) -> Result<(), ConfigError> {
         self.wait_for_ready();
         let mut correct = true;
-        for entry in config.config.iter().filter(|e| e.is_verifiable()) {
+        for entry in config.config {
             let read_data = self.read(entry.page, entry.address);
             if read_data != entry.data {
                 correct = false;

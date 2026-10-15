@@ -6,6 +6,9 @@ use crate::{
 };
 
 impl ClockChip for Si539xSpi {
+    // SPI has no acknowledgement, and a write fails roughly once in 200 runs.
+    const VERIFY_WRITES: bool = true;
+
     fn set_register_operation(&self, val: RegisterOperation) {
         Si539xSpi::set_register_operation(self, val)
     }

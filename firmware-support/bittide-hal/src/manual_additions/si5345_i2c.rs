@@ -6,6 +6,10 @@ use crate::{
 };
 
 impl ClockChip for Si5345I2c {
+    // The chip acknowledges every byte, and the driver retries when it does not.
+    // Some registers do not store all bits, so reading them back would fail.
+    const VERIFY_WRITES: bool = false;
+
     fn set_register_operation(&self, val: RegisterOperation) {
         Si5345I2c::set_register_operation(self, val)
     }
