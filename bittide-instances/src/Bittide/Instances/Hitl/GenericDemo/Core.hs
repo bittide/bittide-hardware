@@ -133,7 +133,7 @@ type NmuRemBusWidth userCoreBusses =
 {- Clock control CPU busses, on top of 'SwcccInternalBusses':
     - UART
     - Sample memory
-    - Si539x SPI (shared with the boot CPU)
+    - Si5345 I2C (shared with the boot CPU)
 -}
 type CcExternalBusses = 3
 type CcRemBusWidth = SwcccRemBusWidth CcExternalBusses
@@ -260,7 +260,7 @@ core ::
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: BitboneMm Bittide (NmuRemBusWidth userCoreBusses)
-    , "CC_SI539X_SPI" ::: BitboneMm Bittide CcRemBusWidth
+    , "CC_SI5345_I2C" ::: BitboneMm Bittide CcRemBusWidth
     )
 core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
   $ circuit
@@ -352,7 +352,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
     ( sync
       , [ ccUartBus
           , ccSampleMemoryBus
-          , ccSpiBus
+          , ccClockChipBus
           ]
       ) <-
       withBittideClockResetEnable
@@ -381,7 +381,7 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
-         , ccSpiBus
+         , ccClockChipBus
          )
  where
   withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
