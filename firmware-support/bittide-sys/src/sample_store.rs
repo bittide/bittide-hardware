@@ -13,9 +13,14 @@ pub struct SampleStore {
     memory: SampleMemory,
     store_samples_every: usize,
     counter: usize,
+    max_samples: usize,
 }
 
 impl SampleStore {
+    /// Number of samples that fit in sample memory. The first memory location
+    /// is reserved for the number of samples stored.
+    pub const CAPACITY: usize = (SampleMemory::DATA_LEN - 1) / WORDS_PER_SAMPLE;
+
     pub fn new(memory: SampleMemory, store_samples_every: usize) -> Self {
         // First memory location is reserved for the number of samples stored.
         memory.set_data(0, bitvector!(0x0, n = 32));
@@ -24,7 +29,22 @@ impl SampleStore {
             memory,
             store_samples_every,
             counter: 0,
+            max_samples: Self::CAPACITY,
         }
+    }
+
+    /// Change how often samples are stored. Restarts the count towards the
+    /// next stored sample.
+    pub fn set_store_samples_every(&mut self, store_samples_every: usize) {
+        self.store_samples_every = store_samples_every;
+        self.counter = 0;
+    }
+
+    /// Stop storing samples once 'max_samples' samples have been stored. Can be
+    /// used to reserve memory for a later phase by raising the limit again.
+    /// Limits larger than 'CAPACITY' are clamped.
+    pub fn set_max_samples(&mut self, max_samples: usize) {
+        self.max_samples = max_samples.min(Self::CAPACITY);
     }
 
     /// *Actually* store the contents of 'Freeze' to memory. Note that the public
@@ -84,8 +104,9 @@ impl SampleStore {
         }
 
         // Bump number of samples stored, but only if we're running "for real"
-        // and the data actually fits in memory.
-        if bump_counter && self.memory.data(start_index + WORDS_PER_SAMPLE).is_some() {
+        // and we haven't hit the sample limit. Because the limit never exceeds
+        // 'CAPACITY', this also guarantees the data fits in memory.
+        if bump_counter && n_samples_stored < self.max_samples {
             self.memory.set_data(
                 0,
                 bitvector!(((n_samples_stored + 1) as u32).to_le_bytes(), n = 32),

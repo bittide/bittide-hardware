@@ -11,14 +11,21 @@ import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.ElasticBufferOccupancy (recordEbWindows, summarizeEbWindows)
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Serial (initSerial)
 import Bittide.Instances.Hitl.Utils.Ugn
 import Bittide.Instances.Hitl.Utils.Usb (resetUsbDeviceByLocation)
 import Bittide.Instances.Hitl.Utils.Utils (dumpCcSamples)
-import Control.Concurrent.Async (forConcurrently_, mapConcurrently, mapConcurrently_)
+import Control.Concurrent.Async (
+  forConcurrently,
+  forConcurrently_,
+  mapConcurrently,
+  mapConcurrently_,
+ )
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
+import Control.Exception (onException)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.IO.Class
 import Data.Vector.Internal.Check (HasCallStack)
@@ -222,6 +229,28 @@ driver testName targets = do
               $ \serial ->
                 waitForLine serial "[MU] Test status: Success"
 
+          ebWindows <-
+            liftIO
+              $ (`onException` goDumpCcSamples)
+              $ T.tryWithTimeout
+                T.PrintActionTime
+                "Measuring elastic buffer occupancies"
+                ebMeasurementTimeoutUs
+              $ forConcurrently (L.zip [0 ..] serials)
+              $ \(nodeIndex, serial) ->
+                recordEbWindows
+                  (hitlDir </> "eb-occupancy-" <> show nodeIndex <> ".csv")
+                  nodeIndex
+                  serial
+
           liftIO goDumpCcSamples
+          liftIO $ summarizeEbWindows ebWindows
 
           pure ExitSuccess
+
+{- | Timeout for the elastic buffer occupancy measurement done by the management
+unit. Should be comfortably longer than @EB_WINDOWS * EB_WINDOW_SECS@ as
+configured in @soft-ugn-demo-management-unit@ (30 minutes).
+-}
+ebMeasurementTimeoutUs :: Int
+ebMeasurementTimeoutUs = 35 * 60 * 1_000_000

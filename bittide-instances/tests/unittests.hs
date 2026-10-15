@@ -16,6 +16,7 @@ import "extra" Data.List.Extra (trim)
 
 import qualified Df.ElasticBufferWb as ElasticBufferWb
 import qualified Df.WbToDf as WbToDf
+import qualified Tests.Bittide.Instances.Hitl.Utils.ElasticBufferOccupancy as ElasticBufferOccupancy
 import qualified Tests.Bittide.Instances.Hitl.Utils.MemoryMap as MemoryMap
 import qualified Tests.Bittide.Instances.Hitl.Utils.OpenOcd as OpenOcd
 import qualified Tests.Bittide.Instances.Hitl.Utils.Serial as Serial
@@ -77,6 +78,7 @@ prepareTests = do
           , CaptureUgn.tests
           , ClockControlWb.tests
           , DnaPortE2.tests
+          , ElasticBufferOccupancy.tests
           , ElasticBufferWb.tests
           , MemoryMap.tests
           , NestedInterconnect.tests
