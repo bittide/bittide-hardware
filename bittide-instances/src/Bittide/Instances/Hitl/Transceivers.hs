@@ -221,6 +221,25 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
         , txDatas = txCounters
         }
 
+{- | SFP control signals of the Trenz TEF0008 FMC card, which holds the SFP+
+cages of links J4 to J7. The card's MAX10 forwards these to all four cages. When
+left undriven, the FPGA's default pull-down on unused pins fights the MAX10's
+weak pull-up, which can disable the transmitters once the card is powered (VADJ
+on). See https://wiki.trenz-electronic.de/display/PD/TEF0008+MAX10.
+-}
+type Tef0008SfpControl =
+  ( "FMC_HPC_LA03_P" ::: Signal Basic125 Bit
+  , "FMC_HPC_LA03_N" ::: Signal Basic125 Bit
+  , "FMC_HPC_LA04_P" ::: Signal Basic125 Bit
+  )
+
+{- | Transmitters on (TX_DISABLE low), and the full rate setting on both rate
+select pins (RS0 and RS1 high), as our links run at 10 Gbps. All three
+signals are inverted by the MAX10.
+-}
+tef0008SfpControl :: Tef0008SfpControl
+tef0008SfpControl = (pure high, pure low, pure low)
+
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
@@ -235,9 +254,10 @@ transceiversUpTest ::
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
+  , "" ::: Tef0008SfpControl
   )
 transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
-  linkStatusVio sysClk linkStatus `hwSeqX` (txs, txns, txps, syncOut, spiM2S)
+  linkStatusVio sysClk linkStatus `hwSeqX` (txs, txns, txps, syncOut, spiM2S, tef0008SfpControl)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
 
@@ -280,6 +300,7 @@ tests =
     , targetXdcs =
         [ "wireDemoTest.xdc"
         , "si539x" </> "spi.xdc"
+        , "tef0008" </> "sfpControl.xdc"
         ]
     , testCases = iters
     , mDriverProc = Just Driver.driver
