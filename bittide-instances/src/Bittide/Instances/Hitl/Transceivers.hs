@@ -30,11 +30,13 @@ import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Cores.Xilinx.Vio (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
 import Data.Maybe (isJust)
 import System.FilePath ((</>))
 
+import qualified Bittide.Instances.Hitl.Driver.Transceivers as Driver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Clash.Explicit.Prelude as E
@@ -75,6 +77,47 @@ expectCounter clk rst = stickyE clk rst . mealy clk rst enableGen go Nothing
     | otherwise = (Nothing, False)
   go (Just c) e = (Just (c + 1), c /= e)
 
+-- | Per-link status, for debugging. Read by 'Driver.driver' through a VIO.
+data LinkStatus = LinkStatus
+  { rxUps :: Vec LinkCount Bool
+  , txUps :: Vec LinkCount Bool
+  , errors :: Vec LinkCount Bool
+  , stats :: Vec LinkCount ResetManager.Statistics
+  }
+
+{- | VIO exposing 'LinkStatus' as separate probes. Link /i/ is bit /i/ of the
+bit masks, and bits @[32 * i + 31 : 32 * i]@ of the counters. The VIO has no
+outputs, so use 'hwSeqX' to keep it in the design.
+-}
+linkStatusVio :: Clock Basic125 -> Signal Basic125 LinkStatus -> Signal Basic125 ()
+linkStatusVio clk status =
+  setName @"vioLinkStatus"
+    $ vioProbe
+      ( "probe_rx_up"
+          :> "probe_tx_up"
+          :> "probe_errors"
+          :> "probe_fail_after_ups"
+          :> "probe_rx_full_retries"
+          :> "probe_tx_retries"
+          :> Nil
+      )
+      Nil
+      ()
+      clk
+      (mask (.rxUps) <$> status)
+      (mask (.txUps) <$> status)
+      (mask (.errors) <$> status)
+      (counters (.failAfterUps) <$> status)
+      (counters (.rxFullRetries) <$> status)
+      (counters (.txRetries) <$> status)
+ where
+  mask :: (LinkStatus -> Vec LinkCount Bool) -> LinkStatus -> BitVector LinkCount
+  mask f = pack . reverse . f
+
+  counters ::
+    (ResetManager.Statistics -> Unsigned 32) -> LinkStatus -> BitVector (LinkCount * 32)
+  counters f = pack . reverse . fmap f . (.stats)
+
 {- | Worker function for 'transceiversUpTest'. See module documentation for more
 information.
 -}
@@ -91,6 +134,7 @@ goTransceiversUpTest ::
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "allUp" ::: Signal Basic125 Bool
   , "anyErrors" ::: Signal Basic125 Bool
+  , "linkStatus" ::: Signal Basic125 LinkStatus
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
@@ -101,6 +145,7 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
   , transceivers.txPs
   , allUp
   , expectCounterErrorSys
+  , linkStatus
   , transceivers.stats
   , spiDone
   , spiM2S
@@ -142,10 +187,17 @@ goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
       (zipWith orReset transceivers.rxResets rxDataResets)
       transceivers.rxDatas
 
-  expectCounterErrorSys =
-    fmap or
-      $ bundle
-      $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
+  expectCounterErrorsSys =
+    zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
+
+  expectCounterErrorSys = fmap or $ bundle expectCounterErrorsSys
+
+  linkStatus =
+    LinkStatus
+      <$> bundle transceivers.rxDataInitDonesFree
+      <*> bundle transceivers.txDataInitDonesFree
+      <*> bundle expectCounterErrorsSys
+      <*> bundle transceivers.stats
 
   transceivers =
     transceiverPrbsN
@@ -185,7 +237,7 @@ transceiversUpTest ::
   , "" ::: Signal Basic125 Spi.M2S
   )
 transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
-  (txs, txns, txps, syncOut, spiM2S)
+  linkStatusVio sysClk linkStatus `hwSeqX` (txs, txns, txps, syncOut, spiM2S)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
 
@@ -198,7 +250,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
       $ unsafeFromActiveLow
       $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txs, txns, txps, allUp, anyErrors, _stats, _spiDone, spiM2S) =
+  (txs, txns, txps, allUp, anyErrors, linkStatus, _stats, _spiDone, spiM2S) =
     goTransceiversUpTest refClk sysClk testRst rxs rxns rxps spiS2M
 
   failAfterUp = isFalling sysClk testRst enableGen False allUp
@@ -230,7 +282,7 @@ tests =
         , "si539x" </> "spi.xdc"
         ]
     , testCases = iters
-    , mDriverProc = Nothing
+    , mDriverProc = Just Driver.driver
     , mPostProc = Nothing
     }
  where
