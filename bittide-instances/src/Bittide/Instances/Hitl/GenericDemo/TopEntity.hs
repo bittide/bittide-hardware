@@ -42,6 +42,7 @@ import VexRiscv (JtagIn (..), JtagOut (..))
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 
+import qualified Bittide.Instances.Hitl.Tef0008 as Tef0008
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
 
@@ -80,6 +81,7 @@ demoTest ::
   , "JTAG" ::: Signal Basic125 JtagOut
   , "USB_UART_RXD" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
+  , "" ::: Tef0008.SfpControl Basic125
   )
 demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncIn =
   ( txs
@@ -90,6 +92,7 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
   , jtagOut
   , uartTx
   , syncOut
+  , Tef0008.sfpControl
   )
  where
   boardClk :: Clock Ext200
@@ -135,6 +138,7 @@ mkTests topEntityName driver =
         , "uart" </> "pmod1.xdc"
         , "si539x" </> "fincfdec.xdc"
         , "si539x" </> "spi.xdc"
+        , "tef0008" </> "sfpControl.xdc"
         ]
     , externalHdl = []
     , testCases =
