@@ -757,6 +757,9 @@ jobs:
       matrix:
         target: ${{ fromJson(needs.bittide-instances-matrices.outputs.hitl) }}
       fail-fast: false
+      # TMP: only queue one HITL job at a time, so repeats of two concurrent CI
+      # runs alternate on the (single) hardware runner.
+      max-parallel: 1
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2026-05-11
