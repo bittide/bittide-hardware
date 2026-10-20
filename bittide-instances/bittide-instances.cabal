@@ -194,6 +194,7 @@ library
     Bittide.Instances.Hitl.SoftUgnDemo.TopEntity
     Bittide.Instances.Hitl.SoftUgnDemo.UserCore
     Bittide.Instances.Hitl.SyncInSyncOut
+    Bittide.Instances.Hitl.Tef0008
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers

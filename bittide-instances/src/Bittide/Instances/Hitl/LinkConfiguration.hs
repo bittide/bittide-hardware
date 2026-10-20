@@ -35,6 +35,7 @@ import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
 import System.FilePath ((</>))
 
+import qualified Bittide.Instances.Hitl.Tef0008 as Tef0008
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.Gth as Gth
@@ -215,9 +216,10 @@ linkConfigurationTest ::
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
+  , "" ::: Tef0008.SfpControl Basic125
   )
 linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
-  (txSims, txns, txps, syncOut, spiM2S)
+  (txSims, txns, txps, syncOut, spiM2S, Tef0008.sfpControl)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -270,6 +272,7 @@ tests =
     , targetXdcs =
         [ "wireDemoTest.xdc"
         , "si539x" </> "spi.xdc"
+        , "tef0008" </> "sfpControl.xdc"
         ]
     , externalHdl = []
     , testCases =
