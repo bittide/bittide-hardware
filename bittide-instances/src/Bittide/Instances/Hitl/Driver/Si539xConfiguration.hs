@@ -33,11 +33,11 @@ import qualified Data.List as L
 import qualified Gdb
 import qualified System.Timeout.Extra as T
 
-driverFunc ::
+driver ::
   String ->
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
-driverFunc _name targets = do
+driver _name targets = do
   liftIO
     $ putStrLn
     $ "Running driver function for targets "

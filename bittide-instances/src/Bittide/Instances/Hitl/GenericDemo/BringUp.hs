@@ -19,7 +19,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
-import Bittide.BootPe (BootPeBusses, bootPe)
+import Bittide.BootPe (bootPe, defBootPeConfig)
 import Bittide.ClockControl
 import Bittide.Df (asciiDebugMux)
 import Bittide.Instances.Domains (
@@ -40,7 +40,7 @@ import Bittide.Instances.Hitl.GenericDemo.Core (
  )
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
-import Bittide.ProcessingElement (PeConfig (..), PrefixWidth)
+import Bittide.ProcessingElement (PrefixWidth)
 import Bittide.SharedTypes (Byte, withLittleEndian)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
@@ -55,7 +55,6 @@ import Protocols.Spi (Spi)
 import Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import VexRiscv (Jtag)
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
@@ -78,19 +77,6 @@ uartLabels =
             :> $(listToVecTH "CC")
             :> Nil
         )
-
-bootPeConfig :: PeConfig BootPeBusses
-bootPeConfig =
-  PeConfig
-    { cpu = Riscv32imc.vexRiscv0
-    , depthI = SNat @(Div (4 * 1024) 4)
-    , depthD = SNat @(Div (16 * 1024) 4)
-    , initI = Nothing
-    , initD = Nothing
-    , iBusTimeout = d0
-    , dBusTimeout = d0
-    , includeIlaWb = False
-    }
 
 bringUp ::
   forall userCoreBusses ringBufferDepth.
@@ -128,9 +114,9 @@ bringUp bufferDepth mkUserCore refClk refRst =
         -< muTransceiverWbBittide
 
     -- Start boot PE
-    (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
+    (bootUartBytes, _spiDone, spi, [bootTransceiverWb]) <-
       withRefClockResetEnable
-        $ bootPe bootPeConfig
+        $ bootPe defBootPeConfig
         -< (bootMm, bootJtag)
     -- Stop boot PE
 

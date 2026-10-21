@@ -8,7 +8,6 @@ module Bittide.Instances.Hitl.Driver.FincFdec where
 
 import Clash.Prelude
 
-import Control.Monad (forM_)
 import Project.Chan
 import Project.FilePath
 import Project.Handle (assertEither)
@@ -17,7 +16,6 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Utils.Driver (assertProbe)
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Serial (initSerial)
@@ -47,8 +45,6 @@ driver _name targets = do
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build" </> "hitl"
-
-  forM_ targets (assertProbe "probe_test_start")
 
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
   liftIO $ mapM_ (\(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation) targets
