@@ -44,6 +44,9 @@ import Bittide.ProcessingElement (PeConfig (..), PrefixWidth)
 import Bittide.SharedTypes (Byte, withLittleEndian)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
+#ifdef SIM_BAUD_RATE
+import Clash.Cores.Uart.Extra (MaxBaudRate)
+#endif
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Data.Char (ord)
 import Protocols.Extra
@@ -60,7 +63,6 @@ import qualified Protocols.Vec as Vec
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
-import Clash.Cores.UART.Extra
 #else
 type Baud = 921_600
 #endif

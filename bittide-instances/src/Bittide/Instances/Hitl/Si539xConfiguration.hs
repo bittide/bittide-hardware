@@ -36,7 +36,7 @@ import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (timeWb, uartBytes, uartDf, uartInterfaceWb)
 #ifdef SIM_BAUD_RATE
-import Clash.Cores.UART.Extra
+import Clash.Cores.Uart.Extra (MaxBaudRate)
 #endif
 import Clash.Cores.Xilinx (withXilinx)
 

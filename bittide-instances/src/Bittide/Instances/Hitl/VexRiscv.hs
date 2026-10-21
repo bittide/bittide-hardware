@@ -42,7 +42,7 @@ import Bittide.Instances.Hitl.Driver.VexRiscv
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone
-import Clash.Cores.UART.Extra
+import Clash.Cores.Uart.Extra
 
 import GHC.Stack (HasCallStack)
 import System.FilePath ((</>))
