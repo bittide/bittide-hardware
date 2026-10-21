@@ -8,6 +8,7 @@
 use core::panic::PanicInfo;
 
 use bittide_cpus::clock_control::StableSampling;
+use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::soft_ugn_demo_clock_control::DeviceInstances;
 
 #[cfg(not(test))]
@@ -24,6 +25,11 @@ const STABLE_SAMPLING: StableSampling = StableSampling {
     reserved_samples: 2_000,
 };
 
+/// Apply each speed change this long after computing it. A frequency adjustment
+/// over SPI takes ~162 us to complete (see PR #1350), so this mimics its latency
+/// while still using the FINC/FDEC pins.
+const SPEED_CHANGE_DELAY_US: u64 = 162;
+
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let mut uart = INSTANCES.uart;
@@ -36,6 +42,7 @@ fn main() -> ! {
         INSTANCES.sync_out_generator,
         INSTANCES.domain_diff_counters,
         Some(STABLE_SAMPLING),
+        Some(Duration::from_micros(SPEED_CHANGE_DELAY_US)),
     )
 }
 

@@ -26,6 +26,7 @@ fn main() -> ! {
         INSTANCES.sync_out_generator,
         INSTANCES.domain_diff_counters,
         None,
+        None,
     )
 }
 

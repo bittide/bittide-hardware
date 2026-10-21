@@ -63,6 +63,12 @@ pub struct StableSampling {
 
 /// Run clock control. If 'stable_sampling' is 'None', samples are only stored
 /// until all links are stable.
+///
+/// If 'speed_change_delay' is set, each speed change is applied that long after
+/// it was computed, instead of immediately. The loop keeps doing its other work
+/// in the meantime. This mimics frequency adjustments that take effect only once
+/// a slow transaction (e.g., over SPI) has finished. The delay should be shorter
+/// than the update interval minus the time the loop needs.
 #[allow(clippy::too_many_arguments)]
 pub fn run<DDC: DomainDiffCountersInterface>(
     cc: ClockControl,
@@ -73,6 +79,7 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     sync_out_generator: SyncOutGenerator,
     domain_diff_counters: DDC,
     stable_sampling: Option<StableSampling>,
+    speed_change_delay: Option<Duration>,
 ) -> ! {
     debug_assert_eq!(DDC::ENABLE_LEN, Freeze::EB_COUNTERS_LEN);
     debug_assert_eq!(DDC::ENABLE_LEN, ClockControl::DATA_COUNTS_LEN);
@@ -99,13 +106,14 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     let interval = Duration::from_micros(200);
     let mut next_update = timer.now() + interval;
     let mut prev_all_stable = false;
+    let mut reported_late_speed_change = false;
 
     loop {
         // Store frozen elastic buffer counters
         freeze.set_freeze(());
 
         // Do clock control update
-        cc.set_change_speed(callisto.update(
+        let speed_change = callisto.update(
             &cc,
             izip!(0..DDC::ENABLE_LEN, freeze.eb_counters_volatile_iter()).map(|(i, counter)| {
                 if domain_diff_counters.enable(i).unwrap_or(false) {
@@ -114,7 +122,11 @@ pub fn run<DDC: DomainDiffCountersInterface>(
                     None
                 }
             }),
-        ));
+        );
+        let apply_speed_change_at = speed_change_delay.map(|delay| timer.now() + delay);
+        if apply_speed_change_at.is_none() {
+            cc.set_change_speed(speed_change);
+        }
 
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
@@ -145,6 +157,24 @@ pub fn run<DDC: DomainDiffCountersInterface>(
         let link_mask_rev = cc.link_mask_rev();
         for i in 0..DDC::ENABLE_LEN {
             domain_diff_counters.set_enable(i, test_bit(link_mask_rev[0], i));
+        }
+
+        // Apply a delayed speed change. Report (once) if the loop's other work
+        // took longer than the delay, so the delay was longer than intended.
+        if let Some(apply_at) = apply_speed_change_at {
+            if let WaitResult::AlreadyPassed = timer.wait_until_stall(apply_at) {
+                if !reported_late_speed_change {
+                    reported_late_speed_change = true;
+                    uwriteln!(
+                        uart,
+                        "Delayed speed change applied late. Now: {}. Intended: {}",
+                        timer.now().micros(),
+                        apply_at.micros(),
+                    )
+                    .unwrap();
+                }
+            }
+            cc.set_change_speed(speed_change);
         }
 
         // Wait for next update
