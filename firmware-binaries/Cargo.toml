@@ -41,6 +41,7 @@ members = [
   "hitl-tests/vexriscv-hello",
   "hitl-tests/clock-board",
   "hitl-tests/finc-fdec",
+  "hitl-tests/transceivers-up-test",
 
   "demos/soft-ugn-demo-clock-control",
   "demos/soft-ugn-demo-boot",

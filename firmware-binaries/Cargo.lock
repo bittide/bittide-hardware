@@ -906,6 +906,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "transceivers-up-test"
+version = "0.1.0"
+dependencies = [
+ "bittide-build-utils",
+ "bittide-cpus",
+ "bittide-hal",
+ "bittide-macros",
+ "riscv-rt 0.11.0",
+ "ufmt",
+]
+
+[[package]]
 name = "typewit"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
