@@ -42,6 +42,7 @@ checkResult :: String -> Filter
 checkResult s
   | "FMC EEPROM: programmed" `isPrefixOf` s = Stop (Right ())
   | "FMC EEPROM: up to date" `isPrefixOf` s = Stop (Right ())
+  | "FMC EEPROM: dry run" `isPrefixOf` s = Stop (Right ())
   | "FMC EEPROM: FAILED" `isPrefixOf` s = Stop (Left s)
   | "panicked" `L.isInfixOf` s = Stop (Left s)
   | otherwise = Continue

@@ -44,6 +44,17 @@ const PAGE_SIZE: usize = 16;
 
 const MAX_RETRIES: usize = 5;
 
+/// TMP: one-off, read-only test-drive. Dump the KCU105 board EEPROM and the FMC
+/// EEPROM instead of programming the FMC EEPROM.
+const DRY_RUN: bool = true;
+/// PCA9544 control register value that enables channel 3: the KCU105 board EEPROM
+const PCA9544_BOARD_EEPROM: u8 = 0b100 | 3;
+/// KCU105 board EEPROM (U12, M24C08): 1 KiB in four 256 byte blocks at 0x54 to
+/// 0x57. Uses a single address byte.
+const BOARD_EEPROM_ADDRESS: u8 = 0x54;
+/// Number of bytes of the FMC EEPROM to dump: the size of the smaller M24C32.
+const FMC_DUMP_SIZE: usize = 4096;
+
 type Result<T> = core::result::Result<T, I2cError>;
 
 /// Retry `f` when arbitration was lost to the system controller.
@@ -99,6 +110,119 @@ fn print_bytes(uart: &mut Uart, bytes: &[u8]) {
             uwriteln!(uart, "").unwrap();
         }
     }
+}
+
+/// Print `bytes` as a hex dump with an ASCII column, starting at `offset`.
+fn print_dump(uart: &mut Uart, offset: usize, bytes: &[u8]) {
+    for (row, line) in bytes.chunks(16).enumerate() {
+        uwrite!(uart, "  {:04X}:", offset + row * 16).unwrap();
+        for byte in line {
+            uwrite!(uart, " {:02X}", *byte).unwrap();
+        }
+        uwrite!(uart, "  |").unwrap();
+        for byte in line {
+            let c = if byte.is_ascii_graphic() || *byte == b' ' {
+                *byte as char
+            } else {
+                '.'
+            };
+            uwrite!(uart, "{}", c).unwrap();
+        }
+        uwriteln!(uart, "|").unwrap();
+    }
+}
+
+/// Select a channel of the PCA9544 and read it back.
+fn select_channel(i2c: &I2cController, timer: &Timer, control: u8) -> Result<bool> {
+    with_retries(|| i2c.write(timer, PCA9544_ADDRESS, &[control]))?;
+    let mut read_back = [0u8];
+    with_retries(|| i2c.write_read(timer, PCA9544_ADDRESS, &[], &mut read_back))?;
+    // The upper nibble holds interrupt flags
+    Ok(read_back[0] & 0x07 == control)
+}
+
+/// TMP: dump the KCU105 board EEPROM and the FMC EEPROM, without writing anything.
+fn dry_run(
+    i2c: &I2cController,
+    timer: &Timer,
+    uart: &mut Uart,
+) -> core::result::Result<&'static str, ()> {
+    macro_rules! fail {
+        ($($arg:tt)*) => {{
+            uwrite!(uart, "FMC EEPROM: FAILED: ").unwrap();
+            uwriteln!(uart, $($arg)*).unwrap();
+            return Err(());
+        }};
+    }
+    macro_rules! check {
+        ($e:expr, $what:literal) => {
+            match $e {
+                Ok(v) => v,
+                Err(e) => fail!("{}: {:?}", $what, e),
+            }
+        };
+    }
+
+    let result = (|| {
+        let mut block = [0u8; 256];
+
+        // KCU105 board EEPROM: known, non-blank contents
+        if !check!(
+            select_channel(i2c, timer, PCA9544_BOARD_EEPROM),
+            "selecting the board EEPROM bus on the PCA9544"
+        ) {
+            fail!("PCA9544 does not select the board EEPROM bus");
+        }
+        uwriteln!(uart, "Board EEPROM:").unwrap();
+        for i in 0..4u8 {
+            // A single address byte: a second one would be written as data
+            check!(
+                with_retries(|| i2c.write_read(timer, BOARD_EEPROM_ADDRESS + i, &[0], &mut block)),
+                "reading the board EEPROM"
+            );
+            print_dump(uart, i as usize * block.len(), &block);
+        }
+
+        // FMC EEPROM
+        if !check!(
+            select_channel(i2c, timer, PCA9544_FMC_HPC),
+            "selecting the FMC HPC bus on the PCA9544"
+        ) {
+            fail!("PCA9544 does not select the FMC HPC bus");
+        }
+        let mut eeprom = None;
+        for address in EEPROM_ADDRESSES {
+            if check!(
+                with_retries(|| i2c.probe(timer, address)),
+                "probing for the EEPROM"
+            ) {
+                uwriteln!(uart, "Found I2C target at 0x{:02X}", address).unwrap();
+                eeprom = Some(address);
+            }
+        }
+        let Some(eeprom) = eeprom else {
+            fail!("no EEPROM found, is an FMC card attached?");
+        };
+        uwriteln!(uart, "FMC EEPROM at 0x{:02X}:", eeprom).unwrap();
+        for offset in (0..FMC_DUMP_SIZE).step_by(block.len()) {
+            let address_bytes = [(offset >> 8) as u8, offset as u8];
+            check!(
+                with_retries(|| i2c.write_read(timer, eeprom, &address_bytes, &mut block)),
+                "reading the FMC EEPROM"
+            );
+            print_dump(uart, offset, &block);
+        }
+
+        Ok("dry run")
+    })();
+
+    // Disconnect the bus again, as found after power-on
+    check!(
+        with_retries(|| i2c.write(timer, PCA9544_ADDRESS, &[0])),
+        "deselecting the bus on the PCA9544"
+    );
+
+    result
 }
 
 fn program(
@@ -216,6 +340,16 @@ fn main() -> ! {
     let i2c = INSTANCES.i2c_controller;
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
+
+    if DRY_RUN {
+        uwriteln!(uart, "Reading EEPROMs (dry run)").unwrap();
+        if let Ok(result) = dry_run(&i2c, &timer, &mut uart) {
+            uwriteln!(uart, "FMC EEPROM: {}", result).unwrap();
+        }
+        loop {
+            continue;
+        }
+    }
 
     uwriteln!(uart, "Programming FMC EEPROM").unwrap();
     if let Ok(result) = program(&i2c, &timer, &mut uart) {

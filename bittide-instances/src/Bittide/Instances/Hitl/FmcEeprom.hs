@@ -40,12 +40,12 @@ import VexRiscv
 import Bittide.Hitl (
   HitlTestCase (..),
   HitlTestGroup (..),
+  HwTargetRef (HwTargetByIndex),
   hitlVioBool,
-  paramForHwTargets,
+  paramForSingleHwTarget,
  )
 import Bittide.I2c (I2cIn, I2cOut, i2cControllerWb, openDrainPins)
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup (allHwTargets)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (timeWb, uartDf, uartInterfaceWb)
@@ -178,7 +178,7 @@ tests =
     , testCases =
         [ HitlTestCase
             { name = "ProgramFmcEeprom"
-            , parameters = paramForHwTargets allHwTargets ()
+            , parameters = paramForSingleHwTarget (HwTargetByIndex 7) ()
             , postProcData = ()
             }
         ]
