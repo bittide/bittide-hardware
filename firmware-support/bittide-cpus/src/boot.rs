@@ -7,27 +7,27 @@ use bittide_hal::shared_devices::{Si539xSpi, Timer, Transceivers, Uart};
 use ufmt::uwriteln;
 
 /// Writing a configuration can sometimes fail, usually because a written register was not
-/// the same when not read back. This happens roughly once in 200 runs. The 'run' function
-/// therefore retries when this happens up to 'MAX_RETRIES' times.
+/// the same when not read back. This happens roughly once in 200 runs. The
+/// 'program_clock_board' function therefore retries when this happens up to 'MAX_RETRIES'
+/// times.
 const MAX_RETRIES: usize = 10;
 
-/// Run the steps of a boot CPU.
+/// Write the given configuration to the Si539x clock board.
 ///
 /// Panics when writing a configuration fails 'MAX_RETRIES' times.
-pub fn run(
-    si539x_spi: Si539xSpi,
-    timer: Timer,
-    transceivers: Transceivers,
+pub fn program_clock_board(
+    si539x_spi: &Si539xSpi,
+    timer: &Timer,
     uart: &mut Uart,
     config: &Config<3, 590, 5>,
-) -> ! {
+) {
     uwriteln!(uart, "Writing Si539x configuration..").unwrap();
     let mut retries = 0;
     loop {
-        match si539x_spi.write_configuration(&timer, config) {
+        match si539x_spi.write_configuration(timer, config) {
             Ok(()) => {
                 uwriteln!(uart, "Done.").unwrap();
-                break;
+                return;
             }
             Err(WriteError::NotConfirmed { entry, read_data }) => {
                 retries += 1;
@@ -53,7 +53,10 @@ pub fn run(
             }
         }
     }
+}
 
+/// Enable the transceiver block and all of its channels.
+pub fn enable_transceivers(transceivers: &Transceivers, uart: &mut Uart) {
     uwriteln!(uart, "Enabling bittide domain..").unwrap();
     transceivers.set_transceiver_enable(true);
 
@@ -61,6 +64,20 @@ pub fn run(
     for channel in 0..Transceivers::CHANNEL_ENABLES_LEN {
         transceivers.set_channel_enables(channel, true);
     }
+}
+
+/// Run the steps of a boot CPU.
+///
+/// Panics when writing a configuration fails 'MAX_RETRIES' times.
+pub fn run(
+    si539x_spi: Si539xSpi,
+    timer: Timer,
+    transceivers: Transceivers,
+    uart: &mut Uart,
+    config: &Config<3, 590, 5>,
+) -> ! {
+    program_clock_board(&si539x_spi, &timer, uart, config);
+    enable_transceivers(&transceivers, uart);
 
     uwriteln!(uart, "Going into infinite loop..").unwrap();
     loop {

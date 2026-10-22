@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 
 {- | A couple of tests testing clock board programming, and subsequently the
 FINC and FDEC pins.
@@ -12,10 +12,14 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClock, HiddenReset, withClock, withClockResetEnable, withReset)
 import Protocols
 
+import GHC.Stack (HasCallStack)
+import System.FilePath ((</>))
+
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Uart (ValidBaud)
 import Clash.Cores.Xilinx (withXilinx)
+import Clash.Explicit.Reset.Extra (Asserted (..), xpmResetSynchronizer)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols.MemoryMap (Access (WriteOnly), MemoryMap, Mm, getMMAny)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -25,11 +29,11 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerConfig,
   registerWbI,
  )
-import Protocols.Spi
+import Protocols.Spi (Spi)
 import VexRiscv
 
+import Bittide.BootPe (bootPe)
 import Bittide.ClockControl (FDEC, FINC, SpeedChange (..), speedChangeToFincFdec)
-import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
   HitlTestCase (..),
@@ -37,14 +41,15 @@ import Bittide.Hitl (
   hitlVioBool,
   paramForHwTargets,
  )
+import Bittide.ProcessingElement (PeConfig (..))
+import Bittide.SharedTypes (BitboneMm, withLittleEndian)
+import Bittide.Wishbone (uartDf)
+#ifdef SIM_BAUD_RATE
+import Clash.Cores.Uart.Extra (MaxBaudRate)
+#endif
+
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup (allHwTargets)
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.SharedTypes (BitboneMm, withLittleEndian)
-import Bittide.Wishbone (timeWb, uartDf, uartInterfaceWb)
-
-import GHC.Stack (HasCallStack)
-import System.FilePath ((</>))
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Instances.Hitl.Driver.FincFdec as Driver
@@ -52,7 +57,11 @@ import qualified Clash.Class.Cdc as Cdc
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
 
+#ifdef SIM_BAUD_RATE
+type Baud = MaxBaudRate Basic125
+#else
 type Baud = 921_600
+#endif
 
 baud :: SNat Baud
 baud = SNat
@@ -106,28 +115,26 @@ fincFdecPe ::
     , CSignal free SpeedChange
     )
 fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
-  [timeBus, uartBus, siBus, dcBus, speedChangeBus] <-
+  (uartBytes, Fwd spiDone, spi, [dcBus, speedChangeBus]) <-
     withClockResetEnable freeClk freeRst enableGen
-      $ processingElement NoDumpVcd peConfig
+      $ bootPe peConfig
       -< (mm, jtag)
 
-  Fwd _localCounter <- withClockResetEnable freeClk freeRst enableGen $ timeWb Nothing -< timeBus
-  (uartTx, _uartStatus) <-
+  (_uartInBytes, uartTx) <-
     withClockResetEnable freeClk freeRst enableGen
-      $ uartInterfaceWb d16 d16
       $ uartDf baud
-      -< (uartBus, Fwd (pure low))
-  (Fwd spiDone, spiOut) <-
-    withClockResetEnable freeClk freeRst enableGen
-      $ si539xSpiWb (SNat @(Microseconds 10))
-      -< siBus
+      -< (uartBytes, Fwd (pure low))
 
-  let skyRst = convertReset freeClk skyClk (unsafeFromActiveLow spiDone)
+  -- The reset in the destination domain (free) of the `domainDiffCounterWbC` is
+  -- set by the enables register. The minimum reset duration is trivially
+  -- met by the source of `spiDone`.
+  let skyRst = xpmResetSynchronizer Asserted freeClk skyClk $ unsafeFromActiveLow spiDone
+
   Fwd _domainDiff <- domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
 
   speedChange <- withClock freeClk $ withReset freeRst $ hardwareSpeedChange -< speedChangeBus
 
-  idC -< (uartTx, spiOut, speedChange)
+  idC -< (uartTx, spi, speedChange)
  where
   peConfig =
     PeConfig
@@ -149,40 +156,38 @@ fincFdecTests ::
   "JTAG" ::: Signal Basic125 JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
   Signal Basic125 Spi.S2M ->
-  ""
-    ::: ( "JTAG" ::: Signal Basic125 JtagOut
-        , "USB_UART_RXD" ::: Signal Basic125 Bit
-        , -- SPI to clock board:
-          "" ::: Signal Basic125 Spi.M2S
-        , -- Freq increase / freq decrease request to clock board
-          ""
-            ::: ( "FINC" ::: Signal Basic125 FINC
-                , "FDEC" ::: Signal Basic125 FDEC
-                )
-        )
+  ( "JTAG" ::: Signal Basic125 JtagOut
+  , "USB_UART_RXD" ::: Signal Basic125 Bit
+  , -- SPI to clock board:
+    "" ::: Signal Basic125 Spi.M2S
+  , -- Freq increase / freq decrease request to clock board
+    ""
+      ::: ( "FINC" ::: Signal Basic125 FINC
+          , "FDEC" ::: Signal Basic125 FDEC
+          )
+  )
 fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
-  (jtagOut, uartTx, spiM2S, fincFdec)
+  testStart `hwSeqX` (jtagOut, uartTx, spiM2S, fincFdec)
  where
-  freeClk :: Clock Basic125
-  freeRst :: Reset Basic125
   (freeClk, freeRst) = clockWizardDifferential freeClkDiff noReset
-
   (_, odivClk) = Gth.ibufds_gte3 boardClkDiff
 
   boardClk :: Clock Basic125A
   boardClk = Gth.bufgGt d0 odivClk noReset
 
-  testStart :: Signal Basic125 Bool
-  testStart = hitlVioBool freeClk testStart (pure True)
-
-  testRst = unsafeFromActiveLow testStart `orReset` freeRst
+  -- We don't need the VIO for this test, but our current HITL infrastructure always
+  -- tries to generate a probes file, which it can't if there is no VIO.
+  testStart = hitlVioBool freeClk testDone testSuccess
+  testDone = register freeClk testRst enableGen False (pure True)
+  testSuccess = register freeClk testRst enableGen False (pure True)
+  testRst = unsafeFromActiveLow testStart
 
   ((_memoryMap, jtagOut), (uartTx, spiM2S, speedChange)) =
     toSignals
-      (withXilinx $ withLittleEndian $ fincFdecPe freeClk testRst boardClk)
+      (withXilinx $ withLittleEndian $ fincFdecPe freeClk freeRst boardClk)
       (((), jtagIn), ((), spiS2M, ()))
 
-  fincFdec = unbundle $ speedChangeToFincFdec freeClk testRst speedChange
+  fincFdec = unbundle $ speedChangeToFincFdec freeClk freeRst speedChange
 
 memoryMap :: MemoryMap
 memoryMap =

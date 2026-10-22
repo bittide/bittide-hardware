@@ -84,16 +84,17 @@ demoTest ::
   , "" ::: Tef0008.SfpControl Basic125
   )
 demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M jtagIn _uartRx syncIn =
-  ( txs
-  , txns
-  , txps
-  , unbundle swFincFdecs
-  , spiM2S
-  , jtagOut
-  , uartTx
-  , syncOut
-  , Tef0008.sfpControl
-  )
+  testStart
+    `hwSeqX` ( txs
+             , txns
+             , txps
+             , unbundle swFincFdecs
+             , spiM2S
+             , jtagOut
+             , uartTx
+             , syncOut
+             , Tef0008.sfpControl
+             )
  where
   boardClk :: Clock Ext200
   (boardClk, _) = Gth.ibufds_gte3 boardClkDiff
@@ -102,11 +103,12 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
   refRst :: Reset Basic125
   (refClk, refRst) = clockWizardDifferential refClkDiff noReset
 
-  testStart :: Signal Basic125 Bool
-  testStart = hitlVioBool refClk testStart (pure True)
-
-  testReset :: Reset Basic125
-  testReset = unsafeFromActiveLow testStart `orReset` refRst
+  -- We don't need the VIO for this test, but our current HITL infrastructure always
+  -- tries to generate a probes file, which it can't if there is no VIO.
+  testStart = hitlVioBool refClk testDone testSuccess
+  testDone = register refClk testRst enableGen False (pure True)
+  testSuccess = register refClk testRst enableGen False (pure True)
+  testRst = unsafeFromActiveLow testStart
 
   ( (_memoryMaps, jtagOut, (txs, txns, txps))
     , ( spiM2S
@@ -116,7 +118,7 @@ demoTest ringBufferDepth mkUserCore boardClkDiff refClkDiff rxs rxns rxps spiS2M
         )
     ) =
       toSignals
-        (bringUp ringBufferDepth mkUserCore refClk testReset)
+        (bringUp ringBufferDepth mkUserCore refClk refRst)
         ( (repeat (), jtagIn, (boardClk, rxs, rxns, rxps, channelNames, clockPaths))
         , (spiS2M, syncIn, (), ())
         )

@@ -10,7 +10,6 @@ import Clash.Prelude
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (FpgaCount)
-import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Gdb (initGdb)
 import Bittide.Instances.Hitl.Utils.OpenOcd (parseBootTapInfo, parseTapInfo)
 import Bittide.Instances.Hitl.Utils.Serial (initSerial)
@@ -50,8 +49,6 @@ driver testName targets = do
 
   projectDir <- liftIO $ findParentContaining "cabal.project"
   let hitlDir = projectDir </> "_build/hitl" </> testName
-
-  forM_ targets (assertProbe "probe_test_start")
 
   -- Reset USB adapter, see documentation of "Bittide.Instances.Hitl.Utils.Usb"
   liftIO $ forM_ targets $ \(_, d) -> resetUsbDeviceByLocation d.usbAdapterLocation

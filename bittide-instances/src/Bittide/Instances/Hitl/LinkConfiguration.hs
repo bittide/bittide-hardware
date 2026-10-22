@@ -1,82 +1,73 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | Tests whether the transceiver link setup matches with the
 configuration defined in 'Bittide.Instances.Hitl.Setup.fpgaSetup'.
 To this end, each node sends its own index to all of it's
-neighbors, which then verify that the result matches with the
-definition.
+neighbors. A boot CPU programs the clock board, enables the
+transceivers and waits for the links to be stable. The driver then
+reads the received indices and verifies that they match with the
+definition. Also see @firmware-binaries/hitl-tests/link-configuration-test@.
 -}
 module Bittide.Instances.Hitl.LinkConfiguration (
   linkConfigurationTest,
+  memoryMap,
   tests,
 ) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
+import Protocols
 
-import Bittide.Arithmetic.Time
-import Bittide.ClockControl.Si5395J
-import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
-import Bittide.ElasticBuffer (stickyE)
-import Bittide.Instances.Domains
-import Bittide.Transceiver
-
+import Bittide.BootPe (BootPeBusses, bootPe)
 import Bittide.Hitl
-
+import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
+import Bittide.ProcessingElement (PeConfig (..))
+import Bittide.SharedTypes (BitboneMm, withLittleEndian)
+import Bittide.Transceiver (COutputs (..))
+import Bittide.Wishbone (uartDf)
 
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Class.BitPackC (ByteOrder)
+#ifdef SIM_BAUD_RATE
+import Clash.Cores.Uart.Extra (MaxBaudRate)
+#endif
 import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (Access (ReadOnly), MemoryMap, Mm)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (access),
+  deviceConfig,
+  deviceWb,
+  registerConfig,
+  registerWb_,
+ )
 import System.FilePath ((</>))
+import VexRiscv (Jtag, JtagIn (..), JtagOut)
 
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Instances.Hitl.Driver.LinkConfiguration as Driver
 import qualified Bittide.Instances.Hitl.Tef0008 as Tef0008
 import qualified Bittide.Transceiver as Transceiver
-import qualified Bittide.Transceiver.ResetManager as ResetManager
+import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
-import qualified Clash.Explicit.Prelude as E
 import qualified Data.Map.Strict as Map
 import qualified Protocols.Spi as Spi
 
-{- | Checks whether the received index matches with the corresponding
-entry in 'Bittide.Instances.Hitl.Setup.fpgaSetup' and synchronizes
-to the right clock domain accordingly.
--}
-checkData ::
-  forall n src dst.
-  (KnownDomain src, KnownDomain dst, KnownNat n, 1 <= n, BitSize (Index n) <= 64) =>
-  Clock dst ->
-  Clock src ->
-  Signal dst Bool ->
-  Signal src (BitVector 64) ->
-  Signal src (Maybe (Index n)) ->
-  Signal dst Bool
-checkData dstClk srcClk ready rx setup =
-  ready .&&. xpmCdcSingle srcClk dstClk (match <$> fmap Just rx <*> setup)
- where
-  match ma mb = fromMaybe False (ma .==. (zExtend . pack <$> mb))
-  zExtend = zeroExtend @_ @(BitSize (Index n)) @(64 - BitSize (Index n))
+#ifdef SIM_BAUD_RATE
+type Baud = MaxBaudRate Basic125
+#else
+type Baud = 921_600
+#endif
 
-{- | Extracts the corresponding target FPGA index from
-'Bittide.Instances.Hitl.Setup.fpgaSetup' according to the given
-link index and synchronizes it to the provided clock domain.
--}
-expectedTargetIndex ::
-  (KnownDomain src, KnownDomain dst) =>
-  Clock src ->
-  Signal src (Index FpgaCount) ->
-  Clock dst ->
-  Reset dst ->
-  Index LinkCount ->
-  Signal dst (Maybe (Index FpgaCount))
-expectedTargetIndex srcClk myIndex dstClk dstRst link =
-  fmap ((!! link) . snd . (fpgaSetup !!))
-    <$> xpmCdcStable srcClk myIndex dstClk dstRst
+baud :: SNat Baud
+baud = SNat
 
 {- | Synchronizes the fixed FPGA index from some given source domain
 to the given target domain. Lossy synchronization is sufficient
@@ -104,103 +95,147 @@ xpmCdcStable srcClk idx dstClk dstRst = mIdx
       <$> xpmCdcMaybeLossy srcClk dstClk (pure <$> idx)
       <*> mIdx
 
-{- | Configures the clock boards, fires up all of the transceivers and
-observes the incoming links.
+{- | Synchronizes the data received on a link to the given target domain. Holds
+the last word received after the link came up, or 'Nothing' if no such word has
+been received yet.
 -}
-transceiversStartAndObserve ::
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
-  "SYSCLK" ::: Clock Basic125 ->
-  "RST_LOCAL" ::: Reset Basic125 ->
-  "MY_INDEX" ::: Signal Basic125 (Index FpgaCount) ->
-  "GTH_RX" ::: Gth.SimWires GthRx LinkCount ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  Signal Basic125 Spi.S2M ->
-  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
-  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
-  , "allReady" ::: Signal Basic125 Bool
-  , "success" ::: Signal Basic125 Bool
-  , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
-  , "spiDone" ::: Signal Basic125 Bool
-  , "" ::: Signal Basic125 Spi.M2S
-  )
-transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs spiS2M =
-  ( transceivers.txSims
-  , transceivers.txNs
-  , transceivers.txPs
-  , allReady
-  , success
-  , transceivers.stats
-  , spiDone
-  , spiM2S
-  )
+receivedData ::
+  (KnownDomain src, KnownDomain dst) =>
+  Clock dst ->
+  Reset dst ->
+  Clock src ->
+  -- | Receive data initialization done
+  Signal src Bool ->
+  Signal src (BitVector 64) ->
+  Signal dst (Maybe (BitVector 64))
+receivedData dstClk dstRst srcClk rxReady rxData = received
  where
-  allReady =
-    fmap and (bundle transceivers.rxDataInitDonesFree)
-      .&&. fmap and (bundle transceivers.txDataInitDonesFree)
-  sysRst = rst `orReset` unsafeFromActiveLow (fmap not spiErr)
+  received =
+    register dstClk dstRst enableGen Nothing
+      $ (<|>)
+      <$> xpmCdcMaybeLossy srcClk dstClk (mux rxReady (Just <$> rxData) (pure Nothing))
+      <*> received
 
-  -- Clock programming
-  spiDone = E.dflipflop sysClk $ (== Finished) <$> spiState
-  spiErr = E.dflipflop sysClk $ isErr <$> spiState
+{- | Memory mapped component exposing this FPGA's index and the data received
+on each link to the CPU.
+-}
+linkConfigurationCheck ::
+  forall aw dom.
+  ( HasCallStack
+  , KnownDomain dom
+  , HasSynchronousReset dom
+  , HasDefinedInitialValues dom
+  , KnownNat aw
+  , 4 <= aw
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  Circuit
+    ( BitboneMm dom aw
+    , CSignal dom (Index FpgaCount)
+    , CSignal dom (Vec LinkCount (Maybe (BitVector 64)))
+    )
+    ()
+linkConfigurationCheck clk rst = circuit $ \(wb, Fwd myIndex, Fwd received) -> do
+  [myIndexBus, receivedBus] <-
+    deviceWb clk rst (deviceConfig "LinkConfigurationCheck") -< wb
+  registerWb_ clk rst myIndexConfig 0 -< (myIndexBus, Fwd (Just <$> myIndex))
+  registerWb_ clk rst receivedConfig (repeat Nothing) -< (receivedBus, Fwd (Just <$> received))
+  idC
+ where
+  myIndexConfig =
+    (registerConfig "my_index" "Index of this FPGA, as set by the HITL test.")
+      { access = ReadOnly
+      }
+  receivedConfig =
+    ( registerConfig
+        "received_indices"
+        "Per link: last word received since the link came up. Should be the index of the neighbor."
+    )
+      { access = ReadOnly
+      }
 
-  isErr = \case
-    Error{} -> True
-    _ -> False
+-- | Configuration of the boot CPU. The test firmware does not fit in 4 KiB.
+peConfig :: PeConfig (BootPeBusses + 2)
+peConfig =
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv0
+    , depthI = SNat @(Div (8 * 1024) 4)
+    , depthD = SNat @(Div (16 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
+    }
 
-  (_, _, spiState, spiM2S) =
+{- | Boot CPU, transceivers and 'linkConfigurationCheck'. The CPU programs the
+clock board over SPI and controls the transceivers. Each transceiver sends
+this FPGA's index.
+-}
+linkConfigurationPe ::
+  (HasCallStack, ?byteOrder :: ByteOrder) =>
+  Clock Basic125 ->
+  Reset Basic125 ->
+  Circuit
+    ( ToConstBwd Mm
+    , Jtag Basic125
+    , Gth.Gths GthRx GthRxS GthTx GthTxS Ext200 LinkCount
+    , "MY_INDEX" ::: CSignal Basic125 (Index FpgaCount)
+    )
+    ( Spi.Spi Basic125
+    , "UART_TX" ::: CSignal Basic125 Bit
+    )
+linkConfigurationPe sysClk sysRst = circuit $ \(mm, jtag, gths, Fwd myIndex) -> do
+  (uartBytes, _spiDone, spi, [transceiverBus, checkBus]) <-
     withClockResetEnable sysClk sysRst enableGen
-      $ si539xSpi
-        testConfig6_200_on_0a_1ppb
-        (SNat @(Microseconds 10))
-        (pure Nothing)
-        spiS2M
+      $ bootPe @2 peConfig
+      -< (mm, jtag)
 
-  -- Transceiver setup
-  transceivers =
-    transceiverPrbsN
-      @GthTx
-      @GthRx
-      @Ext200
-      @Basic125
-      @GthTxS
-      @GthRxS
-      Transceiver.defConfig
-      Transceiver.Inputs
-        { clock = sysClk
-        , reset = rst `orReset` unsafeFromActiveLow spiDone
-        , refClock = refClk
-        , channelNames
-        , clockPaths
-        , rxSims = rxs
-        , rxNs
-        , rxPs
-        , channelResets = repeat noReset
-        , txDatas = repeat myIndexTx
-        }
+  (_uartRx, uartTx) <-
+    withClockResetEnable sysClk sysRst enableGen
+      $ uartDf baud
+      -< (uartBytes, Fwd (pure 0))
 
-  -- synchronizes the FPGA's stable index to the individual TX clock
-  -- domains of the transceivers
-  myIndexTx =
-    fmap
-      (zeroExtend . pack . fromMaybe 0)
-      (xpmCdcStable sysClk myIndex transceivers.txClock transceivers.txReset)
+  Fwd tOutputs <-
+    Transceiver.transceiverPrbsNWb sysClk sysRst Transceiver.defConfig
+      -< (transceiverBus, gths, Fwd (pure <$> myIndexTx))
 
-  -- check that all the received data matches with our expectations
-  success =
-    fmap and
-      $ bundle
-      $ zipWith4
-        (checkData @FpgaCount sysClk)
-        transceivers.rxClocks
-        transceivers.rxDataInitDonesFree
-        transceivers.rxDatas
-      $ zipWith3
-        (expectedTargetIndex sysClk myIndex)
-        transceivers.rxClocks
-        transceivers.rxResets
-        indicesI
+  linkConfigurationCheck sysClk sysRst
+    -< (checkBus, Fwd myIndex, Fwd (bundle received))
+
+  let
+    -- synchronizes the FPGA's stable index to the TX clock domain of the
+    -- transceivers
+    myIndexTx =
+      fmap
+        (zeroExtend . pack . fromMaybe 0)
+        (xpmCdcStable sysClk myIndex tOutputs.txClock tOutputs.txReset)
+
+    received =
+      zipWith3
+        (receivedData sysClk sysRst)
+        tOutputs.rxClocks
+        tOutputs.rxDataInitDones
+        tOutputs.rxDatas
+
+  idC -< (spi, uartTx)
+
+memoryMap :: MemoryMap
+memoryMap = mm
+ where
+  Circuit circuitFn = withLittleEndian $ linkConfigurationPe clockGen noReset
+  ((SimOnly mm, _, _, _), _) =
+    circuitFn
+      (
+        ( ()
+        , pure (JtagIn 0 0 0)
+        , (clockGen, SimOnly (repeat 0), 0, 0, repeat "", repeat "")
+        , pure 0
+        )
+      , (pure (Spi.S2M low), ())
+      )
 
 -- | Top entity for this test. See module documentation for more information.
 linkConfigurationTest ::
@@ -211,57 +246,43 @@ linkConfigurationTest ::
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   Signal Basic125 Spi.S2M ->
+  "JTAG" ::: Signal Basic125 JtagIn ->
+  "USB_UART_TXD" ::: Signal Basic125 Bit ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
+  , "JTAG" ::: Signal Basic125 JtagOut
+  , "USB_UART_RXD" ::: Signal Basic125 Bit
   , "" ::: Tef0008.SfpControl Basic125
   )
-linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
-  (txSims, txns, txps, syncOut, spiM2S, Tef0008.sfpControl)
+linkConfigurationTest refClkDiff sysClkDiff _syncIn rxs rxns rxps spiS2M jtagIn _uartRx =
+  (txs, txns, txps, syncOut, spiM2S, jtagOut, uartTx, Tef0008.sfpControl)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
-  -- the test starts with a valid configuration coming in
-  startTest = isJust <$> testConfig
-  -- derive the test settings from the passed configuration
+  -- SYNC_IN and SYNC_OUT are unused, but kept in the top entity because
+  -- 'wireDemoTest.xdc' constrains them.
+  syncOut = pure False
+
+  -- The test starts with a valid configuration coming in. The test result is
+  -- determined by the driver, so done is only used to signal that the test
+  -- started, and success is not used.
+  testConfig :: Signal Basic125 (Maybe (Index FpgaCount))
+  testConfig = hitlVio 0 sysClk testStart (pure True)
+
+  testStart = isJust <$> testConfig
+  testRst = sysRst `orReset` unsafeFromActiveLow testStart
   myIndex = fromMaybe 0 <$> testConfig
 
-  -- use some simple SYNC_IN / SYNC_OUT synchronization to
-  -- synchronously start the test
-  syncInRst =
-    resetGlitchFilter (SNat @1024) sysClk
-      $ unsafeFromActiveLow
-      $ xpmCdcSingle sysClk sysClk syncIn
-  syncOut = startTest
-
-  testRst =
-    sysRst
-      `orReset` syncInRst
-      `orReset` unsafeFromActiveLow startTest
-
-  (txSims, txns, txps, allReady, success, _stats, _spiDone, spiM2S) =
-    transceiversStartAndObserve refClk sysClk testRst myIndex rxs rxns rxps spiS2M
-
-  failAfterUp = isFalling sysClk testRst enableGen False allReady
-  failAfterUpSticky = stickyE sysClk testRst failAfterUp
-  successSticky = stickyE sysClk testRst success
-
-  -- Consider the test done if links have been up consistently for 40
-  -- seconds. This is just below the test timeout of 60 seconds, so
-  -- transceivers have ~20 seconds to come online reliably. This
-  -- should be plenty. The test will stop immediately on success,
-  -- i.e., if all neighbors have transmitted the expected ids
-  -- alltogether at least once.
-  done =
-    successSticky
-      .||. failAfterUpSticky
-      .||. trueFor (SNat @(Seconds 40)) sysClk testRst allReady
-
-  testConfig :: Signal Basic125 (Maybe (Index FpgaCount))
-  testConfig = hitlVio 0 sysClk done (success .&&. (not <$> failAfterUpSticky))
+  ((_mm, jtagOut, (txs, txns, txps), _), (spiM2S, uartTx)) =
+    toSignals
+      (withLittleEndian $ linkConfigurationPe sysClk testRst)
+      ( ((), jtagIn, (refClk, rxs, rxns, rxps, channelNames, clockPaths), myIndex)
+      , (spiS2M, ())
+      )
 
 makeTopEntity 'linkConfigurationTest
 
@@ -271,6 +292,9 @@ tests =
     { topEntity = 'linkConfigurationTest
     , targetXdcs =
         [ "wireDemoTest.xdc"
+        , "jtag" </> "config.xdc"
+        , "jtag" </> "pmod1.xdc"
+        , "uart" </> "pmod1.xdc"
         , "si539x" </> "spi.xdc"
         , "tef0008" </> "sfpControl.xdc"
         ]
@@ -286,6 +310,6 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , mDriverProc = Just (Driver.driver memoryMap)
     , mPostProc = Nothing
     }

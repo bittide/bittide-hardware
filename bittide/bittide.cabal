@@ -234,7 +234,7 @@ library
     Bittide.WireDemoProcessingElement
     Bittide.Wishbone
     Clash.Cores.Extra
-    Clash.Cores.UART.Extra
+    Clash.Cores.Uart.Extra
     Clash.Cores.Xilinx.Ddr4
     Clash.Cores.Xilinx.Gth
     Clash.Cores.Xilinx.Gth.Internal

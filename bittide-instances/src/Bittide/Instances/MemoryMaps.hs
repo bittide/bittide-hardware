@@ -22,8 +22,10 @@ import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
+import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.MemoryMaps as SoftUgnDemo
+import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
 import qualified Bittide.Instances.Hitl.WireDemo.MemoryMaps as WireDemo
 import qualified Bittide.Instances.Tests.AddressableBytesWb as AddressableBytesWb
 import qualified Bittide.Instances.Tests.Axi as Axi
@@ -56,6 +58,7 @@ $( do
            , ("ElasticBufferWbTest", ElasticBufferWb.dutMM)
            , ("FincFdecTests", FincFdec.memoryMap)
            , ("Freeze", freezeMM)
+           , ("LinkConfigurationTest", LinkConfiguration.memoryMap)
            , ("NestedInterconnect", NestedInterconnect.nestedInterconnectMm)
            , ("ProcessingElement", vexRiscvUartHelloMM)
            , ("RegisterWb", RegisterWb.memoryMap)
@@ -66,6 +69,7 @@ $( do
            , ("SoftUgnDemoClockControl", SoftUgnDemo.clockControl)
            , ("TimeWb", TimeWb.timeWbMm)
            , ("TimeWbC", TimeWb.timeWbMmC)
+           , ("TransceiversUpTest", Transceivers.memoryMap)
            , ("WatchdogTest", Watchdog.dutMm)
            , ("WbToDfTest", WbToDf.dutMM)
            , ("WireDemoBoot", WireDemo.boot)
