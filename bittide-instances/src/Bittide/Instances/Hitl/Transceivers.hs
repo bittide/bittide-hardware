@@ -1,47 +1,72 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 
 {- | Test whether clock boards are configurable and transceiver links come
 online. This assumes to run on a fully connected mesh of 8 FPGAs. Also see
-'c_CHANNEL_NAMES' and 'c_CLOCK_PATHS'. It has two tricks up its sleeve:
+'c_CHANNEL_NAMES' and 'c_CLOCK_PATHS'.
 
-  1. It uses @SYNC_IN@/@SYNC_OUT@ to make sure each board starts programming
-     its clock boards at the same time.
+A boot CPU programs the clock board, enables the transceivers and monitors the
+links. Each link transmits a counter, which is checked in hardware by
+'expectCounter'. The boot CPU reads the results of these checks. Also see
+@firmware-binaries/hitl-tests/transceivers-up-test@.
 
-  2. It keeps track of how many times the GTH's reset manager had to reset
-     the connection and how often it lost connections after establishing
-     them.
-
-This test will succeed if all links have been up for ten seconds.
+This test will succeed if all links have been up for ten seconds, without any
+errors in the received data.
 -}
 module Bittide.Instances.Hitl.Transceivers where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
+import Protocols
 
-import Bittide.Arithmetic.Time
-import Bittide.ClockControl.Si5395J
-import Bittide.ClockControl.Si539xSpi
+import Bittide.BootPe (BootPeBusses, bootPe)
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.ElasticBuffer (stickyE)
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
-import Bittide.Transceiver
+import Bittide.ProcessingElement (PeConfig (..))
+import Bittide.SharedTypes (BitboneMm, withLittleEndian)
+import Bittide.Transceiver (COutputs (..))
+import Bittide.Wishbone (uartDf)
 
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Class.BitPackC (ByteOrder)
+#ifdef SIM_BAUD_RATE
+import Clash.Cores.Uart.Extra (MaxBaudRate)
+#endif
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
-import Data.Maybe (isJust)
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (Access (ReadOnly), MemoryMap, Mm)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (access),
+  deviceConfig,
+  deviceWb,
+  registerConfig,
+  registerWb_,
+ )
 import System.FilePath ((</>))
+import VexRiscv (Jtag, JtagIn (..), JtagOut)
 
+import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
+import qualified Bittide.Instances.Hitl.Driver.Transceivers as Driver
 import qualified Bittide.Instances.Hitl.Tef0008 as Tef0008
-import qualified Bittide.Transceiver.ResetManager as ResetManager
+import qualified Bittide.Transceiver as Transceiver
+import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
-import qualified Clash.Explicit.Prelude as E
-import qualified Data.List as L
-import qualified Data.Map as Map
 import qualified Protocols.Spi as Spi
+
+#ifdef SIM_BAUD_RATE
+type Baud = MaxBaudRate Basic125
+#else
+type Baud = 921_600
+#endif
+
+baud :: SNat Baud
+baud = SNat
 
 {- | Start value of the counters used in 'counter' and 'expectCounter'. This is
 a non-zero start value, as a regression test for a bug where the transceivers
@@ -76,99 +101,116 @@ expectCounter clk rst = stickyE clk rst . mealy clk rst enableGen go Nothing
     | otherwise = (Nothing, False)
   go (Just c) e = (Just (c + 1), c /= e)
 
-{- | Worker function for 'transceiversUpTest'. See module documentation for more
-information.
--}
-goTransceiversUpTest ::
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
-  "SYSCLK" ::: Clock Basic125 ->
-  "RST_LOCAL" ::: Reset Basic125 ->
-  "GTH_RX_N" ::: Gth.SimWires GthRx LinkCount ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  Signal Basic125 Spi.S2M ->
-  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
-  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
-  , "allUp" ::: Signal Basic125 Bool
-  , "anyErrors" ::: Signal Basic125 Bool
-  , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
-  , "spiDone" ::: Signal Basic125 Bool
-  , "" ::: Signal Basic125 Spi.M2S
-  )
-goTransceiversUpTest refClk sysClk rst rxs rxNs rxPs spiS2M =
-  ( transceivers.txSims
-  , transceivers.txNs
-  , transceivers.txPs
-  , allUp
-  , expectCounterErrorSys
-  , transceivers.stats
-  , spiDone
-  , spiM2S
-  )
+-- | Memory mapped component exposing the results of 'expectCounter' to the CPU.
+transceiverCheck ::
+  forall aw dom.
+  ( HasCallStack
+  , KnownDomain dom
+  , HasSynchronousReset dom
+  , HasDefinedInitialValues dom
+  , KnownNat aw
+  , 4 <= aw
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  Circuit
+    ( BitboneMm dom aw
+    , CSignal dom (Vec LinkCount Bool)
+    )
+    ()
+transceiverCheck clk rst = circuit $ \(wb, Fwd counterErrors) -> do
+  [errorsBus] <- deviceWb clk rst (deviceConfig "TransceiverCheck") -< wb
+  registerWb_ clk rst counterErrorsConfig (repeat False)
+    -< (errorsBus, Fwd (Just <$> counterErrors))
+  idC
  where
-  allUp =
-    fmap and (bundle transceivers.rxDataInitDonesFree)
-      .&&. fmap and (bundle transceivers.txDataInitDonesFree)
+  counterErrorsConfig =
+    ( registerConfig
+        "counter_errors"
+        "Per link: whether the received data deviated from the expected counter since the link came up."
+    )
+      { access = ReadOnly
+      }
 
-  sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
+-- | Configuration of the boot CPU. The test firmware does not fit in 4 KiB.
+peConfig :: PeConfig (BootPeBusses + 2)
+peConfig =
+  PeConfig
+    { cpu = Riscv32imc.vexRiscv0
+    , depthI = SNat @(Div (8 * 1024) 4)
+    , depthD = SNat @(Div (16 * 1024) 4)
+    , initI = Nothing
+    , initD = Nothing
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
+    }
 
-  -- Clock programming
-  spiDone = E.dflipflop sysClk $ (== Finished) <$> spiState
-  spiErr = E.dflipflop sysClk $ isErr <$> spiState
-
-  isErr (Error _) = True
-  isErr _ = False
-
-  (_, _, spiState, spiM2S) =
+{- | Boot CPU, transceivers and 'transceiverCheck'. The CPU programs the clock
+board over SPI and controls the transceivers.
+-}
+transceiversUpPe ::
+  (HasCallStack, ?byteOrder :: ByteOrder) =>
+  Clock Basic125 ->
+  Reset Basic125 ->
+  Circuit
+    ( ToConstBwd Mm
+    , Jtag Basic125
+    , Gth.Gths GthRx GthRxS GthTx GthTxS Ext200 LinkCount
+    )
+    ( Spi.Spi Basic125
+    , "UART_TX" ::: CSignal Basic125 Bit
+    )
+transceiversUpPe sysClk sysRst = circuit $ \(mm, jtag, gths) -> do
+  (uartBytes, siBus, [transceiverBus, checkBus]) <-
     withClockResetEnable sysClk sysRst enableGen
-      $ si539xSpi
-        testConfig6_200_on_0a_1ppb
-        (SNat @(Microseconds 10))
-        (pure Nothing)
-        spiS2M
+      $ bootPe @2 peConfig
+      -< (mm, jtag)
 
-  -- Transceiver setup
-  gthAllReset = unsafeFromActiveLow spiDone
+  (_spiDone, spi) <-
+    withClockResetEnable sysClk sysRst enableGen
+      $ si539xSpiWb (SNat @(Microseconds 10))
+      -< siBus
 
-  txCounters =
-    counter transceivers.txClock . unsafeFromActiveLow <$> transceivers.txDataInitDones
+  (_uartRx, uartTx) <-
+    withClockResetEnable sysClk sysRst enableGen
+      $ uartDf baud
+      -< (uartBytes, Fwd (pure 0))
 
-  rxDataResets = unsafeFromActiveLow <$> transceivers.rxDataInitDones
+  Fwd tOutputs <-
+    Transceiver.transceiverPrbsNWb sysClk sysRst Transceiver.defConfig
+      -< (transceiverBus, gths, Fwd (bundle txCounters))
 
-  expectCounterError =
-    zipWith3
-      expectCounter
-      transceivers.rxClocks
-      (zipWith orReset transceivers.rxResets rxDataResets)
-      transceivers.rxDatas
+  transceiverCheck sysClk sysRst -< (checkBus, Fwd (bundle counterErrorsSys))
 
-  expectCounterErrorSys =
-    fmap or
-      $ bundle
-      $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
+  let
+    txCounters :: Vec LinkCount (Signal GthTx (BitVector 64))
+    txCounters =
+      counter tOutputs.txClock . unsafeFromActiveLow <$> tOutputs.txDataInitDones
 
-  transceivers =
-    transceiverPrbsN
-      @GthTx
-      @GthRx
-      @Ext200
-      @Basic125
-      @GthTxS
-      @GthRxS
-      defConfig
-      Inputs
-        { clock = sysClk
-        , reset = gthAllReset
-        , refClock = refClk
-        , channelNames
-        , clockPaths
-        , rxSims = rxs
-        , rxNs
-        , rxPs
-        , channelResets = repeat noReset
-        , txDatas = txCounters
-        }
+    rxDataResets = unsafeFromActiveLow <$> tOutputs.rxDataInitDones
+
+    counterErrors =
+      zipWith3
+        expectCounter
+        tOutputs.rxClocks
+        (zipWith orReset tOutputs.rxResets rxDataResets)
+        tOutputs.rxDatas
+
+    counterErrorsSys = zipWith (`xpmCdcSingle` sysClk) tOutputs.rxClocks counterErrors
+
+  idC -< (spi, uartTx)
+
+memoryMap :: MemoryMap
+memoryMap = mm
+ where
+  Circuit circuitFn = withLittleEndian $ transceiversUpPe clockGen noReset
+  ((SimOnly mm, _, _), _) =
+    circuitFn
+      ( ((), pure (JtagIn 0 0 0), (clockGen, SimOnly (repeat 0), 0, 0, repeat "", repeat ""))
+      , (pure (Spi.S2M low), ())
+      )
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
@@ -179,46 +221,42 @@ transceiversUpTest ::
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   Signal Basic125 Spi.S2M ->
+  "JTAG" ::: Signal Basic125 JtagIn ->
+  "USB_UART_TXD" ::: Signal Basic125 Bit ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "" ::: Signal Basic125 Spi.M2S
+  , "JTAG" ::: Signal Basic125 JtagOut
+  , "USB_UART_RXD" ::: Signal Basic125 Bit
   , "" ::: Tef0008.SfpControl Basic125
   )
-transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps spiS2M =
-  (txs, txns, txps, syncOut, spiM2S, Tef0008.sfpControl)
+transceiversUpTest refClkDiff sysClkDiff _syncIn rxs rxns rxps spiS2M jtagIn _uartRx =
+  testStart
+    `hwSeqX` (txs, txns, txps, syncOut, spiM2S, jtagOut, uartTx, Tef0008.sfpControl)
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
-  testRst = sysRst `orReset` unsafeFromActiveLow startTest `orReset` syncInRst
-  syncOut = startTest
-  syncInRst =
-    resetGlitchFilter (SNat @1024) sysClk
-      $ unsafeFromActiveLow
-      $ xpmCdcSingle sysClk sysClk syncIn
+  -- SYNC_IN and SYNC_OUT are unused, but kept in the top entity because
+  -- 'wireDemoTest.xdc' constrains them.
+  syncOut = pure False
 
-  (txs, txns, txps, allUp, anyErrors, _stats, _spiDone, spiM2S) =
-    goTransceiversUpTest refClk sysClk testRst rxs rxns rxps spiS2M
+  -- We don't need the VIO for this test, but our current HITL infrastructure always
+  -- tries to generate a probes file, which it can't if there is no VIO.
+  testStart = hitlVioBool sysClk testDone testSuccess
+  testDone = register sysClk testRst enableGen False (pure True)
+  testSuccess = register sysClk testRst enableGen False (pure True)
+  testRst = unsafeFromActiveLow testStart
 
-  failAfterUp = isFalling sysClk testRst enableGen False allUp
-  failAfterUpSticky = stickyE sysClk testRst failAfterUp
-
-  startTest = isJust <$> maybeFpgaIndex
-
-  maybeFpgaIndex :: Signal Basic125 (Maybe (Index FpgaCount))
-  maybeFpgaIndex =
-    hitlVio
-      0
-      sysClk
-      -- Consider test done if links have been up consistently for 40 seconds. This
-      -- is just below the test timeout of 60 seconds, so transceivers have ~20
-      -- seconds to come online reliably. This should be plenty.
-      (trueFor (SNat @(Seconds 40)) sysClk testRst allUp .||. failAfterUpSticky .||. anyErrors)
-      -- Success?
-      (fmap not failAfterUpSticky .&&. fmap not anyErrors)
+  ((_mm, jtagOut, (txs, txns, txps)), (spiM2S, uartTx)) =
+    toSignals
+      (withLittleEndian $ transceiversUpPe sysClk sysRst)
+      ( ((), jtagIn, (refClk, rxs, rxns, rxps, channelNames, clockPaths))
+      , (spiS2M, ())
+      )
 
 makeTopEntity 'transceiversUpTest
 
@@ -229,23 +267,19 @@ tests =
     , externalHdl = []
     , targetXdcs =
         [ "wireDemoTest.xdc"
+        , "jtag" </> "config.xdc"
+        , "jtag" </> "pmod1.xdc"
+        , "uart" </> "pmod1.xdc"
         , "si539x" </> "spi.xdc"
         , "tef0008" </> "sfpControl.xdc"
         ]
-    , testCases = iters
-    , mDriverProc = Nothing
+    , testCases =
+        [ HitlTestCase
+            { name = "TransceiversUpTest"
+            , parameters = paramForHwTargets allHwTargets ()
+            , postProcData = ()
+            }
+        ]
+    , mDriverProc = Just Driver.driver
     , mPostProc = Nothing
     }
- where
-  fpgaIndices = [0 ..] :: [Index FpgaCount]
-  nIters = 1
-  iterNames = ["I" <> show n | n <- [(0 :: Int) .. nIters - 1]]
-  iters =
-    [ HitlTestCase
-        { name = nm
-        , parameters =
-            Map.fromList (L.zip (HwTargetByIndex . fromIntegral <$> fpgaIndices) fpgaIndices)
-        , postProcData = ()
-        }
-    | nm <- iterNames
-    ]

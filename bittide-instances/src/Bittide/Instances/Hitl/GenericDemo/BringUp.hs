@@ -19,8 +19,8 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
-import Bittide.BootPe (BootPeBusses, bootPe)
-import Bittide.ClockControl
+import Bittide.BootPe (bootPe, defBootPeConfig)
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Df (asciiDebugMux)
 import Bittide.Instances.Domains (
   Basic125,
@@ -40,10 +40,13 @@ import Bittide.Instances.Hitl.GenericDemo.Core (
  )
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
-import Bittide.ProcessingElement (PeConfig (..), PrefixWidth)
+import Bittide.ProcessingElement (PrefixWidth)
 import Bittide.SharedTypes (Byte, withLittleEndian)
 import Bittide.Sync (Sync)
 import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
+#ifdef SIM_BAUD_RATE
+import Clash.Cores.Uart.Extra (MaxBaudRate)
+#endif
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Data.Char (ord)
 import Protocols.Extra
@@ -52,7 +55,6 @@ import Protocols.Spi (Spi)
 import Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
 import VexRiscv (Jtag)
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
@@ -60,7 +62,6 @@ import qualified Protocols.Vec as Vec
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
-import Clash.Cores.UART.Extra
 #else
 type Baud = 921_600
 #endif
@@ -76,19 +77,6 @@ uartLabels =
             :> $(listToVecTH "CC")
             :> Nil
         )
-
-bootPeConfig :: PeConfig BootPeBusses
-bootPeConfig =
-  PeConfig
-    { cpu = Riscv32imc.vexRiscv0
-    , depthI = SNat @(Div (4 * 1024) 4)
-    , depthD = SNat @(Div (16 * 1024) 4)
-    , initI = Nothing
-    , initD = Nothing
-    , iBusTimeout = d0
-    , dBusTimeout = d0
-    , includeIlaWb = False
-    }
 
 bringUp ::
   forall userCoreBusses ringBufferDepth.
@@ -111,7 +99,6 @@ bringUp ::
     ( Spi Basic125
     , Sync Bittide Basic125
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
 bringUp bufferDepth mkUserCore refClk refRst =
   withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -> do
@@ -126,11 +113,25 @@ bringUp bufferDepth mkUserCore refClk refRst =
         -< muTransceiverWbBittide
 
     -- Start boot PE
-    (bootUartBytes, _spiDone, spi, bootTransceiverWb) <-
+    (bootUartBytes, bootSpiWb, [bootTransceiverWb]) <-
       withRefClockResetEnable
-        $ bootPe bootPeConfig
+        $ bootPe defBootPeConfig
         -< (bootMm, bootJtag)
     -- Stop boot PE
+
+    -- Start Si539x SPI. The boot CPU uses it to configure the clock chip, after
+    -- which the clock control CPU uses it for frequency adjustments. The two
+    -- never use it at the same time: the Bittide domain (and therefore the
+    -- clock control CPU) only runs once the boot CPU finished configuring.
+    spiWb <- withRefClockResetEnable arbiterMm -< [bootSpiWb, ccSpiWb]
+    ccSpiWb <-
+      fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
+        -< ccSpiWbBittide
+    (_spiDone, spi) <-
+      withRefClockResetEnable
+        $ si539xSpiWb (SNat @(Microseconds 10))
+        -< spiWb
+    -- Stop Si539x SPI
 
     -- Start UART multiplexing
     uartTxBytes <-
@@ -150,11 +151,11 @@ bringUp bufferDepth mkUserCore refClk refRst =
         Transceiver.defConfig
         -< (transceiverWb, gths, Fwd (bundle coreToTransceivers))
 
-    ( Fwd speedChanges
-      , Fwd coreToTransceivers
+    ( Fwd coreToTransceivers
       , sync
       , uartBytesBittide
       , muTransceiverWbBittide
+      , ccSpiWbBittide
       ) <-
       core
         bufferDepth
@@ -183,12 +184,4 @@ bringUp bufferDepth mkUserCore refClk refRst =
       linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
       linksSuitableForCc = fmap pack (bundle tOutputs.txDataInitDones)
 
-      frequencyAdjustments :: Signal Bittide (FINC, FDEC)
-      frequencyAdjustments =
-        delay bittideClk enableGen minBound
-          $ speedChangeToFincFdec
-            bittideClk
-            bittideRst
-            speedChanges
-
-    idC -< (spi, sync, uartTx, Fwd frequencyAdjustments)
+    idC -< (spi, sync, uartTx)

@@ -1,0 +1,86 @@
+#![no_std]
+#![cfg_attr(not(test), no_main)]
+
+// SPDX-FileCopyrightText: 2026 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
+use core::panic::PanicInfo;
+use ufmt::uwriteln;
+
+use bittide_cpus::boot::{enable_transceivers, program_clock_board};
+use bittide_cpus::transceivers::{monitor_links, print_statistics, wait_links_up};
+use bittide_hal::hals::link_configuration_test::DeviceInstances;
+use bittide_hal::manual_additions::si539x_spi::Config;
+use bittide_hal::manual_additions::timer::Duration;
+use bittide_macros::load_clock_config_csv;
+
+#[cfg(not(test))]
+use riscv_rt::entry;
+
+const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
+const CONFIG_200: Config<3, 590, 5> = load_clock_config_csv!(
+    "../../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-Registers.csv"
+);
+
+/// Maximum time all links get to come up after enabling the transceivers.
+const LINK_UP_TIMEOUT_SECS: u64 = 20;
+
+/// Time all links should stay up before the driver checks the received indices.
+const MONITOR_SECS: u64 = 10;
+
+/// Program the clock board and bring up the links. The driver checks the received
+/// indices after this CPU reports that the links are stable.
+#[cfg_attr(not(test), entry)]
+fn main() -> ! {
+    let si539x_spi = INSTANCES.si539x_spi;
+    let timer = INSTANCES.timer;
+    let transceivers = INSTANCES.transceivers;
+    let link_configuration_check = INSTANCES.link_configuration_check;
+    let mut uart = INSTANCES.uart;
+
+    uwriteln!(
+        uart,
+        "FPGA index: {}",
+        link_configuration_check.my_index().into_inner()
+    )
+    .unwrap();
+
+    program_clock_board(&si539x_spi, &timer, &mut uart, &CONFIG_200);
+    enable_transceivers(&transceivers, &mut uart);
+
+    uwriteln!(uart, "Waiting for links to come up..").unwrap();
+    let mut result = wait_links_up(
+        &transceivers,
+        &timer,
+        Duration::from_secs(LINK_UP_TIMEOUT_SECS),
+    );
+
+    if result.is_ok() {
+        uwriteln!(
+            uart,
+            "All links up, monitoring for {} seconds..",
+            MONITOR_SECS
+        )
+        .unwrap();
+        result = monitor_links(&transceivers, &timer, Duration::from_secs(MONITOR_SECS));
+    }
+
+    print_statistics(&transceivers, &mut uart);
+
+    match result {
+        Ok(()) => uwriteln!(uart, "Links stable").unwrap(),
+        Err(err) => uwriteln!(uart, "FAIL: {:?}", err).unwrap(),
+    }
+
+    loop {
+        continue;
+    }
+}
+
+#[panic_handler]
+fn panic_handler(_info: &PanicInfo) -> ! {
+    loop {
+        continue;
+    }
+}

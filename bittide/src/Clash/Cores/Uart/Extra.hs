@@ -3,8 +3,8 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
-module Clash.Cores.UART.Extra (
-  module Clash.Cores.UART.Extra,
+module Clash.Cores.Uart.Extra (
+  module Clash.Cores.Uart.Extra,
   System.IO.stdin,
   System.IO.stdout,
 ) where

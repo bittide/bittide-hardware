@@ -5,36 +5,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::panic::PanicInfo;
-
-use bittide_hal::types::SpeedChange;
 use core::fmt::Write;
-use rand::{distributions::Uniform, rngs::SmallRng, Rng, SeedableRng};
+use core::panic::PanicInfo;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
 use bittide_hal::hals::clock_control_wb as hal;
-
-const RNG_SEED: [u8; 16] = {
-    let rng_seed = core::env!("RNG_SEED").as_bytes();
-    let mut out = [0; 16];
-
-    let mut i = 0;
-    while i < rng_seed.len() && (i / 8) < 16 {
-        let byte = i / 8;
-        let shift = i % 8;
-        let val = rng_seed[i];
-        i += 1;
-        let val = match val {
-            b'0' => 0,
-            b'1' => 1,
-            _ => continue,
-        };
-        out[byte] |= val << shift;
-    }
-    out
-};
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
@@ -57,25 +34,6 @@ fn main() -> ! {
         write!(uart, "({idx}, {dc})").unwrap();
     }
     writeln!(uart, "]").unwrap();
-
-    let mut rng = SmallRng::from_seed(RNG_SEED);
-    let amt = rng.gen_range(16..=32);
-    write!(uart, "clockMod: [").unwrap();
-    rng.sample_iter(Uniform::new_inclusive(0, 2))
-        .take(amt)
-        .map(|val| unsafe { core::mem::transmute::<u8, SpeedChange>(val) })
-        .enumerate()
-        .for_each(|(i, sc)| {
-            let sep = if i + 1 < amt { ", " } else { "" };
-            cc.set_change_speed(sc);
-            write!(uart, "{}{sep}", sc as u8).unwrap();
-        });
-    writeln!(uart, "]").unwrap();
-
-    // Mark end of transmission - should hopefully be unique enough?
-    for _ in 0..cc.link_mask_pop_count().into_inner() {
-        cc.set_change_speed(SpeedChange::NoChange);
-    }
 
     loop {
         continue;
