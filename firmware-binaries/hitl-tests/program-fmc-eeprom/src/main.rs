@@ -19,7 +19,9 @@ use ufmt::uwriteln;
 use bittide_hal::hals::program_fmc_eeprom::DeviceInstances;
 use bittide_hal::manual_additions::i2c_controller::I2cError;
 use bittide_hal::manual_additions::timer::Duration;
-use bittide_hal::shared_devices::{I2cController, Timer, Uart};
+use bittide_hal::shared_devices::{I2cController, I2cLines, Timer, Uart};
+use bittide_hal::types::{I2cCommand, I2cTransfer};
+use clash_bindings::bitvector::BitVector;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -139,6 +141,94 @@ fn select_channel(i2c: &I2cController, timer: &Timer, control: u8) -> Result<boo
     with_retries(|| i2c.write_read(timer, PCA9544_ADDRESS, &[], &mut read_back))?;
     // The upper nibble holds interrupt flags
     Ok(read_back[0] & 0x07 == control)
+}
+
+/// TMP: print the state of the I2C bus, as seen by the I2C controller.
+fn print_bus_state(uart: &mut Uart, i2c: &I2cController, lines: &I2cLines, what: &str) {
+    uwriteln!(
+        uart,
+        "{}: bus_busy={} arbitration_lost={} scl_high={} sda_high={}",
+        what,
+        i2c.bus_busy(),
+        i2c.arbitration_lost(),
+        lines.scl_high(),
+        lines.sda_high(),
+    )
+    .unwrap();
+}
+
+/// TMP: sample the I2C bus for a while, and print how often it was busy, and how
+/// often SCL and SDA were low.
+fn sample_bus(uart: &mut Uart, timer: &Timer, i2c: &I2cController, lines: &I2cLines) {
+    let (mut samples, mut busy, mut scl_low, mut sda_low) = (0u32, 0u32, 0u32, 0u32);
+    let deadline = timer.now() + Duration::from_millis(100);
+    while timer.now() < deadline {
+        samples += 1;
+        busy += i2c.bus_busy() as u32;
+        scl_low += !lines.scl_high() as u32;
+        sda_low += !lines.sda_high() as u32;
+    }
+    uwriteln!(
+        uart,
+        "Sampled 100 ms: {} samples, bus_busy {}, SCL low {}, SDA low {}",
+        samples,
+        busy,
+        scl_low,
+        sda_low,
+    )
+    .unwrap();
+}
+
+/// TMP: send the address byte of a write to the PCA9544 as a single command, and
+/// measure how long the controller takes to finish it. Then do the same for a STOP.
+fn time_single_byte(uart: &mut Uart, timer: &Timer, i2c: &I2cController) {
+    let commands = [
+        (
+            "Address byte",
+            I2cCommand {
+                start: true,
+                transfer: I2cTransfer::WriteByte(BitVector::new([PCA9544_ADDRESS << 1]).unwrap()),
+                stop: false,
+            },
+        ),
+        (
+            "STOP",
+            I2cCommand {
+                start: false,
+                transfer: I2cTransfer::NoTransfer,
+                stop: true,
+            },
+        ),
+    ];
+    for (what, command) in commands {
+        let start = timer.now();
+        let deadline = start + Duration::from_secs(1);
+        i2c.set_command(command);
+        i2c.set_commit(true);
+        let mut finished = false;
+        while timer.now() < deadline {
+            if !i2c.commit() {
+                finished = true;
+                break;
+            }
+        }
+        let elapsed = timer.now() - start;
+        uwriteln!(
+            uart,
+            "{}: finished={} after {} us, ack_received={:?} arbitration_lost={} bus_busy={}",
+            what,
+            finished,
+            elapsed.micros(),
+            i2c.ack_received(),
+            i2c.arbitration_lost(),
+            i2c.bus_busy(),
+        )
+        .unwrap();
+        if !finished {
+            // The controller ignores new commands while busy
+            break;
+        }
+    }
 }
 
 /// TMP: dump the KCU105 board EEPROM and the FMC EEPROM, without writing anything.
@@ -342,9 +432,18 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
 
     if DRY_RUN {
+        let lines = INSTANCES.i2c_lines;
         uwriteln!(uart, "Reading EEPROMs (dry run)").unwrap();
-        if let Ok(result) = dry_run(&i2c, &timer, &mut uart) {
-            uwriteln!(uart, "FMC EEPROM: {}", result).unwrap();
+        print_bus_state(&mut uart, &i2c, &lines, "Bus at start");
+        sample_bus(&mut uart, &timer, &i2c, &lines);
+        time_single_byte(&mut uart, &timer, &i2c);
+        print_bus_state(&mut uart, &i2c, &lines, "Bus after single byte");
+        match dry_run(&i2c, &timer, &mut uart) {
+            Ok(result) => uwriteln!(uart, "FMC EEPROM: {}", result).unwrap(),
+            Err(()) => {
+                print_bus_state(&mut uart, &i2c, &lines, "Bus after failure");
+                sample_bus(&mut uart, &timer, &i2c, &lines);
+            }
         }
         loop {
             continue;

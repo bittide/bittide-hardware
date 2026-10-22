@@ -33,8 +33,16 @@ import Protocols
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Uart (ValidBaud)
+import Clash.Cores.Xilinx.Ila (ila, ilaConfig)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
+import Protocols.MemoryMap (Access (ReadOnly), MemoryMap, Mm, getMMAny)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (access),
+  deviceConfig,
+  deviceWbI,
+  registerConfig,
+  registerWbI_,
+ )
 import VexRiscv
 
 import Bittide.Hitl (
@@ -47,7 +55,7 @@ import Bittide.Hitl (
 import Bittide.I2c (I2cIn, I2cOut, i2cControllerWb, openDrainPins)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.SharedTypes (withLittleEndian)
+import Bittide.SharedTypes (BitboneMm, withLittleEndian)
 import Bittide.Wishbone (timeWb, uartDf, uartInterfaceWb)
 #ifdef SIM_BAUD_RATE
 import Clash.Cores.Uart.Extra (MaxBaudRate)
@@ -58,6 +66,7 @@ import System.FilePath ((</>))
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Instances.Hitl.Driver.FmcEeprom as Driver
+import qualified Clash.Prelude as CP
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -67,6 +76,27 @@ type Baud = 921_600
 
 baud :: SNat Baud
 baud = SNat
+
+{- | TMP: exposes the levels of SCL and SDA, as seen by the I2C core before its
+filter, to debug the I2C bus.
+-}
+i2cLines ::
+  ( HasCallStack
+  , CP.HiddenClockResetEnable dom
+  , KnownNat aw
+  , 4 <= aw
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Circuit (BitboneMm dom aw, CSignal dom I2cIn) ()
+i2cLines = circuit $ \((mm, wb), Fwd i2cIn) -> do
+  [sclBus, sdaBus] <- deviceWbI (deviceConfig "I2cLines") -< (mm, wb)
+  registerWbI_ sclConfig True -< (sclBus, Fwd (Just . (== high) . fst <$> synced))
+  registerWbI_ sdaConfig True -< (sdaBus, Fwd (Just . (== high) . snd <$> synced))
+  let synced = CP.dflipflop (CP.dflipflop i2cIn)
+  idC
+ where
+  sclConfig = (registerConfig "scl_high" "SCL is high"){access = ReadOnly}
+  sdaConfig = (registerConfig "sda_high" "SDA is high"){access = ReadOnly}
 
 fmcEepromPe ::
   forall dom.
@@ -82,8 +112,8 @@ fmcEepromPe ::
   Circuit
     (ToConstBwd Mm, (Jtag dom, CSignal dom I2cIn))
     ("UART_TX" ::: CSignal dom Bit, CSignal dom I2cOut)
-fmcEepromPe clk rst = circuit $ \(mm, (jtag, i2cIn)) -> do
-  [timeBus, uartBus, i2cBus] <-
+fmcEepromPe clk rst = circuit $ \(mm, (jtag, Fwd i2cIn)) -> do
+  [timeBus, uartBus, i2cBus, i2cLinesBus] <-
     withClockResetEnable clk rst enableGen
       $ processingElement NoDumpVcd peConfig
       -< (mm, jtag)
@@ -100,7 +130,9 @@ fmcEepromPe clk rst = circuit $ \(mm, (jtag, i2cIn)) -> do
   i2cOut <-
     withClockResetEnable clk rst enableGen
       $ i2cControllerWb (SNat @(Microseconds 10))
-      -< (i2cBus, i2cIn)
+      -< (i2cBus, Fwd i2cIn)
+
+  withClockResetEnable clk rst enableGen i2cLines -< (i2cLinesBus, Fwd i2cIn)
 
   idC -< (uartTx, i2cOut)
  where
@@ -131,7 +163,7 @@ programFmcEeprom ::
         , "IIC_MUX_RESET_B_LS" ::: Signal Basic125 Bit
         )
 programFmcEeprom clkDiff jtagIn _uartRx sclIn sdaIn =
-  testStart `hwSeqX` (jtagOut, uartTx, sclOut, sdaOut, muxResetB)
+  testStart `hwSeqX` i2cIla `hwSeqX` (jtagOut, uartTx, sclOut, sdaOut, muxResetB)
  where
   clk :: Clock Basic125
   rst :: Reset Basic125
@@ -150,6 +182,39 @@ programFmcEeprom clkDiff jtagIn _uartRx sclIn sdaIn =
       (((), (jtagIn, i2cIn)), ((), ()))
 
   (i2cIn, sclOut, sdaOut) = openDrainPins sclIn sdaIn i2cOut
+
+  -- TMP: record the I2C bus and our drivers whenever one of them changes,
+  -- starting at the first change.
+  i2cIla :: Signal Basic125 ()
+  i2cIla =
+    setName @"i2cIla"
+      $ ila
+        ( ilaConfig
+            $ "trigger"
+            :> "capture"
+            :> "probe_scl"
+            :> "probe_sda"
+            :> "probe_scl_oen"
+            :> "probe_sda_oen"
+            :> "probe_cycle"
+            :> Nil
+        )
+        clk
+        changed
+        changed
+        (fst <$> i2cIn)
+        (snd <$> i2cIn)
+        ((\(_, oen, _, _) -> oen) <$> i2cOut)
+        ((\(_, _, _, oen) -> oen) <$> i2cOut)
+        cycleCount
+
+  -- Timestamps the captured samples, at 125 MHz
+  cycleCount :: Signal Basic125 (Unsigned 32)
+  cycleCount = register clk rst enableGen 0 (cycleCount + 1)
+
+  i2cLinesAndDrivers = (,) <$> i2cIn <*> ((\(_, sclOen, _, sdaOen) -> (sclOen, sdaOen)) <$> i2cOut)
+  changed =
+    (Just <$> i2cLinesAndDrivers) ./=. register clk rst enableGen Nothing (Just <$> i2cLinesAndDrivers)
 
   -- Only resets the TCA9548 I2C switch, which we do not use. Keep it out of
   -- reset, so it does not hold up the bus.
