@@ -54,7 +54,7 @@ import VexRiscv (Jtag, JtagIn (..), JtagOut)
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Instances.Hitl.Driver.LinkConfiguration as Driver
-import qualified Bittide.Instances.Hitl.Tef0008 as Tef0008
+import qualified Bittide.Instances.Tef0008 as Tef0008
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
