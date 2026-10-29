@@ -5,7 +5,7 @@
 {- | Pins of the Trenz TEF0008 FMC card, which holds the SFP+ cages of links J4
 to J7. See https://wiki.trenz-electronic.de/display/PD/TEF0008+MAX10.
 -}
-module Bittide.Instances.Hitl.Tef0008 (
+module Bittide.Instances.Tef0008 (
   SfpControl,
   sfpControl,
 ) where

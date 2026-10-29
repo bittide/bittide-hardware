@@ -198,7 +198,7 @@ tests =
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
         , "si539x" </> "spi.xdc"
-        , "i2c" </> "main.xdc"
+        , "tef0008" </> "mainI2c.xdc"
         ]
     , externalHdl = []
     , testCases =
