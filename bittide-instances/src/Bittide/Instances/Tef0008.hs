@@ -8,6 +8,8 @@ to J7. See https://wiki.trenz-electronic.de/display/PD/TEF0008+MAX10.
 module Bittide.Instances.Tef0008 (
   SfpControl,
   sfpControl,
+  si5345MuxSelect,
+  iicMuxResetB,
 ) where
 
 import Clash.Explicit.Prelude
@@ -40,3 +42,19 @@ sfpControl =
   , pure low -- LA03_N low: SFP RS0 high, full RX rate
   , pure low -- LA04_P low: SFP RS1 high, full TX rate
   )
+
+{- | Selects the Si5345 on the I2C multiplexer in the MAX10 of the card, for
+@FMC_MUX_SELECT@ (LA01_N, LA02_P, LA02_N). The other values (0b000 to 0b011)
+select the I2C of SFP cages A to D. See the TEF0008 MAX10 documentation by Trenz
+Electronic. Constrained by @tef0008/si5345I2c.xdc@.
+-}
+si5345MuxSelect :: Signal dom (BitVector 3)
+si5345MuxSelect = pure 0b100
+
+{- | Active-low reset of the TCA9548 I2C switch on the main I2C bus of the KCU105,
+for @IIC_MUX_RESET_B_LS@. We do not use that switch: keep it out of reset, so it
+does not hold up the bus. A KCU105 pin, but we only use the main I2C bus to set
+VADJ for this card. Constrained by @tef0008/mainI2c.xdc@.
+-}
+iicMuxResetB :: Signal dom Bit
+iicMuxResetB = pure high
