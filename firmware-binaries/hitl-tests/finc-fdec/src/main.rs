@@ -14,18 +14,18 @@ use ufmt::uwriteln;
 use bittide_hal::hals::finc_fdec_tests::devices::DomainDiffCounters;
 use bittide_hal::hals::finc_fdec_tests::DeviceInstances;
 use bittide_hal::manual_additions::clock_chip::{ClockChip, Config, WriteError};
-use bittide_hal::shared_devices::{Si539xSpi, Timer, Uart};
+use bittide_hal::manual_additions::timer::Duration;
+use bittide_hal::shared_devices::{Si5345I2c, Timer, Uart};
 
-use bittide_cpus::fmc_power::set_vadj_1v8;
+use bittide_cpus::boot::start_fmc_clock;
 use bittide_macros::load_clock_config_csv;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const CONFIG_125: Config<3, 590, 5> = load_clock_config_csv!(
-    "../../../bittide/data/clock_configs/Si5395J-125MHz-10ppb-Registers.csv"
-);
+const CONFIG_125: Config<3, 524, 5> =
+    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5345-125MHz-10ppb-Registers.csv");
 
 const MAX_CONFIG_RETRIES: usize = 10;
 
@@ -79,32 +79,32 @@ where
     }
 }
 
-// FINC/FDEC test patterns. Each loop iteration sends one SPI request.
+// FINC/FDEC test patterns. Each loop iteration sends one I2C request.
 
-fn do_sw_fdec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_fdec(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.fdec(timer, 1),
+        || si5345_i2c.fdec(timer, 1),
         (i32::lt, -THRESHOLD),
         (i32::gt, THRESHOLD),
         Direction::Fdec,
     )
 }
 
-fn do_sw_finc(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_finc(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.finc(timer, 1),
+        || si5345_i2c.finc(timer, 1),
         (i32::gt, THRESHOLD),
         (i32::lt, -THRESHOLD),
         Direction::Finc,
     )
 }
 
-fn do_sw_fdec_inc(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_fdec_inc(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.fdec(timer, 1),
+        || si5345_i2c.fdec(timer, 1),
         (i32::lt, -THRESHOLD),
         (i32::gt, THRESHOLD),
         Direction::Fdec,
@@ -112,17 +112,17 @@ fn do_sw_fdec_inc(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters
 
     counter_test(
         dc,
-        || si539x_spi.finc(timer, 1),
+        || si5345_i2c.finc(timer, 1),
         (i32::gt, 0),
         (i32::lt, -(3 * THRESHOLD)),
         Direction::Finc,
     )
 }
 
-fn do_sw_finc_dec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
+fn do_sw_finc_dec(si5345_i2c: &Si5345I2c, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
         dc,
-        || si539x_spi.finc(timer, 1),
+        || si5345_i2c.finc(timer, 1),
         (i32::gt, THRESHOLD),
         (i32::lt, -THRESHOLD),
         Direction::Finc,
@@ -130,16 +130,62 @@ fn do_sw_finc_dec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters
 
     counter_test(
         dc,
-        || si539x_spi.fdec(timer, 1),
+        || si5345_i2c.fdec(timer, 1),
         (i32::lt, 0),
         (i32::gt, (3 * THRESHOLD)),
         Direction::Fdec,
     )
 }
 
+/// Print the debug registers of the clock chip interface.
+fn print_i2c_status(si5345_i2c: &Si5345I2c, uart: &mut Uart) {
+    let bus_state = si5345_i2c.bus_state().into_inner()[0];
+    uwriteln!(
+        uart,
+        "  nack_count={} arbitration_lost_count={} scl={} sda={} busy={} step={}",
+        si5345_i2c.nack_count().into_inner(),
+        si5345_i2c.arbitration_lost_count().into_inner(),
+        (bus_state >> 7) & 1,
+        (bus_state >> 6) & 1,
+        (bus_state >> 5) & 1,
+        bus_state & 0xF,
+    )
+    .unwrap();
+}
+
+/// Try to read the `DEVICE_READY` register of the clock chip a few times, with a
+/// timeout. Prints the result, or the state of the I2C interface on a timeout.
+fn probe_clock_chip(si5345_i2c: &Si5345I2c, timer: &Timer, uart: &mut Uart) {
+    uwriteln!(uart, "Probing clock chip").unwrap();
+    print_i2c_status(si5345_i2c, uart);
+    for attempt in 0..5 {
+        si5345_i2c.start_read(0x00, 0xFE);
+        let deadline = timer.now() + Duration::from_millis(100);
+        while si5345_i2c.is_busy() && timer.now() < deadline {
+            continue;
+        }
+        if si5345_i2c.is_busy() {
+            uwriteln!(uart, "Probe {}: timeout", attempt).unwrap();
+            print_i2c_status(si5345_i2c, uart);
+            // Reset the driver so the next attempt starts from scratch
+            si5345_i2c.set_reset(true);
+            si5345_i2c.set_reset(false);
+        } else {
+            uwriteln!(
+                uart,
+                "Probe {}: DEVICE_READY=0x{:02X}",
+                attempt,
+                si5345_i2c.read_byte()
+            )
+            .unwrap();
+            print_i2c_status(si5345_i2c, uart);
+        }
+    }
+}
+
 /// Run a single test with the full per-test sequence:
 ///
-///  1. Program clock board
+///  1. Program clock chip
 ///  2. Enable domain diff counter
 ///  3. Execute test body (FINC/FDEC until threshold)
 ///  5. Disable domain diff counter
@@ -148,7 +194,7 @@ fn do_sw_finc_dec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters
 /// Returns whether the test passed.
 fn run_test<Test>(
     name: &str,
-    si539x_spi: &Si539xSpi,
+    si5345_i2c: &Si5345I2c,
     timer: &Timer,
     uart: &mut Uart,
     dc: &DomainDiffCounters,
@@ -157,12 +203,24 @@ fn run_test<Test>(
 where
     Test: FnOnce(&DomainDiffCounters) -> TestResult,
 {
+    uwriteln!(uart, "{}: waiting for clock chip to be ready", name).unwrap();
+    si5345_i2c.wait_for_ready();
+    let design_id = si5345_i2c.read_design_id();
+    uwriteln!(
+        uart,
+        "{}: clock chip ready, design ID {:?}",
+        name,
+        design_id
+    )
+    .unwrap();
+
+    uwriteln!(uart, "{}: writing clock chip configuration", name).unwrap();
     if let Err(WriteError::NotConfirmed { entry, read_data }) =
-        si539x_spi.write_configuration_with_retry(timer, &CONFIG_125, MAX_CONFIG_RETRIES)
+        si5345_i2c.write_configuration_with_retry(timer, &CONFIG_125, MAX_CONFIG_RETRIES)
     {
         uwriteln!(
             uart,
-            "FAIL: {} (clock board at 0x{:02X}{:02X}: wrote 0x{:02X}, read 0x{:02X})",
+            "FAIL: {} (clock chip at 0x{:02X}{:02X}: wrote 0x{:02X}, read 0x{:02X})",
             name,
             entry.page,
             entry.address,
@@ -172,13 +230,16 @@ where
         .unwrap();
         return false;
     }
+    uwriteln!(uart, "{}: clock chip configured and locked", name).unwrap();
 
+    uwriteln!(uart, "{}: waiting for domain diff counter", name).unwrap();
     dc.set_enable(0, true);
     loop {
         if dc.counters_active(0) == Some(true) {
             break;
         }
     }
+    uwriteln!(uart, "{}: domain diff counter active, running test", name).unwrap();
 
     let test_result = test_body(dc);
     dc.set_enable(0, false);
@@ -193,7 +254,7 @@ where
 
 macro_rules! run_tests {
     (
-        spi: $spi:ident,
+        clock_chip: $clock_chip:ident,
         timer: $timer:ident,
         uart: $uart:ident,
         dc: $dc:ident,
@@ -205,7 +266,7 @@ macro_rules! run_tests {
         $(
             run_test(
                 $name,
-                &$spi,
+                &$clock_chip,
                 &$timer,
                 &mut $uart,
                 &$dc,
@@ -217,37 +278,50 @@ macro_rules! run_tests {
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let si539x_spi = INSTANCES.si539x_spi;
+    let si5345_i2c = INSTANCES.si5345_i2c;
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
     let dc = INSTANCES.domain_diff_counters;
-    let i2c = INSTANCES.i2c_controller;
+    let main_i2c = INSTANCES.i2c_controller;
 
-    let vadj_set = match set_vadj_1v8(&i2c, &timer, &mut uart) {
-        Ok(outcome) => {
-            uwriteln!(uart, "PASS: VADJ ({:?})", outcome).unwrap();
+    // Each test below configures the clock chip again, from a known state
+    let started = match start_fmc_clock(
+        &main_i2c,
+        &si5345_i2c,
+        &timer,
+        &mut uart,
+        &CONFIG_125,
+        MAX_CONFIG_RETRIES,
+    ) {
+        Ok(()) => {
+            uwriteln!(uart, "PASS: clock chip started").unwrap();
             true
         }
         Err(e) => {
-            uwriteln!(uart, "FAIL: VADJ ({:?})", e).unwrap();
+            uwriteln!(uart, "FAIL: clock chip not started ({:?})", e).unwrap();
             false
         }
     };
 
-    let tests_passed = run_tests!(
-        spi: si539x_spi,
+    let all_passed = started && {
+        uwriteln!(uart, "Starting FINC/FDEC tests").unwrap();
+        probe_clock_chip(&si5345_i2c, &timer, &mut uart);
+
+        run_tests!(
+            clock_chip: si5345_i2c,
         timer: timer,
         uart: uart,
         dc: dc,
         tests: [
-            [name: "Software FDec",    test: |dc| do_sw_fdec(&si539x_spi, &timer, dc)],
-            [name: "Software FInc",    test: |dc| do_sw_finc(&si539x_spi, &timer, dc)],
-            [name: "Software FDecInc", test: |dc| do_sw_fdec_inc(&si539x_spi, &timer, dc)],
-            [name: "Software FIncDec", test: |dc| do_sw_finc_dec(&si539x_spi, &timer, dc)],
+            [name: "Software FDec",    test: |dc| do_sw_fdec(&si5345_i2c, &timer, dc)],
+            [name: "Software FInc",    test: |dc| do_sw_finc(&si5345_i2c, &timer, dc)],
+            [name: "Software FDecInc", test: |dc| do_sw_fdec_inc(&si5345_i2c, &timer, dc)],
+            [name: "Software FIncDec", test: |dc| do_sw_finc_dec(&si5345_i2c, &timer, dc)],
         ],
-    );
+        )
+    };
 
-    if vadj_set && tests_passed {
+    if all_passed {
         uwriteln!(uart, "All tests passed").unwrap();
     } else {
         uwriteln!(uart, "Some tests failed").unwrap();

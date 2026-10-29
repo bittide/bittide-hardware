@@ -10,6 +10,7 @@ pub mod dna;
 pub mod elastic_buffer;
 pub mod i2c_controller;
 pub mod ring_buffer;
+pub mod si5345_i2c;
 pub mod si539x_spi;
 pub mod timer;
 pub mod uart;
