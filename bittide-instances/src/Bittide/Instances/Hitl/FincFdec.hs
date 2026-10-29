@@ -5,6 +5,9 @@
 
 {- | A couple of tests testing clock board programming, and subsequently frequency
 increments and decrements over SPI.
+
+The boot CPU also sets VADJ to 1.8 V over the main I2C bus of the KCU105. See
+@firmware-support/bittide-cpus/src/fmc_power.rs@.
 -}
 module Bittide.Instances.Hitl.FincFdec where
 
@@ -34,6 +37,7 @@ import Bittide.Hitl (
   hitlVioBool,
   paramForHwTargets,
  )
+import Bittide.I2c (I2cIn, I2cOut, i2cControllerWb, openDrainPins)
 import Bittide.ProcessingElement (PeConfig (..))
 import Bittide.SharedTypes (withLittleEndian)
 import Bittide.Wishbone (uartDf)
@@ -78,13 +82,14 @@ fincFdecPe ::
   Clock sky ->
   Circuit
     ( ToConstBwd Mm
-    , Jtag free
+    , (Jtag free, CSignal free I2cIn)
     )
     ( "UART_TX" ::: CSignal free Bit
     , Spi free
+    , CSignal free I2cOut
     )
-fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
-  (uartBytes, siBus, [dcBus]) <-
+fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, (jtag, i2cIn)) -> do
+  (uartBytes, siBus, [dcBus, i2cBus]) <-
     withClockResetEnable freeClk freeRst enableGen
       $ bootPe peConfig
       -< (mm, jtag)
@@ -106,12 +111,19 @@ fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
 
   Fwd _domainDiff <- domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
 
-  idC -< (uartTx, spi)
+  -- The I2C switches on the KCU105 support up to 400 kHz. Run at 100 kHz to be
+  -- safe.
+  i2cOut <-
+    withClockResetEnable freeClk freeRst enableGen
+      $ i2cControllerWb (SNat @(Microseconds 10))
+      -< (i2cBus, i2cIn)
+
+  idC -< (uartTx, spi, i2cOut)
  where
   peConfig =
     PeConfig
       { cpu = Riscv32imc.vexRiscv0
-      , depthI = SNat @(Div (8 * 1024) 4)
+      , depthI = SNat @(Div (16 * 1024) 4)
       , depthD = SNat @(Div (8 * 1024) 4)
       , initI = Nothing
       , initD = Nothing
@@ -128,13 +140,19 @@ fincFdecTests ::
   "JTAG" ::: Signal Basic125 JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
   Signal Basic125 Spi.S2M ->
+  -- Main I2C bus of the KCU105, shared with the system controller
+  "IIC_SCL_MAIN_LS" ::: BiSignalIn 'PullUp Basic125 1 ->
+  "IIC_SDA_MAIN_LS" ::: BiSignalIn 'PullUp Basic125 1 ->
   ( "JTAG" ::: Signal Basic125 JtagOut
   , "USB_UART_RXD" ::: Signal Basic125 Bit
   , -- SPI to clock board:
     "" ::: Signal Basic125 Spi.M2S
+  , "IIC_SCL_MAIN_LS_OUT" ::: BiSignalOut 'PullUp Basic125 1
+  , "IIC_SDA_MAIN_LS_OUT" ::: BiSignalOut 'PullUp Basic125 1
+  , "IIC_MUX_RESET_B_LS" ::: Signal Basic125 Bit
   )
-fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
-  testStart `hwSeqX` (jtagOut, uartTx, spiM2S)
+fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M sclIn sdaIn =
+  testStart `hwSeqX` (jtagOut, uartTx, spiM2S, sclOut, sdaOut, muxResetB)
  where
   (freeClk, freeRst) = clockWizardDifferential freeClkDiff noReset
   (_, odivClk) = Gth.ibufds_gte3 boardClkDiff
@@ -149,10 +167,16 @@ fincFdecTests freeClkDiff boardClkDiff jtagIn _uartRx spiS2M =
   testSuccess = register freeClk testRst enableGen False (pure True)
   testRst = unsafeFromActiveLow testStart
 
-  ((_memoryMap, jtagOut), (uartTx, spiM2S)) =
+  ((_memoryMap, (jtagOut, _)), (uartTx, spiM2S, i2cOut)) =
     toSignals
       (withXilinx $ withLittleEndian $ fincFdecPe freeClk freeRst boardClk)
-      (((), jtagIn), ((), spiS2M))
+      (((), (jtagIn, i2cIn)), ((), spiS2M, ()))
+
+  (i2cIn, sclOut, sdaOut) = openDrainPins sclIn sdaIn i2cOut
+
+  -- Only resets the TCA9548 I2C switch, which we do not use. Keep it out of
+  -- reset, so it does not hold up the bus.
+  muxResetB = pure high
 
 memoryMap :: MemoryMap
 memoryMap =
@@ -174,6 +198,7 @@ tests =
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
         , "si539x" </> "spi.xdc"
+        , "i2c" </> "main.xdc"
         ]
     , externalHdl = []
     , testCases =

@@ -6,4 +6,5 @@
 
 pub mod boot;
 pub mod clock_control;
+pub mod fmc_power;
 pub mod transceivers;
