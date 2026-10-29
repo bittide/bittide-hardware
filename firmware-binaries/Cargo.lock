@@ -328,6 +328,7 @@ name = "finc-fdec"
 version = "0.1.0"
 dependencies = [
  "bittide-build-utils",
+ "bittide-cpus",
  "bittide-hal",
  "bittide-macros",
  "bittide-sys",

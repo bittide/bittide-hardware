@@ -21,6 +21,15 @@ To add a HTIL test:
 A design marked as a Hardware-in-the-loop test (hitlt) should adhere to
 framework described in the next chapters.
 
+## VADJ
+Each board has a Trenz TEF0008 FMC card on its FMC HPC connector. Its I/O, the
+FPGA HP banks 47, 48, 66, 67 and 68, and the card's own 1.8 V rail (which powers
+the Si5345) all depend on VADJ. The KCU105 system controller sets VADJ at
+power-on, from the card's FRU EEPROM, but sets 0 V for our cards. Designs that
+need the FMC card set VADJ to 1.8 V from their boot CPU, over the main I2C bus.
+See [fmc_power.rs](/firmware-support/bittide-cpus/src/fmc_power.rs). VADJ then stays at
+1.8 V until the next power cycle, also for later designs.
+
 ## ILA
 All ILAs present in the design are armed before the VIO test is started. Each
 ILA produces a separate CSV file for each VIO test.
