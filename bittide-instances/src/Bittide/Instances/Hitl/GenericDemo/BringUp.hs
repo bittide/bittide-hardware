@@ -20,7 +20,7 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
 import Bittide.BootPe (bootPe, defBootPeConfig)
-import Bittide.ClockControl
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Df (asciiDebugMux)
 import Bittide.Instances.Domains (
   Basic125,
@@ -99,7 +99,6 @@ bringUp ::
     ( Spi Basic125
     , Sync Bittide Basic125
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
 bringUp bufferDepth mkUserCore refClk refRst =
   withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -> do
@@ -114,11 +113,25 @@ bringUp bufferDepth mkUserCore refClk refRst =
         -< muTransceiverWbBittide
 
     -- Start boot PE
-    (bootUartBytes, _spiDone, spi, [bootTransceiverWb]) <-
+    (bootUartBytes, bootSpiWb, [bootTransceiverWb]) <-
       withRefClockResetEnable
         $ bootPe defBootPeConfig
         -< (bootMm, bootJtag)
     -- Stop boot PE
+
+    -- Start Si539x SPI. The boot CPU uses it to configure the clock chip, after
+    -- which the clock control CPU uses it for frequency adjustments. The two
+    -- never use it at the same time: the Bittide domain (and therefore the
+    -- clock control CPU) only runs once the boot CPU finished configuring.
+    spiWb <- withRefClockResetEnable arbiterMm -< [bootSpiWb, ccSpiWb]
+    ccSpiWb <-
+      fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
+        -< ccSpiWbBittide
+    (_spiDone, spi) <-
+      withRefClockResetEnable
+        $ si539xSpiWb (SNat @(Microseconds 10))
+        -< spiWb
+    -- Stop Si539x SPI
 
     -- Start UART multiplexing
     uartTxBytes <-
@@ -138,11 +151,11 @@ bringUp bufferDepth mkUserCore refClk refRst =
         Transceiver.defConfig
         -< (transceiverWb, gths, Fwd (bundle coreToTransceivers))
 
-    ( Fwd speedChanges
-      , Fwd coreToTransceivers
+    ( Fwd coreToTransceivers
       , sync
       , uartBytesBittide
       , muTransceiverWbBittide
+      , ccSpiWbBittide
       ) <-
       core
         bufferDepth
@@ -171,12 +184,4 @@ bringUp bufferDepth mkUserCore refClk refRst =
       linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
       linksSuitableForCc = fmap pack (bundle tOutputs.txDataInitDones)
 
-      frequencyAdjustments :: Signal Bittide (FINC, FDEC)
-      frequencyAdjustments =
-        delay bittideClk enableGen minBound
-          $ speedChangeToFincFdec
-            bittideClk
-            bittideRst
-            speedChanges
-
-    idC -< (spi, sync, uartTx, Fwd frequencyAdjustments)
+    idC -< (spi, sync, uartTx)

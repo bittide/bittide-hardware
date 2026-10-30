@@ -23,6 +23,7 @@ import Clash.Prelude (withClockResetEnable)
 import Protocols
 
 import Bittide.BootPe (BootPeBusses, bootPe)
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
@@ -188,10 +189,15 @@ linkConfigurationPe ::
     , "UART_TX" ::: CSignal Basic125 Bit
     )
 linkConfigurationPe sysClk sysRst = circuit $ \(mm, jtag, gths, Fwd myIndex) -> do
-  (uartBytes, _spiDone, spi, [transceiverBus, checkBus]) <-
+  (uartBytes, siBus, [transceiverBus, checkBus]) <-
     withClockResetEnable sysClk sysRst enableGen
       $ bootPe @2 peConfig
       -< (mm, jtag)
+
+  (_spiDone, spi) <-
+    withClockResetEnable sysClk sysRst enableGen
+      $ si539xSpiWb (SNat @(Microseconds 10))
+      -< siBus
 
   (_uartRx, uartTx) <-
     withClockResetEnable sysClk sysRst enableGen
