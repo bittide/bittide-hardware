@@ -175,6 +175,7 @@ library
     Bittide.Instances.Hitl.Driver.ClockControl.Samples
     Bittide.Instances.Hitl.Driver.DnaOverSerial
     Bittide.Instances.Hitl.Driver.FincFdec
+    Bittide.Instances.Hitl.Driver.FmcEeprom
     Bittide.Instances.Hitl.Driver.LinkConfiguration
     Bittide.Instances.Hitl.Driver.Si539xConfiguration
     Bittide.Instances.Hitl.Driver.Transceivers
@@ -182,6 +183,7 @@ library
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
+    Bittide.Instances.Hitl.FmcEeprom
     Bittide.Instances.Hitl.GenericDemo.BringUp
     Bittide.Instances.Hitl.GenericDemo.Core
     Bittide.Instances.Hitl.GenericDemo.MemoryMaps

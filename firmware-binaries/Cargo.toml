@@ -42,6 +42,7 @@ members = [
   "hitl-tests/clock-board",
   "hitl-tests/finc-fdec",
   "hitl-tests/link-configuration-test",
+  "hitl-tests/program-fmc-eeprom",
   "hitl-tests/transceivers-up-test",
 
   "demos/soft-ugn-demo-clock-control",

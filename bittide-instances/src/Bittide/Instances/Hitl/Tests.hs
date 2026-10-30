@@ -25,6 +25,7 @@ import qualified Bittide.Instances.Hitl.Ddr4 as Ddr4
 import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
+import qualified Bittide.Instances.Hitl.FmcEeprom as FmcEeprom
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SoftUgnDemo.TopEntity as SoftUgnDemo
@@ -43,6 +44,7 @@ hitlTests =
     <> [DnaOverSerial.tests]
     <> [Ethernet.tests]
     <> [FincFdec.tests]
+    <> [FmcEeprom.tests]
     <> [LinkConfiguration.tests]
     <> [Si539xConfiguration.tests]
     <> [SoftUgnDemo.tests]
