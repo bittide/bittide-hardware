@@ -16,6 +16,7 @@ use bittide_hal::hals::finc_fdec_tests::DeviceInstances;
 use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
 use bittide_hal::shared_devices::{Si539xSpi, Timer, Uart};
 
+use bittide_cpus::fmc_power::set_vadj_1v8;
 use bittide_macros::load_clock_config_csv;
 
 #[cfg(not(test))]
@@ -220,8 +221,20 @@ fn main() -> ! {
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
     let dc = INSTANCES.domain_diff_counters;
+    let i2c = INSTANCES.i2c_controller;
 
-    let all_passed = run_tests!(
+    let vadj_set = match set_vadj_1v8(&i2c, &timer, &mut uart) {
+        Ok(outcome) => {
+            uwriteln!(uart, "PASS: VADJ ({:?})", outcome).unwrap();
+            true
+        }
+        Err(e) => {
+            uwriteln!(uart, "FAIL: VADJ ({:?})", e).unwrap();
+            false
+        }
+    };
+
+    let tests_passed = run_tests!(
         spi: si539x_spi,
         timer: timer,
         uart: uart,
@@ -234,7 +247,7 @@ fn main() -> ! {
         ],
     );
 
-    if all_passed {
+    if vadj_set && tests_passed {
         uwriteln!(uart, "All tests passed").unwrap();
     } else {
         uwriteln!(uart, "Some tests failed").unwrap();
