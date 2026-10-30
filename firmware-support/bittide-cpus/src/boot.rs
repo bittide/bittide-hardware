@@ -3,60 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::manual_additions::clock_chip::{ClockChip, Config, WriteError};
-use bittide_hal::shared_devices::{I2cController, Si539xSpi, Timer, Transceivers, Uart};
+use bittide_hal::shared_devices::{I2cController, Timer, Transceivers, Uart};
 use ufmt::derive::uDebug;
 use ufmt::uwriteln;
 
 use crate::fmc_power::{set_vadj_1v8, VadjError};
 
-/// Writing a configuration can sometimes fail, usually because a written register was not
-/// the same when not read back. This happens roughly once in 200 runs. The
-/// 'program_clock_board' function therefore retries when this happens up to 'MAX_RETRIES'
-/// times.
+/// Writing a configuration can sometimes fail. The 'program_fmc_clock' function therefore
+/// tries up to 'MAX_RETRIES' times.
 const MAX_RETRIES: usize = 10;
-
-/// Write the given configuration to the Si539x clock board.
-///
-/// Panics when writing a configuration fails 'MAX_RETRIES' times.
-pub fn program_clock_board(
-    si539x_spi: &Si539xSpi,
-    timer: &Timer,
-    uart: &mut Uart,
-    config: &Config<3, 590, 5>,
-) {
-    uwriteln!(uart, "Writing Si539x configuration..").unwrap();
-    let mut retries = 0;
-    loop {
-        match si539x_spi.write_configuration(timer, config) {
-            Ok(()) => {
-                uwriteln!(uart, "Done.").unwrap();
-                return;
-            }
-            Err(WriteError::NotConfirmed { entry, read_data }) => {
-                retries += 1;
-                if retries >= MAX_RETRIES {
-                    panic!(
-                        "[ERROR] failed to write Si539x configuration after {MAX_RETRIES} retries, panicking"
-                    );
-                }
-                uwriteln!(
-                    uart,
-                    "[ERROR] failed to write Si539x configuration, retrying..."
-                )
-                .unwrap();
-                uwriteln!(
-                    uart,
-                    "At 0x{:02X}{:02X} wrote 0x{:02X}, but read back 0x{:02X}",
-                    entry.page,
-                    entry.address,
-                    entry.data,
-                    read_data,
-                )
-                .unwrap();
-            }
-        }
-    }
-}
 
 /// Enable the transceiver block and all of its channels.
 pub fn enable_transceivers(transceivers: &Transceivers, uart: &mut Uart) {
@@ -69,10 +24,31 @@ pub fn enable_transceivers(transceivers: &Transceivers, uart: &mut Uart) {
     }
 }
 
-/// Run the steps of a boot CPU with a clock chip on the FMC card, see
-/// [`start_fmc_clock`].
+/// Start the clock chip on the FMC card with [`start_fmc_clock`], with up to
+/// 'MAX_RETRIES' attempts to write the given configuration.
 ///
-/// Panics when starting the clock chip fails, also after 'MAX_RETRIES' attempts.
+/// Panics when starting the clock chip fails.
+pub fn program_fmc_clock<
+    C: ClockChip,
+    const PRE_LEN: usize,
+    const CFG_LEN: usize,
+    const PST_LEN: usize,
+>(
+    main_i2c: &I2cController,
+    clock_chip: &C,
+    timer: &Timer,
+    uart: &mut Uart,
+    config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
+) {
+    if let Err(e) = start_fmc_clock(main_i2c, clock_chip, timer, uart, config, MAX_RETRIES) {
+        uwriteln!(uart, "[ERROR] failed to start the clock chip: {:?}", e).unwrap();
+        panic!("[ERROR] failed to start the clock chip, panicking");
+    }
+}
+
+/// Run the steps of a boot CPU with a clock chip on the FMC card.
+///
+/// Panics when starting the clock chip fails, see [`program_fmc_clock`].
 pub fn run<C: ClockChip, const PRE_LEN: usize, const CFG_LEN: usize, const PST_LEN: usize>(
     main_i2c: I2cController,
     clock_chip: C,
@@ -81,10 +57,7 @@ pub fn run<C: ClockChip, const PRE_LEN: usize, const CFG_LEN: usize, const PST_L
     uart: &mut Uart,
     config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
 ) -> ! {
-    if let Err(e) = start_fmc_clock(&main_i2c, &clock_chip, &timer, uart, config, MAX_RETRIES) {
-        uwriteln!(uart, "[ERROR] failed to start the clock chip: {:?}", e).unwrap();
-        panic!("[ERROR] failed to start the clock chip, panicking");
-    }
+    program_fmc_clock(&main_i2c, &clock_chip, &timer, uart, config);
     enable_transceivers(&transceivers, uart);
 
     uwriteln!(uart, "Going into infinite loop..").unwrap();
