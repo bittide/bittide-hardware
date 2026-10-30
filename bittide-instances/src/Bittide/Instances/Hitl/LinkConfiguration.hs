@@ -7,8 +7,8 @@
 {- | Tests whether the transceiver link setup matches with the
 configuration defined in 'Bittide.Instances.Hitl.Setup.fpgaSetup'.
 To this end, each node sends its own index to all of it's
-neighbors. A boot CPU programs the clock board, enables the
-transceivers and waits for the links to be stable. The driver then
+neighbors. A boot CPU sets VADJ, programs the clock chip on the FMC
+card, enables the transceivers and waits for the links to be stable. The driver then
 reads the received indices and verifies that they match with the
 definition. Also see @firmware-binaries/hitl-tests/link-configuration-test@.
 -}
@@ -22,12 +22,12 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Protocols
 
-import Bittide.BootPe (BootPeBusses, bootPe)
-import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
+import Bittide.BootPe (DefSi5345SclPeriod, defFmcBootPeConfig, fmcBootPe)
+import Bittide.ClockControl.Si5345I2c (splitSdaPins)
 import Bittide.Hitl
+import Bittide.I2c (I2cIn, I2cOut, openDrainPins)
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
-import Bittide.ProcessingElement (PeConfig (..))
 import Bittide.SharedTypes (BitboneMm, withLittleEndian)
 import Bittide.Transceiver (COutputs (..))
 import Bittide.Wishbone (uartDf)
@@ -52,14 +52,12 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
 import System.FilePath ((</>))
 import VexRiscv (Jtag, JtagIn (..), JtagOut)
 
-import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Instances.Hitl.Driver.LinkConfiguration as Driver
 import qualified Bittide.Instances.Tef0008 as Tef0008
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.Wishbone as Transceiver
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Data.Map.Strict as Map
-import qualified Protocols.Spi as Spi
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -157,22 +155,8 @@ linkConfigurationCheck clk rst = circuit $ \(wb, Fwd myIndex, Fwd received) -> d
       { access = ReadOnly
       }
 
--- | Configuration of the boot CPU. The test firmware does not fit in 4 KiB.
-peConfig :: PeConfig (BootPeBusses + 2)
-peConfig =
-  PeConfig
-    { cpu = Riscv32imc.vexRiscv0
-    , depthI = SNat @(Div (8 * 1024) 4)
-    , depthD = SNat @(Div (16 * 1024) 4)
-    , initI = Nothing
-    , initD = Nothing
-    , iBusTimeout = d0
-    , dBusTimeout = d0
-    , includeIlaWb = False
-    }
-
-{- | Boot CPU, transceivers and 'linkConfigurationCheck'. The CPU programs the
-clock board over SPI and controls the transceivers. Each transceiver sends
+{- | Boot CPU, transceivers and 'linkConfigurationCheck'. The CPU sets VADJ,
+programs the clock chip on the FMC card and controls the transceivers. Each transceiver sends
 this FPGA's index.
 -}
 linkConfigurationPe ::
@@ -184,20 +168,18 @@ linkConfigurationPe ::
     , Jtag Basic125
     , Gth.Gths GthRx GthRxS GthTx GthTxS Ext200 LinkCount
     , "MY_INDEX" ::: CSignal Basic125 (Index FpgaCount)
+    , "MAIN_I2C" ::: CSignal Basic125 I2cIn
+    , "FMC_I2C" ::: CSignal Basic125 I2cIn
     )
-    ( Spi.Spi Basic125
+    ( "MAIN_I2C" ::: CSignal Basic125 I2cOut
+    , "FMC_I2C" ::: CSignal Basic125 I2cOut
     , "UART_TX" ::: CSignal Basic125 Bit
     )
-linkConfigurationPe sysClk sysRst = circuit $ \(mm, jtag, gths, Fwd myIndex) -> do
-  (uartBytes, siBus, [transceiverBus, checkBus]) <-
+linkConfigurationPe sysClk sysRst = circuit $ \(mm, jtag, gths, Fwd myIndex, mainI2cIn, fmcI2cIn) -> do
+  (uartBytes, _clockChipDone, mainI2cOut, fmcI2cOut, [transceiverBus, checkBus]) <-
     withClockResetEnable sysClk sysRst enableGen
-      $ bootPe @2 peConfig
-      -< (mm, jtag)
-
-  (_spiDone, spi) <-
-    withClockResetEnable sysClk sysRst enableGen
-      $ si539xSpiWb (SNat @(Microseconds 10))
-      -< siBus
+      $ fmcBootPe (SNat @DefSi5345SclPeriod) defFmcBootPeConfig
+      -< (mm, jtag, mainI2cIn, fmcI2cIn)
 
   (_uartRx, uartTx) <-
     withClockResetEnable sysClk sysRst enableGen
@@ -226,45 +208,71 @@ linkConfigurationPe sysClk sysRst = circuit $ \(mm, jtag, gths, Fwd myIndex) -> 
         tOutputs.rxDataInitDones
         tOutputs.rxDatas
 
-  idC -< (spi, uartTx)
+  idC -< (mainI2cOut, fmcI2cOut, uartTx)
 
 memoryMap :: MemoryMap
 memoryMap = mm
  where
   Circuit circuitFn = withLittleEndian $ linkConfigurationPe clockGen noReset
-  ((SimOnly mm, _, _, _), _) =
+  ((SimOnly mm, _, _, _, _, _), _) =
     circuitFn
       (
         ( ()
         , pure (JtagIn 0 0 0)
         , (clockGen, SimOnly (repeat 0), 0, 0, repeat "", repeat "")
         , pure 0
+        , pure (high, high)
+        , pure (high, high)
         )
-      , (pure (Spi.S2M low), ())
+      , ((), (), ())
       )
 
 -- | Top entity for this test. See module documentation for more information.
 linkConfigurationTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  -- Driven by the Si5345 on the FMC card:
+  "FMC_HPC_GBTCLK1_M2C_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  Signal Basic125 Spi.S2M ->
+  -- I2C to the Si5345 on the FMC card:
+  "FMC_SCL" ::: BiSignalIn 'PullUp Basic125 1 ->
+  "FMC_SDA_IN" ::: Signal Basic125 Bit ->
+  -- Main I2C bus of the KCU105, shared with the system controller
+  "IIC_SCL_MAIN_LS" ::: BiSignalIn 'PullUp Basic125 1 ->
+  "IIC_SDA_MAIN_LS" ::: BiSignalIn 'PullUp Basic125 1 ->
   "JTAG" ::: Signal Basic125 JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
-  , "" ::: Signal Basic125 Spi.M2S
+  , "FMC_SCL_OUT" ::: BiSignalOut 'PullUp Basic125 1
+  , "FMC_SDA_OUT" ::: Signal Basic125 Bit
+  , "FMC_MUX_SELECT" ::: Signal Basic125 (BitVector 3)
+  , "IIC_SCL_MAIN_LS_OUT" ::: BiSignalOut 'PullUp Basic125 1
+  , "IIC_SDA_MAIN_LS_OUT" ::: BiSignalOut 'PullUp Basic125 1
+  , "IIC_MUX_RESET_B_LS" ::: Signal Basic125 Bit
   , "JTAG" ::: Signal Basic125 JtagOut
   , "USB_UART_RXD" ::: Signal Basic125 Bit
   , "" ::: Tef0008.SfpControl Basic125
   )
-linkConfigurationTest refClkDiff sysClkDiff _syncIn rxs rxns rxps spiS2M jtagIn _uartRx =
-  (txs, txns, txps, syncOut, spiM2S, jtagOut, uartTx, Tef0008.sfpControl)
+linkConfigurationTest refClkDiff sysClkDiff _syncIn rxs rxns rxps fmcSclIn fmcSdaIn mainSclIn mainSdaIn jtagIn _uartRx =
+  ( txs
+  , txns
+  , txps
+  , syncOut
+  , fmcSclOut
+  , fmcSdaOut
+  , Tef0008.si5345MuxSelect
+  , mainSclOut
+  , mainSdaOut
+  , Tef0008.iicMuxResetB
+  , jtagOut
+  , uartTx
+  , Tef0008.sfpControl
+  )
  where
   (refClk, _) = Gth.ibufds_gte3 refClkDiff
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -283,12 +291,15 @@ linkConfigurationTest refClkDiff sysClkDiff _syncIn rxs rxns rxps spiS2M jtagIn 
   testRst = sysRst `orReset` unsafeFromActiveLow testStart
   myIndex = fromMaybe 0 <$> testConfig
 
-  ((_mm, jtagOut, (txs, txns, txps), _), (spiM2S, uartTx)) =
+  ((_mm, jtagOut, (txs, txns, txps), _, _, _), (mainI2cOut, fmcI2cOut, uartTx)) =
     toSignals
       (withLittleEndian $ linkConfigurationPe sysClk testRst)
-      ( ((), jtagIn, (refClk, rxs, rxns, rxps, channelNames, clockPaths), myIndex)
-      , (spiS2M, ())
+      ( ((), jtagIn, (refClk, rxs, rxns, rxps, channelNames, fmcClockPaths), myIndex, mainI2cIn, fmcI2cIn)
+      , ((), (), ())
       )
+
+  (mainI2cIn, mainSclOut, mainSdaOut) = openDrainPins mainSclIn mainSdaIn mainI2cOut
+  (fmcI2cIn, fmcSclOut, fmcSdaOut) = splitSdaPins fmcSclIn fmcSdaIn fmcI2cOut
 
 makeTopEntity 'linkConfigurationTest
 
@@ -301,8 +312,9 @@ tests =
         , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
-        , "si539x" </> "spi.xdc"
         , "tef0008" </> "sfpControl.xdc"
+        , "tef0008" </> "si5345I2c.xdc"
+        , "tef0008" </> "mainI2c.xdc"
         ]
     , externalHdl = []
     , testCases =

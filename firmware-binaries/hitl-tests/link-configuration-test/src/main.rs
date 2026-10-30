@@ -8,7 +8,7 @@
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
-use bittide_cpus::boot::{enable_transceivers, program_clock_board};
+use bittide_cpus::boot::{enable_transceivers, program_fmc_clock};
 use bittide_cpus::transceivers::{monitor_links, print_statistics, wait_links_up};
 use bittide_hal::hals::link_configuration_test::DeviceInstances;
 use bittide_hal::manual_additions::clock_chip::Config;
@@ -19,9 +19,8 @@ use bittide_macros::load_clock_config_csv;
 use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const CONFIG_200: Config<3, 590, 5> = load_clock_config_csv!(
-    "../../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-Registers.csv"
-);
+const CONFIG_200: Config<3, 524, 5> =
+    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5345-200MHz-10ppb-Registers.csv");
 
 /// Maximum time all links get to come up after enabling the transceivers.
 const LINK_UP_TIMEOUT_SECS: u64 = 20;
@@ -29,11 +28,12 @@ const LINK_UP_TIMEOUT_SECS: u64 = 20;
 /// Time all links should stay up before the driver checks the received indices.
 const MONITOR_SECS: u64 = 10;
 
-/// Program the clock board and bring up the links. The driver checks the received
+/// Program the clock chip and bring up the links. The driver checks the received
 /// indices after this CPU reports that the links are stable.
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let si539x_spi = INSTANCES.si539x_spi;
+    let main_i2c = INSTANCES.i2c_controller;
+    let si5345_i2c = INSTANCES.si5345_i2c;
     let timer = INSTANCES.timer;
     let transceivers = INSTANCES.transceivers;
     let link_configuration_check = INSTANCES.link_configuration_check;
@@ -46,7 +46,7 @@ fn main() -> ! {
     )
     .unwrap();
 
-    program_clock_board(&si539x_spi, &timer, &mut uart, &CONFIG_200);
+    program_fmc_clock(&main_i2c, &si5345_i2c, &timer, &mut uart, &CONFIG_200);
     enable_transceivers(&transceivers, &mut uart);
 
     uwriteln!(uart, "Waiting for links to come up..").unwrap();

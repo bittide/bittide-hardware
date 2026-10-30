@@ -8,7 +8,7 @@
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
-use bittide_cpus::boot::{enable_transceivers, program_clock_board};
+use bittide_cpus::boot::{enable_transceivers, program_fmc_clock};
 use bittide_cpus::transceivers::{monitor_links, print_statistics, wait_links_up};
 use bittide_hal::hals::transceivers_up_test::DeviceInstances;
 use bittide_hal::manual_additions::clock_chip::Config;
@@ -19,9 +19,8 @@ use bittide_macros::load_clock_config_csv;
 use riscv_rt::entry;
 
 const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
-const CONFIG_200: Config<3, 590, 5> = load_clock_config_csv!(
-    "../../../bittide/data/clock_configs/Si5395J-200MHz-10ppb-Registers.csv"
-);
+const CONFIG_200: Config<3, 524, 5> =
+    load_clock_config_csv!("../../../bittide/data/clock_configs/Si5345-200MHz-10ppb-Registers.csv");
 
 /// Maximum time all links get to come up after enabling the transceivers.
 const LINK_UP_TIMEOUT_SECS: u64 = 20;
@@ -31,13 +30,14 @@ const MONITOR_SECS: u64 = 10;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let si539x_spi = INSTANCES.si539x_spi;
+    let main_i2c = INSTANCES.i2c_controller;
+    let si5345_i2c = INSTANCES.si5345_i2c;
     let timer = INSTANCES.timer;
     let transceivers = INSTANCES.transceivers;
     let transceiver_check = INSTANCES.transceiver_check;
     let mut uart = INSTANCES.uart;
 
-    program_clock_board(&si539x_spi, &timer, &mut uart, &CONFIG_200);
+    program_fmc_clock(&main_i2c, &si5345_i2c, &timer, &mut uart, &CONFIG_200);
     enable_transceivers(&transceivers, &mut uart);
 
     uwriteln!(uart, "Waiting for links to come up..").unwrap();
