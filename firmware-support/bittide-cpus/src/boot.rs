@@ -74,7 +74,7 @@ pub enum StartError {
     ClockChip(WriteError),
 }
 
-/// Start the clock chip on the FMC card, for designs with a `fmcBootPe`: set VADJ to
+/// Start the clock chip on the FMC card, for designs with a `bootPe`: set VADJ to
 /// 1.8 V, then write the given configuration to the clock chip, with up to `max_retries`
 /// attempts. VADJ powers the Si5345 and the I/O of the card through which we reach it, so
 /// the order matters: without VADJ, waiting for the clock chip would hang.

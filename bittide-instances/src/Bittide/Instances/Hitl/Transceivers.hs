@@ -21,7 +21,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Protocols
 
-import Bittide.BootPe (defFmcBootPeConfig, fmcBootPe)
+import Bittide.BootPe (bootPe, defBootPeConfig)
 import Bittide.ClockControl.Si5345I2c (splitSdaPins)
 import Bittide.ElasticBuffer (stickyE)
 import Bittide.Hitl
@@ -150,7 +150,7 @@ transceiversUpPe ::
 transceiversUpPe sysClk sysRst = circuit $ \(mm, jtag, gths) -> do
   (uartBytes, _clockChipDone, mainI2c, fmcI2c, [transceiverBus, checkBus]) <-
     withClockResetEnable sysClk sysRst enableGen
-      $ fmcBootPe defFmcBootPeConfig
+      $ bootPe defBootPeConfig
       -< (mm, jtag)
 
   (_uartRx, uartTx) <-

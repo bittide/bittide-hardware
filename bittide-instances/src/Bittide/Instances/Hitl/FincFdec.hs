@@ -28,7 +28,7 @@ import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
 import VexRiscv
 
-import Bittide.BootPe (defFmcBootPeConfig, fmcBootPe)
+import Bittide.BootPe (bootPe, defBootPeConfig)
 import Bittide.ClockControl.Si5345I2c (splitSdaPins)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
@@ -89,7 +89,7 @@ fincFdecPe ::
 fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
   (uartBytes, Fwd clockChipDone, mainI2c, fmcI2c, [dcBus]) <-
     withClockResetEnable freeClk freeRst enableGen
-      $ fmcBootPe peConfig
+      $ bootPe peConfig
       -< (mm, jtag)
 
   (_uartInBytes, uartTx) <-
@@ -106,7 +106,7 @@ fincFdecPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
 
   idC -< (uartTx, mainI2c, fmcI2c)
  where
-  peConfig = defFmcBootPeConfig
+  peConfig = defBootPeConfig
 
 fincFdecTests ::
   -- Pins from internal oscillator:

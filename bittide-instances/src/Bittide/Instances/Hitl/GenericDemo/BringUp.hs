@@ -19,7 +19,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
-import Bittide.BootPe (bootPe, defFmcBootPeConfig)
+import Bittide.BootPe (Si5345SclPeriod, defBootPeConfig)
 import Bittide.ClockControl.Si5345I2c (si5345I2cWb)
 import Bittide.Df (asciiDebugMux)
 import Bittide.I2c (I2c, i2cControllerWb)
@@ -41,22 +41,31 @@ import Bittide.Instances.Hitl.GenericDemo.Core (
  )
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
-import Bittide.ProcessingElement (PrefixWidth)
-import Bittide.SharedTypes (Byte, withLittleEndian)
+import Bittide.ProcessingElement (PrefixWidth, RemainingBusWidth, processingElement)
+import Bittide.SharedTypes (BitboneMm, Byte, withLittleEndian)
 import Bittide.Sync (Sync)
-import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
+import Bittide.Wishbone (
+  arbiterMm,
+  extendAddressWidthWb,
+  timeWb,
+  uartDf,
+  uartInterfaceWb,
+ )
 #ifdef SIM_BAUD_RATE
 import Clash.Cores.Uart.Extra (MaxBaudRate)
 #endif
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Data.Char (ord)
+import GHC.Stack (HasCallStack)
 import Protocols.Extra
 import Protocols.MemoryMap (Mm)
 import Protocols.Wishbone.Extra (xpmCdcHandshakeWb)
-import VexRiscv (Jtag)
+import VexRiscv (DumpVcd (NoDumpVcd), Jtag)
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.Wishbone as Transceiver
+import qualified Bittide.Wishbone as Wishbone
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Vec as Vec
 
@@ -77,6 +86,54 @@ uartLabels =
             :> $(listToVecTH "CC")
             :> Nil
         )
+
+{- | Number of busses of the processing element of 'demoBootPe', including the
+busses internal to the 'processingElement'.
+-}
+type DemoBootPeBusses = 7
+
+{- | Boot PE of the demos. Like 'Bittide.BootPe.bootPe', except that the clock
+control CPU shares the Si5345 driver. The boot CPU uses it to configure the clock
+chip, after which the clock control CPU uses it for frequency adjustments. The two
+never use it at the same time: the Bittide domain (and therefore the clock control
+CPU) only runs once the boot CPU finished configuring.
+-}
+demoBootPe ::
+  forall dom.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , 1 <= DomainPeriod dom
+  , ?byteOrder :: ByteOrder
+  ) =>
+  Circuit
+    ( ToConstBwd Mm
+    , Jtag dom
+    , "CC_CLOCK_CHIP_BUS" ::: BitboneMm dom (RemainingBusWidth DemoBootPeBusses)
+    )
+    ( "UART_BYTES" ::: Df dom (BitVector 8)
+    , "MAIN_I2C" ::: I2c dom
+    , "FMC_I2C" ::: I2c dom
+    , "TRANSCEIVER_BUS" ::: BitboneMm dom (RemainingBusWidth DemoBootPeBusses)
+    )
+demoBootPe = circuit $ \(mm, jtag, ccClockChipBus) -> do
+  [timeBus, uartBus, clockChipBus, transceiverBus, mainI2cBus] <-
+    processingElement NoDumpVcd (defBootPeConfig @DemoBootPeBusses) -< (mm, jtag)
+
+  Fwd _localCounter <- timeWb Nothing -< timeBus
+  (uartBytes, _uartStatus) <-
+    uartInterfaceWb d16 d16 Wishbone.uartBytes -< (uartBus, Fwd (pure Nothing))
+
+  -- The boot CPU sets VADJ over the main I2C bus of the KCU105, before it
+  -- configures the clock chip. See @firmware-support/bittide-cpus/src/fmc_power.rs@.
+  mainI2c <- i2cControllerWb (SNat @(Microseconds 10)) -< mainI2cBus
+
+  sharedClockChipBus <- arbiterMm -< [clockChipBus, ccClockChipBus]
+  -- A speed change must finish within one update of the clock control CPU
+  -- (200 us), which needs SCL at 400 kHz.
+  (_clockChipDone, fmcI2c) <-
+    si5345I2cWb (SNat @Si5345SclPeriod) 0x69 -< sharedClockChipBus
+
+  idC -< (uartBytes, mainI2c, fmcI2c, transceiverBus)
 
 bringUp ::
   forall userCoreBusses ringBufferDepth.
@@ -114,34 +171,13 @@ bringUp bufferDepth mkUserCore refClk refRst =
         -< muTransceiverWbBittide
 
     -- Start boot PE
-    (bootUartBytes, bootClockChipWb, [bootTransceiverWb, bootMainI2cWb]) <-
-      withRefClockResetEnable
-        $ bootPe defFmcBootPeConfig
-        -< (bootMm, bootJtag)
-
-    -- The boot CPU sets VADJ over the main I2C bus of the KCU105, before it
-    -- configures the clock chip. See @firmware-support/bittide-cpus/src/fmc_power.rs@.
-    mainI2c <-
-      withRefClockResetEnable
-        $ i2cControllerWb (SNat @(Microseconds 10))
-        -< bootMainI2cWb
-    -- Stop boot PE
-
-    -- Start Si5345 I2C. The boot CPU uses it to configure the clock chip, after
-    -- which the clock control CPU uses it for frequency adjustments. The two
-    -- never use it at the same time: the Bittide domain (and therefore the
-    -- clock control CPU) only runs once the boot CPU finished configuring.
-    clockChipWb <- withRefClockResetEnable arbiterMm -< [bootClockChipWb, ccClockChipWb]
     ccClockChipWb <-
       fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
         -< ccClockChipWbBittide
-    -- A speed change must finish within one update of the clock control CPU
-    -- (200 us), so run SCL at 400 kHz, the maximum of the Si5345.
-    (_clockChipDone, fmcI2c) <-
-      withRefClockResetEnable
-        $ si5345I2cWb (SNat @(Nanoseconds 2500)) 0x69
-        -< clockChipWb
-    -- Stop Si5345 I2C
+    (bootUartBytes, mainI2c, fmcI2c, bootTransceiverWb) <-
+      withRefClockResetEnable demoBootPe
+        -< (bootMm, bootJtag, ccClockChipWb)
+    -- Stop boot PE
 
     -- Start UART multiplexing
     uartTxBytes <-

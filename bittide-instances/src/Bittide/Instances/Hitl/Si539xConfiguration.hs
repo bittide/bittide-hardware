@@ -25,7 +25,6 @@ import Protocols.MemoryMap (MemoryMap, Mm, getMMAny)
 import Protocols.Spi (Spi)
 import VexRiscv
 
-import Bittide.BootPe (bootPe)
 import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.Hitl (
@@ -35,9 +34,9 @@ import Bittide.Hitl (
   hitlVioBool,
   paramForSingleHwTarget,
  )
-import Bittide.ProcessingElement (PeConfig (..))
+import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (withLittleEndian)
-import Bittide.Wishbone (uartDf)
+import Bittide.Wishbone (timeWb, uartDf, uartInterfaceWb)
 #ifdef SIM_BAUD_RATE
 import Clash.Cores.Uart.Extra (MaxBaudRate)
 #endif
@@ -46,6 +45,7 @@ import Bittide.Instances.Domains
 
 import qualified Bittide.Cpus.Riscv32imc as Riscv32imc
 import qualified Bittide.Instances.Hitl.Driver.Si539xConfiguration as Driver
+import qualified Bittide.Wishbone as Wishbone
 import qualified Clash.Class.Cdc as Cdc
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
@@ -84,10 +84,16 @@ si539xConfigPe ::
     , Spi free
     )
 si539xConfigPe freeClk freeRst skyClk = circuit $ \(mm, jtag) -> do
-  (uartBytes, siBus, [dcBus]) <-
+  [timeBus, uartBus, siBus, dcBus] <-
     withClockResetEnable freeClk freeRst enableGen
-      $ bootPe peConfig
+      $ processingElement NoDumpVcd peConfig
       -< (mm, jtag)
+
+  Fwd _localCounter <- withClockResetEnable freeClk freeRst enableGen $ timeWb Nothing -< timeBus
+  (uartBytes, _uartStatus) <-
+    withClockResetEnable freeClk freeRst enableGen
+      $ uartInterfaceWb d16 d16 Wishbone.uartBytes
+      -< (uartBus, Fwd (pure Nothing))
 
   (Fwd spiDone, spi) <-
     withClockResetEnable freeClk freeRst enableGen
