@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::{
-    manual_additions::si539x_spi::SpeedChange,
+    manual_additions::clock_chip::SpeedChange,
     shared_devices::clock_control::ClockControl,
     types::{callisto_config::CallistoConfig, maybe::Maybe},
 };

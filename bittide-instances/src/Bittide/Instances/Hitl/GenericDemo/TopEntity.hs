@@ -42,7 +42,7 @@ import VexRiscv (JtagIn (..), JtagOut (..))
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 
-import qualified Bittide.Instances.Hitl.Tef0008 as Tef0008
+import qualified Bittide.Instances.Tef0008 as Tef0008
 import qualified Clash.Cores.Xilinx.Gth as Gth
 import qualified Protocols.Spi as Spi
 
