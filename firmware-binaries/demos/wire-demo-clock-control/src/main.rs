@@ -19,6 +19,7 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
     bittide_cpus::clock_control::run(
         INSTANCES.clock_control,
+        INSTANCES.si539x_spi,
         INSTANCES.timer,
         &mut uart,
         INSTANCES.freeze,

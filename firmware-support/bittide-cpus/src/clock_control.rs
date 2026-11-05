@@ -4,7 +4,7 @@
 
 use bittide_hal::manual_additions::timer::{Duration, Instant, WaitResult};
 use bittide_hal::shared_devices::{
-    ClockControl, Freeze, SampleMemory, SyncOutGenerator, Timer, Uart,
+    ClockControl, Freeze, SampleMemory, Si539xSpi, SyncOutGenerator, Timer, Uart,
 };
 use bittide_sys::callisto::Callisto;
 use bittide_sys::sample_store::SampleStore;
@@ -49,8 +49,16 @@ impl DomainDiffCountersInterface
     }
 }
 
+/// Run software clock control.
+///
+/// Frequency adjustments are sent to the clock chip over SPI. The SPI interface is
+/// shared with the boot CPU, which must be done using it before this function is
+/// called. This is guaranteed by the hardware: the clock control CPU only starts
+/// running once the boot CPU configured the clock chip.
+#[allow(clippy::too_many_arguments)]
 pub fn run<DDC: DomainDiffCountersInterface>(
     cc: ClockControl,
+    si539x_spi: Si539xSpi,
     timer: Timer,
     uart: &mut Uart,
     freeze: Freeze,
@@ -74,17 +82,25 @@ pub fn run<DDC: DomainDiffCountersInterface>(
     // possible due to limited memory size.
     let mut sample_store = SampleStore::new(sample_memory, 100);
 
+    // Make sure every speed change fits in a single update interval, see
+    // `panic_on_spi_busy`.
+    si539x_spi.prepare_speed_changes();
+
     // Update clock control 5K updates per second
     let interval = Duration::from_micros(200);
     let mut next_update = timer.now() + interval;
     let mut prev_all_stable = false;
 
     loop {
+        // A speed change takes a full SPI transaction, which must have finished
+        // before the next update. Otherwise this update could not be applied.
+        panic_on_spi_busy(uart, &timer, &si539x_spi);
+
         // Store frozen elastic buffer counters
         freeze.set_freeze(());
 
         // Do clock control update
-        cc.set_change_speed(callisto.update(
+        let speed_change = callisto.update(
             &cc,
             izip!(0..DDC::ENABLE_LEN, freeze.eb_counters_volatile_iter()).map(|(i, counter)| {
                 if domain_diff_counters.enable(i).unwrap_or(false) {
@@ -93,7 +109,12 @@ pub fn run<DDC: DomainDiffCountersInterface>(
                     None
                 }
             }),
-        ));
+        );
+        let accepted = si539x_spi.try_speed_change(speed_change);
+        debug_assert!(
+            accepted,
+            "SPI busy, even though it was idle before the update"
+        );
 
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
@@ -145,6 +166,18 @@ fn panic_on_missed_deadline(
         .unwrap();
         panic!("Deadline missed! See UART log.");
     };
+}
+
+fn panic_on_spi_busy(uart: &mut Uart, timer: &Timer, si539x_spi: &Si539xSpi) {
+    if si539x_spi.is_busy() {
+        uwriteln!(
+            uart,
+            "Missed update! SPI still busy with previous speed change. Now: {}",
+            timer.now().micros(),
+        )
+        .unwrap();
+        panic!("Missed update! See UART log.");
+    }
 }
 
 /// Test whether the `i`-th bit in `bv` is set.

@@ -37,6 +37,7 @@ A handshake pipeline for two links looks as follows:
 >                                       └───────────┘    └───────────┘    └───────────┘    └───────────┘
 -}
 module Bittide.Instances.Hitl.GenericDemo.Core (
+  CcRemBusWidth,
   InternalCpuCount,
   NmuExternalBusses,
   NmuInternalBusses,
@@ -57,8 +58,11 @@ import Clash.Prelude (
 import Protocols
 
 import Bittide.CaptureUgn (captureUgns, sendUgn)
-import Bittide.ClockControl (SpeedChange (NoChange))
-import Bittide.ClockControl.CallistoSw (SwcccInternalBusses, callistoSwClockControlC)
+import Bittide.ClockControl.CallistoSw (
+  SwcccInternalBusses,
+  SwcccRemBusWidth,
+  callistoSwClockControlC,
+ )
 import Bittide.DoubleBufferedRam (wbStorage)
 import Bittide.ElasticBuffer (fromData, xilinxElasticBufferWb)
 import Bittide.Extra.Maybe (toMaybe)
@@ -125,6 +129,14 @@ type PeripheralsPerLink = 3
 type NmuExternalBusses userCoreBusses = 4 + userCoreBusses + (LinkCount * PeripheralsPerLink)
 type NmuRemBusWidth userCoreBusses =
   RemainingBusWidth (NmuExternalBusses userCoreBusses + NmuInternalBusses)
+
+{- Clock control CPU busses, on top of 'SwcccInternalBusses':
+    - UART
+    - Sample memory
+    - Si539x SPI (shared with the boot CPU)
+-}
+type CcExternalBusses = 3
+type CcRemBusWidth = SwcccRemBusWidth CcExternalBusses
 
 {- | Post-handshake stage provided by the demo. Given the Bittide-domain
 clock/reset/enable, a free-running local counter and the FPGA DNA, returns
@@ -244,11 +256,11 @@ core ::
     , "CC_SUITABLE" ::: CSignal Bittide (BitVector LinkCount)
     , "RXS" ::: Vec LinkCount (CSignal GthRx (BitVector 64))
     )
-    ( CSignal Bittide SpeedChange
-    , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
+    ( "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
     , Sync Bittide Basic125
     , "UARTS" ::: Vec InternalCpuCount (Df Bittide (BitVector 8))
     , "MU_TRANSCEIVER" ::: BitboneMm Bittide (NmuRemBusWidth userCoreBusses)
+    , "CC_SI539X_SPI" ::: BitboneMm Bittide CcRemBusWidth
     )
 core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks rxResets = withXilinx
   $ circuit
@@ -338,9 +350,9 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
 
     -- Start clock control
     ( sync
-      , Fwd swCcOut0
       , [ ccUartBus
           , ccSampleMemoryBus
+          , ccSpiBus
           ]
       ) <-
       withBittideClockResetEnable
@@ -362,30 +374,14 @@ core bufferDepth mkUserCore (refClk, refRst) (bitClk, bitRst, bitEna) rxClocks r
       withBittideClockResetEnable
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
-
-    let
-      swCcOut1 =
-        if clashSimulation
-          then
-            let
-              -- Should all clock control steps be run in simulation?
-              -- False means that clock control will always immediately be done.
-              simulateCc = False
-             in
-              if simulateCc
-                then swCcOut0
-                else pure NoChange
-          else swCcOut0
     -- Stop clock control
 
-    -- Use of `dflipflop` to add pipelining should be replaced by
-    -- https://github.com/bittide/bittide-hardware/pull/1134
     idC
-      -< ( Fwd swCcOut1
-         , Fwd (unbundle txsOut)
+      -< ( Fwd (unbundle txsOut)
          , sync
          , [muUartBytesBittide, ccUartBytesBittide]
          , muTransceiverBus
+         , ccSpiBus
          )
  where
   withBittideClockResetEnable :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
