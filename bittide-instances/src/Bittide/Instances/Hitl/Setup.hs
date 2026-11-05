@@ -13,6 +13,7 @@ module Bittide.Instances.Hitl.Setup (
   allHwTargets,
   channelNames,
   clockPaths,
+  fmcClockPaths,
   fpgaSetup,
   knownFpgaIds,
   knownFpgaIdsVec,
@@ -50,6 +51,21 @@ clockPaths =
     :> "X0Y18 clk0-2"
     :> "X0Y19 clk0-2"
     :> "X0Y11 clk0"
+    :> Nil
+
+{- | Clock paths when the transceivers use @FMC_HPC_GBTCLK1_M2C@ as reference
+clock, driven by the Si5345 on the FMC card. This pin is @MGTREFCLK1@ of quad
+228, which also holds the FMC SFP links. The other links are two quads below.
+-}
+fmcClockPaths :: Vec LinkCount String
+fmcClockPaths =
+  "X0Y10 clk1+2"
+    :> "X0Y9 clk1+2"
+    :> "X0Y16 clk1"
+    :> "X0Y17 clk1"
+    :> "X0Y18 clk1"
+    :> "X0Y19 clk1"
+    :> "X0Y11 clk1+2"
     :> Nil
 
 {- | Some order of the FPGA ids and a mapping to their connected

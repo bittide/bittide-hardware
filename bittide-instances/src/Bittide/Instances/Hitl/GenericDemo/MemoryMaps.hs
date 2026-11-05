@@ -23,8 +23,6 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Protocols.MemoryMap (MemoryMap)
 import VexRiscv (JtagIn (..))
 
-import qualified Protocols.Spi as Spi
-
 extractMemoryMaps ::
   forall userCoreBusses ringBufferDepth.
   ( KnownNat userCoreBusses
@@ -52,7 +50,8 @@ extractMemoryMaps bufferDepth mkUserCore = (bootMm, managementUnitMm, clockContr
         , (clockGen, SimOnly (repeat 0), 0, 0, repeat "", repeat "")
         )
       ,
-        ( pure (Spi.S2M low)
+        ( pure (high, high)
+        , pure (high, high)
         , pure low
         , ()
         )
