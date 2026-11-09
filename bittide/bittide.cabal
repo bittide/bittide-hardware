@@ -308,6 +308,7 @@ test-suite unittests
     Tests.WireDemoProcessingElement
     Tests.Wishbone
     Tests.Wishbone.Arbiter
+    Tests.Wishbone.SelectManager
     Tests.Wishbone.Utils
 
   build-depends:
