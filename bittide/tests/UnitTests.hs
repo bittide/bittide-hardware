@@ -31,6 +31,7 @@ import qualified Tests.Transceiver.WordAlign
 import qualified Tests.WireDemoProcessingElement
 import qualified Tests.Wishbone
 import qualified Tests.Wishbone.Arbiter
+import qualified Tests.Wishbone.SelectManager
 
 tests :: TestTree
 tests =
@@ -58,6 +59,7 @@ tests =
     , Tests.WireDemoProcessingElement.tests
     , Tests.Wishbone.tests
     , Tests.Wishbone.Arbiter.tests
+    , Tests.Wishbone.SelectManager.tests
     ]
 
 {- | Default number of tests is 100, which is too low for our (complicated)

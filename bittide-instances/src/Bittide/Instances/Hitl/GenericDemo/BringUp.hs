@@ -20,7 +20,7 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Protocols
 
 import Bittide.BootPe (bootPe, defBootPeConfig)
-import Bittide.ClockControl
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.Df (asciiDebugMux)
 import Bittide.Instances.Domains (
   Basic125,
@@ -43,7 +43,7 @@ import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PrefixWidth)
 import Bittide.SharedTypes (Byte, withLittleEndian)
 import Bittide.Sync (Sync)
-import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, uartDf)
+import Bittide.Wishbone (arbiterMm, extendAddressWidthWb, selectManagerMm, uartDf)
 #ifdef SIM_BAUD_RATE
 import Clash.Cores.Uart.Extra (MaxBaudRate)
 #endif
@@ -99,7 +99,6 @@ bringUp ::
     ( Spi Basic125
     , Sync Bittide Basic125
     , "UART_TX" ::: CSignal Basic125 Bit
-    , "FINC_FDEC" ::: CSignal Bittide (FINC, FDEC)
     )
 bringUp bufferDepth mkUserCore refClk refRst =
   withLittleEndian $ circuit $ \(memoryMaps, jtag, gths) -> do
@@ -114,11 +113,28 @@ bringUp bufferDepth mkUserCore refClk refRst =
         -< muTransceiverWbBittide
 
     -- Start boot PE
-    (bootUartBytes, _spiDone, spi, [bootTransceiverWb]) <-
+    (bootUartBytes, bootSpiWb, [bootTransceiverWb]) <-
       withRefClockResetEnable
         $ bootPe defBootPeConfig
         -< (bootMm, bootJtag)
     -- Stop boot PE
+
+    -- Start Si539x SPI. The boot CPU uses it to configure the clock chip, after
+    -- which the clock control CPU uses it for frequency adjustments. The boot CPU
+    -- is connected until it sets 'spi_done', after which the clock control CPU
+    -- is connected. Accesses by the CPU that is not connected result in a bus
+    -- error.
+    spiWb <-
+      withRefClockResetEnable (selectManagerMm ((\done -> if done then 1 else 0) <$> spiDone))
+        -< [bootSpiWb, ccSpiWb]
+    ccSpiWb <-
+      fmapC (extendAddressWidthWb <| xpmCdcHandshakeWb bittideClk bittideRst refClk refRst)
+        -< ccSpiWbBittide
+    (Fwd spiDone, spi) <-
+      withRefClockResetEnable
+        $ si539xSpiWb (SNat @(Microseconds 10))
+        -< spiWb
+    -- Stop Si539x SPI
 
     -- Start UART multiplexing
     uartTxBytes <-
@@ -138,11 +154,11 @@ bringUp bufferDepth mkUserCore refClk refRst =
         Transceiver.defConfig
         -< (transceiverWb, gths, Fwd (bundle coreToTransceivers))
 
-    ( Fwd speedChanges
-      , Fwd coreToTransceivers
+    ( Fwd coreToTransceivers
       , sync
       , uartBytesBittide
       , muTransceiverWbBittide
+      , ccSpiWbBittide
       ) <-
       core
         bufferDepth
@@ -171,12 +187,4 @@ bringUp bufferDepth mkUserCore refClk refRst =
       linksSuitableForCc :: Signal Bittide (BitVector LinkCount)
       linksSuitableForCc = fmap pack (bundle tOutputs.txDataInitDones)
 
-      frequencyAdjustments :: Signal Bittide (FINC, FDEC)
-      frequencyAdjustments =
-        delay bittideClk enableGen minBound
-          $ speedChangeToFincFdec
-            bittideClk
-            bittideRst
-            speedChanges
-
-    idC -< (spi, sync, uartTx, Fwd frequencyAdjustments)
+    idC -< (spi, sync, uartTx)

@@ -14,8 +14,7 @@ use ufmt::uwriteln;
 use bittide_hal::hals::finc_fdec_tests::devices::DomainDiffCounters;
 use bittide_hal::hals::finc_fdec_tests::DeviceInstances;
 use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
-use bittide_hal::shared_devices::{HardwareSpeedChange, Si539xSpi, Timer, Uart};
-use bittide_hal::types::SpeedChange;
+use bittide_hal::shared_devices::{Si539xSpi, Timer, Uart};
 
 use bittide_macros::load_clock_config_csv;
 
@@ -79,80 +78,7 @@ where
     }
 }
 
-fn noop() {}
-
-// FINC/FDEC test patterns, split into hardware and software variants.
-// Hardware: set the SpeedChange register once, the hardware will continuously pulse
-//           the FINC/FDEC pins.
-// Software: send one SPI request per loop iteration.
-
-fn do_hw_fdec(sc: &HardwareSpeedChange, dc: &DomainDiffCounters) -> TestResult {
-    sc.set_speed_change(SpeedChange::SlowDown);
-    let result = counter_test(
-        dc,
-        noop,
-        (i32::lt, -THRESHOLD),
-        (i32::gt, THRESHOLD),
-        Direction::Fdec,
-    );
-    sc.set_speed_change(SpeedChange::NoChange);
-    result
-}
-
-fn do_hw_finc(sc: &HardwareSpeedChange, dc: &DomainDiffCounters) -> TestResult {
-    sc.set_speed_change(SpeedChange::SpeedUp);
-    let result = counter_test(
-        dc,
-        noop,
-        (i32::gt, THRESHOLD),
-        (i32::lt, -THRESHOLD),
-        Direction::Finc,
-    );
-    sc.set_speed_change(SpeedChange::NoChange);
-    result
-}
-
-fn do_hw_fdec_inc(sc: &HardwareSpeedChange, dc: &DomainDiffCounters) -> TestResult {
-    sc.set_speed_change(SpeedChange::SlowDown);
-    counter_test(
-        dc,
-        noop,
-        (i32::lt, -THRESHOLD),
-        (i32::gt, THRESHOLD),
-        Direction::Fdec,
-    )?;
-    sc.set_speed_change(SpeedChange::SpeedUp);
-    let result = counter_test(
-        dc,
-        noop,
-        (i32::gt, 0),
-        (i32::lt, -(3 * THRESHOLD)),
-        Direction::Finc,
-    );
-    sc.set_speed_change(SpeedChange::NoChange);
-    result
-}
-
-fn do_hw_finc_dec(sc: &HardwareSpeedChange, dc: &DomainDiffCounters) -> TestResult {
-    sc.set_speed_change(SpeedChange::SpeedUp);
-    counter_test(
-        dc,
-        noop,
-        (i32::gt, THRESHOLD),
-        (i32::lt, -THRESHOLD),
-        Direction::Finc,
-    )?;
-    sc.set_speed_change(SpeedChange::SlowDown);
-    let result = counter_test(
-        dc,
-        noop,
-        (i32::lt, 0),
-        (i32::gt, (3 * THRESHOLD)),
-        Direction::Fdec,
-    );
-    sc.set_speed_change(SpeedChange::NoChange);
-    result
-}
+// FINC/FDEC test patterns. Each loop iteration sends one SPI request.
 
 fn do_sw_fdec(si539x_spi: &Si539xSpi, timer: &Timer, dc: &DomainDiffCounters) -> TestResult {
     counter_test(
@@ -294,7 +220,6 @@ fn main() -> ! {
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
     let dc = INSTANCES.domain_diff_counters;
-    let sc = INSTANCES.hardware_speed_change;
 
     let all_passed = run_tests!(
         spi: si539x_spi,
@@ -302,10 +227,6 @@ fn main() -> ! {
         uart: uart,
         dc: dc,
         tests: [
-            [name: "Hardware FDec",    test: |dc| do_hw_fdec(&sc, dc)],
-            [name: "Hardware FInc",    test: |dc| do_hw_finc(&sc, dc)],
-            [name: "Hardware FDecInc", test: |dc| do_hw_fdec_inc(&sc, dc)],
-            [name: "Hardware FIncDec", test: |dc| do_hw_finc_dec(&sc, dc)],
             [name: "Software FDec",    test: |dc| do_sw_fdec(&si539x_spi, &timer, dc)],
             [name: "Software FInc",    test: |dc| do_sw_finc(&si539x_spi, &timer, dc)],
             [name: "Software FDecInc", test: |dc| do_sw_fdec_inc(&si539x_spi, &timer, dc)],

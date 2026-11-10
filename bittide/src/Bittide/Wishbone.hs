@@ -733,6 +733,94 @@ arbiterMm = circuit $ \mmWbs -> do
  where
   goDuplicate (_, mm) = (repeat mm, ())
 
+{- | Connect one of @n@ Wishbone managers to a subordinate, based on a select
+signal.
+
+The selected manager is connected to the subordinate. A manager that is not
+selected gets an error for every transfer it attempts. The selection only
+changes while the currently connected manager is not doing a transfer, so a
+transfer in progress always finishes.
+
+This differs from 'arbiter' in who decides which manager is connected. In
+'arbiter', the managers compete for the subordinate: a manager that starts a
+transfer while another manager is connected waits until the subordinate is
+free. Here, the select signal decides: a manager that is not selected never
+gets access, and gets an error immediately instead of waiting.
+
+The select signal has a combinational path to all outputs, so it must not
+depend combinationally on the subordinate's 'WishboneM2S'.
+
+XXX: This component does not support @LOCK@ cycles.
+-}
+selectManager ::
+  forall dom addrW nBytes n.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , KnownNat nBytes
+  , KnownNat n
+  , 1 <= n
+  ) =>
+  {- | Manager to connect to the subordinate. Only takes effect while the
+  connected manager is not doing a transfer.
+  -}
+  Signal dom (Index n) ->
+  Circuit
+    (Vec n (Wishbone dom 'Standard addrW nBytes))
+    (Wishbone dom 'Standard addrW nBytes)
+selectManager selection = Circuit go
+ where
+  go (bundle -> m2ss, s2m) = (unbundle s2ms, m2s)
+   where
+    prevConnected = register 0 connected
+    (connected, m2s, s2ms) =
+      unbundle (route <$> selection <*> prevConnected <*> m2ss <*> s2m)
+
+  route ::
+    Index n ->
+    Index n ->
+    Vec n (WishboneM2S addrW nBytes) ->
+    WishboneS2M nBytes ->
+    (Index n, WishboneM2S addrW nBytes, Vec n (WishboneS2M nBytes))
+  route sel prevConnected m2ss s2m = (connected, m2ss !! connected, s2ms)
+   where
+    -- Keep the connection while a transfer is in progress.
+    connected
+      | inTransfer (m2ss !! prevConnected) = prevConnected
+      | otherwise = sel
+    s2ms = imap (\i m -> if i == connected then s2m else denied m) m2ss
+
+  -- Interconnects keep 'busCycle' asserted on all their ports, so only look at
+  -- transfers addressed to this subordinate.
+  inTransfer m = m.busCycle && m.strobe
+
+  -- Respond with an error to any transfer of a manager that is not connected.
+  denied :: WishboneM2S addrW nBytes -> WishboneS2M nBytes
+  denied m = emptyWishboneS2M{err = inTransfer m}
+
+-- | Like 'selectManager', but also handles memory maps.
+selectManagerMm ::
+  forall dom addrW nBytes n.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , KnownNat nBytes
+  , KnownNat n
+  , 1 <= n
+  ) =>
+  -- | Manager to connect to the subordinate, see 'selectManager'.
+  Signal dom (Index n) ->
+  Circuit
+    (Vec n (ToConstBwd Mm.Mm, Wishbone dom 'Standard addrW nBytes))
+    ( ToConstBwd Mm.Mm
+    , Wishbone dom 'Standard addrW nBytes
+    )
+selectManagerMm selection = circuit $ \mmWbs -> do
+  (mms, wbs) <- Vec.unzip -< mmWbs
+  mm <- Circuit goDuplicate -< mms
+  wb <- selectManager selection -< wbs
+  idC -< (mm, wb)
+ where
+  goDuplicate (_, mm) = (repeat mm, ())
+
 -- | Extend the address width of a Wishbone bus manager interface.
 extendAddressWidthWb ::
   (KnownNat awOut, KnownNat awIn, awIn <= awOut) =>

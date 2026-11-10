@@ -29,7 +29,9 @@ Contrary to what one might expect, there are actually TWO clocks in a bittide no
  1) set up bittide clock by configuring clock registers and setting the initial nominal frequency
  2) bring parts of the SerDes out of reset
 
-Once the bringup sequence has moved to the next step, the Boot CPU and static clock are no longer used.
+The Boot CPU and the Clock Control CPU share the SPI connection to the bittide clock through a Select Manager. The Boot CPU has access until it has set up the bittide clock, after which the Clock Control CPU has access.
+
+Once the bringup sequence has moved to the next step, the Boot CPU is no longer used. The static clock is still used, for example by the SPI connection that the Clock Control CPU uses to adjust the bittide clock.
 
 ### Step 2: Achieving clock syntony(ish)
 {{#drawio path="diagrams/bittide-cc-diagram.drawio" page=0}}
@@ -150,7 +152,7 @@ Once logical latency has been established, the bittide network guarantees these 
 
 **Roundtrip time** - Natural number that represents the number of clock cycles it takes for a message to make a roundtrip from node A to node B and back. It is the sum of the logical latencies l a -> b and l b -> a.
 
-**Static clock (SCLK)** - A reference clock that is not adjustable. Its only purpose is to provide a clock for the Boot CPU. Once the Boot CPU is finished, the static clock is no longer needed.
+**Static clock (SCLK)** - A reference clock that is not adjustable. It provides a clock for the Boot CPU and for other logic, such as the SPI connection to the bittide clock. The static clock is still needed after the Boot CPU is finished, for example because the Clock Control CPU adjusts the bittide clock over this SPI connection.
 
 ### Glossary for non-bittide technical terms
 **Comma symbol** - An alignment symbol in 8b10b link negotiation

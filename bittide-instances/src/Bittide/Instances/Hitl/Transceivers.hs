@@ -22,6 +22,7 @@ import Clash.Prelude (withClockResetEnable)
 import Protocols
 
 import Bittide.BootPe (BootPeBusses, bootPe)
+import Bittide.ClockControl.Si539xSpi (si539xSpiWb)
 import Bittide.ElasticBuffer (stickyE)
 import Bittide.Hitl
 import Bittide.Instances.Domains
@@ -162,10 +163,15 @@ transceiversUpPe ::
     , "UART_TX" ::: CSignal Basic125 Bit
     )
 transceiversUpPe sysClk sysRst = circuit $ \(mm, jtag, gths) -> do
-  (uartBytes, _spiDone, spi, [transceiverBus, checkBus]) <-
+  (uartBytes, siBus, [transceiverBus, checkBus]) <-
     withClockResetEnable sysClk sysRst enableGen
       $ bootPe @2 peConfig
       -< (mm, jtag)
+
+  (_spiDone, spi) <-
+    withClockResetEnable sysClk sysRst enableGen
+      $ si539xSpiWb (SNat @(Microseconds 10))
+      -< siBus
 
   (_uartRx, uartTx) <-
     withClockResetEnable sysClk sysRst enableGen

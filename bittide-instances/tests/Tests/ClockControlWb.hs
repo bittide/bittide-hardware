@@ -35,7 +35,6 @@ data SerialResult = SerialResult
   , linksStable :: Int
   , linksSettled :: Int
   , dataCounts :: [(Int, Int)]
-  , clockMod :: [Int]
   }
   deriving (Show, Eq)
 
@@ -46,13 +45,14 @@ sim = do
   putStr
     $ fmap (chr . fromIntegral)
     $ catMaybes
-    $ fst (sampleC def $ dutNoMm peConfig)
+    $ sampleC def
+    $ dutNoMm peConfig
 
 case_clock_control_wb_self_test :: Assertion
 case_clock_control_wb_self_test = do
   peConfig <- peConfigSim
   let
-    (uartStream, ccData) = sampleC def $ dutNoMm peConfig
+    uartStream = sampleC def $ dutNoMm peConfig
     uartString = chr . fromIntegral <$> catMaybes uartStream
   case parse resultParser "" uartString of
     Left err -> do
@@ -69,11 +69,6 @@ case_clock_control_wb_self_test = do
             , linksStable = 0
             , linksSettled = 0
             , dataCounts = expectedDataCounts
-            , clockMod =
-                L.take (L.length actual.clockMod)
-                  $ fromIntegral
-                  . pack
-                  <$> catMaybes ccData
             }
       assertEqual "Expected and actual differ" expected actual
 
@@ -108,7 +103,6 @@ resultParser = do
   linksStableResult <- expectField "linksStable"
   linksSettledResult <- expectField "linksSettled"
   dataCountsResult <- expectField "dataCounts"
-  clockModResult <- expectField "clockMod"
   return
     SerialResult
       { linkCount = linkCountResult
@@ -118,7 +112,6 @@ resultParser = do
       , linksStable = linksStableResult
       , linksSettled = linksSettledResult
       , dataCounts = dataCountsResult
-      , clockMod = clockModResult
       }
 
 {- | A parser that parses a string in the form "name: value\n"
