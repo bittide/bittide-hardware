@@ -15,6 +15,7 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bittide-cpus = { path = "../../../firmware-support/bittide-cpus" }
 bittide-hal = { path = "../../../firmware-support/bittide-hal" }
 bittide-macros = { path = "../../../firmware-support/bittide-macros" }
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }

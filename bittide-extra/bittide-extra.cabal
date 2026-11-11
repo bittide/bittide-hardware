@@ -184,6 +184,7 @@ library
     Protocols.Experimental.ReqResp.Extra
     Protocols.Extra
     Protocols.Extra.TH
+    Protocols.I2c
     Protocols.Internal.TH.Extra
     Protocols.Internal.Types.Extra
     Protocols.Spi
